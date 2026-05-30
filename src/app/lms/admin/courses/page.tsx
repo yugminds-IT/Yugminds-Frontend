@@ -264,8 +264,8 @@ export default function CoursesManagement() {
    
   const [_selectedCourse, _setSelectedCourse] = useState<Course | null>(null);
   const [_selectedChapter, _setSelectedChapter] = useState<Chapter | null>(null);
-  const [_selectedSchools, _setSelectedSchools] = useState<string[]>([]);
-  const [_selectedGrades, _setSelectedGrades] = useState<string[]>([]);
+  const [_selectedSchools, setSelectedSchools] = useState<string[]>([]);
+  const [_selectedGrades, setSelectedGrades] = useState<string[]>([]);
   const [_currentAssignment, _setCurrentAssignment] = useState<Assignment>({
     chapter_id: '',
     title: '',

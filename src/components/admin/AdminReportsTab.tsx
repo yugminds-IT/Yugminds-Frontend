@@ -55,7 +55,7 @@ export default function AdminReportsTab({
 
       const response = await adminApi.reports.download(params);
       const blob = response.data as Blob;
-      const contentType = response.headers['content-type'] ?? '';
+      const contentType = String(response.headers['content-type'] ?? '');
 
       if (!contentType.includes('application/pdf')) {
         throw new Error('Invalid response format. Expected PDF.');

@@ -36,6 +36,9 @@ const nextConfig = {
   // Optimize bundle splitting
   experimental: {
     optimizeCss: true, // Optimize CSS
+    turbopack: {
+      root: __dirname, // Silence "multiple lockfiles" workspace root warning
+    },
   },
   // Webpack optimizations
   webpack: (config, { isServer }) => {
