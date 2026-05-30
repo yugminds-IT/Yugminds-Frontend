@@ -13,7 +13,7 @@ import {
   RotateCcw,
   Loader2
 } from 'lucide-react'
-import { supabase } from '../../../lib/supabase'
+import { getStoredUserId } from '../../../lib/session-utils'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 import { useToast } from '../../ui/toast'
 import { useQueryClient } from '@tanstack/react-query'
@@ -116,26 +116,9 @@ export default function VideoContentViewer({
         return
       }
 
-      // Then check server
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-
-        type ProgressRow = { last_position?: number; is_completed?: boolean };
-        const { data: progressData } = await supabase
-          .from('student_progress')
-          .select('last_position, is_completed')
-          .eq('student_id', user.id)
-          .eq('content_id', content.id)
-          .maybeSingle()
-
-        const progress = progressData as ProgressRow | null;
-        if (progress?.last_position && progress.last_position > 5) {
-          setResumePosition(progress.last_position)
-        }
-        if (progress?.is_completed) {
-          setContentCompleted(content.id, resolvedChapterId, resolvedCourseId, true)
-        }
+        const userId = getStoredUserId()
+        if (!userId) return
       } catch (error) {
         console.warn('Failed to load video position:', error)
       }
@@ -153,32 +136,15 @@ export default function VideoContentViewer({
     setVideoPosition(content.id, position)
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const userId = getStoredUserId()
+      if (!userId) return
 
-      const { error: rpcError } = await supabase.rpc('upsert_video_position', {
-        p_student_id: user.id,
-        p_course_id: resolvedCourseId,
-        p_chapter_id: resolvedChapterId,
-        p_content_id: content.id,
-        p_position: position,
-        p_time_spent: 10
-      } as never);
-      
-      if (rpcError) {
-        // Fallback to direct upsert if function doesn't exist
-        await supabase.from('student_progress').upsert({
-          student_id: user.id,
-          course_id: resolvedCourseId,
-          chapter_id: resolvedChapterId,
-          content_id: content.id,
-          last_position: position,
-        } as never, { onConflict: 'student_id,content_id' });
-      }
+      // TODO: replace with backend API call to persist video position
+      console.debug('[VideoViewer] Position save skipped (realtime backend removed)', { userId, position })
     } catch (error) {
       console.warn('Failed to save video position:', error)
     }
-  }, [content.id, resolvedCourseId, resolvedChapterId, isYouTube, setVideoPosition]);
+  }, [content.id, isYouTube, setVideoPosition]);
 
   const savePosition = useCallback(
     (position: number) => {

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
-const sizes = [32, 192]; // 32 for favicon, 192 for PWA/apple-touch
+const _sizes = [32, 192]; // 32 for favicon, 192 for PWA/apple-touch
 const appDir = path.join(root, 'src', 'app');
 
 // Prefer public logo (YUGMINDS), then project assets if present

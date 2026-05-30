@@ -5,7 +5,7 @@ import { Card } from '../../ui/card'
 import { Button } from '../../ui/button'
 import { Badge } from '../../ui/badge'
 import { Download, File, CheckCircle, Loader2, Clock, ExternalLink } from 'lucide-react'
-import { supabase } from '../../../lib/supabase'
+import { getStoredUserId } from '../../../lib/session-utils'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 
 interface PDFContentViewerProps {
@@ -61,22 +61,8 @@ export default function PDFContentViewer({
   useEffect(() => {
     const checkCompletion = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-
-        type ProgressRow = { is_completed?: boolean };
-        const { data: progressData } = await supabase
-          .from('student_progress')
-          .select('is_completed')
-          .eq('student_id', user.id)
-          .eq('content_id', content.id)
-          .maybeSingle()
-
-        const progress = progressData as ProgressRow | null;
-        if (progress?.is_completed) {
-          setContentCompleted(content.id, resolvedChapterId, resolvedCourseId, true)
-          setHasCompleted(true)
-        }
+        const userId = getStoredUserId()
+        if (!userId) return
       } catch (error) {
         console.warn('Failed to check completion:', error)
       }

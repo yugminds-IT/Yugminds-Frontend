@@ -20,8 +20,9 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 // import { ScrollArea } from '../ui/scroll-area'; // Component doesn't exist
 // import { Separator } from '../ui/separator'; // Component doesn't exist
-import { useStudentRealtimeNotifications } from '../../hooks/useRealtimeNotifications';
-import { supabase } from '../../lib/supabase';
+import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
+import { getStoredUserId } from '../../lib/session-utils';
+import { commonApi } from '../../lib/api';
 import { frontendLogger } from '../../lib/frontend-logger';
 import { useRouter } from 'next/navigation';
 
@@ -59,46 +60,41 @@ export default function NotificationCenter({ isOpen, onClose, userId }: Notifica
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<'all' | 'unread' | 'course_enrollment'>('all');
 
-  // Set up realtime notifications
-  useStudentRealtimeNotifications(userId);
+  void userId;
+  useDashboardRealtime('student', { enabled: true, debugLabel: 'student-notification-center' });
 
-  // Fetch notifications
+  // Fetch full notifications only when panel is open; cache to avoid refetch on every focus.
   const { data: notifications, isLoading, refetch: _refetch } = useQuery({
     queryKey: ['studentNotifications'],
     queryFn: async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('No user found');
-
-        const { data, error } = await supabase
-          .from('notifications')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-        return data as Notification[];
+        const res = await commonApi.notifications.user.get();
+        const notifs = (res.data as { notifications?: Notification[] })?.notifications || (res.data as Notification[]) || [];
+        return notifs;
       } catch (error) {
         frontendLogger.error('Error fetching notifications', { error });
         throw error;
       }
     },
-    refetchInterval: 30000, // Refetch every 30 seconds as backup to realtime
+    staleTime: 60000,
+    refetchInterval: false,
+    refetchOnWindowFocus: true,
   });
 
   // Mark notification as read
   const markAsReadMutation = useMutation({
     mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true } as never)
-        .eq('id', notificationId);
-
-      if (error) throw error;
+      const currentUserId = getStoredUserId();
+      if (!currentUserId) throw new Error('No user found');
+      await commonApi.notifications.user.update({
+        notification_id: notificationId,
+        user_id: currentUserId,
+        is_read: true,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['studentNotifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadNotificationCount'] });
     },
     onError: (error) => {
       frontendLogger.error('Error marking notification as read', { error });
@@ -108,19 +104,17 @@ export default function NotificationCenter({ isOpen, onClose, userId }: Notifica
   // Mark all as read
   const markAllAsReadMutation = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
-
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true } as never)
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-
-      if (error) throw error;
+      const currentUserId = getStoredUserId();
+      if (!currentUserId) throw new Error('No user found');
+      await commonApi.notifications.user.update({
+        user_id: currentUserId,
+        is_read: true,
+        mark_all: true,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['studentNotifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadNotificationCount'] });
     },
     onError: (error) => {
       frontendLogger.error('Error marking all notifications as read', { error });
@@ -130,15 +124,17 @@ export default function NotificationCenter({ isOpen, onClose, userId }: Notifica
   // Delete notification
   const deleteNotificationMutation = useMutation({
     mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
-        .from('notifications')
-        .delete()
-        .eq('id', notificationId);
-
-      if (error) throw error;
+      const currentUserId = getStoredUserId();
+      if (!currentUserId) throw new Error('No user found');
+      await commonApi.notifications.user.update({
+        notification_id: notificationId,
+        user_id: currentUserId,
+        deleted: true,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['studentNotifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadNotificationCount'] });
     },
     onError: (error) => {
       frontendLogger.error('Error deleting notification', { error });
@@ -201,10 +197,10 @@ export default function NotificationCenter({ isOpen, onClose, userId }: Notifica
 
     // Navigate based on notification type
     if (notification.type === 'course_enrollment' && notification.course_id) {
-      router.push(`/student/courses/${notification.course_id}`);
+      router.push(`/lms/student/courses/${notification.course_id}`);
       onClose();
     } else if (notification.notification_data?.assignment_id) {
-      router.push(`/student/assignments/${notification.notification_data.assignment_id}`);
+      router.push(`/lms/student/assignments/${notification.notification_data.assignment_id}`);
       onClose();
     }
   };

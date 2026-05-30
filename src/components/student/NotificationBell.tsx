@@ -1,14 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Bell, BellRing } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import NotificationCenter from './NotificationCenter';
-import { useStudentRealtimeNotifications } from '../../hooks/useRealtimeNotifications';
-import { supabase } from '../../lib/supabase';
-import { frontendLogger } from '../../lib/frontend-logger';
+import { useDashboardRealtime } from '../../hooks/useDashboardRealtime';
+import { useUnreadNotificationCount } from '../../hooks/useUnreadNotificationCount';
 
 interface NotificationBellProps {
   userId?: string;
@@ -18,32 +16,11 @@ interface NotificationBellProps {
 export default function NotificationBell({ userId, className = '' }: NotificationBellProps) {
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
 
-  // Set up realtime notifications
-  useStudentRealtimeNotifications(userId);
+  void userId;
+  useDashboardRealtime('student', { enabled: true, debugLabel: 'student-notification-bell' });
 
-  // Fetch unread notification count
-  const { data: unreadCount = 0 } = useQuery({
-    queryKey: ['studentNotifications', 'unreadCount'],
-    queryFn: async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return 0;
-
-        const { count, error } = await supabase
-          .from('notifications')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('is_read', false);
-
-        if (error) throw error;
-        return count || 0;
-      } catch (error) {
-        frontendLogger.error('Error fetching unread notification count', { error });
-        return 0;
-      }
-    },
-    refetchInterval: 30000, // Refetch every 30 seconds
-  });
+  // Shared unread count now uses socket updates + REST fallback.
+  const { count: unreadCount } = useUnreadNotificationCount({ role: 'student' });
 
   return (
     <>

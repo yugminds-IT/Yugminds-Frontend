@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -13,13 +14,16 @@ import {
   Clock,
   AlertCircle,
   CheckCircle,
-  Plus
+  Plus,
+  RefreshCw
 } from "lucide-react";
 import { 
   useTeacherReports, 
   useTeacherLeaves,
   useTodaysClasses,
-  useTeacherSchedules
+  useTeacherSchedules,
+  type TeacherReport,
+  type TeacherScheduleRow,
 } from "../../hooks/useTeacherData";
 import { SkeletonDashboard } from "../ui/skeleton-dashboard";
 
@@ -43,19 +47,10 @@ interface ClassItem {
   hasReport?: boolean;
 }
 
-interface Schedule {
-  id?: string;
-  day_of_week?: string;
-  start_time?: string;
-  end_time?: string;
-  subject?: string;
-  grade?: string;
-  section?: string;
-  period?: { start_time?: string; end_time?: string };
-  room?: string | { room_number?: string; room_name?: string };
-}
+type Schedule = TeacherScheduleRow;
 
 export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverviewTabProps) {
+  const queryClient = useQueryClient();
   const { data: todaysClasses, isLoading: todaysClassesLoading } = useTodaysClasses(selectedSchoolId);
   const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchoolId, { limit: 5 });
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchoolId);
@@ -68,16 +63,7 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
     
     // Recent reports
     const recentReports = reports?.slice(0, 3) || [];
-    interface Report {
-      id: string;
-      grade?: string;
-      date?: string;
-      created_at?: string;
-      report_status?: string;
-      classes?: Array<{ grade?: string }> | { grade?: string };
-    }
-    
-    recentReports.forEach((report: Report) => {
+    recentReports.forEach((report: TeacherReport) => {
       const classData = Array.isArray(report.classes) ? report.classes[0] : report.classes;
       activity.push({
         id: `report-${report.id}`,
@@ -115,94 +101,92 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Today's Classes */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Today&apos;s Classes</CardTitle>
-                <CardDescription>Your scheduled classes for today</CardDescription>
-              </div>
-              <Link href="/teacher/reports">
-                <Button size="sm" className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Submit Report
-                </Button>
-              </Link>
+      {/* Today's Classes */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Today&apos;s Classes</CardTitle>
+              <CardDescription>Your scheduled classes for today</CardDescription>
             </div>
-          </CardHeader>
-          <CardContent>
-            {todaysClasses && todaysClasses.length > 0 ? (
-              <div className="space-y-3">
-                {todaysClasses.slice(0, 5).map((classItem: ClassItem) => (
-                  <div
-                    key={classItem.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
-                  >
-                    <div>
-                      <p className="font-medium">{classItem.grade || classItem.class_name || 'N/A'}</p>
-                      <p className="text-sm text-gray-600">{classItem.subject || 'General'}</p>
-                    </div>
-                    <Badge variant={classItem.hasReport ? "default" : "outline"}>
-                      {classItem.hasReport ? "Reported" : "Pending"}
-                    </Badge>
+            <Link href="/lms/teacher/reports">
+              <Button size="sm" className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Submit Report
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {todaysClasses && todaysClasses.length > 0 ? (
+            <div className="space-y-3">
+              {todaysClasses.slice(0, 5).map((classItem: ClassItem) => (
+                <div
+                  key={classItem.id}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                >
+                  <div>
+                    <p className="font-medium">{classItem.grade || classItem.class_name || 'N/A'}</p>
+                    <p className="text-sm text-gray-600">{classItem.subject || 'General'}</p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p>No classes scheduled for today</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <Badge variant={classItem.hasReport ? "default" : "outline"}>
+                    {classItem.hasReport ? "Reported" : "Pending"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p>No classes scheduled for today</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Your latest activities and updates</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentActivity.length > 0 ? (
-              <div className="space-y-3">
-                {recentActivity.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex items-start gap-3 p-3 border rounded-lg"
-                  >
-                    <div className={`mt-1 ${
-                      activity.type === 'success' ? 'text-green-500' :
-                      activity.type === 'warning' ? 'text-yellow-500' :
-                      activity.type === 'error' ? 'text-red-500' :
-                      'text-blue-500'
-                    }`}>
-                      {activity.type === 'success' ? (
-                        <CheckCircle className="h-5 w-5" />
-                      ) : (
-                        <AlertCircle className="h-5 w-5" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{activity.title}</p>
-                      <p className="text-xs text-gray-600 mt-1">{activity.message}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {new Date(activity.created_at).toLocaleString()}
-                      </p>
-                    </div>
+      {/* Recent Activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+          <CardDescription>Your latest activities and updates</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentActivity.length > 0 ? (
+            <div className="space-y-3">
+              {recentActivity.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-3 p-3 border rounded-lg"
+                >
+                  <div className={`mt-1 ${
+                    activity.type === 'success' ? 'text-green-500' :
+                    activity.type === 'warning' ? 'text-yellow-500' :
+                    activity.type === 'error' ? 'text-red-500' :
+                    'text-blue-500'
+                  }`}>
+                    {activity.type === 'success' ? (
+                      <CheckCircle className="h-5 w-5" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5" />
+                    )}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p>No recent activity</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{activity.title}</p>
+                    <p className="text-xs text-gray-600 mt-1">{activity.message}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {new Date(activity.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No recent activity</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card>
@@ -212,7 +196,7 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link href="/teacher/reports">
+            <Link href="/lms/teacher/reports">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardContent className="p-6 text-center">
                   <FileText className="h-8 w-8 mx-auto mb-2 text-green-600" />
@@ -222,7 +206,7 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
               </Card>
             </Link>
 
-            <Link href="/teacher/leaves">
+            <Link href="/lms/teacher/leaves">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardContent className="p-6 text-center">
                   <Clock className="h-8 w-8 mx-auto mb-2 text-orange-600" />
@@ -232,7 +216,7 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
               </Card>
             </Link>
 
-            <Link href="/teacher/attendance">
+            <Link href="/lms/teacher/attendance">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardContent className="p-6 text-center">
                   <Calendar className="h-8 w-8 mx-auto mb-2 text-purple-600" />
@@ -242,7 +226,7 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
               </Card>
             </Link>
 
-            <Link href="/teacher/classes">
+            <Link href="/lms/teacher/classes">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardContent className="p-6 text-center">
                   <BookOpen className="h-8 w-8 mx-auto mb-2 text-blue-600" />
@@ -257,9 +241,24 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
 
       {/* My Schedule */}
       <Card>
-        <CardHeader>
-          <CardTitle>My Schedule</CardTitle>
-          <CardDescription>Your complete class schedule for the week</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div>
+            <CardTitle>My Schedule</CardTitle>
+            <CardDescription>Your complete class schedule for the week</CardDescription>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => {
+              if (selectedSchoolId) {
+                queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchoolId] });
+                queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchoolId] });
+              }
+            }}
+            title="Refresh schedule"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </CardHeader>
         <CardContent>
           {schedulesError ? (
@@ -290,7 +289,7 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
                 </TableHeader>
                 <TableBody>
                   {schedules.map((schedule: Schedule) => {
-                    const formatTime = (time: string) => {
+                    const formatTime = (time?: string) => {
                       if (!time) return '';
                       const [hours, minutes] = time.split(':');
                       const hour = parseInt(hours);
@@ -298,6 +297,10 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
                       const displayHour = hour % 12 || 12;
                       return `${displayHour}:${minutes} ${ampm}`;
                     };
+                    const periodObj =
+                      typeof schedule.period === 'object' && schedule.period !== null
+                        ? schedule.period
+                        : null;
 
                     return (
                       <TableRow key={schedule.id}>
@@ -305,9 +308,9 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
                           <Badge variant="outline">{schedule.day_of_week}</Badge>
                         </TableCell>
                         <TableCell>
-                          {schedule.period ? (
+                          {periodObj ? (
                             <span className="text-sm">
-                              {formatTime(schedule.period.start_time ?? '')} - {formatTime(schedule.period.end_time ?? '')}
+                              {formatTime(periodObj.start_time)} - {formatTime(periodObj.end_time)}
                             </span>
                           ) : schedule.start_time && schedule.end_time ? (
                             <span className="text-sm">

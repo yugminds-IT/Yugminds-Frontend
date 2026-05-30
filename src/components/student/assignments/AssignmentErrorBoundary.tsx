@@ -59,7 +59,7 @@ export class AssignmentErrorBoundary extends Component<Props, State> {
               <Button onClick={this.handleReset} variant="outline">
                 Try Again
               </Button>
-              <Button onClick={() => window.location.href = '/student/assignments'}>
+              <Button onClick={() => window.location.href = '/lms/student/assignments'}>
                 Back to Assignments
               </Button>
             </div>

@@ -193,7 +193,7 @@ export function loadDashboardState(dashboardId: string): {
     const dashboardStore = useDashboardStore.getState();
     
     return {
-      filters: dashboardStore.filters[dashboardId],
+      filters: dashboardStore.filters[dashboardId] as Record<string, unknown> | undefined,
       searchTerm: dashboardStore.searchTerms[dashboardId],
       activeTab: dashboardStore.activeTabs[dashboardId],
       pagination: dashboardStore.pagination[dashboardId],

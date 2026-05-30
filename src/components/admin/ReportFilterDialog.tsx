@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useAdminSchools } from "../../hooks/useAdminSchools";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Checkbox } from "../ui/checkbox";
 import { Badge } from "../ui/badge";
 import { Search } from "lucide-react";
-import { fetchWithCsrf } from "../../lib/csrf-client";
+import { adminApi } from "../../lib/api/admin.api";
 
 interface ReportFilterDialogProps {
   reportType: 'schools' | 'teachers' | 'students' | 'courses' | null;
@@ -82,8 +83,11 @@ export default function ReportFilterDialog({
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
 
-  // Data states
-  const [schools, setSchools] = useState<School[]>([]);
+  const { schools: rawSchools } = useAdminSchools();
+  const schools = useMemo(
+    () => (rawSchools ?? []).filter((s: Record<string, unknown>) => (s as unknown as School).is_active !== false) as School[],
+    [rawSchools],
+  );
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [allTeachers, setAllTeachers] = useState<Teacher[]>([]); // Store all teachers for filtering
   const [students, setStudents] = useState<Student[]>([]);
@@ -116,60 +120,35 @@ export default function ReportFilterDialog({
     }
   }, [selectedSchoolIds]);
 
-  const loadSchools = useCallback(async () => {
-    try {
-      const response = await fetchWithCsrf("/api/admin/schools");
-      if (response.ok) {
-        const data = await response.json();
-        const schoolsList = data.schools || data.data || [];
-        if (Array.isArray(schoolsList) && schoolsList.length > 0) {
-          setSchools(schoolsList.filter((s: School) => s.is_active !== false));
-        } else {
-          setSchools([]);
-        }
-      } else {
-        setSchools([]);
-      }
-    } catch {
-      setSchools([]);
-    }
-  }, []);
-
   const loadTeachers = useCallback(async () => {
     try {
-      const response = await fetchWithCsrf("/api/admin/teachers?limit=1000&offset=0");
-      if (response.ok) {
-        const data = await response.json();
-        const teachersList = data.teachers || data.data || [];
-        if (Array.isArray(teachersList) && teachersList.length > 0) {
-          interface TeacherData {
-            id: string;
-            full_name?: string;
-            name?: string;
-            email?: string;
-            teacher_schools?: Array<{ school_id?: string }>;
-          }
-          const mappedTeachers = teachersList.map((t: TeacherData) => ({
-            id: t.id,
-            full_name: t.full_name || t.name || 'Unknown',
-            email: t.email || '',
-            teacher_schools: (t.teacher_schools || []).map((ts) => ({ school_id: ts.school_id ?? '', school_name: undefined }))
-          })) as Teacher[];
-          setAllTeachers(mappedTeachers);
-          if (selectedSchoolIds.length === 0) {
-            setTeachers(mappedTeachers);
-          } else {
-            const filtered = mappedTeachers.filter(teacher => {
-              const teacherSchools = teacher.teacher_schools || [];
-              return teacherSchools.some((ts) =>
-                selectedSchoolIds.includes(ts.school_id || '')
-              );
-            });
-            setTeachers(filtered as Teacher[]);
-          }
+      const { data } = await adminApi.teachers.list();
+      const teachersList = data?.teachers || data?.data || data || [];
+      if (Array.isArray(teachersList) && teachersList.length > 0) {
+        interface TeacherData {
+          id: string;
+          full_name?: string;
+          name?: string;
+          email?: string;
+          teacher_schools?: Array<{ school_id?: string }>;
+        }
+        const mappedTeachers = teachersList.map((t: TeacherData) => ({
+          id: t.id,
+          full_name: t.full_name || t.name || 'Unknown',
+          email: t.email || '',
+          teacher_schools: (t.teacher_schools || []).map((ts) => ({ school_id: ts.school_id ?? '', school_name: undefined }))
+        })) as Teacher[];
+        setAllTeachers(mappedTeachers);
+        if (selectedSchoolIds.length === 0) {
+          setTeachers(mappedTeachers);
         } else {
-          setAllTeachers([]);
-          setTeachers([]);
+          const filtered = mappedTeachers.filter(teacher => {
+            const teacherSchools = teacher.teacher_schools || [];
+            return teacherSchools.some((ts) =>
+              selectedSchoolIds.includes(ts.school_id || '')
+            );
+          });
+          setTeachers(filtered as Teacher[]);
         }
       } else {
         setAllTeachers([]);
@@ -183,16 +162,15 @@ export default function ReportFilterDialog({
 
   const loadStudents = useCallback(async () => {
     try {
-      const response = await fetchWithCsrf("/api/admin/students?limit=1000");
-      if (response.ok) {
-        const data = await response.json();
-        if (data.students && Array.isArray(data.students)) {
-          setStudents(data.students.map((s: StudentData) => ({
-            id: s.id,
-            full_name: s.full_name || 'Unknown',
-            email: s.email || ''
-          })));
-        }
+      const { data } = await adminApi.students.list({ limit: 1000 });
+      const studentsList = data?.students || data?.data || data || [];
+      if (Array.isArray(studentsList)) {
+        setStudents(studentsList.map((s: StudentData) => ({
+          id: s.id,
+          full_name: s.full_name || 'Unknown',
+          email: s.email || '',
+          section: s.section
+        })));
       }
     } catch {
       // ignore
@@ -201,25 +179,20 @@ export default function ReportFilterDialog({
 
   const loadCourses = useCallback(async () => {
     try {
-      const response = await fetchWithCsrf("/api/admin/courses?limit=1000&offset=0");
-      if (response.ok) {
-        const data = await response.json();
-        const coursesList = data.courses || data.data || [];
-        if (Array.isArray(coursesList) && coursesList.length > 0) {
-          interface CourseData {
-            id: string;
-            title?: string;
-            name?: string;
-            course_name?: string;
-          }
-          setCourses(coursesList.map((c: CourseData) => ({
-            id: c.id,
-            title: c.title || c.course_name || c.name || 'Unknown',
-            course_name: c.course_name || c.name || c.title || ''
-          })));
-        } else {
-          setCourses([]);
+      const { data } = await adminApi.courses.list();
+      const coursesList = data?.courses || data?.data || data || [];
+      if (Array.isArray(coursesList) && coursesList.length > 0) {
+        interface CourseData {
+          id: string;
+          title?: string;
+          name?: string;
+          course_name?: string;
         }
+        setCourses(coursesList.map((c: CourseData) => ({
+          id: c.id,
+          title: c.title || c.course_name || c.name || 'Unknown',
+          course_name: c.course_name || c.name || c.title || ''
+        })));
       } else {
         setCourses([]);
       }
@@ -232,7 +205,6 @@ export default function ReportFilterDialog({
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- load data when dialog opens */
     if (isOpen && reportType) {
-      loadSchools();
       if (reportType === 'teachers') {
         loadTeachers();
       } else if (reportType === 'students') {
@@ -242,7 +214,7 @@ export default function ReportFilterDialog({
       }
     }
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [isOpen, reportType, loadSchools, loadTeachers, loadStudents, loadCourses]);
+  }, [isOpen, reportType, loadTeachers, loadStudents, loadCourses]);
 
   // Re-filter teachers when selected schools change
   useEffect(() => {

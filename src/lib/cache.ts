@@ -988,4 +988,5 @@ export const CacheKeys = {
   schoolStats: (schoolId: string) => `school:stats:${schoolId}`,
   homepageLogos: () => `logos:homepage`,
   successStories: () => `success_stories:published`,
+  community: () => `community:published`,
 } as const;

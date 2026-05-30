@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Upload, X, File, Image, FileVideo, FileText, Loader2, AlertCircle } from "lucide-react";
-import { fetchWithCsrf } from "../../lib/csrf-client";
+import { adminApi } from "../../lib/api/admin.api";
 import { cn } from "../../lib/utils";
 
 interface FileUploadZoneProps {
@@ -125,23 +125,12 @@ export function FileUploadZone({
           });
         }, 200);
 
-        const response = await fetchWithCsrf("/api/admin/upload", {
-          method: "POST",
-          body: formData,
-        });
+        const { data: result } = await adminApi.upload(formData);
 
         clearInterval(progressInterval);
         setProgress(100);
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({
-            error: "Upload failed",
-          }));
-          throw new Error(errorData.error || errorData.details || "Upload failed");
-        }
-
-        const result = await response.json();
-        if (!result.file || !result.file.url) {
+        if (!result?.file?.url) {
           throw new Error("Upload failed: No file URL returned");
         }
 

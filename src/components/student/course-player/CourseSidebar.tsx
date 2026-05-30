@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card } from '../../ui/card'
 import { Button } from '../../ui/button'
 import { Badge } from '../../ui/badge'
@@ -19,7 +19,6 @@ import {
   Link as LinkIcon,
   Loader2
 } from 'lucide-react'
-import Link from 'next/link'
 import { cn } from '../../../lib/utils'
 import { useChapterContents } from '../../../hooks/useStudentData'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
@@ -31,9 +30,19 @@ interface Chapter {
   description?: string
   order_number?: number
   order_index?: number
-  is_completed: boolean
-  is_unlocked: boolean
+  is_completed?: boolean
+  is_unlocked?: boolean
   learning_outcomes?: string[]
+}
+
+interface Content {
+  id: string
+  title: string
+  name?: string
+  content_type?: string
+  content_url?: string
+  content_text?: string
+  is_completed?: boolean
 }
 
 interface CourseSidebarProps {
@@ -42,6 +51,8 @@ interface CourseSidebarProps {
   currentChapterId?: string
   currentContentId?: string
   className?: string
+  onChapterSelect?: (chapterId: string) => void
+  onContentSelect?: (contentId: string) => void
 }
 
 export default function CourseSidebar({
@@ -50,6 +61,8 @@ export default function CourseSidebar({
   currentChapterId,
   currentContentId,
   className,
+  onChapterSelect,
+  onContentSelect,
 }: CourseSidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -57,7 +70,7 @@ export default function CourseSidebar({
   )
 
   // Global progress store for optimistic UI
-  const { isChapterCompleted } = useCourseProgressStore()
+  const { isChapterCompleted, chapterProgress } = useCourseProgressStore()
 
   // Auto-expand current chapter
   useEffect(() => {
@@ -86,18 +99,34 @@ export default function CourseSidebar({
     return orderA - orderB
   })
 
-  // Calculate overall progress
-  const completedCount = sortedChapters.filter(
+  // Calculate overall progress based on content items for better granularity
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const totalContentCount = chapters.reduce((sum, ch: any) => sum + (ch.content_count || 0), 0)
+
+  // Count using optimistic state for immediate UI feedback
+  const totalCompletedContentCount = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return chapters.reduce((sum, ch: any) => {
+      const isOptimisticallyDone = ch.is_completed || chapterProgress[ch.id]?.isCompleted
+      if (isOptimisticallyDone) {
+        return sum + (ch.content_count || 0)
+      }
+      return sum + (ch.completed_count || 0)
+    }, 0)
+  }, [chapters, chapterProgress])
+  
+  const progressPercent = totalContentCount > 0 
+    ? (totalCompletedContentCount / totalContentCount) * 100 
+    : 0
+  
+  const completedChaptersCount = chapters.filter(
     ch => ch.is_completed || isChapterCompleted(ch.id)
   ).length
-  const progressPercent = sortedChapters.length > 0 
-    ? (completedCount / sortedChapters.length) * 100 
-    : 0
 
   return (
     <>
-      {/* Mobile menu button */}
-      <div className="lg:hidden mb-4">
+      {/* Mobile toggle button */}
+      <div className="lg:hidden mb-2">
         <Button
           variant="outline"
           onClick={() => setIsOpen(!isOpen)}
@@ -106,34 +135,52 @@ export default function CourseSidebar({
           aria-controls="course-sidebar"
           aria-label={isOpen ? 'Close course menu' : 'Open course menu'}
         >
-          {isOpen ? (
-            <>
-              <X className="h-4 w-4 mr-2" aria-hidden="true" />
-              Close Menu
-            </>
-          ) : (
-            <>
-              <Menu className="h-4 w-4 mr-2" aria-hidden="true" />
-              Course Content
-            </>
-          )}
+          <Menu className="h-4 w-4 mr-2" aria-hidden="true" />
+          Course Content
+          <span className="ml-auto text-xs text-gray-400">
+            {completedChaptersCount}/{chapters.length}
+          </span>
         </Button>
       </div>
 
-      {/* Sidebar */}
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar — fixed drawer on mobile, static on desktop */}
       <Card
         id="course-sidebar"
         className={cn(
-          'h-full overflow-y-auto',
+          'overflow-y-auto',
+          // Mobile: fixed left drawer
+          'lg:relative lg:h-full lg:translate-x-0 lg:w-auto lg:z-auto lg:shadow-none',
+          'fixed top-0 left-0 h-full w-[85vw] max-w-sm z-50 shadow-2xl transition-transform duration-300 ease-in-out',
+          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
           'lg:block',
-          isOpen ? 'block' : 'hidden',
           className
         )}
         role="navigation"
         aria-label="Course chapters"
       >
+        {/* Mobile close button inside drawer */}
+        <div className="lg:hidden flex items-center justify-between p-3 border-b">
+          <span className="font-semibold text-sm">Course Content</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsOpen(false)}
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
         <div className="p-4">
-          <h2 className="font-semibold text-lg mb-2 flex items-center">
+          <h2 className="hidden lg:flex font-semibold text-lg mb-2 items-center">
             <BookOpen className="h-5 w-5 mr-2" aria-hidden="true" />
             Course Content
           </h2>
@@ -141,7 +188,7 @@ export default function CourseSidebar({
           {/* Progress bar */}
           <div className="mb-4">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>{completedCount} of {sortedChapters.length} chapters</span>
+              <span>{totalCompletedContentCount} of {totalContentCount} lessons</span>
               <span>{Math.round(progressPercent)}%</span>
             </div>
             <Progress 
@@ -200,17 +247,16 @@ export default function CourseSidebar({
 
                         {/* Chapter info */}
                         <div className="flex-1 min-w-0">
-                          <Link
-                            href={isLocked ? '#' : `/student/my-courses/${courseId}/chapters/${chapter.id}`}
-                            onClick={(e) => {
-                              if (isLocked) {
-                                e.preventDefault()
-                              } else {
+                          <button
+                            disabled={isLocked}
+                            onClick={() => {
+                              if (!isLocked) {
+                                onChapterSelect?.(chapter.id)
                                 setIsOpen(false)
                               }
                             }}
                             className={cn(
-                              'block',
+                              'block w-full text-left',
                               isLocked && 'cursor-not-allowed'
                             )}
                             aria-disabled={isLocked}
@@ -242,7 +288,7 @@ export default function CourseSidebar({
                                 </Badge>
                               )}
                             </div>
-                          </Link>
+                          </button>
                         </div>
 
                         {/* Expand/Collapse button */}
@@ -275,6 +321,7 @@ export default function CourseSidebar({
                         chapterId={chapter.id}
                         currentContentId={currentContentId}
                         onContentClick={() => setIsOpen(false)}
+                        onContentSelect={onContentSelect}
                       />
                     )}
                   </div>
@@ -302,13 +349,16 @@ function ChapterContents({
   chapterId,
   currentContentId,
   onContentClick,
+  onContentSelect,
 }: {
   courseId: string
   chapterId: string
   currentContentId?: string
   onContentClick?: () => void
+  onContentSelect?: (contentId: string) => void
 }) {
-  const { data: contents, isLoading } = useChapterContents(chapterId, courseId)
+  const { data: contentsRaw, isLoading } = useChapterContents(chapterId, courseId)
+  const contents = contentsRaw as Content[] | undefined
   const { isContentCompleted } = useCourseProgressStore()
 
   if (isLoading) {
@@ -337,17 +387,15 @@ function ChapterContents({
       {contents.map((content, index: number) => {
         const isCurrent = content.id === currentContentId
         // Check both server state and optimistic state
-        const contentWithCompletion = content as { id: string; title: string; content_type?: string; is_completed?: boolean; name?: string };
-        const completed = contentWithCompletion.is_completed || isContentCompleted(content.id)
-        const ContentIcon = getContentIcon(content.content_type)
+        const completed = content.is_completed || isContentCompleted(content.id)
+        const ContentIcon = getContentIcon(content.content_type || '')
 
         return (
-          <Link
+          <button
             key={content.id || index}
-            href={`/student/my-courses/${courseId}/chapters/${chapterId}/content/${content.id}`}
-            onClick={onContentClick}
+            onClick={() => { onContentSelect?.(content.id); onContentClick?.() }}
             className={cn(
-              'flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors',
+              'flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors w-full text-left',
               isCurrent
                 ? 'bg-blue-100 text-blue-700 font-medium'
                 : completed
@@ -365,7 +413,7 @@ function ChapterContents({
               aria-hidden="true" 
             />
             <span className="truncate flex-1">
-              {content.title || contentWithCompletion.name || `Content ${index + 1}`}
+              {content.title || content.name || `Content ${index + 1}`}
             </span>
             {completed && (
               <CheckCircle 
@@ -379,7 +427,7 @@ function ChapterContents({
                 aria-label="Currently viewing"
               />
             )}
-          </Link>
+          </button>
         )
       })}
     </div>

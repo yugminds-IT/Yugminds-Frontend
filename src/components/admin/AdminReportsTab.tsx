@@ -7,7 +7,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Download, AlertCircle, Clock, Loader2 } from "lucide-react";
 import { SkeletonDashboard } from "../ui/skeleton-dashboard";
-import { fetchWithCsrf } from "../../lib/csrf-client";
+import { adminApi } from "../../lib/api/admin.api";
 import ReportFilterDialog from "./ReportFilterDialog";
 
 interface DashboardStats {
@@ -46,60 +46,26 @@ export default function AdminReportsTab({
       setDownloading(reportType);
       
       // Build query parameters with filters
-      const params = new URLSearchParams();
-      params.append('type', reportType);
-      
-      // Add filter parameters
+      const params: Record<string, string> = { type: reportType };
       Object.entries(filters).forEach(([key, value]) => {
         if (value && value !== '') {
-          params.append(key, String(value));
+          params[key] = String(value);
         }
       });
-      
-      // Fetch PDF report from API with filters
-      const response = await fetchWithCsrf(`/api/admin/reports?${params.toString()}`);
-      
-      if (!response.ok) {
-        // Try to get error message from JSON response
-        let errorData: { error?: string; message?: string } = { error: 'Failed to generate report' };
-        try {
-          const contentType = response.headers.get('Content-Type');
-          if (contentType && contentType.includes('application/json')) {
-            errorData = await response.json();
-          }
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError);
-        }
-        
-        const errorMessage = errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
-        console.error(`❌ ${reportName} API Error:`, {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorMessage,
-          details: errorData.details || errorData
-        });
-        
-        throw new Error(errorMessage);
-      }
 
-      // Check if response is PDF
-      const contentType = response.headers.get('Content-Type');
-      if (!contentType || !contentType.includes('application/pdf')) {
+      const response = await adminApi.reports.download(params);
+      const blob = response.data as Blob;
+      const contentType = response.headers['content-type'] ?? '';
+
+      if (!contentType.includes('application/pdf')) {
         throw new Error('Invalid response format. Expected PDF.');
       }
 
-      // Get PDF blob
-      const blob = await response.blob();
-      
-      // Get filename from Content-Disposition header or generate one
-      const contentDisposition = response.headers.get('Content-Disposition');
+      const contentDisposition = response.headers['content-disposition'] ?? '';
       let filename = `${reportType}-report-${new Date().toISOString().split('T')[0]}.pdf`;
-      
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-        if (filenameMatch) {
-          filename = filenameMatch[1];
-        }
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (filenameMatch) {
+        filename = filenameMatch[1];
       }
 
       // Create download link and trigger download

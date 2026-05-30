@@ -1,6 +1,7 @@
 "use client";
 
 import { Award } from "lucide-react";
+import { sanitizeHtml } from "@/lib/sanitize-html";
 
 interface Section {
   id: string;
@@ -74,18 +75,18 @@ export function SuccessSection({ s, isFirst = false }: { s: Section; isFirst?: b
       <div className="w-full space-y-4 text-left">
         <div 
           className={`${textClass} text-base md:text-lg leading-relaxed text-left`}
-          dangerouslySetInnerHTML={{ __html: s.body_primary }} 
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(s.body_primary) }} 
         />
         {s.body_secondary && (
           <div 
             className={`${textClass} text-base md:text-lg leading-relaxed text-left`}
-            dangerouslySetInnerHTML={{ __html: s.body_secondary }} 
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(s.body_secondary) }} 
           />
         )}
         {s.body_tertiary && (
           <div 
             className={`${textClass} text-base md:text-lg leading-relaxed text-left`}
-            dangerouslySetInnerHTML={{ __html: s.body_tertiary }} 
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(s.body_tertiary) }} 
           />
         )}
       </div>

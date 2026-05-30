@@ -44,7 +44,7 @@ export default function CourseCard({ course, onViewChapters }: CourseCardProps) 
       onViewChapters(course)
     } else {
       // Fallback: navigate directly if no callback provided
-      router.push(`/student/my-courses/${course.id}`)
+      router.push(`/lms/student/my-courses/${course.id}`)
     }
   }
 
@@ -90,7 +90,7 @@ export default function CourseCard({ course, onViewChapters }: CourseCardProps) 
           </p>
           
           <div className="text-xs text-gray-500 pt-1">
-            {course.grade} • {course.subject}
+            {course.grade}{course.subject ? ` • ${course.subject}` : ''}
           </div>
 
           {/* Progress Section */}
@@ -121,11 +121,11 @@ export default function CourseCard({ course, onViewChapters }: CourseCardProps) 
                  <BookOpen className="h-4 w-4 mr-2" />
                  View Chapters
                </Button>
-               <Button 
+               <Button
                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                  asChild
                >
-                 <Link href={`/student/my-courses/${course.id}`}>
+                 <Link href={`/lms/student/my-courses/${course.id}?resume=1`}>
                    <Play className="h-4 w-4 mr-2" />
                    Resume
                  </Link>
@@ -145,7 +145,7 @@ export default function CourseCard({ course, onViewChapters }: CourseCardProps) 
                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                  asChild
                >
-                 <Link href={`/student/my-courses/${course.id}`}>
+                 <Link href={`/lms/student/my-courses/${course.id}`}>
                    {isCompleted ? 'Review' : 'Start'}
                  </Link>
                </Button>

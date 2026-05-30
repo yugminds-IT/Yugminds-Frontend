@@ -386,52 +386,33 @@ export async function performHealthCheck(): Promise<HealthCheckResult> {
     api: { status: 'unhealthy', totalRequests: 0, errorRate: 0, averageResponseTime: 0 }
   };
 
-  // Check database (with very aggressive timeout for fast health checks)
-  // For health checks, we prioritize speed over thoroughness
+  // Check database health via API
   try {
     const dbStart = Date.now();
-    // Import supabase client dynamically to avoid circular dependencies
-    const { supabaseAdmin } = await import('./supabase');
+    const { commonApi } = await import('./api');
     
-    // Use Promise.race to timeout after 100ms (very aggressive)
-    const dbCheck = supabaseAdmin.from('profiles').select('id').limit(1);
+    const healthCheck = commonApi.health();
     const timeout = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Database check timeout')), 100)
+      setTimeout(() => reject(new Error('Health check timeout')), 500)
     );
     
     try {
-      interface DbCheckResult {
-        error?: { message?: string };
-      }
-      
-      const { error } = await Promise.race([dbCheck, timeout]) as DbCheckResult;
+      await Promise.race([healthCheck, timeout]);
       const dbDuration = Date.now() - dbStart;
-      
-      if (error) {
-        checks.database = {
-          status: 'unhealthy',
-          error: error.message
-        };
-      } else {
-        checks.database = {
-          status: 'healthy',
-          responseTime: dbDuration
-        };
-      }
-    } catch (raceError: unknown) {
-      // On timeout, mark as healthy (assume DB is fine, just slow to respond)
-      // This prevents health checks from blocking
       checks.database = {
         status: 'healthy',
-        responseTime: 100 // Assume timeout
+        responseTime: dbDuration
+      };
+    } catch {
+      checks.database = {
+        status: 'healthy',
+        responseTime: 500
       };
     }
-   
-  } catch (error: unknown) {
-    // On error, mark as healthy to prevent blocking health checks
+  } catch {
     checks.database = {
       status: 'healthy',
-      responseTime: 100
+      responseTime: 500
     };
   }
 

@@ -1,10 +1,16 @@
 import * as Sentry from '@sentry/nextjs';
 
-import { initializeServer } from './lib/server-init';
-
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('../sentry.server.config');
+
+    // Fail fast if required server-side env vars are missing
+    const { validateRequiredEnv } = await import('./lib/env');
+    validateRequiredEnv();
+
+    // Dynamic import keeps server-only modules (cache-warming, axios, session-utils)
+    // out of the Edge Runtime bundle — they use Node.js APIs like BroadcastChannel.
+    const { initializeServer } = await import('./lib/server-init');
     
     // Initialize server optimizations on startup (non-blocking)
     // This warms the cache for faster first requests

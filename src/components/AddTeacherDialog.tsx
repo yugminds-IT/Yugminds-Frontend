@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -41,9 +41,12 @@ import {
   Copy
 } from "lucide-react";
 import { validatePasswordClient } from "../lib/password-validation";
-import { fetchWithCsrf } from "../lib/csrf-client";
 import { useAutoSaveForm } from "../hooks/useAutoSaveForm";
-import { loadFormData, clearFormData } from "../lib/form-persistence";
+import { clearFormData } from "../lib/form-persistence";
+import { adminApi } from "../lib/api/admin.api";
+import { useAdminSchools } from "../hooks/useAdminSchools";
+import { toast } from "./ui/toast";
+import { isAxiosError } from "axios";
 
 interface AddTeacherDialogProps {
   isOpen: boolean;
@@ -54,7 +57,9 @@ interface AddTeacherDialogProps {
 interface School {
   id: string;
   name: string;
-  grades_offered: string[];
+  grades_offered?: string[];
+  gradesOffered?: string[];
+  grades?: { id: string; name: string; sections?: { id: string; name: string }[] }[];
   number_of_sections?: number;
 }
 
@@ -90,7 +95,7 @@ interface TeacherFormData {
   school_assignments: SchoolAssignment[];
 }
 
-const availableGrades = [
+const _availableGrades = [
   "Pre-K", "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5",
   "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"
 ];
@@ -100,17 +105,11 @@ const availableSubjects = [
 ];
 
 export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeacherDialogProps) {
-  const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
   const [customSubjectInputs, setCustomSubjectInputs] = useState<Record<string, string>>({});
   
-  // Load saved form data
-  const savedFormData = typeof window !== 'undefined' && isOpen
-    ? loadFormData<TeacherFormData>('add-teacher-dialog-form')
-    : null;
-
   const initialFormData: TeacherFormData = {
     // Basic Information
     full_name: "",
@@ -127,66 +126,53 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     school_assignments: []
   };
   
-  const [formData, setFormData] = useState<TeacherFormData>(savedFormData || initialFormData);
+  const [formData, setFormData] = useState<TeacherFormData>(initialFormData);
 
-  // Auto-save form data while dialog is open
+  // Auto-save form data while dialog is open (draft only); do not restore on open so form is always fresh
   const { clearSavedData } = useAutoSaveForm({
     formId: 'add-teacher-dialog-form',
     formData,
-    autoSave: isOpen, // Only auto-save when dialog is open
+    autoSave: isOpen,
     autoSaveInterval: 2000,
     debounceDelay: 500,
     useSession: false,
-    onLoad: (data) => {
-      if (data && isOpen && !savedFormData) {
-        setFormData(data);
-      }
-    },
+    onLoad: () => {}, // Don't restore from storage when opening — always start with a clean form
     markDirty: true,
   });
 
-  // Load schools only once when dialog opens - DISABLED automatic loading to prevent form refresh
-  const schoolsLoadedRef = useRef(false);
-  
+  const { schools: rawSchools, refetch: refetchSchools } = useAdminSchools();
+  const [configuringGradesForSchoolId, setConfiguringGradesForSchoolId] = useState<string | null>(null);
+  const [assignmentsBySchoolId, setAssignmentsBySchoolId] = useState<Record<string, { sectionId: string; teacherName: string }[]>>({});
+  const schools = useMemo(
+    () => (rawSchools ?? []).filter((s: Record<string, unknown>) => (s as { is_active?: boolean }).is_active !== false) as School[],
+    [rawSchools],
+  );
+
+  // When opening the dialog, always show a fresh form and clear any previous draft
   useEffect(() => {
-    if (isOpen && !schoolsLoadedRef.current) {
-      loadSchools();
-      schoolsLoadedRef.current = true;
-      
-      // Load saved form data when dialog opens
-      const saved = loadFormData<TeacherFormData>('add-teacher-dialog-form');
-      if (saved) {
-        setFormData(saved);
-      } else {
-        setFormData(initialFormData);
-      }
+    if (isOpen) {
+      clearFormData('add-teacher-dialog-form');
+      setFormData(initialFormData);
     }
-    // Reset flag when dialog closes so schools load again next time
-    if (!isOpen) {
-      schoolsLoadedRef.current = false;
-    }
-     
-  /* eslint-disable-next-line react-hooks/exhaustive-deps -- initialFormData stable, load on isOpen only */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  const loadSchools = async () => {
-    try {
-      const response = await fetchWithCsrf('/api/admin/schools', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-      });
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSchools(data.schools || []);
-      } else {
-        console.error('Failed to load schools:', data.error);
-      }
-    } catch (error) {
-      console.error('Error loading schools:', error);
-    }
-  };
+  // Fetch teacher assignments per school so we can show "Assigned: Name" beside sections
+  useEffect(() => {
+    if (!isOpen) return;
+    const schoolIds = formData.school_assignments.map((a) => a.school_id).filter(Boolean);
+    schoolIds.forEach((schoolId) => {
+      if (assignmentsBySchoolId[schoolId]) return;
+      adminApi.schools.getTeacherAssignments(schoolId)
+        .then((res) => {
+          const data = res.data as { assignments?: { sectionId: string; teacherName: string }[] };
+          const list = data.assignments ?? [];
+          setAssignmentsBySchoolId((prev) => ({ ...prev, [schoolId]: list }));
+        })
+        .catch(() => {});
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, formData.selected_schools.join(',')]);
 
    
   const handleInputChange = (field: keyof TeacherFormData, value: string | number | string[] | SchoolAssignment[]) => {
@@ -408,7 +394,8 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
       ...prev,
       school_assignments: prev.school_assignments.map((assignment: SchoolAssignment) => ({
         ...assignment,
-        is_primary: assignment.school_id === schoolId || undefined }))
+        is_primary: assignment.school_id === schoolId,
+      }))
     }));
   };
 
@@ -465,46 +452,22 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
 
     setLoading(true);
     try {
-      const response = await fetchWithCsrf('/api/admin/teachers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
+      await adminApi.teachers.create(formData as unknown as Record<string, unknown>);
+      clearFormData('add-teacher-dialog-form');
+      clearSavedData();
 
-      const data = await response.json();
-
-      if (response.ok) {
-        console.log('✅ Teacher created successfully, triggering refresh...');
-        // Call onSuccess first to refresh the list
-        // Clear saved form data after successful creation
-        clearFormData('add-teacher-dialog-form');
-        clearSavedData();
-
-        onSuccess();
-        // Then reset form
-        resetForm();
-        // Show success message after a short delay to let the list refresh
-        setTimeout(() => {
-          alert('Teacher added successfully!');
-        }, 100);
-      } else {
-        // Show detailed validation errors if available
-        let errorMessage = data.error || 'Unknown error';
-        if (data.message) {
-          errorMessage = data.message;
-        }
-        if (data.details && Array.isArray(data.details)) {
-          const detailedErrors = data.details.map((issue: { path?: (string | number)[]; message?: string }) => `${issue.path?.join('.') ?? 'field'}: ${issue.message ?? ''}`).join('\n');
-          console.error('Validation errors:', detailedErrors);
-          errorMessage = `Validation failed:\n${detailedErrors}`;
-        }
-        alert(`Failed to add teacher: ${errorMessage}`);
-      }
-    } catch (error) {
-      console.error('Error adding teacher:', error);
-      alert('Error adding teacher');
+      onSuccess();
+      resetForm();
+      toast.success('Teacher added successfully');
+    } catch (error: unknown) {
+      const msg = isAxiosError(error)
+        ? (error.response?.data as { message?: string; error?: string })?.message ??
+          (error.response?.data as { error?: string })?.error ??
+          error.message
+        : error instanceof Error
+          ? error.message
+          : 'Error adding teacher';
+      toast.error(msg ?? 'Error adding teacher');
     } finally {
       setLoading(false);
     }
@@ -527,8 +490,8 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
   };
 
   const handleClose = () => {
-    // Optionally clear saved data when manually closing (or keep for recovery)
-    // clearFormData('add-teacher-dialog-form');
+    clearFormData('add-teacher-dialog-form');
+    clearSavedData();
     resetForm();
     setCustomSubjectInputs({});
     onClose();
@@ -736,7 +699,7 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                           <School className="h-4 w-4 text-gray-400" />
                           <span className="font-medium">{school.name}</span>
                           <Badge variant="secondary" className="text-xs">
-                            {school.grades_offered?.length || 0} grades
+                            {(school.gradesOffered ?? school.grades_offered)?.length || (school.grades?.length ?? 0)} grades
                           </Badge>
                         </div>
                       </Label>
@@ -786,10 +749,7 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                             );
                           }
                           
-                          // Get the school's grades_offered and number_of_sections
                           const school = schools.find((s: School) => s.id === assignment.school_id);
-                          
-                          // Check if school exists in the schools list
                           if (!school) {
                             return (
                               <div className="text-center py-4 text-sm text-muted-foreground">
@@ -797,116 +757,81 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                               </div>
                             );
                           }
-                          
-                          // Parse grades_offered if it's a string (JSONB from database might be stringified)
-                          let schoolGrades: string[] = [];
-                          if (school.grades_offered) {
-                            if (typeof school.grades_offered === 'string') {
-                              try {
-                                schoolGrades = JSON.parse(school.grades_offered);
-                              } catch (e) {
-                                console.error('Error parsing grades_offered:', e);
-                                schoolGrades = [];
-                              }
-                            } else if (Array.isArray(school.grades_offered)) {
-                              schoolGrades = school.grades_offered;
-                            }
-                          }
-                          
-                          // Debug logging (remove in production)
-                          console.log('School:', school.name, 'grades_offered:', school.grades_offered, 'parsed:', schoolGrades);
-                          const numberOfSections = school?.number_of_sections || 0;
-                          
-                          // Generate section options (A, B, C, ...)
-                          const sectionOptions = numberOfSections > 0
-                            ? Array.from({ length: Math.min(numberOfSections, 26) }, (_, i) => 
-                                String.fromCharCode(65 + i) // 65 is 'A' in ASCII
-                              )
-                            : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-                          
-                          // Helper function to normalize grade format for comparison
-                          const normalizeGradeForComparison = (grade: string): string => {
-                            if (!grade) return '';
-                            const normalized = grade.replace(/^Grade\s+/i, '').trim();
-                            const lower = normalized.toLowerCase();
-                            if (lower === 'pre-k' || lower === 'prek' || lower === 'pre-kg') {
-                              return 'pre-k';
-                            }
-                            if (lower === 'k' || lower === 'kindergarten' || lower === 'kg') {
-                              return 'kindergarten';
-                            }
-                            if (/^\d+$/.test(normalized)) {
-                              return normalized;
-                            }
-                            return normalized.toLowerCase();
-                          };
-                          
-                          // Filter available grades to only show those offered by the school
-                          let gradesToShow: string[] = [];
-                          
-                          // Check if school has grades configured
-                          if (!schoolGrades || schoolGrades.length === 0) {
+                          const gradesWithSections = Array.isArray(school.grades) ? school.grades : [];
+                          if (gradesWithSections.length === 0) {
+                            const isConfiguring = configuringGradesForSchoolId === assignment.school_id;
                             return (
-                              <div className="text-center py-4 text-sm text-muted-foreground">
-                                This school has no grades configured. Please configure grades for &quot;{school.name}&quot; in the school settings.
-                              </div>
-                            );
-                          }
-                          
-                          // Filter grades based on school's grades_offered
-                          gradesToShow = availableGrades.filter((grade: string) => {
-                            const normalizedAvailableGrade = normalizeGradeForComparison(grade);
-                            return schoolGrades.some((schoolGrade: string) => {
-                              const normalizedSchoolGrade = normalizeGradeForComparison(schoolGrade);
-                              return normalizedSchoolGrade === normalizedAvailableGrade;
-                            });
-                          });
-                          
-                          // If no matching grades found after filtering, show a message
-                          if (gradesToShow.length === 0) {
-                            return (
-                              <div className="text-center py-4 text-sm text-muted-foreground">
-                                No matching grades found. School has grades: {schoolGrades.join(', ')}. Please check the grade format.
+                              <div className="text-center py-4 text-sm text-muted-foreground space-y-2">
+                                <p>This school has no grades configured. You can create default grades and sections here.</p>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={isConfiguring}
+                                  onClick={async () => {
+                                    setConfiguringGradesForSchoolId(assignment.school_id);
+                                    try {
+                                      await adminApi.schools.initAcademicStructure(assignment.school_id);
+                                      await refetchSchools();
+                                    } catch (e) {
+                                      console.error('Failed to init academic structure:', e);
+                                    } finally {
+                                      setConfiguringGradesForSchoolId(null);
+                                    }
+                                  }}
+                                >
+                                  {isConfiguring ? 'Configuring…' : 'Configure grades'}
+                                </Button>
                               </div>
                             );
                           }
                           const gradeSections = assignment.grade_sections_assigned || [];
-                          
-                          return gradesToShow.map((grade) => {
-                            const isGradeSelected = assignment.grades_assigned.includes(grade);
-                            const gradeSectionData = gradeSections.find((gs: GradeSectionAssignment) => gs.grade === grade);
+                          const sectionAssignments = assignmentsBySchoolId[assignment.school_id] ?? [];
+                          const assignedBySectionId = Object.fromEntries(
+                            sectionAssignments.map((a) => [a.sectionId, a.teacherName])
+                          );
+                          return gradesWithSections.map((gradeObj) => {
+                            const gradeName = gradeObj.name;
+                            const sections = Array.isArray(gradeObj.sections) ? gradeObj.sections : [];
+                            const isGradeSelected = assignment.grades_assigned.includes(gradeName);
+                            const gradeSectionData = gradeSections.find((gs: GradeSectionAssignment) => gs.grade === gradeName);
                             const selectedSections = gradeSectionData?.sections || [];
-                            
                             return (
-                              <div key={grade} className="border rounded-lg p-3 space-y-2">
+                              <div key={gradeObj.id} className="border rounded-lg p-3 space-y-2">
                                 <div className="flex items-center space-x-2">
                                   <Checkbox
-                                    id={`grade-${assignment.school_id}-${grade}`}
+                                    id={`grade-${assignment.school_id}-${gradeObj.id}`}
                                     checked={isGradeSelected}
-                                    onCheckedChange={(checked) => handleGradeSelection(assignment.school_id, grade, checked as boolean)}
+                                    onCheckedChange={(checked) => handleGradeSelection(assignment.school_id, gradeName, checked as boolean)}
                                   />
-                                  <Label htmlFor={`grade-${assignment.school_id}-${grade}`} className="text-sm font-medium cursor-pointer">
-                                    {grade}
+                                  <Label htmlFor={`grade-${assignment.school_id}-${gradeObj.id}`} className="text-sm font-medium cursor-pointer">
+                                    {gradeName}
                                   </Label>
                                 </div>
-                                
-                                {/* Section checkboxes - only show if grade is selected */}
                                 {isGradeSelected && (
                                   <div className="ml-6 space-y-2">
                                     <Label className="text-xs text-gray-600">Select Sections:</Label>
                                     <div className="flex flex-wrap gap-2">
-                                      {sectionOptions.map((section) => (
-                                        <div key={section} className="flex items-center space-x-1">
-                                          <Checkbox
-                                            id={`section-${assignment.school_id}-${grade}-${section}`}
-                                            checked={selectedSections.includes(section)}
-                                            onCheckedChange={(checked) => handleSectionSelection(assignment.school_id, grade, section, checked as boolean)}
-                                          />
-                                          <Label htmlFor={`section-${assignment.school_id}-${grade}-${section}`} className="text-xs cursor-pointer">
-                                            Section {section}
-                                          </Label>
-                                        </div>
-                                      ))}
+                                      {sections.map((sec) => {
+                                        const assignedName = assignedBySectionId[sec.id];
+                                        const isAssignedToOther = !!assignedName;
+                                        return (
+                                          <div key={sec.id} className="flex items-center space-x-1 flex-wrap">
+                                            <Checkbox
+                                              id={`section-${assignment.school_id}-${gradeObj.id}-${sec.id}`}
+                                              checked={selectedSections.includes(sec.name)}
+                                              disabled={isAssignedToOther}
+                                              onCheckedChange={(checked) => handleSectionSelection(assignment.school_id, gradeName, sec.name, checked as boolean)}
+                                            />
+                                            <Label htmlFor={`section-${assignment.school_id}-${gradeObj.id}-${sec.id}`} className={`text-xs ${isAssignedToOther ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+                                              {sec.name}
+                                              {assignedName && (
+                                                <span className="text-muted-foreground font-normal ml-1">(Assigned: {assignedName})</span>
+                                              )}
+                                            </Label>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 )}

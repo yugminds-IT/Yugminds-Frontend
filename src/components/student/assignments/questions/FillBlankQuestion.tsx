@@ -34,15 +34,7 @@ function FillBlankQuestion({
   disabled = false
 }: FillBlankQuestionProps) {
   const questionText = question.question || question.question_text || ''
-  
-  // Debug logging
-  console.log('🔍 FillBlankQuestion Debug:', {
-    questionText,
-    questionId: question.id,
-    correctAnswer: question.correct_answer,
-    answersLength: answers.length
-  })
-  
+
   // Parse question text to find blanks (represented by ___ or [blank])
   const { parts, blankCount } = useMemo(() => {
     // More comprehensive blank pattern - matches 3 or more underscores, or [blank] variations
@@ -91,7 +83,6 @@ function FillBlankQuestion({
       })
     }
     
-    console.log('🔍 Parsed parts:', { parts, blankCount: blankIndex, questionText })
     return { parts, blankCount: blankIndex }
   }, [questionText])
 

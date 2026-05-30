@@ -5,7 +5,7 @@ import { Card } from '../../ui/card'
 import { Button } from '../../ui/button'
 import { Textarea } from '../../ui/textarea'
 import { Save, FileText, X } from 'lucide-react'
-import { supabase } from '../../../lib/supabase'
+import { getStoredUserId } from '../../../lib/session-utils'
 
 interface NoteTakingPanelProps {
   courseId: string
@@ -26,36 +26,21 @@ export default function NoteTakingPanel({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  // Load existing note
+  // Load existing note from localStorage
   useEffect(() => {
-    const loadNote = async () => {
-      if (!contentId) return
-
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-
-        type NoteRow = { note_text?: string | null };
-        const { data: notesData } = await supabase
-          .from('student_notes')
-          .select('note_text')
-          .eq('student_id', user.id)
-          .eq('course_id', courseId)
-          .eq('chapter_id', chapterId || '')
-          .eq('content_id', contentId)
-          .maybeSingle()
-
-        const notes = notesData as NoteRow | null;
-        if (notes) {
-          setNoteText(notes.note_text ?? '')
-          setSaved(true)
-        }
-      } catch (error) {
-        console.error('Error loading note:', error)
+    if (!contentId) return
+    try {
+      const userId = getStoredUserId()
+      if (!userId) return
+      const key = `note:${userId}:${courseId}:${chapterId || ''}:${contentId}`
+      const stored = localStorage.getItem(key)
+      if (stored) {
+        setNoteText(stored)
+        setSaved(true)
       }
+    } catch (error) {
+      console.error('Error loading note:', error)
     }
-
-    loadNote()
   }, [courseId, chapterId, contentId])
 
   const handleSave = async () => {
@@ -63,24 +48,10 @@ export default function NoteTakingPanel({
 
     setSaving(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      const { error } = await supabase
-        .from('student_notes')
-        .upsert({
-          student_id: user.id,
-          course_id: courseId,
-          chapter_id: chapterId,
-          content_id: contentId,
-          note_text: noteText,
-          updated_at: new Date().toISOString(),
-        } as never, {
-          onConflict: 'student_id,course_id,chapter_id,content_id'
-        })
-
-      if (error) throw error
-
+      const userId = getStoredUserId()
+      if (!userId) return
+      const key = `note:${userId}:${courseId}:${chapterId}:${contentId}`
+      localStorage.setItem(key, noteText)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (error) {

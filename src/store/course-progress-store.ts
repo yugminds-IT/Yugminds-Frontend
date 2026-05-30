@@ -20,6 +20,14 @@ const getSafeStorage = () => {
  * Matches Coursera/Udemy patterns for instant UI feedback.
  */
 
+export interface LastViewedEntry {
+  chapterId: string;
+  contentId?: string;
+  chapterTitle?: string;
+  contentTitle?: string;
+  savedAt: string;
+}
+
 export interface ContentProgress {
   contentId: string;
   chapterId: string;
@@ -41,19 +49,24 @@ export interface ChapterProgress {
 export interface CourseProgressState {
   // Progress data keyed by contentId
   contentProgress: Record<string, ContentProgress>;
-  
+
   // Chapter progress keyed by chapterId
   chapterProgress: Record<string, ChapterProgress>;
-  
+
+  // Last viewed position keyed by courseId
+  lastViewed: Record<string, LastViewedEntry>;
+
   // Video positions keyed by contentId
   videoPositions: Record<string, number>;
-  
+
   // Loading states
   savingProgress: Set<string>;
-  
+
   // Actions
   setContentCompleted: (contentId: string, chapterId: string, courseId: string, completed: boolean) => void;
   setChapterCompleted: (chapterId: string, courseId: string, completed: boolean, progressPercent?: number) => void;
+  setLastViewed: (courseId: string, entry: Omit<LastViewedEntry, 'savedAt'>) => void;
+  getLastViewed: (courseId: string) => LastViewedEntry | null;
   setVideoPosition: (contentId: string, position: number) => void;
   getVideoPosition: (contentId: string) => number;
   isContentCompleted: (contentId: string) => boolean;
@@ -61,7 +74,7 @@ export interface CourseProgressState {
   getChapterProgress: (chapterId: string) => number;
   setSavingProgress: (contentId: string, saving: boolean) => void;
   isSaving: (contentId: string) => boolean;
-  
+
   // Bulk operations
   loadProgressFromServer: (progress: ContentProgress[]) => void;
   loadChapterProgressFromServer: (progress: ChapterProgress[]) => void;
@@ -73,6 +86,7 @@ export const useCourseProgressStore = create<CourseProgressState>()(
     (set, get) => ({
       contentProgress: {},
       chapterProgress: {},
+      lastViewed: {},
       videoPositions: {},
       savingProgress: new Set<string>(),
 
@@ -104,6 +118,19 @@ export const useCourseProgressStore = create<CourseProgressState>()(
             },
           },
         }));
+      },
+
+      setLastViewed: (courseId, entry) => {
+        set((state) => ({
+          lastViewed: {
+            ...state.lastViewed,
+            [courseId]: { ...entry, savedAt: new Date().toISOString() },
+          },
+        }));
+      },
+
+      getLastViewed: (courseId) => {
+        return get().lastViewed[courseId] ?? null;
       },
 
       setVideoPosition: (contentId, position) => {
@@ -185,9 +212,13 @@ export const useCourseProgressStore = create<CourseProgressState>()(
             }
           });
 
+          const newLastViewed = { ...state.lastViewed }
+          delete newLastViewed[courseId]
+
           return {
             contentProgress: newContentProgress,
             chapterProgress: newChapterProgress,
+            lastViewed: newLastViewed,
             videoPositions: newVideoPositions,
           };
         });
@@ -199,6 +230,7 @@ export const useCourseProgressStore = create<CourseProgressState>()(
       partialize: (state) => ({
         contentProgress: state.contentProgress,
         chapterProgress: state.chapterProgress,
+        lastViewed: state.lastViewed,
         videoPositions: state.videoPositions,
       }),
       // Handle Set serialization

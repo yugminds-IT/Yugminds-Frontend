@@ -283,7 +283,7 @@ export default function AssignmentHierarchy({
                                     size="sm"
                                     asChild
                                   >
-                                    <Link href={`/student/assignments/${assignment.id}`}>
+                                    <Link href={`/lms/student/assignments/${assignment.id}`}>
                                       <Eye className="h-3 w-3 mr-1" />
                                       View
                                     </Link>
@@ -293,7 +293,7 @@ export default function AssignmentHierarchy({
                                       size="sm"
                                       asChild
                                     >
-                                      <Link href={`/student/assignments/${assignment.id}?action=submit`}>
+                                      <Link href={`/lms/student/assignments/${assignment.id}?action=submit`}>
                                         {assignment.status === 'not_started' ? 'Start' : 'Continue'}
                                       </Link>
                                     </Button>

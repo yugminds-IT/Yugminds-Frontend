@@ -6,8 +6,10 @@ import { Card } from '../../ui/card'
 import { Button } from '../../ui/button'
 import { Badge } from '../../ui/badge'
 import { CheckCircle, AlertCircle, Loader2, ClipboardList } from 'lucide-react'
-import { supabase } from '../../../lib/supabase'
+import { getStoredUserId } from '../../../lib/session-utils'
+import { studentApi } from '../../../lib/api'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
+import { sanitizeHtml } from '../../../lib/sanitize-html'
 
 interface QuizContentViewerProps {
   content: {
@@ -109,7 +111,7 @@ export default function QuizContentViewer({
         console.log('🚀 [QuizViewer] Starting assignment fetch...', { contentId: content.id, chapterId })
         
         const startTime = performance.now()
-        const { data: { user } } = await supabase.auth.getUser()
+        const _userId = getStoredUserId()
         
         let assignmentId: string | null = null
         let assignmentData: Assignment | null = null
@@ -128,33 +130,27 @@ export default function QuizContentViewer({
           }
           console.log('✅ [QuizViewer] Using content data directly')
         } else {
-          // Fallback: Query assignments table
-          console.log('🔍 [QuizViewer] Querying assignments table...')
-          const { data: assignments, error: assignmentError } = await supabase
-            .from('assignments')
-            .select('id, title, description, max_score, auto_grading_enabled, chapter_id')
-            .eq('chapter_id', chapterId)
-            .eq('is_published', true)
-            .limit(1)
-
-          if (assignmentError) {
-            console.error('❌ [QuizViewer] Assignment query error:', assignmentError)
-            throw assignmentError
-          }
-
-          if (assignments && assignments.length > 0) {
-            type AssignmentRow = { id: string; title?: string; description?: string; max_score?: number; auto_grading_enabled?: boolean; chapter_id?: string };
-            const assignmentRow = assignments[0] as AssignmentRow;
-            assignmentData = {
-              id: assignmentRow.id,
-              title: assignmentRow.title ?? '',
-              description: assignmentRow.description,
-              max_score: assignmentRow.max_score,
-              auto_grading_enabled: assignmentRow.auto_grading_enabled,
-              chapter_id: assignmentRow.chapter_id,
+          // Fallback: Query via API
+          console.log('🔍 [QuizViewer] Querying assignments via API...')
+          try {
+            const { data: assignmentsRes } = await studentApi.assignments.list({ chapter_id: chapterId })
+            const assignments = (assignmentsRes as { assignments?: Array<{ id: string; title?: string; description?: string; max_score?: number; auto_grading_enabled?: boolean; chapter_id?: string }> })?.assignments || []
+            if (assignments.length > 0) {
+              const assignmentRow = assignments[0]
+              assignmentData = {
+                id: assignmentRow.id,
+                title: assignmentRow.title ?? '',
+                description: assignmentRow.description,
+                max_score: assignmentRow.max_score,
+                auto_grading_enabled: assignmentRow.auto_grading_enabled,
+                chapter_id: assignmentRow.chapter_id,
+              }
+              assignmentId = assignmentRow.id
+              console.log('✅ [QuizViewer] Found assignment via API')
             }
-            assignmentId = assignmentRow.id
-            console.log('✅ [QuizViewer] Found assignment via chapter query')
+          } catch (err) {
+            console.error('❌ [QuizViewer] Assignment API error:', err)
+            throw err
           }
         }
 
@@ -166,55 +162,37 @@ export default function QuizContentViewer({
 
         setAssignment(assignmentData)
 
-        // Step 2: Parallel fetch of questions, submission, and progress (PERFORMANCE BOOST)
-        console.log('🔄 [QuizViewer] Fetching questions, submission, and progress in parallel...')
+        // Step 2: Fetch assignment details (questions, submission) via API
+        console.log('🔄 [QuizViewer] Fetching assignment details via API...')
         
-        const promises = [
-          // Fetch questions (only essential fields for performance)
-          supabase
-            .from('assignment_questions')
-            .select('id, question_text, question_type, options, marks')
-            .eq('assignment_id', assignmentId)
-            .order('created_at', { ascending: true }),
-          
-          // Fetch submission if user exists
-          user ? supabase
-            .from('submissions')
-            .select('id, status, score, submitted_at')
-            .eq('assignment_id', assignmentId)
-            .eq('student_id', user.id)
-            .maybeSingle() : Promise.resolve({ data: null, error: null }),
-          
-          // Check progress if user exists
-          user ? supabase
-            .from('student_progress')
-            .select('is_completed')
-            .eq('student_id', user.id)
-            .eq('content_id', content.id)
-            .maybeSingle() : Promise.resolve({ data: null, error: null })
-        ]
-
-        const [questionsResult, submissionResult, progressResult] = await Promise.all(promises)
-
-        // Process results
-        if (questionsResult.data && Array.isArray(questionsResult.data)) {
-          setQuestions(questionsResult.data)
-          console.log(`✅ [QuizViewer] Loaded ${questionsResult.data.length} questions`)
-        }
-
-        if (submissionResult.data) {
-          setSubmission(submissionResult.data as unknown as Submission)
-          if (!hasCompletedRef.current) {
-            setContentCompleted(content.id, chapterId, courseId, true)
-            hasCompletedRef.current = true
+        try {
+          const { data: detailRes } = await studentApi.assignments.get(assignmentId)
+          const detail = detailRes as {
+            assignment?: { questions?: Array<{ id: string; question_text: string; question_type: string; options: unknown; marks: number }> };
+            submission?: { id: string; status: string; score?: number; submitted_at?: string } | null;
           }
-          console.log('✅ [QuizViewer] Found existing submission')
+
+          if (detail?.assignment?.questions) {
+            setQuestions(detail.assignment.questions)
+            console.log(`✅ [QuizViewer] Loaded ${detail.assignment.questions.length} questions`)
+          }
+
+          if (detail?.submission) {
+            setSubmission(detail.submission as unknown as Submission)
+            if (!hasCompletedRef.current) {
+              setContentCompleted(content.id, chapterId, courseId, true)
+              hasCompletedRef.current = true
+            }
+            console.log('✅ [QuizViewer] Found existing submission')
+          }
+        } catch (err) {
+          console.warn('⚠️ [QuizViewer] Error fetching assignment details:', err)
         }
 
-        if (progressResult.data && 'is_completed' in progressResult.data && progressResult.data.is_completed) {
-          setContentCompleted(content.id, chapterId, courseId, true)
+        // Check progress via store (no separate server call needed)
+        if (isContentCompleted(content.id)) {
           hasCompletedRef.current = true
-          console.log('✅ [QuizViewer] Found existing progress')
+          console.log('✅ [QuizViewer] Content already completed in store')
         }
 
         const endTime = performance.now()
@@ -232,7 +210,7 @@ export default function QuizContentViewer({
     } else {
       setLoading(false)
     }
-  }, [content.id, content.auto_grading_enabled, content.content_text, content.max_score, content.source, content.title, chapterId, courseId, setContentCompleted])
+  }, [content.id, content.auto_grading_enabled, content.content_text, content.max_score, content.source, content.title, chapterId, courseId, isContentCompleted, setContentCompleted])
 
   if (loading) {
     return (
@@ -308,7 +286,7 @@ export default function QuizContentViewer({
         <div 
           className="prose prose-lg max-w-none mb-6"
           dangerouslySetInnerHTML={{ 
-            __html: assignment?.description || content.content_text || '' 
+            __html: sanitizeHtml(assignment?.description || content.content_text || '') 
           }}
           aria-label="Assignment description"
         />
@@ -346,7 +324,7 @@ export default function QuizContentViewer({
               if (!hasCompletedRef.current) {
                 debouncedMarkComplete()
               }
-              router.push(`/student/assignments/${assignment.id}?courseId=${courseId}&chapterId=${chapterId}`)
+              router.push(`/lms/student/assignments/${assignment.id}?courseId=${courseId}&chapterId=${chapterId}`)
             }}
             aria-label={submission ? 'View your submission' : questions.length > 0 ? 'Start this assignment' : 'View assignment details'}
           >

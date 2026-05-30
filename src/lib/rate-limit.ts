@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { supabaseAdmin } from './supabase';
 import { getAuthenticatedUserId } from './auth-utils';
 
 import { redis, isRedisAvailable } from './redis-client';
@@ -58,16 +57,6 @@ async function getIdentifier(request: NextRequest, customIdentifier?: string): P
   return `ip:${ip}`;
 }
 
-/**
- * Rate limit middleware using Redis (primary) and Supabase (fallback)
- * This provides distributed rate limiting that works across multiple server instances
- * 
- * Priority: Redis -> Supabase -> Fail open (allow request)
- * 
- * @param request - Next.js request object
- * @param config - Rate limit configuration
- * @returns Rate limit result
- */
 export async function rateLimit(
   request: NextRequest,
   config: RateLimitConfig
@@ -122,64 +111,17 @@ export async function rateLimit(
         reset: Math.floor((now + windowMs) / 1000),
       };
     } catch (error) {
-      console.error('[RateLimit] Redis error, falling back to Supabase:', error);
-      // Fall through to Supabase
+      console.error('[RateLimit] Redis error, failing open:', error);
     }
   }
-  
-  // Fallback to Supabase database
-  try {
-    type RateLimitResult = { reset_time?: string; allowed?: boolean; remaining?: number };
-    const { data, error } = await supabaseAdmin.rpc('check_rate_limit', {
-      p_identifier: identifier,
-      p_max_requests: config.maxRequests,
-      p_window_seconds: config.windowSeconds,
-      p_endpoint: endpoint || '',
-    } as never);
 
-    if (error) {
-      console.error('[RateLimit] Supabase error:', error);
-      // Fail open to prevent blocking legitimate traffic
-      return {
-        success: true,
-        limit: config.maxRequests,
-        remaining: config.maxRequests - 1,
-        reset: nowSeconds + config.windowSeconds,
-      };
-    }
-
-    const dataTyped = data as RateLimitResult[] | null;
-    if (!dataTyped || dataTyped.length === 0) {
-      console.warn('[RateLimit] Supabase returned no data');
-      return {
-        success: true,
-        limit: config.maxRequests,
-        remaining: config.maxRequests - 1,
-        reset: nowSeconds + config.windowSeconds,
-      };
-    }
-
-    const result = dataTyped[0];
-    const resetTimestamp = result.reset_time ? Math.floor(new Date(result.reset_time).getTime() / 1000) : nowSeconds + config.windowSeconds;
-    const retryAfter = result.allowed ? undefined : Math.ceil(resetTimestamp - nowSeconds);
-
-    return {
-      success: result.allowed ?? false,
-      limit: config.maxRequests,
-      remaining: result.remaining ?? 0,
-      reset: resetTimestamp,
-      retryAfter,
-    };
-  } catch (error) {
-    console.error('[RateLimit] Error:', error);
-    // Fail open on error to prevent blocking legitimate traffic
-    return {
-      success: true,
-      limit: config.maxRequests,
-      remaining: config.maxRequests - 1,
-      reset: nowSeconds + config.windowSeconds,
-    };
-  }
+  // No Redis - fail open to prevent blocking
+  return {
+    success: true,
+    limit: config.maxRequests,
+    remaining: config.maxRequests - 1,
+    reset: nowSeconds + config.windowSeconds,
+  };
 }
 
 /**
@@ -239,16 +181,7 @@ export function createRateLimitHeaders(result: RateLimitResult): Record<string, 
  * @returns Number of deleted entries
  */
 export async function cleanupExpiredRateLimits(): Promise<number> {
-  try {
-    const { data, error } = await supabaseAdmin.rpc('cleanup_expired_rate_limits');
-    if (error) {
-      console.error('Rate limit cleanup error:', error);
-      return 0;
-    }
-    return data || 0;
-  } catch (error) {
-    console.error('Rate limit cleanup error:', error);
-    return 0;
-  }
+  // TODO: Implement via backend when rate limit storage is migrated
+  return 0;
 }
 

@@ -12,7 +12,6 @@ class SentryExampleFrontendError extends Error {
 }
 
 export default function Page() {
-  const [hasSentError, setHasSentError] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
@@ -70,20 +69,8 @@ export default function Page() {
 
         <button
           type="button"
-          onClick={async () => {
+          onClick={() => {
             Sentry.logger.info("User clicked the button, throwing a sample error");
-            await Sentry.startSpan(
-              {
-                name: "Example Frontend/Backend Span",
-                op: "test",
-              },
-              async () => {
-                const res = await fetch("/api/sentry-example-api");
-                if (!res.ok) {
-                  setHasSentError(true);
-                }
-              },
-            );
             throw new SentryExampleFrontendError(
               "This error is raised on the frontend of the example page.",
             );
@@ -93,9 +80,7 @@ export default function Page() {
           <span>Throw Sample Error</span>
         </button>
 
-        {hasSentError ? (
-          <p className="success">Error sent to Sentry.</p>
-        ) : !isConnected ? (
+        {!isConnected ? (
           <div className="connectivity-error">
             <p>
               It looks like network requests to Sentry are being blocked, which
@@ -200,16 +185,6 @@ export default function Page() {
 
         .flex-spacer {
           flex: 1;
-        }
-
-        .success {
-          padding: 12px 16px;
-          border-radius: 8px;
-          font-size: 20px;
-          line-height: 1;
-          background-color: #00F261;
-          border: 1px solid #00BF4D;
-          color: #181423;
         }
 
         .success_placeholder {

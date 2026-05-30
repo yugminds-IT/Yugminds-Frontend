@@ -1,21 +1,13 @@
 /**
  * Direct PostgreSQL database connection
- * 
- * This provides a direct connection to the PostgreSQL database,
- * bypassing the Supabase API. Use this for:
+ *
+ * This provides a direct connection to the PostgreSQL database for:
  * - Complex queries that are easier with raw SQL
  * - Performance-critical operations
  * - Database administration tasks
- * 
- * ⚠️  Note: This bypasses Row Level Security (RLS) policies.
- * Use the Supabase client (src/lib/supabase.ts) for most operations
- * as it respects RLS and provides better security.
- * 
- * 📌 Connection Pooling Recommendations:
- * - For Supabase Free Tier (Nano): Use connection pooler (port 6543) with max 150
- * - For Direct Connections (port 5432): Free tier max is 60, use max 15-20 (avoid >80% warning)
- * - Get pooler connection string from: Supabase Dashboard → Settings → Database → Connection Pooling
- * - Note: Reduce "Pool Size" in Supabase dashboard to 15-20 if using direct connections (currently 50 causes warning)
+ *
+ * ⚠️ Note: This bypasses Row Level Security (RLS) policies and should only be
+ * used in trusted server-side contexts.
  */
 
 import postgres from 'postgres';

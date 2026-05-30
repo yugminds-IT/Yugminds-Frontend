@@ -27,7 +27,7 @@ import { SchoolGradeSelector } from "./SchoolGradeSelector";
 import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
 import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
-import { fetchWithCsrf } from "../../lib/csrf-client";
+import { adminApi } from "../../lib/api/admin.api";
 import { 
   saveCourseFormState, 
   clearCourseFormState,
@@ -101,6 +101,7 @@ export function CourseCreationWizard({
   const [chapters, setChapters] = useState<Chapter[]>(
     initialData?.chapters || []
   );
+  const [pendingDeleteChapterIndex, setPendingDeleteChapterIndex] = useState<number | null>(null);
   const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>({});
   const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
   const [availableCourses, setAvailableCourses] = useState<Array<{ id: string; name: string }>>([]);
@@ -141,22 +142,18 @@ export function CourseCreationWizard({
 
   const loadAvailableCourses = async () => {
     try {
-      const response = await fetchWithCsrf("/api/admin/courses", {
-        cache: "no-store",
-      });
-      if (response.ok) {
-        const data = await response.json();
-        type CourseItem = { id: string; name?: string; course_name?: string; title?: string };
-        const courses = (data.courses || []).filter((c: CourseItem) => 
-          !courseId || c.id !== courseId
-        ).map((c: CourseItem) => ({
+      const { data } = await adminApi.courses.list();
+      type CourseItem = { id: string; name?: string; course_name?: string; title?: string };
+      const raw = (data?.courses || data || []) as CourseItem[];
+      const courses = raw
+        .filter((c: CourseItem) => !courseId || c.id !== courseId)
+        .map((c: CourseItem) => ({
           id: c.id,
           name: c.name || c.course_name || c.title || "Untitled Course",
         }));
-        setAvailableCourses(courses);
-      }
-    } catch (error) {
-      console.error("Error loading courses:", error);
+      setAvailableCourses(courses);
+    } catch {
+      // non-critical: prerequisite courses list is optional
     }
   };
 
@@ -248,21 +245,21 @@ export function CourseCreationWizard({
   };
 
   const deleteChapter = (index: number) => {
-    if (confirm("Are you sure you want to delete this chapter?")) {
-      const updated = chapters.filter((_, i) => i !== index);
-      // Reorder remaining chapters
-      updated.forEach((ch, i) => {
-        ch.order_number = i + 1;
-      });
-      setChapters(updated);
-      
-      // Clean up associated data
-      const chapterId = chapters[index].id;
-      if (chapterId) {
-        delete chapterContents[chapterId];
-        delete assignments[chapterId];
-      }
+    const updated = chapters.filter((_, i) => i !== index);
+    updated.forEach((ch, i) => {
+      ch.order_number = i + 1;
+    });
+    setChapters(updated);
+    const chapterId = chapters[index].id;
+    if (chapterId) {
+      const newContents = { ...chapterContents };
+      const newAssignments = { ...assignments };
+      delete newContents[chapterId];
+      delete newAssignments[chapterId];
+      setChapterContents(newContents);
+      setAssignments(newAssignments);
     }
+    setPendingDeleteChapterIndex(null);
   };
 
   const handleSubmit = async () => {
@@ -575,19 +572,40 @@ export function CourseCreationWizard({
                               rows={2}
                             />
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              deleteChapter(index);
-                            }}
-                            title="Delete chapter"
-                          >
-                            Delete
-                          </Button>
+                          {pendingDeleteChapterIndex === index ? (
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => deleteChapter(index)}
+                              >
+                                Confirm
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPendingDeleteChapterIndex(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setPendingDeleteChapterIndex(index);
+                              }}
+                              title="Delete chapter"
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -664,12 +682,22 @@ export function CourseCreationWizard({
                 <CardHeader>
                   <CardTitle>School & Grade Assignment</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-2">
                   <div>
-                    <span className="font-medium">Schools:</span> {selectedSchoolIds.length} selected
+                    <span className="font-medium">Schools:</span>{" "}
+                    {selectedSchoolIds.length} school{selectedSchoolIds.length !== 1 ? "s" : ""} selected
                   </div>
                   <div>
-                    <span className="font-medium">Grades:</span> {selectedGrades.join(", ")}
+                    <span className="font-medium">Grades:</span>{" "}
+                    {selectedGrades.length > 0
+                      ? selectedGrades.map((g) => {
+                          const match = g.match(/(\d+)/);
+                          if (match) return `Grade ${match[1]}`;
+                          if (g === "kindergarten") return "Kindergarten";
+                          if (g === "pre-k") return "Pre-K";
+                          return g;
+                        }).join(", ")
+                      : "None selected"}
                   </div>
                 </CardContent>
               </Card>

@@ -55,7 +55,7 @@ function NotFoundContent() {
             🏠 Go Home
           </button>
           <button
-            onClick={() => router.push("/login")}
+            onClick={() => router.push("/lms/login")}
             style={{
               padding: '10px 20px',
               backgroundColor: '#6b7280',

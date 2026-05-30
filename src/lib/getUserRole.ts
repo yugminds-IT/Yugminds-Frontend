@@ -1,49 +1,43 @@
-import { supabase, supabaseAdmin } from "./supabase";
+import { getStoredUserId } from "./session-utils";
+import { commonApi } from "./api";
 
 export async function getUserRole() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = getStoredUserId();
+  if (!userId) return null;
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-  
-  return (profile as { role?: string } | null)?.role || null;
+  try {
+    const { data } = await commonApi.getRole(userId);
+    return (data as { role?: string })?.role || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getUserProfile() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = getStoredUserId();
+  if (!userId) return null;
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-  
-  return profile;
+  try {
+    const { data } = await commonApi.profile.get({ userId });
+    return (data as { profile?: unknown })?.profile ?? data;
+  } catch {
+    return null;
+  }
 }
 
 export async function getSchoolAdminSchool() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = getStoredUserId();
+  if (!userId) return null;
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('school_id')
-    .eq('id', user.id)
-    .single();
-  
-  const profileData = profile as { school_id?: string } | null;
-  if (!profileData?.school_id) return null;
+  try {
+    const { data: profileData } = await commonApi.profile.get({ userId });
+    const profile = (profileData as { profile?: { school_id?: string } })?.profile;
+    if (!profile?.school_id) return null;
 
-  const { data: school } = await supabaseAdmin
-    .from('schools')
-    .select('*')
-    .eq('id', profileData.school_id)
-    .single();
-  
-  return school;
+    const { data: schoolsData } = await commonApi.schools.list({ id: profile.school_id });
+    const schools = (schoolsData as { schools?: unknown[] })?.schools || [];
+    return schools[0] ?? null;
+  } catch {
+    return null;
+  }
 }

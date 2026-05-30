@@ -165,12 +165,18 @@ export function createCursorResponse<T extends { [key: string]: unknown; id: str
  * @param timestampField - Field name for timestamp (default: 'created_at')
  */
  
+type CursorQuery = {
+  order: (field: string, opts: { ascending: boolean }) => CursorQuery;
+  lt?: (field: string, value: string) => CursorQuery;
+  gt?: (field: string, value: string) => CursorQuery;
+};
+
 export function applyCursorPagination<_T>(
-  query: { order: (field: string, opts: { ascending: boolean }) => unknown; lt?: (field: string, value: string) => unknown; gt?: (field: string, value: string) => unknown },
+  query: CursorQuery,
   cursor?: string,
   direction: 'next' | 'prev' = 'next',
   timestampField: string = 'created_at'
-): typeof query {
+): CursorQuery {
   if (!cursor) {
     return query.order(timestampField, { ascending: false });
   }
@@ -182,11 +188,17 @@ export function applyCursorPagination<_T>(
 
   if (direction === 'next') {
     // For next page, get items before the cursor
+    if (!query.lt) {
+      return query.order(timestampField, { ascending: false });
+    }
     return query
       .lt(timestampField, parsed.timestamp)
       .order(timestampField, { ascending: false });
   } else {
     // For previous page, get items after the cursor
+    if (!query.gt) {
+      return query.order(timestampField, { ascending: true });
+    }
     return query
       .gt(timestampField, parsed.timestamp)
       .order(timestampField, { ascending: true });

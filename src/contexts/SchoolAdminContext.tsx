@@ -1,90 +1,56 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { addTokensToHeaders } from '../lib/csrf-client';
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import { schoolAdminApi } from '../lib/api/school-admin.api';
 
 interface SchoolInfo {
   id: string;
-  name: string;
-   
+  name?: string | null;
   [key: string]: unknown;
 }
 
 interface SchoolAdminContextType {
   schoolInfo: SchoolInfo | null;
+  profileFullName: string | null;
   loading: boolean;
   refreshSchoolInfo: () => Promise<void>;
 }
 
 const SchoolAdminContext = createContext<SchoolAdminContextType | undefined>(undefined);
 
-export function SchoolAdminProvider({ children }: { children: React.ReactNode }) {
-  const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+export function SchoolAdminProvider({
+  children,
+  initialSchoolInfo = null,
+  initialProfileFullName = null,
+}: {
+  children: React.ReactNode;
+  initialSchoolInfo?: SchoolInfo | null;
+  initialProfileFullName?: string | null;
+}) {
+  // Seeded by the layout with data it already fetched — no extra API calls needed on mount.
+  const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(initialSchoolInfo);
+  const [profileFullName] = useState<string | null>(initialProfileFullName);
+  const [loading, setLoading] = useState(false);
 
-  const loadSchoolInfo = async () => {
+  // Only used for explicit refresh actions (e.g. after editing school details).
+  const refreshSchoolInfo = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      // Get profile via API route (bypasses RLS)
-      const profileHeaders = await addTokensToHeaders();
-      const profileResponse = await fetch(`/api/profile?userId=${user.id}`, {
-        cache: 'no-store',
-        method: 'GET',
-        headers: profileHeaders
-      });
-
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        const profile = profileData.profile;
-
-        // Verify user is school admin
-        if (profile?.role === 'school_admin') {
-          // Get school info via API route (bypasses RLS)
-          // API route uses school_admins table to get school_id (primary source of truth)
-          // Triggers ensure profiles.school_id is synced, but API uses school_admins directly
-          try {
-            const schoolHeaders = await addTokensToHeaders();
-            const schoolResponse = await fetch(`/api/school-admin/school`, {
-              cache: 'no-store',
-              headers: schoolHeaders
-            });
-
-            if (schoolResponse.ok) {
-              const schoolData = await schoolResponse.json();
-              if (schoolData.school) {
-                setSchoolInfo(schoolData.school);
-              }
-            } else {
-              console.warn('Failed to load school from API in context:', schoolResponse.status);
-              const errorData = await schoolResponse.json().catch(() => ({}));
-              console.warn('Error details:', errorData);
-            }
-          } catch (err) {
-            console.error('Error loading school info in context:', err);
-          }
-        } else {
-          console.warn('User is not a school admin. Role:', profile?.role);
-        }
+      setLoading(true);
+      const schoolRes = await schoolAdminApi.school.get();
+      const schoolData = schoolRes.data ?? {};
+      const school = (schoolData as { school?: unknown }).school ?? null;
+      if (school) {
+        setSchoolInfo(school as SchoolInfo);
       }
     } catch (error) {
-      console.error('Error loading school info:', error);
+      console.error('Error refreshing school info:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadSchoolInfo();
   }, []);
 
   return (
-    <SchoolAdminContext.Provider value={{ schoolInfo, loading, refreshSchoolInfo: loadSchoolInfo }}>
+    <SchoolAdminContext.Provider value={{ schoolInfo, profileFullName, loading, refreshSchoolInfo }}>
       {children}
     </SchoolAdminContext.Provider>
   );

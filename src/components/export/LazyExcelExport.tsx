@@ -15,7 +15,7 @@ export default function LazyExcelExport({
   onExport,
   children
 }: LazyExcelExportProps) {
-  const [ExcelJS, setExcelJS] = useState<unknown>(null);
+  const [ExcelJS, setExcelJS] = useState<typeof import('exceljs') | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -42,7 +42,8 @@ export default function LazyExcelExport({
 
       // Add headers
       if (data.length > 0) {
-        const headers = Object.keys(data[0]);
+        const rows = data as Record<string, unknown>[];
+        const headers = Object.keys(rows[0] ?? {});
         worksheet.addRow(headers);
 
         // Style header row
@@ -55,7 +56,7 @@ export default function LazyExcelExport({
         };
 
         // Add data rows
-        data.forEach((row) => {
+        rows.forEach((row) => {
           worksheet.addRow(headers.map((header) => row[header]));
         });
       }

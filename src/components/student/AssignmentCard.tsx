@@ -173,8 +173,8 @@ export default function AssignmentCard({ assignment }: AssignmentCardProps) {
               <Link href={
                 (assignment.status === 'submitted' || assignment.status === 'graded' || 
                  (assignment.submission && assignment.submission.grade !== null && assignment.submission.grade !== undefined))
-                  ? `/student/assignments/${assignment.id}/view`
-                  : `/student/assignments/${assignment.id}`
+                  ? `/lms/student/assignments/${assignment.id}/view`
+                  : `/lms/student/assignments/${assignment.id}`
               }>
                 <Eye className="h-4 w-4 mr-2" />
                 View
@@ -187,7 +187,7 @@ export default function AssignmentCard({ assignment }: AssignmentCardProps) {
                 size="sm"
                 asChild
               >
-                <Link href={`/student/assignments/${assignment.id}?action=submit`}>
+                <Link href={`/lms/student/assignments/${assignment.id}?action=submit`}>
                   <Upload className="h-4 w-4 mr-2" />
                   {assignment.status === 'not_started' ? 'Start' : 'Continue'}
                 </Link>

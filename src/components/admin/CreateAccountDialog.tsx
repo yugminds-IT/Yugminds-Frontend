@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { supabase } from "../../lib/supabase";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,8 +22,10 @@ import {
 import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Checkbox } from "../../components/ui/checkbox";
 
-import { validatePasswordClient } from '../../lib/password-validation';
-import { fetchWithCsrf } from '../../lib/csrf-client';
+import { validatePasswordClient } from "../../lib/password-validation";
+import { adminApi, getAuthToken } from "../../lib/api";
+import { useAdminSchools } from "../../hooks/useAdminSchools";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Loader2,
@@ -65,15 +66,17 @@ const availableSubjects = [
   "Robotics", "Coding", "AI/ML", "Python", "Mathematics", "Science", "English"
 ];
 
+type AccountRole = 'student' | 'teacher' | 'school_admin' | 'admin';
+
 export default function CreateAccountDialog({
   isOpen,
   onClose,
   onSuccess,
 }: CreateAccountDialogProps) {
-  const [role, setRole] = useState<'student' | 'teacher' | 'school_admin' | 'admin'>('student');
-  const [schools, setSchools] = useState<School[]>([]);
+  const router = useRouter();
+  const [role, setRole] = useState<AccountRole>('student');
+  const { schools, isLoading: loadingSchools } = useAdminSchools();
   const [loading, setLoading] = useState(false);
-  const [loadingSchools, setLoadingSchools] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -102,40 +105,11 @@ export default function CreateAccountDialog({
     is_super_admin: false,
   });
 
-  const schoolsLoadedRef = useRef(false);
-
   useEffect(() => {
-    if (isOpen && !schoolsLoadedRef.current) {
-      loadSchools();
-      schoolsLoadedRef.current = true;
-    }
     if (!isOpen) {
-      schoolsLoadedRef.current = false;
       resetForm();
     }
   }, [isOpen]);
-
-  const loadSchools = async () => {
-    setLoadingSchools(true);
-    try {
-      const response = await fetchWithCsrf('/api/admin/schools', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        cache: 'no-store',
-      });
-      const data = await response.json();
-      
-      if (response.ok && data.schools) {
-        setSchools(data.schools || []);
-      } else {
-        console.error('Failed to load schools:', data.error);
-      }
-    } catch (error) {
-      console.error('Error loading schools:', error);
-    } finally {
-      setLoadingSchools(false);
-    }
-  };
 
   const resetForm = () => {
     setRole('student');
@@ -218,6 +192,13 @@ export default function CreateAccountDialog({
       return;
     }
 
+    const token = getAuthToken();
+    if (!token) {
+      setError("Please log in again to create accounts.");
+      setTimeout(() => router.push("/lms/login"), 2000);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -266,38 +247,23 @@ export default function CreateAccountDialog({
         }
       }
 
-      // Get session token for authentication
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session?.access_token) {
-        setError("Authentication error. Please log in again.");
-        setLoading(false);
-        return;
+      await adminApi.createAccount(requestBody);
+
+      setSuccess(true);
+      setTimeout(() => {
+        onSuccess();
+        resetForm();
+        onClose();
+      }, 1500);
+    } catch (err: unknown) {
+      console.error('Error creating account:', err);
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        (err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.');
+      setError(message);
+      if (message.toLowerCase().includes('authentication required') || message.toLowerCase().includes('please log in')) {
+        setTimeout(() => router.push("/lms/login"), 2500);
       }
-
-      const response = await fetchWithCsrf('/api/admin/create-account', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        setSuccess(true);
-        setTimeout(() => {
-          onSuccess();
-          resetForm();
-          onClose();
-        }, 1500);
-      } else {
-        setError(result.error || "Failed to create account. Please try again.");
-      }
-    } catch (error) {
-      console.error('Error creating account:', error);
-      setError("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -380,7 +346,7 @@ export default function CreateAccountDialog({
           <div>
             <Label>Account Type *</Label>
             <Select value={role} onValueChange={(value: string) => {
-              setRole(value);
+              setRole(value as AccountRole);
               setErrors({});
               // Reset role-specific fields
               setFormData(prev => ({

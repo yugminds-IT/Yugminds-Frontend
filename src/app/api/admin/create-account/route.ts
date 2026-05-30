@@ -52,7 +52,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdmin } from '../../../../lib/auth-utils';
-import { AccountCreationService, CreateAccountParams } from '../../../../lib/account-creation-service';
+import { backendRequestWithAuth } from '../../../../lib/backend-client';
 import { rateLimit, RateLimitPresets, createRateLimitHeaders } from '../../../../lib/rate-limit';
 import { createAccountSchema, validateRequestBody } from '../../../../lib/validation-schemas';
 import { logger, handleApiError } from '../../../../lib/logger';
@@ -127,25 +127,38 @@ try {
       );
     }
 
-    // 5. Use the account creation service
-    const result = await AccountCreationService.createAccount(validation.data as CreateAccountParams);
-
-    if (!result.success) {
+    // 5. Call backend (NestJS) to create the account — do not use AccountCreationService here
+    //    (that would call back to this route and cause recursion / 500 when BASE_URL points to Next.js).
+    let backendResult: { success?: boolean; user?: { id: number; email: string; role: string; isSuperAdmin?: boolean } };
+    try {
+      backendResult = await backendRequestWithAuth<typeof backendResult>(
+        'admin/create-account',
+        request,
+        {
+          method: 'POST',
+          body: JSON.stringify(validation.data),
+        }
+      );
+    } catch (backendErr: unknown) {
+      const err = backendErr as { status?: number; data?: { message?: string; error?: string } };
+      const status = err?.status ?? 500;
+      const message = err?.data?.message ?? err?.data?.error ?? (backendErr instanceof Error ? backendErr.message : 'Failed to create account');
+      logger.warn('Backend create-account error', { endpoint: '/api/admin/create-account', status, message });
       return NextResponse.json(
-        { 
-          error: result.error,
-          role
-        },
-        { status: 400 }
+        { error: message, message },
+        { status }
       );
     }
+
+    const user = backendResult?.user;
+    const userId = user?.id != null ? String(user.id) : undefined;
 
     // 6. Return success response
     const successResponse = NextResponse.json({
       success: true,
       message: `${role} account created successfully`,
-      userId: result.userId,
-      data: result.data
+      userId,
+      data: user ?? backendResult
     }, { status: 201 });
     ensureCsrfToken(successResponse, request);
     return successResponse;

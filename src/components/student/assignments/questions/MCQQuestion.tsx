@@ -72,19 +72,6 @@ function MCQQuestion({
     ? selectedAnswer === correctAnswerIndex
     : undefined
   
-  // Debug logging
-  console.log('🔍 MCQ Debug:', {
-    questionText,
-    correctAnswer: question.correct_answer,
-    correctAnswerType: typeof question.correct_answer,
-    correctAnswerIndex,
-    selectedAnswer,
-    isCorrect,
-    options,
-    showCorrectAnswer,
-    questionObject: question
-  })
-
   return (
     <Card className="p-6">
       <div className="flex items-center justify-between mb-4">
@@ -116,6 +103,12 @@ function MCQQuestion({
       >
         {questionText}
       </p>
+
+      {showCorrectAnswer && selectedAnswer === undefined && (
+        <div className="mb-4 p-3 border-2 border-gray-300 bg-gray-50 rounded-lg">
+          <p className="text-sm text-gray-500 italic">No answer submitted for this question.</p>
+        </div>
+      )}
 
       <div className="space-y-3" role="radiogroup" aria-label={`Answer options for question ${index + 1}`}>
         {options.length > 0 ? (
@@ -158,11 +151,23 @@ function MCQQuestion({
                     {String.fromCharCode(65 + optIndex)}.
                   </span>
                   <span className="flex-1">{option}</span>
-                  {showCorrectAnswer && isCorrectOption && (
-                    <Badge className="ml-2 bg-green-100 text-green-800 text-xs">
-                      Correct Answer
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {showCorrectAnswer && isSelected && (
+                      <Badge 
+                        className={cn(
+                          "text-xs",
+                          isCorrectOption ? "bg-green-600 text-white" : "bg-red-600 text-white"
+                        )}
+                      >
+                        Your Choice
+                      </Badge>
+                    )}
+                    {showCorrectAnswer && isCorrectOption && (
+                      <Badge className="bg-green-100 text-green-800 text-xs border border-green-200">
+                        Correct Answer
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </label>
             )

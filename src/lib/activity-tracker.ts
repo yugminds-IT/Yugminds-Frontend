@@ -65,28 +65,8 @@ async function updateActivityOnServer(): Promise<void> {
         console.warn('⚠️ No authorization header available, skipping activity update');
         return;
       }
-      
-      const response = await fetch('/api/auth/activity', {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-      });
 
-      if (!response.ok) {
-        // If unauthorized, stop tracking (session likely expired)
-        if (response.status === 401) {
-          console.warn('⚠️ Activity update unauthorized, session may have expired');
-          stopActivityTracking();
-        } else if (response.status === 429) {
-          // Rate limited - set backoff and don't log as error (expected behavior)
-          lastRateLimitError = Date.now();
-          // Reset lastActivityUpdate to allow retry after backoff
-          lastActivityUpdate = 0;
-        } else {
-          console.warn('Failed to update activity:', response.status);
-        }
-      }
-      // Success - lastActivityUpdate was already set above
+      // Activity endpoint not implemented on backend yet; skip POST to avoid 404
     } catch (error) {
       // On error, reset lastActivityUpdate to allow retry
       lastActivityUpdate = 0;

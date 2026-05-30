@@ -5,6 +5,7 @@
 
 import AutoScroll from "embla-carousel-auto-scroll";
 import { useEffect, useState, useMemo } from "react";
+import { apiClient } from "../../lib/api";
 
 import {
   Carousel,
@@ -54,43 +55,34 @@ const Logos3 = ({
         setHasError(false);
 
         const timeoutId = setTimeout(() => ac.abort(), 12000);
-        const res = await fetch("/api/logos", {
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: ac.signal,
-        }).finally(() => clearTimeout(timeoutId));
+        const { data } = await apiClient
+          .get('/api/logos', { signal: ac.signal })
+          .finally(() => clearTimeout(timeoutId));
 
-        if (!res.ok) throw new Error(`Failed to fetch logos: ${res.status}`);
-        // Be defensive: some caches/middleware can cause 200 responses with empty bodies.
-        const raw = await res.text();
-        let data: { logos?: unknown } | null = null;
-        try {
-          data = raw ? (JSON.parse(raw) as { logos?: unknown } | null) : null;
-        } catch (e) {
-          throw new Error(`Failed to parse /api/logos JSON. Body: ${raw?.slice(0, 200) ?? ""}`);
-        }
-
-        const list = Array.isArray(data?.logos) ? (data.logos as Logo[]) : [];
-        const valid = list.filter((l) => typeof l?.image === "string" && l.image.trim() !== "");
+        const list = Array.isArray((data as { logos?: unknown })?.logos)
+          ? (((data as { logos?: unknown })?.logos ?? []) as Array<{ id: string; image_url?: string; school_name?: string; description?: string }>)
+          : [];
+        const valid: Logo[] = list
+          .filter((l) => typeof l?.image_url === "string" && l.image_url.trim() !== "")
+          .map((l) => ({
+            id: l.id,
+            image: l.image_url!,
+            description: l.school_name || l.description || '',
+          }));
 
         if (cancelled) return;
 
-        if (valid.length > 0) {
-          setDynamicLogos(valid);
-          setHasError(false);
-        } else {
-          console.warn("No valid logos in /api/logos response", { data });
-          setDynamicLogos([]);
-          setHasError(true);
-        }
+        // Empty logos is not an error — just render nothing
+        setDynamicLogos(valid);
+        setHasError(false);
       } catch (e) {
         if (cancelled) return;
         // Abort just means we timed out / navigated away.
         if (!(e instanceof Error && e.name === "AbortError")) {
           console.warn("Failed to load logos:", e);
+          setHasError(true);
         }
         setDynamicLogos([]);
-        setHasError(true);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -104,11 +96,13 @@ const Logos3 = ({
     };
   }, [logos]);
 
-  // Duplicate logos for seamless infinite scroll
+  // Duplicate logos for seamless infinite scroll — only when there are enough to scroll
   const duplicatedLogos = useMemo(() => {
     if (dynamicLogos.length === 0) return [];
-    // Create enough duplicates for smooth infinite scroll
-    return [...dynamicLogos, ...dynamicLogos, ...dynamicLogos];
+    // Need at least ~6 items to fill the carousel visually; repeat until we have enough
+    const minItems = 6;
+    const copies = Math.ceil(minItems / dynamicLogos.length);
+    return Array.from({ length: Math.max(copies, 3) }, () => dynamicLogos).flat();
   }, [dynamicLogos]);
 
   // Memoize the AutoScroll plugin - recreate when logos change

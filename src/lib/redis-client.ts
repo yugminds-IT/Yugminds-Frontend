@@ -18,6 +18,7 @@ type RedisClientInstance = {
   del: (key: string) => Promise<unknown>;
   exists: (key: string) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<unknown>;
+  incr: (key: string) => Promise<number>;
   pipeline: () => RedisPipeline;
   zadd: (key: string, opts: { score: number; member: string }) => Promise<number>;
   zremrangebyscore: (key: string, min: number, max: number) => Promise<number>;
@@ -265,10 +266,14 @@ export const redis = {
           return false;
         }
 
+        const serialized =
+          typeof value === 'string' || typeof value === 'number'
+            ? value
+            : JSON.stringify(value);
         if (ttlSeconds) {
-          await client.setex(key, ttlSeconds, value);
+          await client.setex(key, ttlSeconds, serialized);
         } else {
-          await client.set(key, value);
+          await client.set(key, String(serialized));
         }
 
         // Update health status on success

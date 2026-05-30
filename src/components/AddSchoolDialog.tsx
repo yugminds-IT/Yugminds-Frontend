@@ -41,9 +41,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
 import { validatePasswordClient } from "../lib/password-validation";
-import { fetchWithCsrf } from "../lib/csrf-client";
 import { useAutoSaveForm } from "../hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "../lib/form-persistence";
+import { adminApi } from "../lib/api/admin.api";
+import { toast } from "./ui/toast";
 
 interface AddSchoolDialogProps {
   isOpen: boolean;
@@ -160,6 +161,8 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   const [formData, setFormData] = useState<SchoolFormData>(initialFormData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [generatedCodes, setGeneratedCodes] = useState<Record<string, string>>({});
+  const [createdCodesOpen, setCreatedCodesOpen] = useState(false);
+  const [createdCodesMap, setCreatedCodesMap] = useState<Record<string, string>>({});
 
   // Auto-save form data while dialog is open
   const { clearSavedData } = useAutoSaveForm({
@@ -197,16 +200,26 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   // eslint-disable-next-line react-hooks/exhaustive-deps -- initialFormData is stable, only reset when isOpen changes
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setCreatedCodesOpen(false);
+      setCreatedCodesMap({});
+    }
+  }, [isOpen]);
+
   // Check if all required fields are filled
   const isFormComplete = () => {
+    const pw = formData.school_admin_temp_password.trim();
+    const pwOk = pw.length > 0 && !validatePasswordClient(pw);
     return (
-      formData.name.trim() &&
-      formData.contact_email.trim() &&
-      formData.contact_phone.trim() &&
-      formData.address.trim() &&
-      formData.school_admin_name.trim() &&
-      formData.school_admin_email.trim() &&
-      formData.school_admin_phone.trim() &&
+      !!formData.name.trim() &&
+      !!formData.contact_email.trim() &&
+      !!formData.contact_phone.trim() &&
+      !!formData.address.trim() &&
+      !!formData.school_admin_name.trim() &&
+      !!formData.school_admin_email.trim() &&
+      !!formData.school_admin_phone.trim() &&
+      !!pwOk &&
       formData.grades_offered.length > 0
     );
   };
@@ -251,7 +264,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   };
 
    
-  const handleInputChange = (field: keyof SchoolFormData, value: string | number | string[] | Record<string, string>) => {
+  const handleInputChange = (field: keyof SchoolFormData, value: string | number | string[] | Record<string, string> | null) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -275,56 +288,38 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     }));
   };
 
+  /** Preview only: real codes are created on the server as YUG-XXXXXXXX (random). */
+  const sampleYugPreview = () => {
+    const raw = Math.random().toString(36).slice(2, 10).toUpperCase();
+    return `YUG-${raw}`;
+  };
+
   const generatePreviewCodes = () => {
     if (formData.grades_offered.length === 0) {
       setGeneratedCodes({});
       return {};
     }
-    
-    const schoolNameShort = formData.name.split(' ').map((word: string) => word[0]).join('').toUpperCase().substring(0, 3) || 'SCH';
+
     const codes: Record<string, string> = {};
-    
-    // Check if number_of_sections is set
     const numSections = formData.number_of_sections;
-    console.log('🔍 Generating preview codes:', { 
-      numSections, 
-      type: typeof numSections,
-      gradesCount: formData.grades_offered.length,
-      grades: formData.grades_offered 
-    });
-    
+
     if (numSections && numSections > 0) {
-      // Ensure numSections is a number
-      const sectionsCount = typeof numSections === 'number' ? numSections : parseInt(String(numSections));
-      console.log('📊 Sections count:', sectionsCount);
-      
-      // Generate grade + section specific codes
-      const sections = Array.from({ length: Math.min(sectionsCount, 26) }, (_, i) => 
-        String.fromCharCode(65 + i) // A, B, C, etc.
+      const sectionsCount = typeof numSections === "number" ? numSections : parseInt(String(numSections), 10);
+      const sections = Array.from({ length: Math.min(sectionsCount, 26) }, (_, i) =>
+        String.fromCharCode(65 + i),
       );
-      
-      console.log('📋 Sections array:', sections, 'Length:', sections.length);
-      
-      formData.grades_offered.forEach(grade => {
-        const gradeAbbr = grade.replace('Grade ', 'G').replace('Pre-K', 'PK').replace('Kindergarten', 'K');
-        
-        sections.forEach(section => {
-          const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-          const key = `${grade} - Section ${section}`;
-          codes[key] = `${schoolNameShort}-${gradeAbbr}-${section}-${randomNum}`;
-          console.log(`✅ Generated code for ${key}: ${codes[key]}`);
+      formData.grades_offered.forEach((grade) => {
+        sections.forEach((section) => {
+          const key = `${grade} — Section ${section}`;
+          codes[key] = sampleYugPreview();
         });
       });
     } else {
-      // Generate grade-only codes (original behavior)
-      formData.grades_offered.forEach(grade => {
-        const gradeAbbr = grade.replace('Grade ', 'G').replace('Pre-K', 'PK').replace('Kindergarten', 'K');
-        const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-        codes[grade] = `${schoolNameShort}-${gradeAbbr}-${randomNum}`;
+      formData.grades_offered.forEach((grade) => {
+        codes[grade] = sampleYugPreview();
       });
     }
-    
-    console.log('Generated codes:', codes);
+
     setGeneratedCodes(codes);
     return codes;
   };
@@ -341,24 +336,24 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      alert('Code copied to clipboard!');
+      toast.success("Copied to clipboard");
     } catch (err) {
-      console.error('Failed to copy: ', err);
-      alert('Failed to copy code');
+      console.error("Failed to copy: ", err);
+      toast.error("Could not copy");
     }
   };
 
   const copyAllCodes = async () => {
     const codesText = Object.entries(generatedCodes)
       .map(([grade, code]) => `${grade}: ${code}`)
-      .join('\n');
-    
+      .join("\n");
+
     try {
       await navigator.clipboard.writeText(codesText);
-      alert('All codes copied to clipboard!');
+      toast.success("All preview lines copied");
     } catch (err) {
-      console.error('Failed to copy: ', err);
-      alert('Failed to copy codes');
+      console.error("Failed to copy: ", err);
+      toast.error("Could not copy");
     }
   };
 
@@ -407,64 +402,30 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         generate_joining_codes: formData.grades_offered.length > 0
       };
 
-      const response = await fetchWithCsrf('/api/admin/schools', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData),
-      });
+      const res = await adminApi.schools.create(requestData as Record<string, unknown>);
+      const httpBody = res.data as {
+        data?: { joining_codes?: Record<string, string>; school?: unknown };
+        joining_codes?: Record<string, string>;
+      };
+      const payload = httpBody?.data ?? httpBody;
+      const joining_codes = payload?.joining_codes;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Failed to create school';
-        let errorDetails = '';
-        
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorData.message || errorMessage;
-          errorDetails = errorData.details || '';
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-        
-        // Include details in error message if available
-        const fullErrorMessage = errorDetails 
-          ? `${errorMessage}: ${errorDetails}`
-          : errorMessage;
-        
-        console.error('School creation error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorMessage,
-          details: errorDetails,
-          fullResponse: errorText
-        });
-        
-        throw new Error(fullErrorMessage);
-      }
-
-      const result = await response.json();
-      
-      // Clear saved form data after successful creation
-      clearFormData('add-school-dialog-form');
+      clearFormData("add-school-dialog-form");
       clearSavedData();
 
-      // Show success message with joining codes if generated
-      if (result.joining_codes && Object.keys(result.joining_codes).length > 0) {
-        const codesList = Object.entries(result.joining_codes)
-          .map(([grade, code]) => `${grade}: ${code}`)
-          .join('\n');
-        alert(`School created successfully!\n\nJoining Codes Generated:\n${codesList}`);
-      } else {
-        alert('School created successfully!');
-      }
-      
+      toast.success("School created successfully.");
       onSuccess();
-      onClose();
+      if (joining_codes && Object.keys(joining_codes).length > 0) {
+        setCreatedCodesMap(joining_codes);
+        setCreatedCodesOpen(true);
+      } else {
+        onClose();
+      }
     } catch (error) {
-      console.error('Error creating school:', error);
-      alert(`Error creating school: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Error creating school:", error);
+      toast.error(
+        `Could not create school: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     } finally {
       setLoading(false);
     }
@@ -478,6 +439,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   ];
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white">
         <DialogHeader>
@@ -1009,6 +971,10 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                         </div>
                       )}
 
+                      <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                        Preview values use the same shape as live codes (YUG- plus random characters). Final codes are assigned on the server when you create the school.
+                      </p>
+
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <Label className="text-sm font-medium">Preview Joining Codes</Label>
@@ -1150,5 +1116,62 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog
+      open={createdCodesOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          setCreatedCodesOpen(false);
+          setCreatedCodesMap({});
+          onClose();
+        }
+      }}
+    >
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto bg-white">
+        <DialogHeader>
+          <DialogTitle>Joining codes created</DialogTitle>
+          <DialogDescription>
+            Save these codes securely. You can also open &quot;Manage Joining Codes&quot; from the schools list for this school.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 font-mono text-sm">
+          {Object.entries(createdCodesMap).map(([label, code]) => (
+            <div key={label} className="flex justify-between gap-4 border-b border-gray-100 py-2">
+              <span className="text-gray-600 shrink-0">{label}</span>
+              <span className="font-semibold">{code}</span>
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  Object.entries(createdCodesMap)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join("\n"),
+                );
+                toast.success("Copied all codes");
+              } catch {
+                toast.error("Copy failed");
+              }
+            }}
+            variant="outline"
+          >
+            Copy all
+          </Button>
+          <Button
+            onClick={() => {
+              setCreatedCodesOpen(false);
+              setCreatedCodesMap({});
+              onClose();
+            }}
+          >
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

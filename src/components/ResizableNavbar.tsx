@@ -17,36 +17,36 @@ import {
   MobileNavMenu,
 } from "./ui/resizable-navbar";
 
-export default function ResizableNavbar() {
+export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetForBrandBar?: boolean }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
   const navItems = [
-    { name: "Home", link: "/" },
-    { name: "About Us", link: "/about" },
-    { name: "Our Programs", link: "/programs" },
-    { name: "Success Stories", link: "/success-stories" },
-    { name: "For Schools", link: "/for-schools" },
-    { name: "For Parents", link: "/for-parents" },
-    { name: "Contact Us", link: "/contact" },
+    { name: "Home", link: "/robocoders" },
+    { name: "About Us", link: "/robocoders/about" },
+    { name: "Our Programs", link: "/robocoders/programs" },
+    { name: "Community", link: "/robocoders/community" },
+    { name: "For Schools", link: "/robocoders/for-schools" },
+    { name: "For Parents", link: "/robocoders/for-parents" },
+    { name: "Contact Us", link: "/robocoders/contact" },
   ];
 
   // Check if a route is active (exact match for home, or starts with for others)
   const isActive = (link: string) => {
-    if (link === "/") {
-      return pathname === "/";
+    if (link === "/robocoders") {
+      return pathname === "/robocoders";
     }
     return pathname.startsWith(link);
   };
 
   return (
-    <Navbar>
+    <Navbar className={offsetForBrandBar ? "!top-9" : ""}>
       {/* Desktop Navigation */}
       <NavBody>
         <NavbarLogo />
         <NavItems items={navItems} />
         <div className="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
-          <NavbarButton href="/login" variant="secondary" className="text-sm px-2.5 py-1">Student Portal</NavbarButton>
+          <NavbarButton href="/lms/login" variant="secondary" className="text-sm px-2.5 py-1">Student Portal</NavbarButton>
         </div>
       </NavBody>
 
@@ -112,7 +112,7 @@ export default function ResizableNavbar() {
           })}
           <div className="flex w-full flex-col gap-4">
             <NavbarButton
-              href="/login"
+              href="/lms/login"
               onClick={() => setIsMobileMenuOpen(false)}
               variant="primary"
               className="w-full"

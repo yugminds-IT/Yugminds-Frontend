@@ -23,8 +23,7 @@ export function getRequiredEnv(key: string, description?: string): string {
   if (!value || value.trim() === '') {
     // During build, allow NEXT_PUBLIC_* placeholders so static analysis/page collection succeeds
     if (isBuildPhase && key.startsWith('NEXT_PUBLIC_')) {
-      if (key === 'NEXT_PUBLIC_SUPABASE_URL') return 'https://placeholder.supabase.co';
-      if (key === 'NEXT_PUBLIC_SUPABASE_ANON_KEY') return 'placeholder-anon-key';
+      if (key === 'NEXT_PUBLIC_API_BASE_URL') return 'http://localhost:3000';
     }
     const errorMessage = description
       ? `${description} (${key}) is required but not set`
@@ -52,10 +51,9 @@ export function getOptionalEnv(key: string, defaultValue: string): string {
  * Call this early in the application lifecycle
  */
 export function validateRequiredEnv(): void {
-  const requiredVars = [
-    { key: 'NEXT_PUBLIC_SUPABASE_URL', description: 'Supabase URL' },
-    { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', description: 'Supabase Anon Key' },
-    { key: 'SUPABASE_SERVICE_ROLE_KEY', description: 'Supabase Service Role Key' },
+  const requiredVars: { key: string; description: string }[] = [
+    { key: 'JWT_ACCESS_SECRET', description: 'JWT signing secret used by middleware to verify access tokens (must match backend)' },
+    { key: 'BACKEND_URL', description: 'NestJS server URL used by Next.js API route proxy' },
   ];
 
   const missing: string[] = [];

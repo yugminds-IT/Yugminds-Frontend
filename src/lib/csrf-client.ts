@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getAuthToken as getStoredAuthToken } from './api/axios';
 
 /**
  * Client-side CSRF Token Helper
@@ -60,14 +60,13 @@ export function getCsrfTokenFromCookie(): string | null {
 }
 
 /**
- * Get authentication token from Supabase session
+ * Get authentication token from stored session
  * 
  * @returns Promise that resolves to auth token or null
  */
 export async function getAuthToken(): Promise<string | null> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || null;
+    return getStoredAuthToken();
   } catch (error) {
     console.error('Error getting auth token:', error);
     return null;

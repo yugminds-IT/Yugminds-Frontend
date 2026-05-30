@@ -1,13 +1,12 @@
 /**
- * Real-time Course Synchronization Hook
+ * Course Synchronization Hook (polling-based)
  * 
- * Provides real-time updates for course content changes
+ * Provides periodic query invalidation as a lightweight replacement
+ * for the previous Supabase realtime subscriptions.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { createCourseSyncChannel, CourseSyncConfig } from '../lib/course-sync';
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 export interface UseCourseRealtimeSyncOptions {
   courseId: string;
@@ -18,125 +17,33 @@ export interface UseCourseRealtimeSyncOptions {
 export function useCourseRealtimeSync({
   courseId,
   enabled = true,
-  debounceMs = 500,
 }: UseCourseRealtimeSyncOptions) {
   const queryClient = useQueryClient();
-  const channelRef = useRef<ReturnType<typeof createCourseSyncChannel> | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const invalidateQueriesHandler = useCallback((queryKeys: string[][]): void => {
-    queryKeys.forEach((key) => {
-      queryClient.invalidateQueries({ queryKey: key });
-    });
-  }, [queryClient]);
-
-  const invalidateQueriesRef = useRef<NodeJS.Timeout | null>(null);
-  const invalidateQueries = useCallback((queryKeys: string[][]) => {
-    if (invalidateQueriesRef.current) {
-      clearTimeout(invalidateQueriesRef.current);
-    }
-    invalidateQueriesRef.current = setTimeout(() => {
-      invalidateQueriesHandler(queryKeys);
-    }, debounceMs);
-  }, [invalidateQueriesHandler, debounceMs]);
+  const refreshCourseData = useCallback(() => {
+    if (!courseId) return;
+    queryClient.invalidateQueries({ queryKey: ['studentCourse', courseId] });
+    queryClient.invalidateQueries({ queryKey: ['courseChapters', courseId] });
+    queryClient.invalidateQueries({ queryKey: ['chapterContents'] });
+  }, [queryClient, courseId]);
 
   useEffect(() => {
-    // Don't create channel if disabled or courseId is invalid
-    if (!enabled || !courseId || courseId.trim() === '') {
-      console.log('ℹ️ [useCourseRealtimeSync] Skipping channel creation:', {
-        enabled,
-        courseId,
-        reason: !enabled ? 'disabled' : !courseId || courseId.trim() === '' ? 'invalid courseId' : 'unknown'
-      });
-      return;
-    }
+    if (!enabled || !courseId || courseId.trim() === '') return;
 
-    const config: CourseSyncConfig = {
-      courseId,
-      onCourseUpdate: (_payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-        console.log('🔄 Course data changed, invalidating queries');
-        invalidateQueries([
-          ['studentCourse', courseId],
-          ['studentCourses'],
-        ]);
-      },
-      onChapterUpdate: (_payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-        console.log('🔄 Chapter data changed, invalidating queries');
-        invalidateQueries([
-          ['courseChapters', courseId],
-          ['studentCourse', courseId],
-        ]);
-      },
-      onContentUpdate: (_payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-        // Check if content belongs to this course's chapters
-        console.log('🔄 Content data changed, invalidating queries');
-        invalidateQueries([
-          ['courseChapters', courseId],
-          ['chapterContents'],
-        ]);
-      },
-      onMaterialUpdate: (_payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-        console.log('🔄 Material data changed, invalidating queries');
-        invalidateQueries([
-          ['courseMaterials', courseId],
-        ]);
-      },
-      onAssignmentUpdate: (_payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-        console.log('🔄 Assignment data changed, invalidating queries');
-        invalidateQueries([
-          ['studentAssignments'],
-          ['courseAssignments', courseId],
-        ]);
-      },
-    };
+    // Refresh on window focus
+    const onFocus = () => refreshCourseData();
+    window.addEventListener('focus', onFocus);
 
-    const syncChannel = createCourseSyncChannel(config);
-    channelRef.current = syncChannel;
-
-    // Track connection status (only if channel exists)
-    const checkConnection = () => {
-      if (syncChannel.channel) {
-        setIsConnected(syncChannel.channel.state === 'joined');
-      } else {
-        setIsConnected(false);
-      }
-    };
-
-    // Initial check
-    checkConnection();
-
-    // Set up periodic check for connection status
-    const connectionInterval = setInterval(checkConnection, 1000);
+    // Periodic polling every 2 minutes
+    intervalRef.current = setInterval(refreshCourseData, 120_000);
 
     return () => {
-      clearInterval(connectionInterval);
-      if (syncChannel && syncChannel.unsubscribe) {
-        syncChannel.unsubscribe();
-      }
-      channelRef.current = null;
-      setIsConnected(false);
+      window.removeEventListener('focus', onFocus);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [courseId, enabled, invalidateQueries]);
+  }, [courseId, enabled, refreshCourseData]);
 
-  return {
-    isConnected,
-  };
+  return { isConnected };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

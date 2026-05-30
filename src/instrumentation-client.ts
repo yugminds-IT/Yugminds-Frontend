@@ -7,7 +7,7 @@ import * as Sentry from "@sentry/nextjs";
 import '@/lib/suppress-nextjs-promise-warnings';
 
 Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || "https://8fc8fc58aca2d76641434c942d9dec33@o4510559630655488.ingest.us.sentry.io/4510559634128896",
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   // Adjust this value in production, or use tracesSampler for greater control
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,

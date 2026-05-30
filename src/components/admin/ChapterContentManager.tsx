@@ -283,7 +283,10 @@ export function ChapterContentManager({
   };
 
   const handleFileUpload = (fileUrl: string, filePath?: string) => {
-    const fileName = fileUrl.split('/').pop() || 'Uploaded file';
+    // If backend returns a data URL for `fileUrl`, it won't contain the original filename/extension.
+    // Prefer `filePath` (which includes the original filename) when available.
+    const sourceForName = filePath || fileUrl;
+    const fileName = sourceForName.split('/').pop() || 'Uploaded file';
     // Determine content type based on file extension
     const fileExtension = fileName.split('.').pop()?.toLowerCase();
     let detectedContentType: ChapterContent['content_type'] = 'file';

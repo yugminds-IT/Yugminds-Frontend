@@ -1,155 +1,36 @@
 /**
  * Course Synchronization Utilities
  * 
- * Handles real-time synchronization between course builder and student view
+ * Handles synchronization between course builder and student view.
+ * Uses polling-based invalidation instead of Supabase realtime.
  */
-
-import { supabase } from './supabase';
-import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 export interface CourseSyncConfig {
   courseId: string;
-  onCourseUpdate?: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void;
-  onChapterUpdate?: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void;
-  onContentUpdate?: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void;
-  onMaterialUpdate?: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void;
-  onAssignmentUpdate?: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void;
+  onCourseUpdate?: (payload: Record<string, unknown>) => void;
+  onChapterUpdate?: (payload: Record<string, unknown>) => void;
+  onContentUpdate?: (payload: Record<string, unknown>) => void;
+  onMaterialUpdate?: (payload: Record<string, unknown>) => void;
+  onAssignmentUpdate?: (payload: Record<string, unknown>) => void;
 }
 
 export interface SyncChannel {
-  channel: RealtimeChannel | null;
+  channel: null;
   unsubscribe: () => void;
 }
 
 /**
- * Create real-time subscriptions for course changes
+ * Create a no-op sync channel (realtime removed; use query invalidation instead)
  */
 export function createCourseSyncChannel(config: CourseSyncConfig): SyncChannel {
-  // Validate courseId before creating channel
   if (!config.courseId || config.courseId.trim() === '') {
-    console.warn('⚠️ [createCourseSyncChannel] Invalid courseId, skipping channel creation');
-    // Return a dummy channel that does nothing
-    const dummyChannel: SyncChannel = {
-      channel: null,
-      unsubscribe: () => {},
-    };
-    return dummyChannel;
+    console.warn('[createCourseSyncChannel] Invalid courseId, skipping');
   }
 
-  const channelName = `course-sync-${config.courseId}`;
-  console.log(`🔄 [createCourseSyncChannel] Creating channel: ${channelName}`);
-
-  try {
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'courses',
-          filter: `id=eq.${config.courseId}`,
-        },
-        (payload) => {
-          console.log('📡 Course updated:', payload);
-          config.onCourseUpdate?.(payload);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'chapters',
-          filter: `course_id=eq.${config.courseId}`,
-        },
-        (payload) => {
-          console.log('📡 Chapter updated:', payload);
-          config.onChapterUpdate?.(payload);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'chapter_contents',
-        },
-        (payload) => {
-          // Check if the content belongs to a chapter in this course
-          console.log('📡 Content updated:', payload);
-          config.onContentUpdate?.(payload);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'materials',
-        },
-        (payload) => {
-          console.log('📡 Material updated:', payload);
-          config.onMaterialUpdate?.(payload);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'assignments',
-          filter: `course_id=eq.${config.courseId}`,
-        },
-        (payload) => {
-          console.log('📡 Assignment updated:', payload);
-          config.onAssignmentUpdate?.(payload);
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`✅ Course sync channel subscribed: ${channelName}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          // Log error details but don't throw - this is non-critical
-          console.warn('⚠️ Course sync channel error (non-critical):', {
-            channel: channelName,
-            courseId: config.courseId,
-            error: err,
-            status
-          });
-          // Don't log as error - this is expected in some cases (e.g., RLS blocking, connection issues)
-        } else if (status === 'TIMED_OUT') {
-          console.warn(`⚠️ Course sync channel timed out: ${channelName}`);
-        } else if (status === 'CLOSED') {
-          console.log(`ℹ️ Course sync channel closed: ${channelName}`);
-        } else {
-          console.log(`ℹ️ Course sync channel status: ${status} for ${channelName}`);
-        }
-      });
-
-    return {
-      channel,
-      unsubscribe: () => {
-        try {
-          console.log(`🔄 [createCourseSyncChannel] Unsubscribing from channel: ${channelName}`);
-          supabase.removeChannel(channel);
-        } catch (error) {
-          console.warn('⚠️ Error unsubscribing from course sync channel:', error);
-        }
-      },
-    };
-  } catch (error) {
-    console.error('❌ [createCourseSyncChannel] Error creating channel:', {
-      channel: channelName,
-      courseId: config.courseId,
-      error
-    });
-    // Return a dummy channel that does nothing
-    return {
-      channel: null,
-      unsubscribe: () => {},
-    } as SyncChannel;
-  }
+  return {
+    channel: null,
+    unsubscribe: () => {},
+  };
 }
 
 /**
@@ -200,4 +81,3 @@ export function createOptimisticUpdate<T extends Record<string, unknown>>(
     },
   };
 }
-

@@ -31,7 +31,7 @@ export function SessionAlert({ show, reason, message, onDismiss, onLogin }: Sess
     if (onLogin) {
       onLogin();
     } else {
-      window.location.href = '/login';
+      window.location.href = '/lms/login';
     }
   };
 

@@ -65,7 +65,7 @@ export default function AdminManagementTab({
                   <Badge variant="outline">{stats.totalSchools} schools</Badge>
                 </div>
               </div>
-              <Button className="w-full" onClick={() => router.push('/admin/schools')}>
+              <Button className="w-full" onClick={() => router.push('/lms/admin/schools')}>
                 <Eye className="mr-2 h-4 w-4" />
                 Manage Schools
               </Button>
@@ -93,7 +93,7 @@ export default function AdminManagementTab({
                   <Badge variant="outline">{stats.totalTeachers} teachers</Badge>
                 </div>
               </div>
-              <Button className="w-full" onClick={() => router.push('/admin/teachers')}>
+              <Button className="w-full" onClick={() => router.push('/lms/admin/teachers')}>
                 <Eye className="mr-2 h-4 w-4" />
                 Manage Teachers
               </Button>
@@ -121,7 +121,7 @@ export default function AdminManagementTab({
                   <Badge variant="outline">{stats.totalStudents} students</Badge>
                 </div>
               </div>
-              <Button className="w-full" onClick={() => router.push('/admin/students')}>
+              <Button className="w-full" onClick={() => router.push('/lms/admin/students')}>
                 <Eye className="mr-2 h-4 w-4" />
                 Manage Students
               </Button>
@@ -149,7 +149,7 @@ export default function AdminManagementTab({
                   <Badge variant="outline">{stats.activeCourses} courses</Badge>
                 </div>
               </div>
-              <Button className="w-full" onClick={() => router.push('/admin/courses')}>
+              <Button className="w-full" onClick={() => router.push('/lms/admin/courses')}>
                 <Eye className="mr-2 h-4 w-4" />
                 Manage Courses
               </Button>
@@ -171,7 +171,7 @@ export default function AdminManagementTab({
               <p className="text-sm text-gray-600">
                 View daily reports, track performance, and generate insights.
               </p>
-              <Button className="w-full" onClick={() => router.push('/admin/reports')}>
+              <Button className="w-full" onClick={() => router.push('/lms/admin/reports')}>
                 <Eye className="mr-2 h-4 w-4" />
                 View Reports
               </Button>
@@ -193,7 +193,7 @@ export default function AdminManagementTab({
               <p className="text-sm text-gray-600">
                 Manage admin accounts, system configuration, and permissions.
               </p>
-              <Button className="w-full" onClick={() => router.push('/admin/settings')}>
+              <Button className="w-full" onClick={() => router.push('/lms/admin/settings')}>
                 <Eye className="mr-2 h-4 w-4" />
                 System Settings
               </Button>

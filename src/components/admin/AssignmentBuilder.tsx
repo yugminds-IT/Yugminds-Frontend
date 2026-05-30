@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -18,6 +18,7 @@ import {
   GripVertical
 } from "lucide-react";
 import { generateUUID } from "../../lib/uuid-utils";
+import { toast } from "@/components/ui/toast";
 
 export interface AssignmentQuestion {
   id?: string;
@@ -70,83 +71,10 @@ export function AssignmentBuilder({
     correct_answer: '',
     marks: '1',
   });
-  
-  // Track when assignment prop changes
-  useEffect(() => {
-    // CRITICAL: Ensure questions is always an array
-    const questionsArray = Array.isArray(assignment?.questions) ? assignment.questions : [];
-    
-    console.log('📥 [AssignmentBuilder] Assignment prop changed:', {
-      chapterId: chapterId,
-      chapterName: chapterName,
-      hasAssignment: !!assignment,
-      assignmentTitle: assignment?.title,
-      assignmentId: assignment?.id,
-      assignmentChapterId: assignment?.chapter_id,
-      chapterIdMatches: assignment?.chapter_id === chapterId,
-      questionsCount: questionsArray.length,
-      hasQuestions: questionsArray.length > 0,
-      questions: questionsArray.map((q: AssignmentQuestion) => ({
-        id: q.id,
-        question_type: q.question_type,
-        question_text: q.question_text?.substring(0, 30) + '...'
-      })),
-      rawQuestions: assignment?.questions,
-      questionsIsArray: Array.isArray(assignment?.questions),
-      questionsType: typeof assignment?.questions,
-      allAssignmentKeys: assignment ? Object.keys(assignment) : []
-    });
-    
-    // CRITICAL: Log if assignment has questions property but it's not an array
-    if (assignment && 'questions' in assignment && !Array.isArray(assignment.questions)) {
-      console.error('❌ [AssignmentBuilder] CRITICAL: questions property exists but is NOT an array!', {
-        assignmentId: assignment.id,
-        assignmentTitle: assignment.title,
-        questionsType: typeof assignment.questions,
-        questionsValue: assignment.questions,
-        allProperties: Object.keys(assignment)
-      });
-    }
-    
-    // CRITICAL: Explicitly log questions in a way that won't be collapsed
-    if (assignment) {
-      // Use console.group to make it expandable and visible
-      console.group('📋 [AssignmentBuilder] QUESTIONS CHECK');
-      console.log('Assignment ID:', assignment.id);
-      console.log('Assignment Title:', assignment.title);
-      console.log('Questions Count:', questionsArray.length);
-      console.log('Questions is Array:', Array.isArray(assignment.questions));
-      console.log('Questions Type:', typeof assignment.questions);
-      console.log('Has Questions Property:', 'questions' in assignment);
-      console.log('Questions Value:', assignment.questions);
-      console.log('Questions Array:', questionsArray);
-      
-      // Log each question individually so they're visible
-      if (questionsArray.length > 0) {
-        console.log('✅ QUESTIONS FOUND:', questionsArray.length);
-        questionsArray.forEach((q: AssignmentQuestion, idx: number) => {
-          console.log(`  Question ${idx + 1}:`, {
-            id: q.id,
-            type: q.question_type,
-            text: q.question_text?.substring(0, 50),
-            marks: q.marks
-          });
-        });
-      } else {
-        console.error('❌ NO QUESTIONS in assignment prop!');
-        console.error('All Properties:', Object.keys(assignment));
-        console.error('Questions Property:', assignment.questions);
-        console.error('Questions Type:', typeof assignment.questions);
-        console.error('Questions Is Array:', Array.isArray(assignment.questions));
-        console.error('Full Assignment:', JSON.parse(JSON.stringify(assignment)));
-      }
-      console.groupEnd();
-    }
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aa2d37a3-b977-45e9-919f-23aa5642fdcf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AssignmentBuilder.tsx:85',message:'Assignment prop received in AssignmentBuilder',data:{assignmentId:assignment?.id,assignmentTitle:assignment?.title,questionsCount:questionsArray.length,questions:questionsArray.map((q:AssignmentQuestion)=>({id:q.id,type:q.question_type})),willRender:questionsArray.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-  }, [assignment, chapterId, chapterName]);
+  // NOTE: Previous versions included extensive console debugging that treated
+  // an empty `questions: []` as an error. Empty questions are valid for new
+  // assignments, so we intentionally keep this component free of debug-only
+  // console.error noise.
 
   const openDialog = () => {
     if (assignment) {
@@ -193,129 +121,68 @@ export function AssignmentBuilder({
   };
 
   const handleSaveAssignment = () => {
-    // Validate required fields
     if (!formData.title.trim()) {
-      alert('Assignment title is required');
+      toast.warning('Assignment title is required.');
       return;
     }
-    
-    // Validate chapterId
     if (!chapterId) {
-      console.error('❌ [AssignmentBuilder] No chapterId provided!');
-      alert('Error: No chapter ID provided. Please try again.');
+      toast.error('No chapter ID provided. Please try again.');
       return;
     }
 
     const maxScore = parseInt(formData.max_score) || 100;
     const questions = assignment?.questions || [];
-
-    // Generate permanent ID if assignment doesn't have one
     const assignmentId = assignment?.id || generateUUID();
-    
+
     const updatedAssignment: Assignment = {
       ...assignment,
-      id: assignmentId, // Always ensure assignment has permanent ID
-      chapter_id: chapterId, // Always use permanent chapter ID
+      id: assignmentId,
+      chapter_id: chapterId,
       title: formData.title.trim(),
       description: formData.description.trim() || undefined,
       auto_grading_enabled: formData.auto_grading_enabled,
       max_score: maxScore,
       questions,
     };
-    
-    if (!assignment?.id) {
-      console.log('🆕 [AssignmentBuilder] Generated permanent ID for new assignment:', assignmentId);
-    }
-    
-    // Validate the assignment object
+
     if (!updatedAssignment.title || !updatedAssignment.chapter_id) {
-      console.error('❌ [AssignmentBuilder] Invalid assignment:', updatedAssignment);
-      alert('Error: Invalid assignment data. Please try again.');
+      toast.error('Invalid assignment data. Please try again.');
       return;
     }
 
-    console.log('📝 [AssignmentBuilder] Saving assignment:', {
-      title: updatedAssignment.title,
-      chapter_id: updatedAssignment.chapter_id,
-      chapterId: chapterId,
-      isNew: !updatedAssignment.id,
-      questionsCount: questions.length,
-      maxScore: maxScore,
-      autoGradingEnabled: updatedAssignment.auto_grading_enabled,
-      fullAssignment: updatedAssignment
-    });
-
-    // Call the callback BEFORE closing the dialog
-    // This ensures the parent component receives the assignment
-    console.log('📤 [AssignmentBuilder] About to call onAssignmentChange:', {
-      title: updatedAssignment.title,
-      chapter_id: updatedAssignment.chapter_id,
-      chapterId: chapterId,
-      isNew: !updatedAssignment.id,
-      questionsCount: updatedAssignment.questions?.length || 0,
-      fullAssignment: updatedAssignment,
-      callbackExists: typeof onAssignmentChange === 'function',
-      timestamp: Date.now()
-    });
-    
     try {
-      // Verify callback is a function
-      if (typeof onAssignmentChange !== 'function') {
-        console.error('❌ [AssignmentBuilder] onAssignmentChange is not a function!', {
-          type: typeof onAssignmentChange,
-          value: onAssignmentChange
-        });
-        alert('Error: Assignment callback is not available. Please refresh the page.');
-        return;
-      }
-      
-      console.log('📞 [AssignmentBuilder] Invoking onAssignmentChange callback...');
       onAssignmentChange(updatedAssignment);
-      console.log('✅ [AssignmentBuilder] onAssignmentChange callback completed successfully');
-      
-      // Wait a moment to verify the callback worked
-      setTimeout(() => {
-        console.log('🔍 [AssignmentBuilder] Post-callback verification (delayed check)');
-      }, 100);
-      
-    } catch (error) {
-      console.error('❌ [AssignmentBuilder] Error in onAssignmentChange:', error);
-      console.error('   Error details:', {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      });
-      alert('Error saving assignment. Please check console for details.');
+    } catch {
+      toast.error('Error saving assignment. Please try again.');
       return;
     }
-    
-    // Close dialog after callback completes
+
     closeDialog();
-    console.log('✅ [AssignmentBuilder] Dialog closed');
   };
 
   const handleSaveQuestion = () => {
     if (!questionFormData.question_text.trim()) {
-      alert('Question text is required');
+      toast.warning('Question text is required.');
       return;
     }
 
     if (questionFormData.question_type === 'MCQ') {
       const validOptions = questionFormData.options.filter((opt: string) => opt.trim());
       if (validOptions.length < 2) {
-        alert('MCQ questions must have at least 2 options');
+        toast.warning('MCQ questions must have at least 2 options.');
         return;
       }
       if (!questionFormData.correct_answer.trim()) {
-        alert('Please select a correct answer');
+        toast.warning('Please select a correct answer.');
         return;
       }
       if (!validOptions.includes(questionFormData.correct_answer)) {
-        alert('Correct answer must be one of the options');
+        toast.warning('Correct answer must be one of the options.');
         return;
       }
     } else {
       if (!questionFormData.correct_answer.trim()) {
-        alert('Correct answer is required for fill-in-the-blank questions');
+        toast.warning('Correct answer is required for fill-in-the-blank questions.');
         return;
       }
     }
@@ -350,20 +217,29 @@ export function AssignmentBuilder({
     closeQuestionDialog();
   };
 
+  const [pendingDeleteQuestionId, setPendingDeleteQuestionId] = useState<string | null>(null);
+  const [pendingDeleteAssignment, setPendingDeleteAssignment] = useState(false);
+
   const handleDeleteQuestion = (questionId: string | undefined) => {
     if (!questionId || !assignment?.questions) return;
-    if (confirm('Are you sure you want to delete this question?')) {
-      onAssignmentChange({
-        ...assignment,
-        questions: assignment.questions.filter((q: AssignmentQuestion) => q.id !== questionId),
-      });
-    }
+    setPendingDeleteQuestionId(questionId);
+  };
+
+  const confirmDeleteQuestion = (questionId: string) => {
+    onAssignmentChange({
+      ...assignment!,
+      questions: (assignment!.questions || []).filter((q: AssignmentQuestion) => q.id !== questionId),
+    });
+    setPendingDeleteQuestionId(null);
   };
 
   const handleDeleteAssignment = () => {
-    if (confirm('Are you sure you want to delete this assignment?')) {
-      onAssignmentChange(null);
-    }
+    setPendingDeleteAssignment(true);
+  };
+
+  const confirmDeleteAssignment = () => {
+    onAssignmentChange(null);
+    setPendingDeleteAssignment(false);
   };
 
   const updateOption = (index: number, value: string) => {
@@ -425,20 +301,31 @@ export function AssignmentBuilder({
                     <Edit className="h-4 w-4 mr-1" />
                     Edit
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDeleteAssignment();
-                    }}
-                    title="Delete assignment"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
-                  </Button>
+                  {pendingDeleteAssignment ? (
+                    <>
+                      <Button type="button" variant="destructive" size="sm" onClick={confirmDeleteAssignment}>
+                        Confirm Delete
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPendingDeleteAssignment(false)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDeleteAssignment();
+                      }}
+                      title="Delete assignment"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete
+                    </Button>
+                  )}
                 </>
               ) : (
                 <Button
@@ -488,36 +375,8 @@ export function AssignmentBuilder({
               </div>
 
               {(() => {
-                // CRITICAL: Ensure questions is always an array for rendering
                 const questionsArray = Array.isArray(assignment.questions) ? assignment.questions : [];
-                const hasQuestions = questionsArray.length > 0;
-                
-                // Debug logging removed to fix React purity violation
-                
-                // CRITICAL: Log if questions should be shown but aren't
-                if (assignment && 'questions' in assignment && !hasQuestions) {
-                  console.error('❌ [AssignmentBuilder] CRITICAL: Assignment has questions property but rendering shows 0!', {
-                    assignmentId: assignment.id,
-                    assignmentTitle: assignment.title,
-                    questionsProperty: assignment.questions,
-                    questionsType: typeof assignment.questions,
-                    questionsIsArray: Array.isArray(assignment.questions),
-                    questionsLength: Array.isArray(assignment.questions) ? assignment.questions.length : 'N/A',
-                    allProperties: Object.keys(assignment)
-                  });
-                }
-                
-                // CRITICAL: Log the questions array being used for rendering
-                console.log('🎨 [AssignmentBuilder] Rendering questions:', {
-                  assignmentId: assignment.id,
-                  assignmentTitle: assignment.title,
-                  questionsArrayLength: questionsArray.length,
-                  hasQuestions: hasQuestions,
-                  willRender: hasQuestions,
-                  questions: questionsArray.map((q: AssignmentQuestion) => ({ id: q.id, type: q.question_type }))
-                });
-                
-                return hasQuestions;
+                return questionsArray.length > 0;
               })() ? (
                 <div className="space-y-2">
                   {(() => {
@@ -568,28 +427,41 @@ export function AssignmentBuilder({
                         )}
                       </div>
                       {!disabled && (
-                        <div className="flex gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openQuestionDialog(question)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDeleteQuestion(question.id);
-                            }}
-                            title="Delete question"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                        <div className="flex gap-1 items-center">
+                          {pendingDeleteQuestionId === question.id ? (
+                            <>
+                              <Button type="button" variant="destructive" size="sm" onClick={() => confirmDeleteQuestion(question.id!)}>
+                                Confirm
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" onClick={() => setPendingDeleteQuestionId(null)}>
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openQuestionDialog(question)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDeleteQuestion(question.id);
+                                }}
+                                title="Delete question"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -598,15 +470,6 @@ export function AssignmentBuilder({
               ) : (
                 <div className="text-sm text-gray-500 text-center py-4">
                   <p>No questions added yet. Click &quot;Add Question&quot; to get started.</p>
-                  {/* Debug info */}
-                  {assignment && 'questions' in assignment && (
-                    <p className="text-xs text-red-500 mt-2">
-                      Debug: questions property exists but is {typeof assignment.questions === 'undefined' ? 'undefined' : 
-                        assignment.questions === null ? 'null' : 
-                        Array.isArray(assignment.questions) ? `array with ${assignment.questions.length} items` : 
-                        `not an array (${typeof assignment.questions})`}
-                    </p>
-                  )}
                 </div>
               )}
             </div>

@@ -5,28 +5,44 @@ const baseUrl =
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
   "https://website-lms-seven.vercel.app";
 
-/**
- * Public pages to include in sitemap. These are the main entry points
- * that help search engines (and sitelinks) discover your site structure.
- * Excludes dashboard/admin/teacher/student areas (auth-required).
- */
-const publicRoutes: { path: string; changeFrequency: "weekly" | "monthly" | "yearly"; priority: number }[] = [
-  { path: "", changeFrequency: "weekly", priority: 1 },
-  { path: "/about", changeFrequency: "monthly", priority: 0.9 },
-  { path: "/programs", changeFrequency: "monthly", priority: 0.9 },
-  { path: "/success-stories", changeFrequency: "weekly", priority: 0.9 },
-  { path: "/for-schools", changeFrequency: "monthly", priority: 0.9 },
-  { path: "/for-parents", changeFrequency: "monthly", priority: 0.9 },
-  { path: "/contact", changeFrequency: "monthly", priority: 0.8 },
-  { path: "/login", changeFrequency: "yearly", priority: 0.5 },
-  { path: "/signup", changeFrequency: "yearly", priority: 0.5 },
-  { path: "/student-registration", changeFrequency: "yearly", priority: 0.5 },
+type Route = {
+  path: string;
+  changeFrequency: "weekly" | "monthly" | "yearly";
+  priority: number;
+};
+
+// YugMinds company homepage
+const yugmindsRoutes: Route[] = [
+  { path: "/", changeFrequency: "weekly", priority: 1.0 },
 ];
+
+// Robocoders public marketing pages
+const robocodersRoutes: Route[] = [
+  { path: "/robocoders", changeFrequency: "weekly", priority: 0.95 },
+  { path: "/robocoders/about", changeFrequency: "monthly", priority: 0.8 },
+  { path: "/robocoders/programs", changeFrequency: "monthly", priority: 0.9 },
+  { path: "/robocoders/community", changeFrequency: "weekly", priority: 0.85 },
+  { path: "/robocoders/for-schools", changeFrequency: "monthly", priority: 0.85 },
+  { path: "/robocoders/for-parents", changeFrequency: "monthly", priority: 0.85 },
+  { path: "/robocoders/contact", changeFrequency: "monthly", priority: 0.75 },
+  { path: "/robocoders/success-stories", changeFrequency: "monthly", priority: 0.7 },
+];
+
+// LMS auth pages only — dashboards/portals are auth-gated, excluded from sitemap
+const lmsPublicRoutes: Route[] = [
+  { path: "/lms/login", changeFrequency: "yearly", priority: 0.5 },
+  { path: "/lms/signup", changeFrequency: "yearly", priority: 0.5 },
+  { path: "/lms/student-registration", changeFrequency: "yearly", priority: 0.5 },
+  { path: "/lms/forgot-password", changeFrequency: "yearly", priority: 0.3 },
+];
+
+const allRoutes = [...yugmindsRoutes, ...robocodersRoutes, ...lmsPublicRoutes];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  return publicRoutes.map(({ path, changeFrequency, priority }) => ({
-    url: path ? `${baseUrl.replace(/\/$/, "")}${path}` : baseUrl.replace(/\/$/, ""),
+  const base = baseUrl.replace(/\/$/, "");
+  return allRoutes.map(({ path, changeFrequency, priority }) => ({
+    url: path === "/" ? base : `${base}${path}`,
     lastModified,
     changeFrequency,
     priority,

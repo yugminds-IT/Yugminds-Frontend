@@ -393,7 +393,7 @@ export default function SchoolAdminOverviewStudentProgress() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => router.push('/school-admin/reports?tab=student-progress')}
+              onClick={() => router.push('/lms/school-admin/reports?tab=student-progress')}
               className="text-xs"
             >
               View Full Report

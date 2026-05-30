@@ -90,7 +90,7 @@ export interface UseAutoSaveFormOptions<T> {
  * });
  * ```
  */
-export function useAutoSaveForm<T extends Record<string, unknown>>(
+export function useAutoSaveForm<T extends object>(
   options: UseAutoSaveFormOptions<T>
 ) {
   const {

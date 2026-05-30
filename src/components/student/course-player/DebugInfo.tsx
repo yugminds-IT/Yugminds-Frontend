@@ -2,20 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
+import { getStoredUserId, getStoredSession } from '../../../lib/session-utils'
+import { studentApi } from '../../../lib/api'
 import { Card } from '../../ui/card'
 
 interface DebugData {
-  user?: { id: string; email: string } | null
+  userId?: string | null
   hasSession?: boolean
   hasToken?: boolean
   courseId?: string
   chapterId?: string
-  chapter?: { data: unknown; error: unknown }
   course?: { data: unknown; error: unknown }
-  studentSchool?: { data: unknown; error: unknown }
-  courseAccess?: { data: unknown; error: unknown }
-  enrollment?: { data: unknown; error: unknown }
+  chapters?: { data: unknown; error: unknown }
   error?: string
 }
 
@@ -28,55 +26,37 @@ export default function DebugInfo() {
   useEffect(() => {
     const runDebug = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        const { data: { session } } = await supabase.auth.getSession()
+        const userId = getStoredUserId()
+        const session = getStoredSession()
         
-        // Test direct chapter query
-        const { data: chapter, error: chapterError } = await supabase
-          .from('chapters')
-          .select('*')
-          .eq('id', chapterId)
-          .maybeSingle()
+        let courseData: unknown = null
+        let courseError: unknown = null
+        let chaptersData: unknown = null
+        let chaptersError: unknown = null
 
-        // Test direct course query
-        const { data: course, error: courseError } = await supabase
-          .from('courses')
-          .select('*')
-          .eq('id', courseId)
-          .maybeSingle()
+        try {
+          const res = await studentApi.courses.list()
+          const courses = (res.data as { courses?: Array<{ id: string }> })?.courses || []
+          courseData = courses.find(c => c.id === courseId) ?? null
+        } catch (e) {
+          courseError = e instanceof Error ? e.message : String(e)
+        }
 
-        // Test student school
-        const { data: studentSchool, error: schoolError } = await supabase
-          .from('student_schools')
-          .select('*')
-          .eq('student_id', user?.id ?? '')
-          .eq('is_active', true)
-          .maybeSingle()
-
-        // Test course access
-        const { data: courseAccess, error: accessError } = await supabase
-          .from('course_access')
-          .select('*')
-          .eq('course_id', courseId ?? '')
-
-        // Test enrollment
-        const { data: enrollment, error: enrollmentError } = await supabase
-          .from('enrollments')
-          .select('*')
-          .eq('student_id', user?.id ?? '')
-          .eq('course_id', courseId ?? '')
+        try {
+          const res = await studentApi.courses.getChapters(courseId)
+          chaptersData = (res.data as { chapters?: unknown[] })?.chapters || []
+        } catch (e) {
+          chaptersError = e instanceof Error ? e.message : String(e)
+        }
 
         setDebugData({
-          user: user ? { id: user.id, email: user.email ?? '' } : null,
+          userId,
           hasSession: !!session,
           hasToken: !!session?.access_token,
           courseId,
           chapterId,
-          chapter: { data: chapter, error: chapterError },
-          course: { data: course, error: courseError },
-          studentSchool: { data: studentSchool, error: schoolError },
-          courseAccess: { data: courseAccess, error: accessError },
-          enrollment: { data: enrollment, error: enrollmentError },
+          course: { data: courseData, error: courseError },
+          chapters: { data: chaptersData, error: chaptersError },
         })
       } catch (error) {
         setDebugData({ error: error instanceof Error ? error.message : String(error) })

@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../lib/supabase';
-import { getInactivityTimeout, getInactivityWarningTime } from '../lib/activity-tracker';
 import { addTokensToHeaders } from '../lib/csrf-client';
+import { apiClient, withParams } from '../lib/api';
+import { clearStoredSession, getStoredUserId, getSession } from '../lib/session-utils';
 
 // Key used to mark that a fresh login just happened
 const FRESH_LOGIN_KEY = 'fresh_login_timestamp';
@@ -93,21 +93,19 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
   const hasShownAlertRef = useRef(false);
   const isFirstCheckRef = useRef(true);
 
-  const handleInvalidSession = useCallback((reason: string, message: string) => {
+  const _handleInvalidSession = useCallback((reason: string, message: string) => {
     setIsValid(false);
     
     if (onSessionInvalid) {
       onSessionInvalid(reason, message);
     }
     
-    // SECURITY: Session token cookie is httpOnly, so it can't be cleared client-side
-    // The server-side validation endpoint already clears it when invalidating
-    // Just sign out from Supabase - cookie will be cleared on next request or by server
-    
-    // Sign out from Supabase
-    supabase.auth.signOut().catch((err) => {
-      console.error('Error signing out:', err);
-    });
+    // Clear locally stored session (backend tokens)
+    try {
+      clearStoredSession();
+    } catch (err) {
+      console.error('Error clearing stored session:', err);
+    }
     
     if (showAlert && !hasShownAlertRef.current) {
       hasShownAlertRef.current = true;
@@ -126,7 +124,7 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
     if (redirectOnInvalid) {
       // Small delay to ensure alert is shown
       setTimeout(() => {
-        router.push('/login');
+        router.push('/lms/login');
       }, 100);
     }
   }, [onSessionInvalid, redirectOnInvalid, showAlert, router]);
@@ -149,19 +147,11 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
         return true;
       }
 
-      // Get current user from Supabase auth
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError) {
-        console.warn('Auth error during session check:', authError.message);
-        // Don't immediately invalidate on auth errors - might be temporary
-        return isValid;
-      }
-      
-      if (!user) {
+      const userId = getStoredUserId();
+      if (!userId) {
         // No user - but don't show error if we're on login-related pages
         const currentPath = window.location.pathname;
-        if (currentPath === '/login' || currentPath === '/signup' || currentPath.startsWith('/auth')) {
+        if (currentPath === '/lms/login' || currentPath === '/lms/signup' || currentPath.startsWith('/lms/auth')) {
           return true; // It's fine to not have a user on auth pages
         }
         
@@ -170,70 +160,12 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
         // - If user just logged in, Supabase auth state will update soon
         // - If no valid session, redirect to login
         if (redirectOnInvalid) {
-          router.push('/login');
+          router.push('/lms/login');
         }
         return false;
       }
 
-      // NOTE: Using Supabase sessions only - no custom session validation needed
-      // Supabase handles session validation automatically
-      // The session is validated by checking if user exists and is authenticated
-      
-      // Check inactivity timeout
-      try {
-        const headers = await addTokensToHeaders();
-        const activityResponse = await fetch('/api/auth/activity', {
-          method: 'GET',
-          headers,
-          credentials: 'include',
-        });
-
-        if (activityResponse.ok) {
-          const activityData = await activityResponse.json();
-          const lastActivity = activityData.last_activity;
-          
-          // If no activity data (user not authenticated), skip inactivity check
-          if (lastActivity) {
-            const lastActivityTime = new Date(lastActivity).getTime();
-            const now = Date.now();
-            const timeSinceActivity = now - lastActivityTime;
-            const inactivityTimeout = getInactivityTimeout();
-            const inactivityWarning = getInactivityWarningTime();
-
-            // Check if session has expired due to inactivity
-            if (timeSinceActivity > inactivityTimeout) {
-              console.log(`Session expired due to inactivity (${Math.round(timeSinceActivity / 60000)} minutes)`);
-              handleInvalidSession(
-                'SESSION_INACTIVE',
-                'Your session has expired due to inactivity. Please log in again.'
-              );
-              return false;
-            }
-
-            // Show warning if approaching timeout (but not too frequently)
-            if (timeSinceActivity > inactivityWarning && !hasShownAlertRef.current) {
-              const minutesRemaining = Math.round((inactivityTimeout - timeSinceActivity) / 60000);
-              if (minutesRemaining > 0 && minutesRemaining <= 5) {
-                console.log(`Warning: Session will expire in ${minutesRemaining} minutes due to inactivity`);
-                // Optionally show a warning to the user
-                // You can customize this behavior
-              }
-            }
-          } else {
-            console.log('No activity data available, skipping inactivity check');
-            // Continue with session validation - don't fail just because activity tracking isn't available
-          }
-        } else if (activityResponse.status === 401) {
-          // 401 is expected if user is not authenticated - don't treat as error
-          console.log('Activity endpoint returned 401 - user may not be authenticated, skipping inactivity check');
-        } else {
-          // Other errors - log but don't fail session check
-          console.warn('Activity check returned non-ok status:', activityResponse.status);
-        }
-      } catch (activityError) {
-        // Don't fail session check if activity check fails
-        console.warn('Error checking activity:', activityError);
-      }
+      // Skip inactivity-based validation for now; auth token validity is handled by the backend.
       
       // Mark first check as done
       isFirstCheckRef.current = false;
@@ -250,30 +182,34 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
       setIsChecking(false);
       checkInProgressRef.current = false;
     }
-  }, [handleInvalidSession, isValid, redirectOnInvalid, router]);
+  }, [isValid, redirectOnInvalid, router]);
 
   const logout = useCallback(async () => {
     try {
-      // Sign out from Supabase (this handles all session management)
-      // Supabase automatically clears its own session cookies
-      await supabase.auth.signOut();
-
-      // Clear any local storage
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.removeItem('supabase.auth.token');
-          sessionStorage.clear();
-        } catch (e) {
-          console.log('Could not clear storage:', e);
+      // Best-effort server logout (if your backend supports it),
+      // but always clear local tokens to ensure UI logs out.
+      try {
+        const { data } = await getSession();
+        const token = data.session?.access_token;
+        if (token) {
+          await apiClient.post(
+            '/api/auth/logout',
+            {},
+            { headers: { Authorization: `Bearer ${token}` }, validateStatus: (s) => s >= 200 && s < 500 }
+          );
         }
+      } catch {
+        // ignore
       }
 
+      clearStoredSession();
+
       // Redirect to login
-      window.location.href = '/login';
+      window.location.href = '/lms/login';
     } catch (error) {
       console.error('Error during logout:', error);
       // Force redirect even on error
-      window.location.href = '/login';
+      window.location.href = '/lms/login';
     }
   }, []);
 
@@ -375,28 +311,32 @@ export function useRoleValidation(requiredRole: string | string[]) {
     const validateRole = async () => {
       try {
         setIsLoading(true);
-        
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          router.push('/login');
+
+        const userId = getStoredUserId();
+        if (!userId) {
+          router.push('/lms/login');
           return;
         }
 
         // Get role from API
         const headers = await addTokensToHeaders();
-        const response = await fetch(`/api/get-role?userId=${user.id}`, {
-          headers
+        const response = await apiClient.get(withParams('/get-role', { userId }), {
+          headers: headers as Record<string, string>,
+          validateStatus: (status) => status >= 200 && status < 500,
         });
-        const data = await response.json();
+        const data = response.data as { error?: string; role?: string };
 
-        if (data.error) {
-          console.error('Error getting role:', data.error);
-          router.push('/login');
+        if (response.status !== 200 || data?.error) {
+          console.error('Error getting role:', data?.error || `HTTP ${response.status}`);
+          router.push('/lms/login');
           return;
         }
 
         const role = data.role;
+        if (!role) {
+          router.push('/lms/login');
+          return;
+        }
         setUserRole(role);
 
         // Check if user has required role
@@ -413,7 +353,7 @@ export function useRoleValidation(requiredRole: string | string[]) {
         setIsValidRole(true);
       } catch (error) {
         console.error('Error validating role:', error);
-        router.push('/login');
+        router.push('/lms/login');
       } finally {
         setIsLoading(false);
       }

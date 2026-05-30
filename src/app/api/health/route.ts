@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { performHealthCheck } from '../../../lib/monitoring';
+import { performHealthCheck, type HealthCheckResult } from '../../../lib/monitoring';
 
 /**
  * Health Check Endpoint
@@ -11,17 +11,17 @@ import { performHealthCheck } from '../../../lib/monitoring';
  * - API metrics
  */
 // Cache health check result for 5 seconds to avoid repeated database calls
-let cachedHealthCheck: { result: Awaited<ReturnType<typeof performHealthCheck>>; timestamp: number } | null = null;
+let cachedHealthCheck: { result: HealthCheckResult; timestamp: number } | null = null;
 const HEALTH_CHECK_CACHE_TTL = 5000; // 5 seconds
 
+function httpStatusFor(result: HealthCheckResult): number {
+  return result.status === 'unhealthy' ? 503 : 200;
+}
+
 export async function GET(_request: NextRequest) {
-  // Skip CSRF and rate limiting for health check to make it fast
-  // Health checks should be lightweight and fast
-  
-  // Return cached result if available and fresh
   const now = Date.now();
   if (cachedHealthCheck && (now - cachedHealthCheck.timestamp) < HEALTH_CHECK_CACHE_TTL) {
-    return NextResponse.json(cachedHealthCheck.result, { status: 200 });
+    return NextResponse.json(cachedHealthCheck.result, { status: httpStatusFor(cachedHealthCheck.result) });
   }
   
   try {
@@ -39,31 +39,21 @@ export async function GET(_request: NextRequest) {
       timestamp: now
     };
     
-    const statusCode = healthCheck.status === 'healthy' ? 200 
-      : healthCheck.status === 'degraded' ? 200 
-      : 503;
-
-    return NextResponse.json(healthCheck, { status: statusCode });
+    return NextResponse.json(healthCheck, { status: httpStatusFor(healthCheck) });
   } catch {
-    // On timeout or error, return a minimal healthy response immediately
-    // This prevents health checks from blocking and ensures fast response
     const fallbackResult = {
-      status: 'healthy' as const,
+      status: 'unhealthy' as const,
       timestamp: Date.now(),
       checks: {
-        database: { status: 'healthy' as const, responseTime: 0 },
-        cache: { status: 'healthy' as const, size: 0, maxSize: 0 },
-        api: { status: 'healthy' as const, totalRequests: 0, errorRate: 0, averageResponseTime: 0 }
+        database: { status: 'unhealthy' as const, responseTime: 0 },
+        cache: { status: 'unhealthy' as const, size: 0, maxSize: 0 },
+        api: { status: 'unhealthy' as const, totalRequests: 0, errorRate: 0, averageResponseTime: 0 }
       }
     };
-    
-    // Cache the fallback result
-    cachedHealthCheck = {
-      result: fallbackResult,
-      timestamp: now
-    };
-    
-    return NextResponse.json(fallbackResult, { status: 200 });
+
+    cachedHealthCheck = { result: fallbackResult, timestamp: now };
+
+    return NextResponse.json(fallbackResult, { status: 503 });
   }
 }
 

@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "./ui/dialog";
-import { 
+import {
   Key,
   Copy,
   RefreshCw,
@@ -36,7 +36,8 @@ import {
   TableHeader, 
   TableRow 
 } from "./ui/table";
-import { fetchWithCsrf } from "../lib/csrf-client";
+import { adminApi } from "../lib/api/admin.api";
+import { useAdminSchools } from "../hooks/useAdminSchools";
 
 interface JoiningCode {
   id: string;
@@ -70,7 +71,6 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
   const [codes, setCodes] = useState<JoiningCode[]>([]);
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [schoolGrades, setSchoolGrades] = useState<string[]>([]);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editedCodes, setEditedCodes] = useState<Record<string, Partial<JoiningCode>>>({});
   
@@ -82,11 +82,24 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
   
   // Notification state
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [pendingBulkGrades, setPendingBulkGrades] = useState<string[] | null>(null);
+  const [regenerateTarget, setRegenerateTarget] = useState<JoiningCode | null>(null);
+
+  const { schools } = useAdminSchools();
+  const schoolGrades = useMemo(() => {
+    if (!schoolId || !schools?.length) return [];
+    const item = (schools as Array<Record<string, unknown>>).find((s) => s.id === schoolId);
+    const grades =
+      item?.gradesOffered ??
+      item?.grades_offered ??
+      (item?.grades && Array.isArray(item.grades) ? (item.grades as { name: string }[]).map((g) => g.name) : null) ??
+      (item as { school?: { grades_offered?: string[] } })?.school?.grades_offered;
+    return Array.isArray(grades) ? grades : [];
+  }, [schoolId, schools]);
 
   useEffect(() => {
     if (isOpen && schoolId) {
       fetchCodes();
-      fetchSchoolGrades();
       setShowAddForm(false);
       setEditingCode(null);
       setEditedCodes({});
@@ -102,41 +115,16 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
   const fetchCodes = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/joining-codes?schoolId=${schoolId || 'undefined'}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCodes(data.codes || data.joinCodes || []);
-      } else {
-        showNotification('error', 'Failed to fetch joining codes');
-      }
+      const { data } = await adminApi.joiningCodes.list({ schoolId: schoolId || "undefined" });
+      const payload = (data as Record<string, unknown> | undefined) ?? {};
+      const raw = (payload.codes ?? payload.joinCodes ?? payload) as unknown;
+      setCodes(Array.isArray(raw) ? (raw as JoiningCode[]) : []);
     } catch (error) {
       console.error('Error fetching codes:', error);
       showNotification('error', 'Failed to fetch joining codes');
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchSchoolGrades = async () => {
-    try {
-      const response = await fetch(`/api/admin/schools`);
-      if (response.ok) {
-        const data = await response.json();
-         
-        const school = data.schools?.find((s: { id: string }) => s.id === schoolId);
-        if (school && school.grades_offered) {
-          setSchoolGrades(school.grades_offered);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching school grades:', error);
-    }
-  };
-
-  // Get available grades (grades without active codes)
-  const getAvailableGrades = () => {
-    const gradesWithCodes = codes.filter((c: JoiningCode) => c.is_active).map((c: JoiningCode) => c.grade);
-    return schoolGrades.filter((grade: string) => !gradesWithCodes.includes(grade));
   };
 
   const handleGradeToggle = (grade: string) => {
@@ -149,85 +137,69 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
     });
   };
 
+  const runBulkGenerate = async () => {
+    setGenerating(true);
+    try {
+      const { data } = await adminApi.joiningCodes.create({
+        schoolId,
+        grades: selectedGrades,
+        usageType: newCodeUsageType,
+        maxUses: newCodeMaxUses,
+      });
+      const payload = (data as Record<string, unknown>) ?? {};
+      const generatedCount = Object.keys(
+        (payload.codes as Record<string, unknown>) || {},
+      ).length;
+      showNotification(
+        "success",
+        `Successfully generated ${generatedCount} joining code(s) for ${
+          generatedCount === 1 ? selectedGrades[0] : `${generatedCount} grades`
+        }!`,
+      );
+      setSelectedGrades([]);
+      setNewCodeUsageType("multiple");
+      setNewCodeMaxUses(null);
+      setShowAddForm(false);
+      setPendingBulkGrades(null);
+      fetchCodes();
+    } catch (error) {
+      console.error("Error generating codes:", error);
+      showNotification("error", "Failed to generate codes");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const generateCodesForGrades = async () => {
     if (selectedGrades.length === 0) {
-      showNotification('error', 'Please select at least one grade');
+      showNotification("error", "Please select at least one grade");
       return;
     }
 
-    // Warn if any selected grade already has an active code, but allow generation
     const gradesWithCodes = selectedGrades.filter((grade: string) => {
       const existingCode = codes.find((c: JoiningCode) => c.grade === grade && c.is_active);
       return existingCode !== undefined;
     });
 
     if (gradesWithCodes.length > 0) {
-      const proceed = confirm(
-        `The following grades already have active codes: ${gradesWithCodes.join(', ')}\n\n` +
-        `New codes will be created for these grades. The existing codes will remain active.\n\n` +
-        `Do you want to continue?`
-      );
-      if (!proceed) {
-        return;
-      }
+      setPendingBulkGrades(gradesWithCodes);
+      return;
     }
 
-    setGenerating(true);
-    try {
-      const response = await fetchWithCsrf('/api/admin/joining-codes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          schoolId,
-          grades: selectedGrades,
-          usageType: newCodeUsageType,
-          maxUses: newCodeMaxUses
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const generatedCount = Object.keys(data.codes || {}).length;
-        showNotification('success', `Successfully generated ${generatedCount} joining code(s) for ${generatedCount === 1 ? selectedGrades[0] : `${generatedCount} grades`}!`);
-        setSelectedGrades([]);
-        setNewCodeUsageType('multiple');
-        setNewCodeMaxUses(null);
-        setShowAddForm(false);
-        fetchCodes();
-      } else {
-        const errorData = await response.json();
-        showNotification('error', errorData.error || 'Failed to generate codes');
-      }
-    } catch (error) {
-      console.error('Error generating codes:', error);
-      showNotification('error', 'Failed to generate codes');
-    } finally {
-      setGenerating(false);
-    }
+    await runBulkGenerate();
   };
 
   const handleUsageTypeToggle = async (code: JoiningCode, newUsageType: 'single' | 'multiple') => {
     try {
-      const response = await fetchWithCsrf('/api/admin/joining-codes', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          codeId: code.id,
-          usageType: newUsageType
-        }),
+      await adminApi.joiningCodes.update({
+        codeId: code.id,
+        usageType: newUsageType,
       });
-
-      if (response.ok) {
-        showNotification('success', `Usage type updated to ${newUsageType === 'single' ? 'single-use' : 'multiple-use'}`);
-        fetchCodes();
-      } else {
-        const errorData = await response.json();
-        showNotification('error', errorData.error || 'Failed to update usage type');
-      }
+      showNotification(
+        'success',
+        `Usage type updated to ${newUsageType === 'single' ? 'single-use' : 'multiple-use'}`
+      );
+      fetchCodes();
     } catch (error) {
       console.error('Error updating usage type:', error);
       showNotification('error', 'Failed to update usage type');
@@ -236,24 +208,12 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
 
   const handleCodeStatusToggle = async (code: JoiningCode, isActive: boolean) => {
     try {
-      const response = await fetchWithCsrf('/api/admin/joining-codes', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code: code.code,
-          isActive
-        }),
+      await adminApi.joiningCodes.update({
+        code: code.code,
+        isActive,
       });
-
-      if (response.ok) {
-        showNotification('success', `Code ${isActive ? 'activated' : 'deactivated'} successfully`);
-        fetchCodes();
-      } else {
-        const errorData = await response.json();
-        showNotification('error', errorData.error || 'Failed to toggle code status');
-      }
+      showNotification('success', `Code ${isActive ? 'activated' : 'deactivated'} successfully`);
+      fetchCodes();
     } catch (error) {
       console.error('Error toggling code status:', error);
       showNotification('error', 'Failed to toggle code status');
@@ -286,33 +246,21 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
     }
 
     try {
-      const response = await fetchWithCsrf('/api/admin/joining-codes', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          codeId: code.id,
-          code: edited.code || code.code,
-          usageType: edited.usage_type || code.usage_type,
-          maxUses: edited.max_uses !== undefined ? edited.max_uses : code.max_uses,
-          expiresAt: edited.expires_at || code.expires_at
-        }),
+      await adminApi.joiningCodes.update({
+        codeId: code.id,
+        code: edited.code || code.code,
+        usageType: edited.usage_type || code.usage_type,
+        maxUses: edited.max_uses !== undefined ? edited.max_uses : code.max_uses,
+        expiresAt: edited.expires_at || code.expires_at,
       });
-
-      if (response.ok) {
-        showNotification('success', 'Code updated successfully!');
-        setEditingCode(null);
-        setEditedCodes(prev => {
-          const newState = { ...prev };
-          delete newState[code.id];
-          return newState;
-        });
-        fetchCodes();
-      } else {
-        const errorData = await response.json();
-        showNotification('error', errorData.error || 'Failed to update code');
-      }
+      showNotification('success', 'Code updated successfully!');
+      setEditingCode(null);
+      setEditedCodes(prev => {
+        const newState = { ...prev };
+        delete newState[code.id];
+        return newState;
+      });
+      fetchCodes();
     } catch (error) {
       console.error('Error updating code:', error);
       showNotification('error', 'Failed to update code');
@@ -338,41 +286,28 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
     }
   };
 
-  const regenerateCode = async (code: JoiningCode) => {
-    if (!confirm(`Are you sure you want to regenerate the code for ${code.grade}? This will deactivate the current code and create a new one.`)) {
-      return;
-    }
-
+  const runRegenerate = async (code: JoiningCode) => {
     setRegenerating(code.id);
     try {
-      const response = await fetchWithCsrf('/api/admin/joining-codes', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code: code.code,
-          schoolId,
-          grade: code.grade
-        }),
+      await adminApi.joiningCodes.update({
+        code: code.code,
+        schoolId,
+        grade: code.grade,
+        regenerate: true,
       });
-
-      if (response.ok) {
-        showNotification('success', 'Code regenerated successfully');
-        fetchCodes();
-      } else {
-        const errorData = await response.json();
-        showNotification('error', errorData.error || 'Failed to regenerate code');
-      }
+      showNotification("success", "Code regenerated successfully");
+      setRegenerateTarget(null);
+      fetchCodes();
     } catch (error) {
-      console.error('Error regenerating code:', error);
-      showNotification('error', 'Failed to regenerate code');
+      console.error("Error regenerating code:", error);
+      showNotification("error", "Failed to regenerate code");
     } finally {
       setRegenerating(null);
     }
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto bg-white">
         <DialogHeader className="pb-4">
@@ -456,10 +391,6 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log('Add Code button clicked');
-                          console.log('School grades:', schoolGrades);
-                          console.log('Available grades:', getAvailableGrades());
-                          console.log('Current codes:', codes);
                           setShowAddForm(true);
                         }}
                         className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white"
@@ -801,7 +732,7 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => regenerateCode(code)}
+                                        onClick={() => setRegenerateTarget(code)}
                                         disabled={regenerating === code.id}
                                         title="Regenerate code"
                                       >
@@ -864,5 +795,69 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog
+      open={pendingBulkGrades !== null}
+      onOpenChange={(open) => !open && setPendingBulkGrades(null)}
+    >
+      <DialogContent className="bg-white sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Generate additional codes?</DialogTitle>
+          <DialogDescription>
+            These grades already have active codes:{" "}
+            <span className="font-medium text-gray-900">
+              {pendingBulkGrades?.join(", ")}
+            </span>
+            . New codes will be created; existing codes stay active until you deactivate them.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setPendingBulkGrades(null)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              void runBulkGenerate();
+            }}
+            disabled={generating}
+          >
+            {generating ? "Generating…" : "Continue"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
+      open={regenerateTarget !== null}
+      onOpenChange={(open) => !open && setRegenerateTarget(null)}
+    >
+      <DialogContent className="bg-white sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Regenerate joining code?</DialogTitle>
+          <DialogDescription>
+            {regenerateTarget
+              ? `This will deactivate the current code for ${regenerateTarget.grade} and create a new one.`
+              : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setRegenerateTarget(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={!regenerateTarget || regenerating === regenerateTarget.id}
+            onClick={() => {
+              if (regenerateTarget) void runRegenerate(regenerateTarget);
+            }}
+          >
+            {regenerateTarget && regenerating === regenerateTarget.id
+              ? "Working…"
+              : "Regenerate"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

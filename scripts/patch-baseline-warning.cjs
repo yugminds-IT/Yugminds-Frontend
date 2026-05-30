@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Patches the baseline-browser-mapping "data over two months old" warning
  * so it does not appear during build. The warning comes from:

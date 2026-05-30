@@ -5,7 +5,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const nextConfig = {
-  typescript: { ignoreBuildErrors: true },
+  typescript: { ignoreBuildErrors: false },
   images: {
     remotePatterns: [
       {
@@ -16,23 +16,14 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
-      {
-        protocol: 'https',
-        hostname: 'xyaxjscxqcyqesmmlybh.supabase.co',
-      },
-      {
-        protocol: 'https',
-        hostname: '**.supabase.co',
-        pathname: '/storage/v1/object/**',
-      },
     ],
     formats: ['image/avif', 'image/webp'], // AVIF is prioritized over WebP for better compression
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     qualities: [60, 75, 85], // Add support for different quality levels
     minimumCacheTTL: 31536000, // Cache optimized images for 1 year (static content)
-    dangerouslyAllowSVG: true,
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    // SECURITY: SVG files can contain inline scripts - disabled for security
+    dangerouslyAllowSVG: false,
   },
   // Ensure CSS is processed correctly
   transpilePackages: [],
@@ -114,13 +105,6 @@ const nextConfig = {
               test: /[\\/]node_modules[\\/](lucide-react|@tabler)[\\/]/,
               chunks: 'all',
               priority: 35,
-            },
-            // Supabase and related libraries
-            supabase: {
-              name: 'supabase',
-              test: /[\\/]node_modules[\\/]@supabase[\\/]/,
-              chunks: 'all',
-              priority: 33,
             },
             // Other large vendor libraries
             vendor: {

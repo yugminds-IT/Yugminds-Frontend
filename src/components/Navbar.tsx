@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { supabase } from "../lib/supabase";
 import { Button } from "./ui/button";
 import { 
   Menu, 
@@ -17,6 +16,8 @@ import {
   GraduationCap,
   UserCheck
 } from "lucide-react";
+import { apiClient, withParams } from "../lib/api";
+import { clearStoredSession, getSession, getStoredUserId } from "../lib/session-utils";
 
 interface UserProfile {
   id: string;
@@ -33,47 +34,56 @@ export default function Navbar() {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Get initial user
     const getUser = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('id, email, full_name, role, created_at, updated_at')
-          .eq('id', authUser.id)
-           
-          .single();
-        setUser(profile);
+      try {
+        const userId = getStoredUserId();
+        const { data } = await getSession();
+        const token = data.session?.access_token;
+
+        if (!userId || !token) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        const res = await apiClient.get(withParams("/profile", { userId }), {
+          headers: { Authorization: `Bearer ${token}` },
+          validateStatus: (s) => s >= 200 && s < 500,
+        });
+
+        const profile = (res.data as { profile?: UserProfile })?.profile;
+        if (res.status === 200 && profile) {
+          setUser(profile);
+        } else {
+          // If token is invalid, clear and redirect
+          if (res.status === 401) {
+            clearStoredSession();
+            setUser(null);
+            router.push("/lms/login");
+            return;
+          }
+          setUser(null);
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     getUser();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_OUT' || !session) {
-          setUser(null);
-          router.push('/login');
-        } else if (session) {
-          const { data: profile } = await supabase
-            .from('users')
-            .select('id, email, full_name, role, created_at, updated_at')
-            .eq('id', session.user.id)
-             
-            .single();
-          setUser(profile);
-        }
+    // React to token changes across tabs/windows
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "session_token" || e.key === "auth_session") {
+        getUser().catch(() => {});
       }
-    );
-
-    return () => subscription.unsubscribe();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, [router]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
+    clearStoredSession();
+    router.push('/lms/login');
   };
 
   const getRoleIcon = (role: string) => {
@@ -115,30 +125,30 @@ export default function Navbar() {
       case 'admin':
         return [
           ...baseItems,
-          { href: '/admin', label: 'Admin Dashboard', icon: <UserCheck className="h-4 w-4" /> },
-          { href: '/admin/schools', label: 'Schools', icon: <School className="h-4 w-4" /> },
-          { href: '/admin/users', label: 'Users', icon: <Users className="h-4 w-4" /> },
+          { href: '/lms/admin', label: 'Admin Dashboard', icon: <UserCheck className="h-4 w-4" /> },
+          { href: '/lms/admin/schools', label: 'Schools', icon: <School className="h-4 w-4" /> },
+          { href: '/lms/admin/users', label: 'Users', icon: <Users className="h-4 w-4" /> },
         ];
       case 'school_admin':
         return [
           ...baseItems,
-          { href: '/school-admin', label: 'Dashboard', icon: <School className="h-4 w-4" /> },
-          { href: '/school-admin/students', label: 'Students', icon: <Users className="h-4 w-4" /> },
-          { href: '/school-admin/teachers', label: 'Teachers', icon: <GraduationCap className="h-4 w-4" /> },
+          { href: '/lms/school-admin', label: 'Dashboard', icon: <School className="h-4 w-4" /> },
+          { href: '/lms/school-admin/students', label: 'Students', icon: <Users className="h-4 w-4" /> },
+          { href: '/lms/school-admin/teachers', label: 'Teachers', icon: <GraduationCap className="h-4 w-4" /> },
         ];
       case 'teacher':
         return [
           ...baseItems,
-          { href: '/teacher', label: 'Dashboard', icon: <GraduationCap className="h-4 w-4" /> },
-          { href: '/teacher/classes', label: 'My Classes', icon: <BookOpen className="h-4 w-4" /> },
-          { href: '/teacher/assignments', label: 'Assignments', icon: <BookOpen className="h-4 w-4" /> },
+          { href: '/lms/teacher', label: 'Dashboard', icon: <GraduationCap className="h-4 w-4" /> },
+          { href: '/lms/teacher/classes', label: 'My Classes', icon: <BookOpen className="h-4 w-4" /> },
+          { href: '/lms/teacher/assignments', label: 'Assignments', icon: <BookOpen className="h-4 w-4" /> },
         ];
       case 'student':
         return [
           ...baseItems,
-          { href: '/student', label: 'Dashboard', icon: <User className="h-4 w-4" /> },
-          { href: '/student/classes', label: 'My Classes', icon: <BookOpen className="h-4 w-4" /> },
-          { href: '/student/grades', label: 'Grades', icon: <BookOpen className="h-4 w-4" /> },
+          { href: '/lms/student', label: 'Dashboard', icon: <User className="h-4 w-4" /> },
+          { href: '/lms/student/classes', label: 'My Classes', icon: <BookOpen className="h-4 w-4" /> },
+          { href: '/lms/student/grades', label: 'Grades', icon: <BookOpen className="h-4 w-4" /> },
         ];
       default:
         return baseItems;

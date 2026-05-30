@@ -9,6 +9,7 @@ import {
   CarouselContent,
   CarouselItem,
 } from "../ui/carousel";
+import { apiClient } from "../../lib/api";
 
 interface Logo {
   id: string;
@@ -55,7 +56,7 @@ const EMPTY_LOGOS: Logo[] = [];
 export default function CombinedSchoolsTestimonials() {
   const [dynamicLogos, setDynamicLogos] = useState<Logo[]>(EMPTY_LOGOS);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
+  const [hasError, setHasError] = useState(false); // true only on network/HTTP failure, NOT on empty list
 
   useEffect(() => {
     const ac = new AbortController();
@@ -67,41 +68,33 @@ export default function CombinedSchoolsTestimonials() {
         setHasError(false);
 
         const timeoutId = setTimeout(() => ac.abort(), 12000);
-        const res = await fetch("/api/logos", {
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: ac.signal,
-        }).finally(() => clearTimeout(timeoutId));
+        const { data } = await apiClient
+          .get('/api/logos', { signal: ac.signal })
+          .finally(() => clearTimeout(timeoutId));
 
-        if (!res.ok) throw new Error(`Failed to fetch logos: ${res.status}`);
-        const raw = await res.text();
-        let data: { logos?: unknown } | null = null;
-        try {
-          data = raw ? (JSON.parse(raw) as { logos?: unknown } | null) : null;
-        } catch {
-          throw new Error(`Failed to parse /api/logos JSON. Body: ${raw?.slice(0, 200) ?? ""}`);
-        }
-
-        const list = Array.isArray(data?.logos) ? (data.logos as Logo[]) : [];
-        const valid = list.filter((l) => typeof l?.image === "string" && l.image.trim() !== "");
+        const list = Array.isArray((data as { logos?: unknown })?.logos)
+          ? (((data as { logos?: unknown })?.logos ?? []) as Array<{ id: string; image_url?: string; school_name?: string; description?: string }>)
+          : [];
+        const valid: Logo[] = list
+          .filter((l) => typeof l?.image_url === "string" && l.image_url.trim() !== "")
+          .map((l) => ({
+            id: l.id,
+            image: l.image_url!,
+            description: l.school_name || l.description || '',
+          }));
 
         if (cancelled) return;
 
-        if (valid.length > 0) {
-          setDynamicLogos(valid);
-          setHasError(false);
-        } else {
-          console.warn("No valid logos in /api/logos response", { data });
-          setDynamicLogos([]);
-          setHasError(true);
-        }
+        // Empty logos is not an error — just hide the section silently
+        setDynamicLogos(valid);
+        setHasError(false);
       } catch (e) {
         if (cancelled) return;
         if (!(e instanceof Error && e.name === "AbortError")) {
           console.warn("Failed to load logos:", e);
+          setHasError(true);
         }
         setDynamicLogos([]);
-        setHasError(true);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -115,10 +108,13 @@ export default function CombinedSchoolsTestimonials() {
     };
   }, []);
 
-  // Duplicate logos for seamless infinite scroll
+  // Duplicate logos for seamless infinite scroll — only when there are enough to scroll
   const duplicatedLogos = useMemo(() => {
     if (dynamicLogos.length === 0) return [];
-    return [...dynamicLogos, ...dynamicLogos, ...dynamicLogos];
+    // Need at least ~6 items to fill the carousel visually; repeat until we have enough
+    const minItems = 6;
+    const copies = Math.ceil(minItems / dynamicLogos.length);
+    return Array.from({ length: Math.max(copies, 3) }, () => dynamicLogos).flat();
   }, [dynamicLogos]);
 
   // Memoize the AutoScroll plugin
@@ -137,7 +133,8 @@ export default function CombinedSchoolsTestimonials() {
 
   return (
     <>
-      {/* Our Leading Schools Section - White Background */}
+      {/* Our Leading Schools Section — hidden entirely when there are no logos */}
+      {(isLoading || dynamicLogos.length > 0) && (
       <section
         id="leading-schools"
         className="bg-white py-12 md:py-16"
@@ -158,7 +155,7 @@ export default function CombinedSchoolsTestimonials() {
                   </div>
                 </div>
               )}
-              
+
               {!isLoading && hasError && (
                 <div className="flex items-center justify-center w-full py-12">
                   <div className="text-center">
@@ -177,7 +174,7 @@ export default function CombinedSchoolsTestimonials() {
                   </div>
                 </div>
               )}
-              
+
               {!isLoading && !hasError && dynamicLogos.length > 0 && autoScrollPlugin && (
                 <>
                   <Carousel
@@ -234,6 +231,7 @@ export default function CombinedSchoolsTestimonials() {
           </div>
         </div>
       </section>
+      )} {/* end leading-schools conditional */}
 
       {/* What Our Students and Parents Say Section - Blue Background */}
       <section

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -8,7 +8,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Checkbox } from "../ui/checkbox";
 import { Search, School, X, CheckCircle2, AlertCircle } from "lucide-react";
-import { fetchWithCsrf } from "../../lib/csrf-client";
+import { useAdminSchools } from "../../hooks/useAdminSchools";
 import { Alert, AlertDescription } from "../ui/alert";
 
 interface School {
@@ -53,41 +53,13 @@ export function SchoolGradeSelector({
   error,
   disabled = false,
 }: SchoolGradeSelectorProps) {
-  const [schools, setSchools] = useState<School[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { schools: rawSchools, isLoading: loading } = useAdminSchools();
+  const schools = useMemo(
+    () => (rawSchools ?? []).filter((s: Record<string, unknown>) => (s as unknown as School).is_active !== false) as School[],
+    [rawSchools],
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [schoolSearchOpen, setSchoolSearchOpen] = useState(false);
-
-  // Load schools on mount
-  useEffect(() => {
-    loadSchools();
-  }, []);
-
-  const loadSchools = async () => {
-    setLoading(true);
-    try {
-      const response = await fetchWithCsrf("/api/admin/schools", {
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        console.error("Failed to fetch schools:", response.statusText);
-        return;
-      }
-
-      const data = await response.json();
-      if (data.schools && Array.isArray(data.schools)) {
-        setSchools(data.schools.filter((s: School) => s.is_active !== false));
-      }
-    } catch (error) {
-      console.error("Error fetching schools:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Filter schools based on search term
   const filteredSchools = useMemo(() => {

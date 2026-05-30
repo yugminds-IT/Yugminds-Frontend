@@ -14,7 +14,8 @@ import {
   Eye,
   EyeOff
 } from "lucide-react";
-import { fetchWithCsrf } from "../../lib/csrf-client";
+import { adminApi } from "../../lib/api/admin.api";
+import { toast } from "@/components/ui/toast";
 
 interface CoursePublishDialogProps {
   open: boolean;
@@ -55,50 +56,17 @@ export function CoursePublishDialog({
     setError(null);
 
     try {
-      console.log('📤 Publishing course:', {
-        courseId: course.id,
-        courseName: course.name,
+      await adminApi.courses.publish(course.id, {
+        course_id: course.id,
         publish: !isPublished,
-        url: `/api/admin/courses/${course.id}/publish`,
+        changes_summary: changesSummary.trim() || undefined,
       });
-
-      const response = await fetchWithCsrf(
-        `/api/admin/courses/${course.id}/publish`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            course_id: course.id,
-            publish: !isPublished,
-            changes_summary: changesSummary.trim() || undefined,
-          }),
-        }
-      );
-
-      console.log('📥 Publish response:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          error: "Failed to update publish status",
-        }));
-        
-        console.error('❌ Publish error:', errorData);
-        
-        throw new Error(errorData.error || errorData.details || "Failed to update publish status");
-      }
 
       onPublishChange();
       onOpenChange(false);
       setChangesSummary("");
       setConfirmText("");
-      // Show success message
-      alert(`✅ Course ${!isPublished ? 'published' : 'unpublished'} successfully!`);
+      toast.success(`Course ${!isPublished ? 'published' : 'unpublished'} successfully.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update publish status");
     } finally {

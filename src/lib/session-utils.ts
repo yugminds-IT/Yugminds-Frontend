@@ -1,97 +1,194 @@
 /**
  * Session Utilities
- * 
- * Helper functions for managing and verifying Supabase sessions
+ *
+ * Access tokens live in a module-level variable (in-memory) so they are never
+ * reachable via JavaScript from other origins (XSS mitigation).  Only non-sensitive
+ * user metadata (id, email, mustChangePassword) is persisted to sessionStorage so
+ * that it survives soft navigation without storing a JWT there.
+ *
+ * The httpOnly `access_token` cookie (set by the Next.js auth API routes) lets the
+ * middleware verify identity without touching JS-accessible storage.
  */
 
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+export interface Session {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  user?: { id: string; email?: string; mustChangePassword?: boolean };
+}
 
-/**
- * Wait for session to be available with retry logic
- * @param maxAttempts - Maximum number of attempts (default: 3)
- * @param delayMs - Delay between attempts in milliseconds (default: 300)
- * @returns Promise<{ session, error } | null> - The session if found, null otherwise
- */
-export async function waitForSession(
-  maxAttempts: number = 3,
-  delayMs: number = 300
-): Promise<{ session: Session | null; error: unknown } | null> {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+// In-memory store — cleared on page reload (intentional: forces a silent refresh
+// via the httpOnly refresh_token cookie, which is the correct SPA pattern).
+let _inMemoryToken: string | null = null;
+
+const SESSION_STORAGE_KEY = 'auth_session_meta';
+const LOGOUT_CHANNEL = 'auth_logout';
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const json =
+      typeof window !== 'undefined'
+        ? window.atob(padded)
+        : Buffer.from(padded, 'base64').toString('utf8');
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+// --- In-memory token accessors (used by axios.ts) ---
+
+export function getInMemoryToken(): string | null {
+  return _inMemoryToken;
+}
+
+export function setInMemoryToken(token: string | null): void {
+  _inMemoryToken = token;
+}
+
+// --- Session helpers ---
+
+export function getStoredSession(): Session | null {
+  if (!_inMemoryToken) return null;
+  const meta = readMeta();
+  return { access_token: _inMemoryToken, user: meta ?? undefined };
+}
+
+export function setStoredSession(session: Session): void {
+  _inMemoryToken = session.access_token;
+  if (session.user) writeMeta(session.user);
+}
+
+export function clearStoredSession(broadcast = true): void {
+  _inMemoryToken = null;
+  removeMeta();
+  if (broadcast && typeof window !== 'undefined' && 'BroadcastChannel' in window) {
     try {
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        const errorMessage = error.message || String(error);
-        // Check if it's a timeout error - don't retry immediately for timeouts
-        const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('took too long');
-        
-        if (isTimeout) {
-          console.warn(`⚠️ Session check attempt ${attempt}/${maxAttempts} timed out, waiting longer before retry...`);
-          // Wait longer for timeout errors
-          if (attempt < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, delayMs * 2));
-            continue;
-          }
-        } else {
-          console.warn(`Session check attempt ${attempt}/${maxAttempts} failed:`, error.message);
-          if (attempt < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-            continue;
-          }
-        }
-        return { session: null, error };
-      }
-      
-      if (data?.session) {
-        console.log(`✅ Session confirmed on attempt ${attempt}/${maxAttempts}`);
-        return { session: data.session, error: null };
-      }
-      
-      // No session yet, wait and retry
-      if (attempt < maxAttempts) {
-        console.log(`⏳ No session found on attempt ${attempt}/${maxAttempts}, retrying in ${delayMs}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('took too long');
-      
-      if (isTimeout) {
-        console.warn(`⚠️ Session check attempt ${attempt}/${maxAttempts} timed out:`, errorMessage);
-        // Wait longer for timeout errors before retrying
-        if (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, delayMs * 2));
-          continue;
-        }
-      } else {
-        console.error(`Session check attempt ${attempt}/${maxAttempts} threw error:`, err);
-        if (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-          continue;
-        }
-      }
-      return { session: null, error: err };
+      const ch = new BroadcastChannel(LOGOUT_CHANNEL);
+      ch.postMessage({ type: 'logout' });
+      ch.close();
+    } catch {
+      // Non-fatal if BroadcastChannel is unavailable.
     }
   }
-  
-  console.warn(`❌ No session found after ${maxAttempts} attempts`);
-  return { session: null, error: new Error('Session not available after retries') };
 }
 
 /**
- * Verify session exists and is valid
- * @returns Promise<boolean> - True if session exists and is valid
+ * Call once on app mount. Listens for logout events from other tabs and
+ * redirects to /login so all tabs stay in sync.
  */
-export async function verifySession(): Promise<boolean> {
+export function subscribeToLogoutBroadcast(): () => void {
+  if (typeof window === 'undefined' || !('BroadcastChannel' in window)) {
+    return () => {};
+  }
+  const ch = new BroadcastChannel(LOGOUT_CHANNEL);
+  ch.onmessage = (event: MessageEvent) => {
+    if ((event.data as { type?: string })?.type === 'logout') {
+      clearStoredSession(false); // clear without re-broadcasting
+      window.location.href = '/lms/login';
+    }
+  };
+  return () => ch.close();
+}
+
+export async function tryRefreshSession(): Promise<boolean> {
   try {
-    const { data, error } = await supabase.auth.getSession();
-    return !error && !!data?.session;
-  } catch (err) {
-    console.error('Error verifying session:', err);
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+    });
+
+    if (!response.ok) return false;
+
+    const data = (await response.json()) as { token?: string };
+    if (!data?.token) return false;
+
+    setInMemoryToken(data.token);
+    return true;
+  } catch {
     return false;
   }
 }
 
+export async function waitForSession(
+  maxAttempts = 3,
+  delayMs = 300,
+): Promise<{ session: Session | null; error: unknown } | null> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      if (attempt === 1 && process.env.NODE_ENV === 'development') {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const session = getStoredSession();
+      if (session?.access_token) return { session, error: null };
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, delayMs));
+    } catch (err) {
+      if (attempt === maxAttempts) return { session: null, error: err };
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
 
+  const refreshed = await tryRefreshSession();
+  if (refreshed) {
+    const session = getStoredSession();
+    if (session?.access_token) return { session, error: null };
+  }
 
+  return null;
+}
+
+export async function verifySession(): Promise<boolean> {
+  return !!_inMemoryToken;
+}
+
+export async function getSession(): Promise<{ data: { session: Session | null } }> {
+  return { data: { session: getStoredSession() } };
+}
+
+export function getStoredUser(): Session['user'] | null {
+  return readMeta() ?? null;
+}
+
+export function getStoredUserId(): string | null {
+  const meta = readMeta();
+  if (meta?.id) return meta.id;
+  if (!_inMemoryToken) return null;
+  const payload = decodeJwtPayload(_inMemoryToken);
+  const sub = payload?.sub;
+  return typeof sub === 'string' && sub ? sub : null;
+}
+
+// --- Private sessionStorage helpers for non-sensitive metadata only ---
+
+function readMeta(): Session['user'] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Session['user'];
+  } catch {
+    return null;
+  }
+}
+
+function writeMeta(user: NonNullable<Session['user']>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+  } catch {
+    // Storage quota exceeded — non-fatal.
+  }
+}
+
+function removeMeta(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}

@@ -5,21 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { FileText } from "lucide-react";
-import { useTeacherReports } from "../../hooks/useTeacherData";
+import { useTeacherReports, type TeacherReport } from "../../hooks/useTeacherData";
 import { SkeletonTable } from "../ui/skeleton-table";
 
 interface TeacherReportsTabProps {
   selectedSchoolId?: string;
-}
-
-interface Report {
-  id: string;
-  grade?: string;
-  date?: string;
-  created_at?: string;
-  report_status?: string;
-  topics_taught?: string;
-  classes?: Array<{ grade?: string }> | { grade?: string };
 }
 
 export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTabProps) {
@@ -38,7 +28,7 @@ export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTa
               <CardTitle>Recent Reports</CardTitle>
               <CardDescription>Your submitted teaching reports</CardDescription>
             </div>
-            <Link href="/teacher/reports">
+            <Link href="/lms/teacher/reports">
               <Button size="sm">View All</Button>
             </Link>
           </div>
@@ -46,7 +36,7 @@ export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTa
         <CardContent>
           {reports && reports.length > 0 ? (
             <div className="space-y-3">
-              {reports.map((report: Report) => (
+              {reports.map((report: TeacherReport) => (
                 <div
                   key={report.id}
                   className="flex items-center justify-between p-4 border rounded-lg"
@@ -82,7 +72,7 @@ export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTa
             <div className="text-center py-8 text-gray-500">
               <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
               <p>No reports submitted yet</p>
-              <Link href="/teacher/reports">
+              <Link href="/lms/teacher/reports">
                 <Button className="mt-4" size="sm">Submit Your First Report</Button>
               </Link>
             </div>

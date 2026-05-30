@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
@@ -16,32 +17,53 @@ import {
   User,
   Download
 } from "lucide-react";
+import { adminApi } from "../lib/api";
+
+interface GradeAssigned {
+  gradeName: string;
+  sectionsAssigned: string[];
+}
+
+interface AssignedSchool {
+  schoolId: string;
+  schoolName: string;
+  gradesAssigned: GradeAssigned[];
+  subjects?: string[];
+}
 
 interface Teacher {
-  id: string;
-  teacher_id: string;
-  full_name: string;
+  id: string | number;
+  teacher_id?: string;
+  full_name?: string;
+  name?: string;
   email: string;
   phone?: string;
   qualification?: string;
+  experience?: string;
   experience_years?: number;
   specialization?: string;
-  status: 'Active' | 'Inactive' | 'On Leave' | 'Suspended';
-  created_at: string;
+  status: string;
+  role?: string;
+  createdAt?: string;
+  created_at?: string;
   updated_at?: string;
   teacher_schools?: TeacherSchool[];
+  assignedSchools?: AssignedSchool[];
 }
 
 interface TeacherSchool {
-  id: string;
-  teacher_id: string;
+  id?: string;
+  teacher_id?: string;
   school_id: string;
-  grades_assigned: string[];
+  schoolId?: string;
+  grades_assigned?: string[];
   grade_sections_assigned?: string | Array<{ grade: string; sections: string[] }>;
-  subjects: string[];
-  working_days_per_week: number;
-  max_students_per_session: number;
-  is_primary: boolean;
+  gradesAssigned?: GradeAssigned[];
+  subjects?: string[];
+  working_days_per_week?: number;
+  max_students_per_session?: number;
+  is_primary?: boolean;
+  schoolName?: string;
   schools?: {
     id: string;
     name: string;
@@ -117,67 +139,81 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
     
     setLoading(true);
     try {
-      // Fetch latest teacher data with school assignments
-      const teacherResponse = await fetch(`/api/admin/teachers`);
-      if (teacherResponse.ok) {
-        const teacherData = await teacherResponse.json();
-        const list = Array.isArray(teacherData?.data) ? teacherData.data : (teacherData?.teachers || []);
-        const updatedTeacher = list?.find((t: Teacher) => t.id === teacher.id);
-        if (updatedTeacher) {
-          setCurrentTeacher(updatedTeacher);
-        }
+      const { data: teacherList } = await adminApi.teachers.list();
+      const list = Array.isArray((teacherList as any)?.teachers)
+        ? (teacherList as any).teachers
+        : (teacherList as any) || [];
+      const teacherId = String(teacher.id ?? teacher.teacher_id ?? '');
+      const updatedTeacher = (list as Teacher[]).find((t) => String(t.id ?? (t as Teacher).teacher_id) === teacherId);
+      if (updatedTeacher) {
+        setCurrentTeacher(updatedTeacher);
       }
 
-      // Load attendance data
-      const attendanceResponse = await fetch(`/api/admin/teacher-attendance?teacherId=${teacher.id}`);
-      if (attendanceResponse.ok) {
-        const attendanceData = await attendanceResponse.json();
-        const records = attendanceData.attendance || [];
-        setAttendanceRecords(records);
-        
-        // Calculate work summary
-         
-        type AttendanceRecord = { status?: string };
-        const presentDays = (records as AttendanceRecord[]).filter((r: AttendanceRecord) => r.status === 'Present').length;
-         
-        const leaveDays = (records as AttendanceRecord[]).filter((r: AttendanceRecord) => r.status === 'Absent (Approved)').length;
-        const totalDays = records.length;
-        
-        setWorkSummary({
-          totalWorkingDays: presentDays,
-          totalLeavesTaken: leaveDays,
-          attendancePercentage: totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0,
-          totalDays: totalDays
+      const { data: attendanceData } = await adminApi.teacherAttendance.list({ teacherId: String(teacher.id ?? teacher.teacher_id) });
+      const records = ((attendanceData as any)?.attendance || []) as AttendanceRecord[];
+      setAttendanceRecords(records);
+
+      const presentDays = records.filter((r) => r.status === 'Present').length;
+      const leaveDays = records.filter((r) => r.status === 'Absent (Approved)').length;
+      const totalDays = records.length;
+
+      setWorkSummary({
+        totalWorkingDays: presentDays,
+        totalLeavesTaken: leaveDays,
+        attendancePercentage: totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0,
+        totalDays,
+      });
+
+      // Load teacher daily reports (recent) via API, fall back to empty if unavailable
+      try {
+        const to = new Date();
+        const from = new Date();
+        from.setDate(to.getDate() - 30);
+
+        const schools = currentTeacher?.assignedSchools ?? currentTeacher?.teacher_schools ?? [];
+        const schoolId =
+          (currentTeacher?.teacher_schools?.find((s) => s.is_primary) as TeacherSchool | undefined)?.school_id
+          ?? (currentTeacher?.teacher_schools?.[0] as TeacherSchool | undefined)?.school_id
+          ?? (schools[0] as AssignedSchool | undefined)?.schoolId;
+
+        const { data: reportsData } = await adminApi.teacherReports.list({
+          ...(schoolId ? { school_id: schoolId } : {}),
+          from: from.toISOString().split('T')[0],
+          to: to.toISOString().split('T')[0],
         });
-      }
 
-      // Load daily reports (demo data for now)
-      setDailyReports([
-        {
-          id: '1',
-          date: '2025-10-29',
-          summary: 'Taught Mathematics to Grade 6 students. Covered basic algebra concepts.',
-          grade: 'Grade 6',
-          school_name: 'Demo School',
-          subjects: ['Mathematics']
-        },
-        {
-          id: '2',
-          date: '2025-10-28',
-          summary: 'Conducted Science experiments with Grade 7 students. Explained chemical reactions.',
-          grade: 'Grade 7',
-          school_name: 'Demo School',
-          subjects: ['Science']
-        },
-        {
-          id: '3',
-          date: '2025-10-27',
-          summary: 'Review session for Grade 6 Mathematics. Prepared students for upcoming test.',
-          grade: 'Grade 6',
-          school_name: 'Demo School',
-          subjects: ['Mathematics']
-        }
-      ]);
+        type RawTeacherReport = {
+          id?: string;
+          date?: string;
+          created_at?: string;
+          summary?: string;
+          grade?: string;
+          school_name?: string;
+          subjects?: string[];
+          teacher_id?: string;
+        };
+
+        const raw = ((reportsData as any)?.reports || (reportsData as any)?.teacherReports || (reportsData as any) || []) as RawTeacherReport[];
+
+        const filtered = raw.filter((r) => !r.teacher_id || String(r.teacher_id) === String(teacher.id ?? teacher.teacher_id));
+
+        const mapped: DailyReport[] = filtered
+          .map((r) => ({
+            id: r.id || `${r.date || r.created_at || ''}`,
+            date: r.date || (r.created_at ? String(r.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10)),
+            summary: r.summary || '',
+            grade: r.grade,
+            school_name: r.school_name,
+            subjects: r.subjects,
+          }))
+          .filter((r) => r.summary.trim() !== '')
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+        setDailyReports(mapped);
+      } catch (e) {
+        console.warn('Teacher reports unavailable:', e);
+        setDailyReports([]);
+      }
     } catch (error) {
       console.error('Error loading teacher data:', error);
     } finally {
@@ -272,7 +308,7 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Full Name</p>
-                    <p className="text-lg font-semibold">{currentTeacher.full_name}</p>
+                    <p className="text-lg font-semibold">{currentTeacher.name ?? currentTeacher.full_name ?? '—'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Email</p>
@@ -285,36 +321,47 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
                     <p className="text-sm text-muted-foreground">Contact Number</p>
                     <p className="text-lg flex items-center gap-2">
                       <Phone className="h-4 w-4" />
-                      {currentTeacher.phone || 'N/A'}
+                      {currentTeacher.phone ?? 'N/A'}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Teacher ID</p>
-                    <p className="text-lg font-mono">{currentTeacher.teacher_id}</p>
+                    <p className="text-lg font-mono">{currentTeacher.teacher_id ?? String(currentTeacher.id ?? '')}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Qualification</p>
-                    <p className="text-lg">{currentTeacher.qualification || 'N/A'}</p>
+                    <p className="text-lg">{currentTeacher.qualification ?? 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Experience</p>
-                    <p className="text-lg">{currentTeacher.experience_years || 0} years</p>
+                    <p className="text-lg">
+                      {currentTeacher.experience !== undefined && currentTeacher.experience !== ''
+                        ? currentTeacher.experience
+                        : currentTeacher.experience_years != null
+                          ? `${currentTeacher.experience_years} years`
+                          : 'N/A'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Specialization</p>
-                    <p className="text-lg">{currentTeacher.specialization || 'N/A'}</p>
+                    <p className="text-lg">{currentTeacher.specialization ?? 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Date of Joining</p>
                     <p className="text-lg flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
-                      {new Date(currentTeacher.created_at).toLocaleDateString()}
+                      {(() => {
+                        const raw = currentTeacher.createdAt ?? currentTeacher.created_at;
+                        if (!raw) return 'N/A';
+                        const d = new Date(raw);
+                        return Number.isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString();
+                      })()}
                     </p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-sm text-muted-foreground">Status</p>
                     <Badge className={
-                      currentTeacher.status === 'Active' ? 'bg-green-500' :
+                      (currentTeacher.status === 'Active' || currentTeacher.status === 'active') ? 'bg-green-500' :
                       currentTeacher.status === 'On Leave' ? 'bg-yellow-500' :
                       'bg-red-500'
                     }>
@@ -334,86 +381,115 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {currentTeacher.teacher_schools && currentTeacher.teacher_schools.length > 0 ? (
-                  <div className="space-y-4">
-                    {currentTeacher.teacher_schools.map((schoolAssignment) => (
-                      <div key={schoolAssignment.id} className="border rounded-lg p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-lg flex items-center gap-2">
-                              {schoolAssignment.schools?.name || 'Unknown School'}
-                              {schoolAssignment.is_primary && (
-                                <Badge variant="secondary" className="text-xs">Primary</Badge>
-                              )}
-                            </h4>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {schoolAssignment.schools?.school_code}
-                            </p>
-                            <div className="mt-3 space-y-2">
-                              <div>
-                                <p className="text-sm font-medium">Grades & Sections:</p>
-                                <div className="flex gap-2 mt-1">
+                {(() => {
+                  const schools = currentTeacher.assignedSchools ?? currentTeacher.teacher_schools ?? [];
+                  if (!schools.length) return <p className="text-muted-foreground">No schools assigned</p>;
+                  return (
+                    <div className="space-y-4">
+                      {schools.map((schoolAssignment, idx) => {
+                        const isNewShape = 'schoolName' in schoolAssignment && 'gradesAssigned' in schoolAssignment;
+                        const schoolName = isNewShape
+                          ? (schoolAssignment as AssignedSchool).schoolName
+                          : (schoolAssignment as TeacherSchool).schools?.name ?? 'Unknown School';
+                        const key = isNewShape
+                          ? (schoolAssignment as AssignedSchool).schoolId
+                          : (schoolAssignment as TeacherSchool).id ?? (schoolAssignment as TeacherSchool).school_id ?? idx;
+                        const gradesAssigned = isNewShape
+                          ? (schoolAssignment as AssignedSchool).gradesAssigned ?? []
+                          : [];
+                        const gradeSectionsLegacy = (schoolAssignment as TeacherSchool).grade_sections_assigned
+                          ? (typeof (schoolAssignment as TeacherSchool).grade_sections_assigned === 'string'
+                              ? JSON.parse((schoolAssignment as TeacherSchool).grade_sections_assigned as string)
+                              : (schoolAssignment as TeacherSchool).grade_sections_assigned)
+                          : [];
+                        const gradesLegacy = (schoolAssignment as TeacherSchool).grades_assigned ?? [];
+                        const hasNewGrades = Array.isArray(gradesAssigned) && gradesAssigned.length > 0;
+                        const hasLegacyGrades = gradeSectionsLegacy.length > 0 || gradesLegacy.length > 0;
+                        return (
+                          <div key={String(key)} className="border rounded-lg p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-lg flex items-center gap-2">
+                                  {schoolName}
+                                  {(schoolAssignment as TeacherSchool).is_primary && (
+                                    <Badge variant="secondary" className="text-xs">Primary</Badge>
+                                  )}
+                                </h4>
+                                {(schoolAssignment as TeacherSchool).schools?.school_code && (
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    {(schoolAssignment as TeacherSchool).schools?.school_code}
+                                  </p>
+                                )}
+                                <div className="mt-3 space-y-2">
+                                  <div>
+                                    <p className="text-sm font-medium">Grades &amp; Sections:</p>
+                                    <div className="flex flex-wrap gap-2 mt-1">
+                                      {hasNewGrades
+                                        ? (gradesAssigned as GradeAssigned[]).map((gs) => {
+                                            const sectionsStr = gs.sectionsAssigned?.length
+                                              ? ` (${gs.sectionsAssigned.join(', ')})`
+                                              : '';
+                                            return (
+                                              <Badge key={gs.gradeName} variant="outline" className="mr-1">
+                                                {gs.gradeName}{sectionsStr}
+                                              </Badge>
+                                            );
+                                          })
+                                        : hasLegacyGrades
+                                          ? gradeSectionsLegacy.length > 0
+                                            ? gradeSectionsLegacy.map((gs: { grade: string; sections?: string[] }) => {
+                                                const sectionsStr = gs.sections?.length ? ` (${gs.sections.join(', ')})` : '';
+                                                return (
+                                                  <Badge key={gs.grade} variant="outline" className="mr-1">
+                                                    {gs.grade}{sectionsStr}
+                                                  </Badge>
+                                                );
+                                              })
+                                            : gradesLegacy.map((grade) => (
+                                                <Badge key={grade} variant="outline" className="mr-1">{grade}</Badge>
+                                              ))
+                                          : <span className="text-muted-foreground text-sm">No grades assigned</span>}
+                                    </div>
+                                  </div>
                                   {(() => {
-                                    const gradeSections = schoolAssignment.grade_sections_assigned 
-                                      ? (typeof schoolAssignment.grade_sections_assigned === 'string' 
-                                          ? JSON.parse(schoolAssignment.grade_sections_assigned) 
-                                          : schoolAssignment.grade_sections_assigned)
-                                      : [];
-                                    
-                                    // Show "No grades assigned" if both are empty
-                                    if (gradeSections.length === 0 && schoolAssignment.grades_assigned.length === 0) {
-                                      return <span className="text-muted-foreground text-sm">No grades assigned</span>;
-                                    }
-                                    
-                                    // If grade_sections_assigned exists, use it; otherwise fall back to grades_assigned
-                                    if (gradeSections.length > 0) {
-                                      return gradeSections.map((gs: { grade: string; sections?: string[] }) => {
-                                        const sectionsStr = gs.sections && gs.sections.length > 0 
-                                          ? ` (${gs.sections.join(', ')})` 
-                                          : '';
-                                        return (
-                                          <Badge key={gs.grade} variant="outline" className="mr-1">
-                                            {gs.grade}{sectionsStr}
-                                          </Badge>
-                                        );
-                                      });
-                                    } else {
-                                      return schoolAssignment.grades_assigned.map((grade) => (
-                                        <Badge key={grade} variant="outline" className="mr-1">
-                                          {grade}
-                                        </Badge>
-                                      ));
-                                    }
+                                    const subj = (schoolAssignment as AssignedSchool).subjects ?? (schoolAssignment as TeacherSchool).subjects ?? [];
+                                    if (!Array.isArray(subj) || subj.length === 0) return null;
+                                    return (
+                                      <div>
+                                        <p className="text-sm font-medium">Subjects:</p>
+                                        <div className="flex flex-wrap gap-2 mt-1">
+                                          {subj.map((subject) => (
+                                            <Badge key={subject} variant="outline">{subject}</Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
                                   })()}
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium">Subjects:</p>
-                                <div className="flex gap-2 mt-1">
-                                  {schoolAssignment.subjects.map((subject) => (
-                                    <Badge key={subject} variant="outline">{subject}</Badge>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
-                                <div>
-                                  <p className="text-muted-foreground">Working Days/Week:</p>
-                                  <p className="font-medium">{schoolAssignment.working_days_per_week} days</p>
-                                </div>
-                                <div>
-                                  <p className="text-muted-foreground">Max Students/Session:</p>
-                                  <p className="font-medium">{schoolAssignment.max_students_per_session}</p>
+                                  {((schoolAssignment as TeacherSchool).working_days_per_week != null || (schoolAssignment as TeacherSchool).max_students_per_session != null) && (
+                                    <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
+                                      {(schoolAssignment as TeacherSchool).working_days_per_week != null && (
+                                        <div>
+                                          <p className="text-muted-foreground">Working Days/Week:</p>
+                                          <p className="font-medium">{(schoolAssignment as TeacherSchool).working_days_per_week} days</p>
+                                        </div>
+                                      )}
+                                      {(schoolAssignment as TeacherSchool).max_students_per_session != null && (
+                                        <div>
+                                          <p className="text-muted-foreground">Max Students/Session:</p>
+                                          <p className="font-medium">{(schoolAssignment as TeacherSchool).max_students_per_session}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No schools assigned</p>
-                )}
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
 

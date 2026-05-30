@@ -27,6 +27,7 @@ interface CourseHeaderProps {
   totalChapters: number
   completedChapters: number
   nextChapterId?: string
+  overallProgress?: number
 }
 
 export default function CourseHeader({
@@ -34,10 +35,11 @@ export default function CourseHeader({
   totalChapters,
   completedChapters,
   nextChapterId,
+  overallProgress,
 }: CourseHeaderProps) {
-  const progressPercentage = totalChapters > 0 
-    ? (completedChapters / totalChapters) * 100 
-    : 0
+  const progressPercentage = overallProgress !== undefined 
+    ? overallProgress
+    : (totalChapters > 0 ? (completedChapters / totalChapters) * 100 : 0)
   
   const isCompleted = completedChapters === totalChapters && totalChapters > 0
 
@@ -46,7 +48,7 @@ export default function CourseHeader({
       <div className="p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
-            <Link href="/student/my-courses">
+            <Link href="/lms/student/my-courses">
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -110,7 +112,7 @@ export default function CourseHeader({
           </div>
           
           {nextChapterId && !isCompleted && (
-            <Link href={`/student/my-courses/${course.id}/chapters/${nextChapterId}`}>
+            <Link href={`/lms/student/my-courses/${course.id}?chapter=${nextChapterId}`}>
               <Button 
                 size="lg" 
                 className="ml-6"

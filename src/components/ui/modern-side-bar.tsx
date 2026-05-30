@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { supabase } from '../../lib/supabase';
+import { commonApi } from '../../lib/api';
+import { clearStoredSession, getStoredUserId } from '../../lib/session-utils';
 
 import { 
   Home, 
@@ -23,9 +24,13 @@ import {
   TrendingUp,
   Shield,
   Calendar,
+  CalendarDays,
   Clock,
   KeyRound,
-  Activity
+  Activity,
+  ClipboardCheck,
+  Award,
+  MessageSquare
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -44,10 +49,11 @@ interface SidebarProps {
   onLogout?: () => void;
   assignmentBadgeCount?: number;
   notificationBadgeCount?: number;
+  passwordResetBadgeCount?: number;
 }
 
 // Role-based navigation items
-const getNavigationItems = (role: string, assignmentCount?: number, notificationCount?: number): NavigationItem[] => {
+const getNavigationItems = (role: string, assignmentCount?: number, notificationCount?: number, passwordResetCount?: number): NavigationItem[] => {
   const baseItems = [
     { id: "dashboard", name: "Dashboard", icon: Home, href: "/dashboard" },
     { id: "profile", name: "Profile", icon: User, href: "/profile" },
@@ -57,60 +63,70 @@ const getNavigationItems = (role: string, assignmentCount?: number, notification
   switch (role) {
     case 'admin':
       return [
-        { id: "dashboard", name: "Overview", icon: Home, href: "/admin" },
-        { id: "schools", name: "Schools Management", icon: School, href: "/admin/schools" },
-        { id: "school-admins", name: "School Admin Management", icon: Shield, href: "/admin/school-admins" },
-        { id: "teachers", name: "Teachers Management", icon: Users, href: "/admin/teachers" },
-        { id: "students", name: "Students Management", icon: User, href: "/admin/students" },
-        { id: "courses", name: "Course Management", icon: BookOpen, href: "/admin/courses" },
-        { id: "notifications", name: "Notifications", icon: Bell, href: "/admin/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
-        { id: "password-reset-requests", name: "Password Reset Requests", icon: KeyRound, href: "/admin/password-reset-requests" },
-        { id: "reports", name: "Teacher Reports", icon: ClipboardList, href: "/admin/reports" },
-        { id: "logos", name: "School Logo Management", icon: School, href: "/admin/logos" },
-        { id: "success-stories", name: "Success Stories Management", icon: FileText, href: "/admin/success-stories" },
-        { id: "analytics", name: "Performance Analytics", icon: TrendingUp, href: "/admin/analytics" },
-        { id: "monitoring", name: "System Monitoring", icon: Activity, href: "/admin/monitoring" },
-        { id: "settings", name: "Settings", icon: Settings, href: "/admin/settings" },
+        { id: "dashboard", name: "Overview", icon: Home, href: "/lms/admin" },
+        { id: "schools", name: "Schools Management", icon: School, href: "/lms/admin/schools" },
+        { id: "school-admins", name: "School Admin Management", icon: Shield, href: "/lms/admin/school-admins" },
+        { id: "teachers", name: "Teachers Management", icon: Users, href: "/lms/admin/teachers" },
+        { id: "students", name: "Students Management", icon: User, href: "/lms/admin/students" },
+        { id: "student-progress", name: "Course Progress", icon: BarChart3, href: "/lms/admin/student-progress" },
+        { id: "courses", name: "Course Management", icon: BookOpen, href: "/lms/admin/courses" },
+        { id: "certificates", name: "Certificates", icon: Award, href: "/lms/admin/certificates" },
+        { id: "notifications", name: "Notifications", icon: Bell, href: "/lms/admin/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
+        { id: "password-reset-requests", name: "Password Reset Requests", icon: KeyRound, href: "/lms/admin/password-reset-requests", badge: passwordResetCount && passwordResetCount > 0 ? String(passwordResetCount) : undefined },
+        { id: "reports", name: "Teacher Reports", icon: ClipboardList, href: "/lms/admin/reports" },
+        { id: "logos", name: "School Logo Management", icon: School, href: "/lms/admin/logos" },
+        { id: "community", name: "Community Management", icon: FileText, href: "/lms/admin/community" },
+        { id: "analytics", name: "Performance Analytics", icon: TrendingUp, href: "/lms/admin/analytics" },
+        { id: "assignment-analytics", name: "Assignment Analytics", icon: BarChart3, href: "/lms/admin/assignment-analytics" },
+        { id: "monitoring", name: "System Monitoring", icon: Activity, href: "/lms/admin/monitoring" },
+        { id: "contact-submissions", name: "Contact Submissions", icon: MessageSquare, href: "/lms/admin/contact-submissions" },
+        { id: "audit-log", name: "Audit Log", icon: ClipboardCheck, href: "/lms/admin/audit-log" },
+        { id: "settings", name: "Settings", icon: Settings, href: "/lms/admin/settings" },
       ];
     case 'school_admin':
       return [
-        { id: "dashboard", name: "Overview", icon: Home, href: "/school-admin" },
-        { id: "students", name: "Students Management", icon: User, href: "/school-admin/students" },
-        { id: "teachers", name: "Teachers Management", icon: Users, href: "/school-admin/teachers" },
-        { id: "schedules", name: "Class Scheduling", icon: Calendar, href: "/school-admin/schedules" },
-        { id: "reports", name: "Teacher Reports", icon: ClipboardList, href: "/school-admin/reports" },
-        { id: "courses", name: "Courses", icon: BookOpen, href: "/school-admin/courses" },
-        { id: "student-progress", name: "Student Progress", icon: BarChart3, href: "/school-admin/student-progress" },
-        { id: "notifications", name: "Notifications", icon: Bell, href: "/school-admin/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
-        { id: "password-reset-requests", name: "Password Reset Requests", icon: KeyRound, href: "/school-admin/password-reset-requests" },
-        { id: "settings", name: "Settings", icon: Settings, href: "/school-admin/settings" },
+        { id: "dashboard", name: "Overview", icon: Home, href: "/lms/school-admin" },
+        { id: "students", name: "Students Management", icon: User, href: "/lms/school-admin/students" },
+        { id: "teachers", name: "Teachers Management", icon: Users, href: "/lms/school-admin/teachers" },
+        { id: "schedules", name: "Class Scheduling", icon: Calendar, href: "/lms/school-admin/schedules" },
+        { id: "calendar", name: "School Calendar", icon: CalendarDays, href: "/lms/school-admin/calendar" },
+        { id: "reports", name: "Teacher Reports", icon: ClipboardList, href: "/lms/school-admin/reports" },
+        { id: "courses", name: "Courses", icon: BookOpen, href: "/lms/school-admin/courses" },
+        { id: "student-progress", name: "Student Progress", icon: BarChart3, href: "/lms/school-admin/student-progress" },
+        { id: "assignment-analytics", name: "Assignment Analytics", icon: TrendingUp, href: "/lms/school-admin/assignment-analytics" },
+        { id: "notifications", name: "Notifications", icon: Bell, href: "/lms/school-admin/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
+        { id: "password-reset-requests", name: "Password Reset Requests", icon: KeyRound, href: "/lms/school-admin/password-reset-requests" },
+        { id: "settings", name: "Settings", icon: Settings, href: "/lms/school-admin/settings" },
       ];
     case 'teacher':
       return [
-        { id: "dashboard", name: "Dashboard", icon: Home, href: "/teacher" },
-        { id: "classes", name: "My Classes", icon: FileText, href: "/teacher/classes" },
-        { id: "reports", name: "Submit Report", icon: ClipboardList, href: "/teacher/reports" },
-        { id: "attendance", name: "Attendance", icon: Calendar, href: "/teacher/attendance" },
-        { id: "leaves", name: "Leave Requests", icon: Clock, href: "/teacher/leaves" },
-        { id: "notifications", name: "Notifications", icon: Bell, href: "/teacher/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
-        { id: "analytics", name: "Analytics", icon: TrendingUp, href: "/teacher/analytics" },
-        { id: "settings", name: "Settings", icon: Settings, href: "/teacher/settings" },
+        { id: "dashboard", name: "Dashboard", icon: Home, href: "/lms/teacher" },
+        { id: "classes", name: "My Classes", icon: FileText, href: "/lms/teacher/classes" },
+        { id: "reports", name: "Submit Report", icon: ClipboardList, href: "/lms/teacher/reports" },
+        { id: "attendance", name: "Attendance", icon: Calendar, href: "/lms/teacher/attendance" },
+        { id: "leaves", name: "Leave Requests", icon: Clock, href: "/lms/teacher/leaves" },
+        { id: "notifications", name: "Notifications", icon: Bell, href: "/lms/teacher/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
+        { id: "analytics", name: "Analytics", icon: TrendingUp, href: "/lms/teacher/analytics" },
+        { id: "student-progress", name: "Student Progress", icon: BarChart3, href: "/lms/teacher/student-progress" },
+        { id: "assignments", name: "Assignments", icon: ClipboardList, href: "/lms/teacher/assignments" },
+        { id: "settings", name: "Settings", icon: Settings, href: "/lms/teacher/settings" },
       ];
     case 'student':
       return [
-        { id: "dashboard", name: "Dashboard", icon: Home, href: "/student" },
-        { id: "courses", name: "My Courses", icon: BookOpen, href: "/student/my-courses" },
-        { id: "assignments", name: "Assignments", icon: ClipboardList, href: "/student/assignments", badge: assignmentCount && assignmentCount > 0 ? String(assignmentCount) : undefined },
-        { id: "certificates", name: "Certificates", icon: Shield, href: "/student/certificates" },
-        { id: "notifications", name: "Notifications", icon: Bell, href: "/student/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
-        { id: "settings", name: "Settings", icon: Settings, href: "/student/settings" },
+        { id: "dashboard", name: "Dashboard", icon: Home, href: "/lms/student" },
+        { id: "courses", name: "My Courses", icon: BookOpen, href: "/lms/student/my-courses" },
+        { id: "assignments", name: "Assignments", icon: ClipboardList, href: "/lms/student/assignments", badge: assignmentCount && assignmentCount > 0 ? String(assignmentCount) : undefined },
+        { id: "analytics", name: "My Analytics", icon: BarChart3, href: "/lms/student/analytics" },
+        { id: "certificates", name: "Certificates", icon: Shield, href: "/lms/student/certificates" },
+        { id: "notifications", name: "Notifications", icon: Bell, href: "/lms/student/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
+        { id: "settings", name: "Settings", icon: Settings, href: "/lms/student/settings" },
       ];
     default:
       return baseItems;
   }
 };
 
-export function Sidebar({ className = "", userRole = "student", userName = "User", userEmail = "user@example.com", onLogout, assignmentBadgeCount, notificationBadgeCount }: SidebarProps) {
+export function Sidebar({ className = "", userRole = "student", userName = "User", userEmail = "user@example.com", onLogout, assignmentBadgeCount, notificationBadgeCount, passwordResetBadgeCount }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [activeItem, setActiveItem] = useState("dashboard");
@@ -118,68 +134,69 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
   const router = useRouter();
   const pathname = usePathname();
 
-  const navigationItems = getNavigationItems(userRole, assignmentBadgeCount, resolvedNotificationCount);
+  const navigationItems = getNavigationItems(userRole, assignmentBadgeCount, resolvedNotificationCount, passwordResetBadgeCount);
 
   // Keep local notification count in sync when parent provides it (e.g. student layout)
   useEffect(() => {
     if (typeof notificationBadgeCount === 'number') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResolvedNotificationCount(notificationBadgeCount);
     }
   }, [notificationBadgeCount]);
 
-  // For roles where the layout doesn't pass notificationBadgeCount, fetch unread count periodically
+  // For roles where the layout doesn't pass notificationBadgeCount, fetch unread count periodically.
+  // Stable deps: only re-run when "parent provides count" flips to avoid restarting intervals.
+  const parentProvidesCount = typeof notificationBadgeCount === 'number';
   useEffect(() => {
-    // If parent is already providing it, don't duplicate work.
-    if (typeof notificationBadgeCount === 'number') return;
+    if (parentProvidesCount) return;
 
     let mounted = true;
-    let intervalId: number | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const fetchUnreadCount = async () => {
       try {
-        const { data } = await supabase.auth.getUser();
-        const userId = data?.user?.id;
+        const userId = getStoredUserId();
         if (!userId) {
           if (mounted) setResolvedNotificationCount(0);
           return;
         }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-        const res = await fetch(`/api/notifications/user?user_id=${encodeURIComponent(userId)}&filter=unread&limit=1&t=${Date.now()}`, {
-          method: 'GET',
-          cache: 'no-store',
-          signal: controller.signal,
-          headers: { 'Cache-Control': 'no-cache' }
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!res.ok) return;
-        const json = await res.json();
-        const unread = Number(json?.counts?.unread || 0);
-        if (mounted) setResolvedNotificationCount(unread);
+        const { data } = await commonApi.notifications.user.getUnreadCount({ user_id: userId });
+        const count = Number((data as { count?: number })?.count ?? 0);
+        if (mounted) setResolvedNotificationCount(count);
       } catch {
         // Ignore transient errors; keep last known value
       }
     };
 
-    // Initial fetch + poll every 20s, refresh on tab focus
-    fetchUnreadCount();
-    intervalId = window.setInterval(fetchUnreadCount, 20000);
+    const startPolling = () => {
+      fetchUnreadCount();
+      intervalId = setInterval(fetchUnreadCount, 30000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    startPolling();
     const onFocus = () => fetchUnreadCount();
+    const onVisibilityChange = () => {
+      if (document.hidden) stopPolling();
+      else startPolling();
+    };
+
     window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') fetchUnreadCount();
-    });
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       mounted = false;
-      if (intervalId) window.clearInterval(intervalId);
+      stopPolling();
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [notificationBadgeCount]);
+  }, [parentProvidesCount]);
 
   // Auto-open sidebar on desktop
   useEffect(() => {
@@ -200,39 +217,27 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
 
   // Set active item based on current path
   useEffect(() => {
-    console.log('Current pathname:', pathname);
-    
-    // First try exact match
     interface NavigationItem {
       id: string;
       href: string;
     }
-    
+
     const exactMatch = navigationItems.find((item: NavigationItem) => item.href === pathname);
     if (exactMatch) {
-      console.log('Found exact match:', exactMatch.id);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveItem(exactMatch.id);
       return;
     }
-    
-    // If no exact match, find parent route matches (routes that the pathname starts with)
-    // Sort by length (longest first) to match most specific route first
-    // This ensures /student/my-courses matches before /student
+
     const parentMatches = navigationItems
       .filter((item: NavigationItem) => {
-        // Exclude /admin from parent matching to avoid conflicts
-        if (item.href === '/admin') return false;
-        // Only match if pathname starts with the href AND it's not just the root
+        if (item.href === '/lms/admin') return false;
         return pathname.startsWith(item.href + '/') || pathname === item.href;
       })
-      .sort((a: NavigationItem, b: NavigationItem) => b.href.length - a.href.length); // Longest match first
-    
+      .sort((a: NavigationItem, b: NavigationItem) => b.href.length - a.href.length);
+
     if (parentMatches.length > 0) {
-      const bestMatch = parentMatches[0];
-      console.log('Found parent match:', bestMatch.id, 'for path:', pathname);
-      setActiveItem(bestMatch.id);
-    } else {
-      console.log('No match found, keeping current:', activeItem);
+      setActiveItem(parentMatches[0].id);
     }
   }, [pathname, navigationItems, activeItem]);
 
@@ -261,6 +266,16 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
       case 'teacher': return 'Teacher';
       case 'student': return 'Student';
       default: return 'User';
+    }
+  };
+
+  const getPortalLabel = (role: string): { initials: string; label: string } => {
+    switch (role) {
+      case 'admin': return { initials: 'YA', label: 'Yugminds Admin' };
+      case 'school_admin': return { initials: 'SA', label: 'School Admin' };
+      case 'teacher': return { initials: 'TP', label: 'Teacher Portal' };
+      case 'student': return { initials: 'SP', label: 'Student Portal' };
+      default: return { initials: 'YM', label: 'Yugminds' };
     }
   };
 
@@ -309,10 +324,10 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
           {!isCollapsed && (
             <div className="flex items-center space-x-2.5">
               <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center shadow-sm">
-                <span className="text-white font-bold text-base">SP</span>
+                <span className="text-white font-bold text-base">{getPortalLabel(userRole).initials}</span>
               </div>
               <div className="flex flex-col">
-                <span className="font-semibold text-slate-800 text-base">Student Portal</span>
+                <span className="font-semibold text-slate-800 text-base">{getPortalLabel(userRole).label}</span>
                 <span className="text-xs text-slate-500">{getRoleDisplayName(userRole)}</span>
               </div>
             </div>
@@ -320,7 +335,7 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
 
           {isCollapsed && (
             <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center mx-auto shadow-sm">
-              <span className="text-white font-bold text-base">SP</span>
+              <span className="text-white font-bold text-base">{getPortalLabel(userRole).initials}</span>
             </div>
           )}
 
@@ -463,19 +478,15 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
               onClick={async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Logout button clicked, onLogout exists:', !!onLogout);
                 if (onLogout) {
                   await onLogout();
                 } else {
-                  // Fallback: sign out and navigate
-                  console.log('No onLogout handler, using fallback');
                   try {
-                    const { supabase } = await import('../../lib/supabase');
-                    await supabase.auth.signOut();
-                    window.location.href = '/login';
+                    clearStoredSession();
+                    window.location.href = '/lms/login';
                   } catch (error) {
                     console.error('Fallback logout error:', error);
-                    window.location.href = '/login';
+                    window.location.href = '/lms/login';
                   }
                 }
               }}
