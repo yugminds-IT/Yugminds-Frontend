@@ -268,6 +268,21 @@ export const adminApi = {
       apiClient.patch(`${ADMIN}/joining-codes`, data),
   },
 
+  /** RoboCoders Studio offline activation licenses (per school, per system) */
+  licenses: {
+    list: (schoolId: string) =>
+      apiClient.get(withParams(`${ADMIN}/licenses`, { schoolId })),
+    generate: (data: Record<string, unknown>) =>
+      apiClient.post(`${ADMIN}/licenses`, data),
+    import: (data: Record<string, unknown>) =>
+      apiClient.post(`${ADMIN}/licenses/import`, data),
+    update: (id: string, data: Record<string, unknown>) =>
+      apiClient.patch(`${ADMIN}/licenses/${id}`, data),
+    delete: (id: string) => apiClient.delete(`${ADMIN}/licenses/${id}`),
+    decode: (activationKey: string) =>
+      apiClient.post(`${ADMIN}/licenses/decode`, { activationKey }),
+  },
+
   /** Leaves */
   leaves: {
     list: (params?: { school_id?: string }) =>
