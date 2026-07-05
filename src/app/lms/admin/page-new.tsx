@@ -68,50 +68,6 @@ interface RecentActivity {
   type: 'success' | 'warning' | 'info' | 'error';
 }
 
-const formatAuditTitle = (action: string, entity: string): string => {
-  if (action) {
-    return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-  if (entity) {
-    return `${entity.replace(/_/g, ' ')} updated`.replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-  return 'System Event';
-};
-
-const parseRecentActivityFromAudit = (auditData: unknown): RecentActivity[] => {
-  const payload = (auditData ?? {}) as {
-    entries?: Record<string, unknown>[];
-    items?: Record<string, unknown>[];
-    data?: Record<string, unknown>[] | { entries?: Record<string, unknown>[]; items?: Record<string, unknown>[] };
-  };
-
-  const nestedData = payload.data;
-  const entriesRaw =
-    payload.entries
-    ?? payload.items
-    ?? (Array.isArray(nestedData) ? nestedData : nestedData?.entries ?? nestedData?.items)
-    ?? [];
-
-  return entriesRaw.slice(0, 8).map((entry: Record<string, unknown>, index: number) => {
-    const action = String(entry.action ?? '');
-    const entity = String(entry.entity ?? '');
-    const created_at = String(entry.timestamp ?? entry.created_at ?? new Date().toISOString());
-    const message = String(entry.details ?? `${entity || 'Entity'} action performed`);
-    const type: RecentActivity['type'] =
-      action.startsWith('DELETE') ? 'warning'
-      : action.startsWith('CREATE') ? 'success'
-      : action.startsWith('UPDATE') ? 'info'
-      : 'info';
-
-    return {
-      id: String(entry.id ?? `${action || entity || 'event'}-${created_at}-${index}`),
-      title: formatAuditTitle(action, entity),
-      message,
-      created_at,
-      type,
-    };
-  });
-};
 
 const buildFallbackRecentActivity = (
   previews: QuickActionPreview[],
@@ -313,13 +269,6 @@ export default function AdminDashboard() {
 
       let resolvedRecentActivity: RecentActivity[] = [];
 
-      // Load recent activity from audit log
-      try {
-        const { data: auditData } = await adminApi.auditLog.list({ limit: 10 });
-        resolvedRecentActivity = parseRecentActivityFromAudit(auditData);
-      } catch (auditError) {
-        console.warn('Audit activity unavailable. Falling back to derived activity.', auditError);
-      }
 
       // Load quick action previews immediately (needed for Overview tab)
       let loadedPreviews: QuickActionPreview[] = [];

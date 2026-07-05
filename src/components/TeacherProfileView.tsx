@@ -8,7 +8,6 @@ import { Badge } from "./ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import {
-  X,
   Mail,
   Phone,
   Calendar,
@@ -284,9 +283,6 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-2xl font-bold">Teacher Profile</DialogTitle>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
           </div>
         </DialogHeader>
 

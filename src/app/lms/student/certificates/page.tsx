@@ -337,12 +337,17 @@ export default function CertificatesPage() {
                 </div>
                 <div>
                   <p className="font-semibold text-lg">
-                    {coursesList.length > 0
-                      ? Math.round(
-                          coursesList.reduce((acc: number, c) => acc + (c.average_grade || 0), 0) /
-                            coursesList.length
-                        )
-                      : 0}
+                    {(() => {
+                      // Average only courses that actually have a grade — counting
+                      // ungraded courses as 0% understates the real average.
+                      const graded = coursesList.filter((c) => c.average_grade != null);
+                      return graded.length > 0
+                        ? Math.round(
+                            graded.reduce((acc: number, c) => acc + (c.average_grade ?? 0), 0) /
+                              graded.length
+                          )
+                        : 0;
+                    })()}
                     %
                   </p>
                   <p className="text-xs text-gray-600">Average Grade</p>

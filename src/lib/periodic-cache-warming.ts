@@ -73,8 +73,9 @@ async function warmCacheSafely(): Promise<void> {
   const startTime = Date.now();
 
   // Add timeout to prevent hanging (30 seconds max)
+  let warmTimeoutId: ReturnType<typeof setTimeout>;
   const timeoutPromise = new Promise<void>((resolve) => {
-    setTimeout(() => {
+    warmTimeoutId = setTimeout(() => {
       logger.warn('Cache warming timeout - taking too long, aborting');
       resolve();
     }, 30000); // 30 second timeout
@@ -83,8 +84,8 @@ async function warmCacheSafely(): Promise<void> {
   try {
     // Race between cache warming and timeout
     await Promise.race([
-      warmAllDashboardCaches(),
-      timeoutPromise
+      warmAllDashboardCaches().finally(() => clearTimeout(warmTimeoutId)),
+      timeoutPromise,
     ]);
 
     const duration = Date.now() - startTime;

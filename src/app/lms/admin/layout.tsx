@@ -9,7 +9,7 @@ import { waitForSession } from "@/lib/session-utils";
 import { useAppStore, type AppState } from "@/store/app-store";
 import { useBrowserNavigation } from "@/hooks/useBrowserNavigation";
 import { commonApi, setAuthToken } from "@/lib/api";
-import { clearStoredSession, getStoredUserId } from "@/lib/session-utils";
+import { clearStoredSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
@@ -101,6 +101,7 @@ export default function AdminLayout({
           if (mounted) {
             console.error('❌ Admin layout: Overall timeout - redirecting to login');
             setLoading(false);
+            setLogoutReason('session_timeout');
             router.push('/lms/login');
           }
         }, 15000);
@@ -130,6 +131,7 @@ export default function AdminLayout({
           if (mounted) {
             setStatus('unauthenticated');
             setLoading(false);
+            setLogoutReason('session_expired');
             router.push('/lms/login');
           }
           return;
@@ -143,6 +145,7 @@ export default function AdminLayout({
         if (!userId) {
           if (mounted) {
             setLoading(false);
+            setLogoutReason('session_expired');
             router.push("/lms/login");
           }
           return;
@@ -194,12 +197,12 @@ export default function AdminLayout({
           }
           if (mounted) {
             setLoading(false);
-            // Gracefully redirect on any error
+            setLogoutReason('error');
             router.push('/lms/login');
           }
           return;
         }
-        
+
         // Get profile via API route (bypasses RLS) for display purposes
         // Fetch in background after dashboard is already rendered
         (async () => {
@@ -224,6 +227,7 @@ export default function AdminLayout({
         if (mounted) {
           setStatus('unauthenticated');
           setLoading(false);
+          setLogoutReason('session_expired');
           router.push('/lms/login');
         }
       } finally {
@@ -305,7 +309,7 @@ export default function AdminLayout({
         passwordResetBadgeCount={pendingPasswordResetCount}
       />
       
-      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+      <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
         {children}
       </div>
     </div>

@@ -22,7 +22,7 @@ export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetF
   const pathname = usePathname();
 
   const navItems = [
-    { name: "Home", link: "/robocoders" },
+    { name: "Home", link: "/robocoders", exact: true },
     { name: "About Us", link: "/robocoders/about" },
     { name: "Our Programs", link: "/robocoders/programs" },
     { name: "Community", link: "/robocoders/community" },
@@ -31,12 +31,10 @@ export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetF
     { name: "Contact Us", link: "/robocoders/contact" },
   ];
 
-  // Check if a route is active (exact match for home, or starts with for others)
-  const isActive = (link: string) => {
-    if (link === "/robocoders") {
-      return pathname === "/robocoders";
-    }
-    return pathname.startsWith(link);
+  const isActive = (item: { link: string; exact?: boolean }) => {
+    const link = item.link.replace(/\/$/, '');
+    if (item.exact) return pathname === link;
+    return pathname === link || pathname.startsWith(link + '/');
   };
 
   return (
@@ -65,7 +63,7 @@ export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetF
           onClose={() => setIsMobileMenuOpen(false)}
         >
           {navItems.map((item, idx) => {
-            const active = isActive(item.link);
+            const active = isActive(item);
             return (
               <Link
                 key={`mobile-link-${idx}`}

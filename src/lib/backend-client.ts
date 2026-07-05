@@ -134,6 +134,9 @@ export async function proxyToBackend(request: Request): Promise<Response> {
   }
   const res = await fetch(targetUrl, init);
   const resHeaders = new Headers(res.headers);
+  // Remove encoding/length headers — Node.js auto-decompresses gzip bodies so the
+  // original content-length (compressed size) no longer matches the actual body size.
   resHeaders.delete('content-encoding');
+  resHeaders.delete('content-length');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: resHeaders });
 }

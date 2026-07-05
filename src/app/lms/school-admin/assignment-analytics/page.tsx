@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
+import { RankingTable, type RankingRow } from "@/components/ui/ranking-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,9 @@ import {
 
 type LeaderboardStudent = {
   rank: number;
+  school_rank?: number;
+  grade_rank?: number;
+  section_rank?: number;
   student_id: number;
   student_name: string;
   grade: string;
@@ -202,7 +206,7 @@ export default function SchoolAdminLeaderboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="bg-gray-50">
         <div className="bg-white border-b border-gray-200 px-6 py-4">
           <div className="h-6 bg-gray-200 rounded w-48 animate-pulse" />
           <div className="h-4 bg-gray-100 rounded w-32 mt-2 animate-pulse" />
@@ -255,7 +259,7 @@ export default function SchoolAdminLeaderboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-7xl mx-auto">
@@ -409,127 +413,35 @@ export default function SchoolAdminLeaderboardPage() {
         {tab === "leaderboard" && (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="px-5 py-3 border-b border-gray-100">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <CardTitle className="text-sm font-semibold text-gray-800">
-                    Student Rankings
-                  </CardTitle>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Overall = Course (60%) + Daily (40%)
-                  </p>
-                </div>
-                <div className="relative w-48">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                  <Input
-                    placeholder="Search students..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="h-8 pl-8 text-xs"
-                  />
-                </div>
-              </div>
+              <CardTitle className="text-sm font-semibold text-gray-800">Student Rankings</CardTitle>
+              <p className="text-xs text-gray-400 mt-0.5">Overall = Course (60%) + Daily (40%) · Ranked by school, grade, and section</p>
             </CardHeader>
-            <CardContent className="p-0">
-              {filteredLeaderboard.length === 0 ? (
+            <CardContent className="p-4">
+              {leaderboard.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
                   <Trophy className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                  <p className="text-sm">{search ? "No matching students" : "No data yet"}</p>
+                  <p className="text-sm">No data yet</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/60">
-                        <SortHeader label="Rank" sKey="rank" className="text-left pl-5" />
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide text-left">
-                          Student
-                        </th>
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide text-left hidden md:table-cell">
-                          Grade
-                        </th>
-                        <SortHeader label="Course" sKey="course" className="hidden lg:table-cell" />
-                        <SortHeader label="Daily" sKey="daily" className="hidden lg:table-cell" />
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right hidden md:table-cell">
-                          Badge
-                        </th>
-                        <SortHeader label="Overall" sKey="overall" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {filteredLeaderboard.map((student) => (
-                        <tr
-                          key={student.student_id}
-                          className={`hover:bg-gray-50 transition-colors ${
-                            student.rank <= 3 ? "bg-amber-50/20" : ""
-                          }`}
-                        >
-                          <td className="py-3 pl-5 pr-2">
-                            <RankCell rank={student.rank} />
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <div
-                                className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                                  student.rank === 1
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : student.rank === 2
-                                    ? "bg-gray-200 text-gray-700"
-                                    : student.rank === 3
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-blue-50 text-blue-700"
-                                }`}
-                              >
-                                {student.student_name.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <p className="font-semibold text-gray-900 text-sm">
-                                  {student.student_name}
-                                </p>
-                                <p className="text-xs text-gray-400">
-                                  {student.assignments_attempted} attempted ·{" "}
-                                  {student.graded_assignments_count ?? 0} graded
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 hidden md:table-cell">
-                            <span className="text-xs text-gray-600">
-                              {student.grade}
-                              {student.section ? ` ${student.section}` : ""}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 hidden lg:table-cell min-w-28">
-                            <ScoreBar
-                              value={student.course_assignment_score}
-                              color="bg-indigo-500"
-                            />
-                          </td>
-                          <td className="py-3 px-4 hidden lg:table-cell min-w-28">
-                            <ScoreBar value={student.daily_assignment_score} color="bg-blue-400" />
-                          </td>
-                          <td className="py-3 px-4 text-center hidden md:table-cell">
-                            <BadgeChip badge={student.badge} />
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <span
-                              className={`text-sm font-bold ${
-                                student.overall_score >= 90
-                                  ? "text-yellow-600"
-                                  : student.overall_score >= 75
-                                  ? "text-emerald-600"
-                                  : student.overall_score >= 60
-                                  ? "text-blue-600"
-                                  : "text-gray-700"
-                              }`}
-                            >
-                              {student.overall_score.toFixed(1)}%
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <RankingTable
+                  rows={leaderboard.map((s): RankingRow => ({
+                    student_id: s.student_id,
+                    student_name: s.student_name,
+                    grade: s.grade,
+                    section: s.section,
+                    course_score: s.course_assignment_score,
+                    daily_score: s.daily_assignment_score,
+                    overall_score: s.overall_score,
+                    rank: s.school_rank ?? s.rank,
+                    school_rank: s.school_rank ?? s.rank,
+                    grade_rank: s.grade_rank,
+                    section_rank: s.section_rank,
+                    badge: s.badge,
+                  }))}
+                  showRanks={["school", "grade", "section"]}
+                  showGrade
+                  showScoreBreakdown
+                />
               )}
             </CardContent>
           </Card>

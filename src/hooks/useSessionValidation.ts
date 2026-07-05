@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { addTokensToHeaders } from '../lib/csrf-client';
-import { apiClient, withParams } from '../lib/api';
-import { clearStoredSession, getStoredUserId, getSession } from '../lib/session-utils';
+import { apiClient } from '../lib/api';
+import { clearStoredSession, getStoredUserId, getSession, setLogoutReason } from '../lib/session-utils';
+import { toast } from '../components/ui/toast';
 
 // Key used to mark that a fresh login just happened
 const FRESH_LOGIN_KEY = 'fresh_login_timestamp';
@@ -66,17 +66,6 @@ export function markFreshLogin(): void {
   }
 }
 
-// Clear the fresh login marker
-export function clearFreshLoginMarker(): void {
-  if (typeof window === 'undefined') return;
-  
-  try {
-    sessionStorage.removeItem(FRESH_LOGIN_KEY);
-  } catch (e) {
-    // Ignore
-  }
-}
-
 export function useSessionValidation(options: SessionValidationOptions = {}): SessionValidationResult {
   const {
     checkInterval = 60000, // Default: check every 60 seconds
@@ -115,15 +104,16 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
         ? 'You have been logged out because you logged in from another device. For security reasons, only one active session is allowed at a time.'
         : message;
       
-      // Show alert and redirect after user acknowledges
+      // Show a persistent notice; it survives the client-side redirect below.
       if (typeof window !== 'undefined') {
-        alert(alertMessage);
+        toast.warning(alertMessage, 8000);
       }
     }
     
     if (redirectOnInvalid) {
       // Small delay to ensure alert is shown
       setTimeout(() => {
+        setLogoutReason('session_expired');
         router.push('/lms/login');
       }, 100);
     }
@@ -160,6 +150,7 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
         // - If user just logged in, Supabase auth state will update soon
         // - If no valid session, redirect to login
         if (redirectOnInvalid) {
+          setLogoutReason('session_expired');
           router.push('/lms/login');
         }
         return false;
@@ -202,12 +193,15 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
         // ignore
       }
 
-      clearStoredSession();
+      // Set reason BEFORE clearing so session-validation race can't overwrite it
+      setLogoutReason('logged_out');
+      clearStoredSession(true, 'logged_out');
 
       // Redirect to login
       window.location.href = '/lms/login';
     } catch (error) {
       console.error('Error during logout:', error);
+      setLogoutReason('logged_out');
       // Force redirect even on error
       window.location.href = '/lms/login';
     }
@@ -300,68 +294,4 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
   };
 }
 
-// Hook for checking if user has a valid role for the current dashboard
-export function useRoleValidation(requiredRole: string | string[]) {
-  const [isValidRole, setIsValidRole] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    const validateRole = async () => {
-      try {
-        setIsLoading(true);
-
-        const userId = getStoredUserId();
-        if (!userId) {
-          router.push('/lms/login');
-          return;
-        }
-
-        // Get role from API
-        const headers = await addTokensToHeaders();
-        const response = await apiClient.get(withParams('/get-role', { userId }), {
-          headers: headers as Record<string, string>,
-          validateStatus: (status) => status >= 200 && status < 500,
-        });
-        const data = response.data as { error?: string; role?: string };
-
-        if (response.status !== 200 || data?.error) {
-          console.error('Error getting role:', data?.error || `HTTP ${response.status}`);
-          router.push('/lms/login');
-          return;
-        }
-
-        const role = data.role;
-        if (!role) {
-          router.push('/lms/login');
-          return;
-        }
-        setUserRole(role);
-
-        // Check if user has required role
-        const requiredRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-        const hasValidRole = requiredRoles.includes(role) || 
-          (requiredRoles.includes('admin') && role === 'super_admin');
-
-        if (!hasValidRole) {
-          setIsValidRole(false);
-          router.push('/redirect');
-          return;
-        }
-
-        setIsValidRole(true);
-      } catch (error) {
-        console.error('Error validating role:', error);
-        router.push('/lms/login');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    validateRole();
-  }, [requiredRole, router]);
-
-  return { isValidRole, isLoading, userRole };
-}
 

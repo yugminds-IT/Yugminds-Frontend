@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { 
+import { Switch } from "@/components/ui/switch";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -37,15 +38,14 @@ import {
   Check
 } from "lucide-react";
 import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
 } from "@/components/ui/dialog";
 import { useTeacherSchool } from "../context";
-import { apiClient, commonApi, teacherApi } from "@/lib/api";
+import { commonApi, teacherApi } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 
 interface Reply {
@@ -70,6 +70,7 @@ interface Notification {
   message: string;
   type: string;
   is_read: boolean;
+  allow_replies?: boolean;
   created_at: string;
   profiles?: {
     id: string;
@@ -107,6 +108,7 @@ export default function TeacherNotifications() {
   const [type, setType] = useState('general');
   const [recipientType, setRecipientType] = useState<'role' | 'individual'>('role');
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [allowReplies, setAllowReplies] = useState(true);
 
   // Recipients data
   const [roles, setRoles] = useState<RecipientOption[]>([]);
@@ -122,6 +124,8 @@ export default function TeacherNotifications() {
   const [replies, setReplies] = useState<Reply[]>([]);
   const [loadingReplies, setLoadingReplies] = useState(false);
   const [replyDialogOpen, setReplyDialogOpen] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
 
   useDashboardRealtime('teacher', {
     enabled: !!selectedSchool?.id,
@@ -159,9 +163,7 @@ export default function TeacherNotifications() {
         setLoading(false);
         return;
       }
-      const { data } = await apiClient.get(`/teacher/notifications`, {
-        params: { limit: 100, school_id: selectedSchool.id },
-      });
+      const { data } = await teacherApi.notifications.list({ limit: 100 });
       const typed = data as { notifications?: Notification[] };
         // Dedupe/group notifications:
         // The DB stores one notification row per recipient (user_id),
@@ -235,8 +237,36 @@ export default function TeacherNotifications() {
 
   const handleViewReplies = async (notification: Notification) => {
     setSelectedNotification(notification);
+    setReplyText('');
     setReplyDialogOpen(true);
     await loadReplies(notification.id);
+  };
+
+  const handleSendReply = async () => {
+    if (!selectedNotification || !replyText.trim()) return;
+    try {
+      setSendingReply(true);
+      await commonApi.notifications.createReply({
+        notification_id: selectedNotification.id,
+        reply_text: replyText.trim(),
+      });
+      setReplyText('');
+      await loadReplies(selectedNotification.id);
+      // Keep the reply_count badge in the list in sync
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === selectedNotification.id
+            ? { ...n, reply_count: (n.reply_count ?? 0) + 1 }
+            : n
+        )
+      );
+      toast.success('Reply sent');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to send reply: ${msg}`);
+    } finally {
+      setSendingReply(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -278,13 +308,14 @@ export default function TeacherNotifications() {
 
     setSending(true);
     try {
-      const { data } = await apiClient.post('/lms/teacher/notifications', {
+      const { data } = await teacherApi.notifications.create({
         title: title.trim(),
         message: message.trim(),
         type,
         recipientType,
         recipients: selectedRecipients,
         school_id: selectedSchool?.id,
+        allowReplies,
       });
       const typed = data as { sent?: number };
       toast.success(`Successfully sent ${typed.sent || 0} notifications`);
@@ -293,6 +324,7 @@ export default function TeacherNotifications() {
         setType('general');
         setRecipientType('role');
         setSelectedRecipients([]);
+        setAllowReplies(true);
         // Reload notifications
         await loadNotifications();
         // Switch to view tab
@@ -324,7 +356,7 @@ export default function TeacherNotifications() {
       // Mark all notifications in the group as read
       const updatePromises = notificationIds.map(async (id: string) => {
         try {
-          await apiClient.patch(`/teacher/notifications/${id}`, { is_read: true });
+          await teacherApi.notifications.markRead(id);
           return { ok: true, id, errorData: {} as { error?: string; details?: string; message?: string } };
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -550,6 +582,22 @@ export default function TeacherNotifications() {
                 </div>
               )}
 
+              {/* Allow replies toggle */}
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3 mb-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="allow-replies" className="flex items-center gap-2">
+                    <Reply className="h-4 w-4 text-muted-foreground" />
+                    Allow recipients to reply
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {allowReplies
+                      ? 'Recipients can reply to start a conversation.'
+                      : 'One-way announcement — replies are turned off.'}
+                  </p>
+                </div>
+                <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
+              </div>
+
               <Button
                 onClick={handleSendNotification}
                 disabled={sending || !title.trim() || !message.trim() || selectedRecipients.length === 0}
@@ -748,11 +796,50 @@ export default function TeacherNotifications() {
               ))
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
+          {/* Reply composer */}
+          {selectedNotification?.allow_replies === false ? (
+            <div className="border-t pt-4 mt-2 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4" />
+                Replies are disabled for this notification.
+              </p>
+              <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
+                Close
+              </Button>
+            </div>
+          ) : (
+            <div className="border-t pt-4 mt-2 space-y-2">
+              <Textarea
+                placeholder="Write a reply…"
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                rows={2}
+                className="resize-none text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSendReply();
+                }}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Ctrl+Enter to send</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
+                    Close
+                  </Button>
+                  <Button
+                    onClick={handleSendReply}
+                    disabled={sendingReply || !replyText.trim()}
+                  >
+                    {sendingReply ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Send Reply
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -20,6 +20,8 @@ import {
 import { List } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { getStoredUserId } from "@/lib/session-utils";
+import { toast } from "@/components/ui/toast";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Course {
   id: string;
@@ -335,13 +337,17 @@ export default function CoursesManagement() {
     if (!course) return;
 
      
-    const confirmed = confirm(`Request update for "${course.course_name}" (${formatGrade(course.grade)}?\n\nThis will send a notification to the admin.`);
+    const confirmed = await confirmDialog({
+      title: 'Request course update?',
+      description: `Request an update for "${course.course_name}" (${formatGrade(course.grade)}). This will send a notification to the admin.`,
+      confirmText: 'Send Request',
+    });
     if (!confirmed) return;
 
     try {
       const userId = getStoredUserId();
       if (!userId) {
-        alert('Please log in to request course updates');
+        toast.warning('Please log in to request course updates');
         return;
       }
 
@@ -352,10 +358,10 @@ export default function CoursesManagement() {
         recipientType: 'role',
         recipients: ['admin'],
       });
-      alert('Course update request sent to admin successfully!');
+      toast.success('Course update request sent to admin successfully!');
     } catch (err) {
       console.error('Error requesting course update:', err);
-      alert(`Failed to send update request: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast.error(`Failed to send update request: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 

@@ -2,81 +2,82 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import CourseHeader from './CourseHeader'
 import CourseSidebar from './CourseSidebar'
+import CourseOverview from './CourseOverview'
 import VideoContentViewer from './VideoContentViewer'
 import TextContentViewer from './TextContentViewer'
 import PDFContentViewer from './PDFContentViewer'
 import QuizContentViewer from './QuizContentViewer'
+import AssignmentContentViewer from './AssignmentContentViewer'
+import LessonTabs from './LessonTabs'
 import ErrorBoundary from './ErrorBoundary'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCourseWithRealtime, useCourseChapters, useChapterContents } from '../../../hooks/useStudentData'
-import { Badge } from '../../ui/badge'
-import { Progress } from '../../ui/progress'
 import { Card } from '../../ui/card'
 import { Button } from '../../ui/button'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 import { useToast } from '../../ui/toast'
+import { makeIsCompleted, computeItemGating, firstIncompleteIndex } from '../../../lib/course-gating'
 
-import { 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  ChevronLeft,
+  ChevronRight,
   CheckCircle,
   FileText,
   Loader2,
-  BookOpen,
-  Play
+  Play,
+  ArrowRight,
+  Lock,
+  X,
 } from 'lucide-react'
-import { getStoredUserId, getSession } from '../../../lib/session-utils'
-import { setAuthToken, studentApi } from '../../../lib/api'
+import { getStoredUserId } from '../../../lib/session-utils'
+import { studentApi } from '../../../lib/api'
+import CircularProgress from '../CircularProgress'
 
 interface CoursePlayerProps {
   courseId: string
 }
 
 interface Content {
-  id: string;
-  title: string;
-  name?: string;
-  content_type?: string;
-  content_url?: string;
-  content_text?: string;
-  chapter_id?: string;
-  course_id?: string;
-  source?: string;
-  max_score?: number;
-  auto_grading_enabled?: boolean;
-  is_completed?: boolean;
-  [key: string]: unknown;
+  id: string
+  title: string
+  name?: string
+  content_type?: string
+  content_url?: string
+  content_text?: string
+  chapter_id?: string
+  course_id?: string
+  source?: string
+  max_score?: number
+  auto_grading_enabled?: boolean
+  is_completed?: boolean
+  [key: string]: unknown
 }
 
 interface Chapter {
-  id: string;
-  name?: string;
-  title?: string;
-  order_number?: number;
-  order_index?: number;
-  is_completed?: boolean;
-  is_unlocked?: boolean;
-  content_count?: number;
-  completed_count?: number;
-  [key: string]: unknown;
-}
-
-interface ErrorWithCode extends Error {
-  code?: string;
+  id: string
+  name?: string
+  title?: string
+  order_number?: number
+  order_index?: number
+  is_completed?: boolean
+  is_unlocked?: boolean
+  content_count?: number
+  completed_count?: number
+  [key: string]: unknown
 }
 
 interface Course {
-  id: string;
-  name?: string;
-  title?: string;
-  course_name?: string;
-  description?: string;
-  is_published?: boolean;
-  status?: string;
-  progress_percentage?: number;
-  [key: string]: unknown;
+  id: string
+  name?: string
+  title?: string
+  course_name?: string
+  description?: string
+  thumbnail_url?: string
+  is_published?: boolean
+  status?: string
+  progress_percentage?: number
+  [key: string]: unknown
 }
 
 export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerProps) {
@@ -84,117 +85,124 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
   const params = useParams()
   const searchParams = useSearchParams()
   const isResuming = searchParams?.get('resume') === '1'
-  const [chapterId, setChapterId] = useState<string | undefined>(() => searchParams?.get('chapter') || undefined)
-  const [contentId, setContentId] = useState<string | undefined>(() => searchParams?.get('content') || undefined)
+  const [chapterId, setChapterId] = useState<string | undefined>(
+    () => searchParams?.get('chapter') || undefined
+  )
+  const [contentId, setContentId] = useState<string | undefined>(
+    () => searchParams?.get('content') || undefined
+  )
   const courseId = propCourseId || (params?.courseId as string | undefined)
-  
-  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
-  // Use empty string as fallback to ensure hooks are always called with valid parameters
+
   const { data: course, isLoading: courseLoading, error: courseError } = useCourseWithRealtime(courseId || '')
   const { data: chaptersRaw, isLoading: chaptersLoading, error: chaptersError } = useCourseChapters(courseId || '')
   const chapters = chaptersRaw as Chapter[] | undefined
-  const { data: contentsRaw, isLoading: contentsLoading, error: contentsError } = useChapterContents(chapterId || '', courseId || undefined)
+  const { data: contentsRaw, isLoading: contentsLoading, error: contentsError } = useChapterContents(
+    chapterId || '',
+    courseId || undefined
+  )
   const contents = contentsRaw as Content[] | undefined
   const [currentContentIndex, setCurrentContentIndex] = useState(0)
   const [retryCount, setRetryCount] = useState(0)
+  // Up-next auto-advance (Udemy-style): countdown after a lesson is completed.
+  const [upNextCountdown, setUpNextCountdown] = useState<number | null>(null)
+  const upNextShownRef = useRef<Set<string>>(new Set())
+  // Root element for the F-key fullscreen shortcut.
+  const playerRootRef = useRef<HTMLDivElement>(null)
+  // Latest-handler refs (assigned each render) keep the timer/key effects stable.
+  const handleNextRef = useRef<() => void>(() => {})
+  const handlePrevRef = useRef<() => void>(() => {})
 
-  // Global progress store for optimistic UI
   const {
+    ensureOwner,
     isContentCompleted,
     setContentCompleted,
     setChapterCompleted,
-    isChapterCompleted,
-    contentProgress: _contentProgress,
-    chapterProgress,
     setLastViewed,
     getLastViewed,
+    setSavingProgress,
   } = useCourseProgressStore()
-  
+
   const toast = useToast()
   const queryClient = useQueryClient()
 
-  // Find current chapter
+  // Combined completion predicate: server truth OR optimistic overlay.
+  const isDone = makeIsCompleted(isContentCompleted)
+
+  // ── Bind the progress cache to the current user (wipes any prior user's data) ─
+  useEffect(() => {
+    ensureOwner(getStoredUserId())
+  }, [ensureOwner])
+
   const currentChapter = chapters?.find((c: Chapter) => c.id === chapterId)
-  
-  // Get current content - prioritize contentId if available, otherwise use index
+
+  // Find currentContent
   let currentContent: Content | null = null
   if (contents && Array.isArray(contents) && contents.length > 0) {
     if (contentId) {
-      // Find content by ID (most reliable when contentId is in URL)
-      currentContent = (contents as Content[]).find((c: Content) => c.id === contentId) || null
-      // If found by ID, update index to match
+      currentContent = contents.find((c: Content) => c.id === contentId) || null
       if (currentContent) {
-        const foundIndex = (contents as Content[]).findIndex((c: Content) => c.id === contentId)
-        if (foundIndex >= 0 && foundIndex !== currentContentIndex) {
-          setCurrentContentIndex(foundIndex)
-        }
+        const idx = contents.findIndex((c: Content) => c.id === contentId)
+        if (idx >= 0 && idx !== currentContentIndex) setCurrentContentIndex(idx)
       }
     }
-    // Fallback to index-based selection if contentId not found or not provided
-    if (!currentContent) {
-      currentContent = (contents as Content[])[currentContentIndex] || null
-    }
-  } else if (contents && !Array.isArray(contents)) {
-    // Handle non-array contents (shouldn't happen, but handle gracefully)
-    currentContent = (contents as Content[])?.[currentContentIndex] || null
+    if (!currentContent) currentContent = contents[currentContentIndex] || null
   }
-  
-  // Check completion from global store (must be after currentContent is defined)
-  const isCompleted = currentContent ? isContentCompleted(currentContent.id) : false
 
-  // Calculate progress - use server-side progress data from API
-  // The chapters API already includes progress from course_progress table in is_completed field
+  const isCompleted = currentContent ? isDone(currentContent) : false
+
+  // ── Accurate, content-level progress (server-authoritative counts) ──────────
   const totalContentItems = (chapters || []).reduce((acc, ch) => acc + (ch.content_count || 0), 0)
-  const completedContentItems = (chapters || []).reduce((acc, ch) => {
-    // Reactive check: if chapter is marked as complete in local store OR backend
-    const isDone = ch.is_completed || chapterProgress[ch.id]?.isCompleted
-    return acc + (isDone ? (ch.content_count || 0) : (ch.completed_count || 0))
-  }, 0)
-  
-  // Overall percentage based on content items
-  const overallProgressPercent = totalContentItems > 0 
-    ? Math.round((completedContentItems / totalContentItems) * 100) 
-    : 0
+  const completedContentItems = (chapters || []).reduce(
+    (acc, ch) => acc + (ch.completed_count || 0),
+    0
+  )
+  const overallProgressPercent =
+    totalContentItems > 0 ? Math.round((completedContentItems / totalContentItems) * 100) : 0
 
-  const completedChapters = (chapters || []).filter((c: Chapter) => {
-    return c.is_completed === true || isChapterCompleted(c.id)
-  }).length || 0
-  const totalChapters = chapters?.length || 0
-  
-  // Sort chapters by order to find next chapter correctly
-  const sortedChapters = chapters && chapters.length > 0
-    ? [...chapters].sort((a: Chapter, b: Chapter) => {
-        const orderA = a.order_number || a.order_index || 0
-        const orderB = b.order_number || b.order_index || 0
-        return orderA - orderB
-      })
-    : [] as Chapter[]
-  
-  // Find next chapter: first chapter after current one in order
-  // Always find the next chapter by order, regardless of completion status
-  // This ensures students can always navigate forward
+  const sortedChapters =
+    chapters && chapters.length > 0
+      ? [...chapters].sort(
+          (a: Chapter, b: Chapter) =>
+            (a.order_number || a.order_index || 0) - (b.order_number || b.order_index || 0)
+        )
+      : ([] as Chapter[])
+
+  // Within-chapter gating for the active chapter
+  const gating = contents && Array.isArray(contents) ? computeItemGating(contents, isDone) : []
+  const currentGate = currentContent ? gating.find(g => g.id === currentContent!.id) : undefined
+  const currentUnlocked = currentGate?.unlocked ?? true
+
   let nextChapter: Chapter | null = null
   if (chapterId && sortedChapters.length > 0) {
-    const currentChapterIndex = sortedChapters.findIndex((c: Chapter) => c.id === chapterId)
-    if (currentChapterIndex >= 0 && currentChapterIndex < sortedChapters.length - 1) {
-      // Get the next chapter in order (regardless of completion or unlock status)
-      // Students should be able to navigate to next chapter even if current isn't complete
-      nextChapter = sortedChapters[currentChapterIndex + 1]
-    }
-  } else if (sortedChapters.length > 0) {
-    // If no current chapter, use first chapter
-    nextChapter = sortedChapters[0]
+    const idx = sortedChapters.findIndex((c: Chapter) => c.id === chapterId)
+    if (idx >= 0 && idx < sortedChapters.length - 1) nextChapter = sortedChapters[idx + 1]
   }
+  // The next chapter is reachable once it is unlocked OR once every item in the
+  // current chapter is done (covers the moment before the chapters query refetches).
+  const currentChapterAllDone =
+    !!contents && Array.isArray(contents) && contents.length > 0 && contents.every(isDone)
+  const nextChapterReachable =
+    !!nextChapter && (nextChapter.is_unlocked !== false || currentChapterAllDone)
 
-  const firstChapter = sortedChapters && sortedChapters.length > 0 ? sortedChapters[0] : null
+  // Is there a next item to advance to (within this chapter or the next module)?
+  const hasNextItem =
+    (!!contents && currentContentIndex < contents.length - 1) || nextChapterReachable
+  const nextItemLabel =
+    contents && currentContentIndex < contents.length - 1
+      ? contents[currentContentIndex + 1]?.title
+      : nextChapterReachable && nextChapter
+      ? nextChapter.name || nextChapter.title || 'Next module'
+      : null
 
-  // For "Continue Learning" on the course overview: first chapter that isn't complete yet
-  const firstIncompleteChapter = sortedChapters.find(
-    (c: Chapter) => !c.is_completed && !isChapterCompleted(c.id)
-  ) || firstChapter
+  const courseName =
+    (course as Course)?.name ||
+    (course as Course)?.title ||
+    (course as Course)?.course_name ||
+    'Course'
 
+  // ── Effects ──────────────────────────────────────────────────────────────
 
-  // Track last-viewed position so students can resume exactly where they left off
+  // Persist last-viewed position (local per-user + server) for resume.
   useEffect(() => {
     if (!courseId || !chapterId) return
     setLastViewed(courseId, {
@@ -203,373 +211,253 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       chapterTitle: currentChapter?.name || currentChapter?.title,
       contentTitle: currentContent?.title || undefined,
     })
-    // Fire-and-forget to backend — silently ignored if endpoint not yet deployed
-    studentApi.progress.saveLastViewed({ courseId, chapterId, contentId: contentId || undefined }).catch(() => {})
+    studentApi.progress
+      .saveLastViewed({ courseId, chapterId, contentId: contentId || undefined })
+      .catch(() => {})
   }, [courseId, chapterId, contentId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update content index when contentId changes (keep in sync) — deferred to avoid cascading renders
+  // Keep currentContentIndex in sync with contentId
   useEffect(() => {
     let rafId: number | undefined
     if (contents && Array.isArray(contents) && contentId) {
-      const index = (contents as Content[]).findIndex((c: Content) => c.id === contentId)
+      const index = contents.findIndex((c: Content) => c.id === contentId)
       if (index >= 0 && index !== currentContentIndex) {
-        rafId = requestAnimationFrame(() => {
-          setCurrentContentIndex(index)
-        })
-      } else if (index < 0) {
+        rafId = requestAnimationFrame(() => setCurrentContentIndex(index))
       }
     } else if (contents && Array.isArray(contents) && !contentId && contents.length > 0) {
       if (currentContentIndex >= contents.length) {
-        rafId = requestAnimationFrame(() => {
-          setCurrentContentIndex(0)
-        })
+        rafId = requestAnimationFrame(() => setCurrentContentIndex(0))
       }
     }
-    return () => {
-      if (rafId != null) cancelAnimationFrame(rafId)
-    }
+    return () => { if (rafId != null) cancelAnimationFrame(rafId) }
   }, [contentId, contents, currentContentIndex, chapterId, chapters])
 
-  // Auto-navigate to first content when chapter is opened (if no contentId in URL)
+  // When a chapter is open but no item selected, land on the first INCOMPLETE item
+  // (everything before it is complete, so it is guaranteed unlocked).
   useEffect(() => {
-    if (!courseId || !chapterId) return
-    
-    // Wait for contents to finish loading
-    if (contentsLoading) return
-    
-    // If we have contents but no contentId, navigate to first content
-    if (!contentId && contents && contents.length > 0) {
-      const firstContent = (contents as Content[])[0]
-      if (firstContent && firstContent.id) {
-        // Only navigate if not already viewing a content item
-        if (!contentId) {
-          setContentId(firstContent.id)
-        }
-      }
+    if (!courseId || !chapterId || contentsLoading || contentId) return
+    if (contents && contents.length > 0) {
+      const idx = firstIncompleteIndex(contents, isDone)
+      const target = idx >= 0 ? contents[idx] : contents[0]
+      if (target?.id) setContentId(target.id)
     }
-  }, [chapterId, contentId, contents, contentsLoading, courseId, router])
+  }, [chapterId, contentId, contents, contentsLoading, courseId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Server→local sync is handled by checkChapterCompletion below (reads is_completed from chapter contents API)
-
-  // Check and update chapter completion when contents change
+  // Resume flow: only auto-open a chapter when the student clicked "Continue"
+  // (?resume=1). Otherwise we show the course overview landing.
   useEffect(() => {
-    if (!contents || !Array.isArray(contents) || !chapterId || !courseId) return
-
-    const checkChapterCompletion = async () => {
-      const contentsArray = contents as Content[];
-      // Check both local store completion AND server-side completion (is_completed field)
-      const allContentCompletedLocal = contentsArray.every((content: Content) => 
-        isContentCompleted(content.id)
-      )
-      
-      const allContentCompletedServer = contentsArray.every((content: Content) => 
-        content.is_completed === true
-      )
-      
-      const currentlyMarkedComplete = isChapterCompleted(chapterId)
-      
-      // If server shows all content complete but local store doesn't, sync local store
-      if (allContentCompletedServer && !allContentCompletedLocal) {
-        contentsArray.forEach((content: Content) => {
-          if (content.is_completed === true && !isContentCompleted(content.id)) {
-            setContentCompleted(content.id, chapterId, courseId, true)
-          }
-        })
-      }
-
-      // Mark chapter complete if all content is complete (either local or server)
-      const allContentCompleted = allContentCompletedLocal || allContentCompletedServer
-
-      if (allContentCompleted) {
-        if (!currentlyMarkedComplete) {
-          setChapterCompleted(chapterId, courseId, true, 100)
-        }
-
-        // Save chapter-level record whenever local says done but server is missing
-        // content completions. This self-heals existing data where a content save
-        // failed silently — the chapter-level record covers all contents via hybrid logic.
-        if (!allContentCompletedServer) {
-          try {
-            const userId = getStoredUserId()
-            if (userId) {
-              const { data: sessionData } = await getSession()
-              if (sessionData.session?.access_token) setAuthToken(sessionData.session.access_token)
-
-              await studentApi.progress.simpleSave({
-                studentId: userId,
-                courseId,
-                chapterId,
-                isCompleted: true,
-              })
-              queryClient.invalidateQueries({ queryKey: ["studentCourses"] })
-            }
-          } catch {}
-        }
-      } else if (!allContentCompleted && currentlyMarkedComplete) {
-        setChapterCompleted(chapterId, courseId, false, 0)
-      }
-    }
-
-    checkChapterCompletion()
-  }, [contents, chapterId, courseId, isContentCompleted, isChapterCompleted, setChapterCompleted, setContentCompleted, queryClient])
-
-  // Auto-redirect to appropriate chapter when no chapter is selected
-  useEffect(() => {
-    if (!courseId || chapterId || chaptersLoading || !chapters || chapters.length === 0) return
-
-    const sorted = [...chapters].sort((a: Chapter, b: Chapter) =>
-      (a.order_number || a.order_index || 0) - (b.order_number || b.order_index || 0)
+    if (chapterId || !isResuming || chaptersLoading || !chapters || chapters.length === 0) return
+    const sorted = [...chapters].sort(
+      (a: Chapter, b: Chapter) =>
+        (a.order_number || a.order_index || 0) - (b.order_number || b.order_index || 0)
     )
-
-    if (isResuming) {
-      // ?resume=1: go to first incomplete chapter so the student continues where they left off
-      const firstIncomplete = sorted.find(
-        (c: Chapter) => !c.is_completed && !isChapterCompleted(c.id)
-      ) || sorted[0]
-      setChapterId(firstIncomplete.id); setContentId(undefined)
-    } else {
-      // Normal entry to course overview: only auto-redirect new students (no progress yet)
-      const completedCount = chapters.filter((c: Chapter) => c.is_completed).length
-      if (completedCount === 0) {
-        setChapterId(sorted[0].id); setContentId(undefined)
-      }
+    const lastViewed = getLastViewed(courseId || '')
+    const lvChapter =
+      lastViewed?.chapterId &&
+      sorted.find(c => c.id === lastViewed.chapterId && c.is_unlocked !== false)
+    if (lvChapter) {
+      setChapterId(lastViewed!.chapterId)
+      if (lastViewed!.contentId) setContentId(lastViewed!.contentId)
+      return
     }
-  }, [chapterId, chaptersLoading, chapters, courseId, isResuming, isChapterCompleted, router])
+    const target =
+      sorted.find((c: Chapter) => !c.is_completed && c.is_unlocked !== false) || sorted[0]
+    setChapterId(target.id)
+    setContentId(undefined)
+  }, [chapterId, isResuming, chaptersLoading, chapters, courseId, getLastViewed])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
   const handleNext = async () => {
+    // Strict gating: cannot advance until the current item is complete.
+    if (!isCompleted) {
+      toast.info('Complete this item to continue')
+      return
+    }
     if (contents && Array.isArray(contents) && currentContentIndex < contents.length - 1) {
-      const nextIndex = currentContentIndex + 1
-      const nextContent = contents[nextIndex]
-      if (nextContent && nextContent.id) {
-        setCurrentContentIndex(nextIndex)
-        setContentId(nextContent.id)
-      }
-    } else if (nextChapter && nextChapter.id) {
+      const next = contents[currentContentIndex + 1]
+      if (next?.id) { setCurrentContentIndex(currentContentIndex + 1); setContentId(next.id) }
+    } else if (nextChapterReachable && nextChapter?.id) {
       setChapterId(nextChapter.id); setContentId(undefined)
-    } else if (chapterId && sortedChapters.length > 0) {
-      const currentChapterIndex = sortedChapters.findIndex((c: Chapter) => c.id === chapterId)
-      if (currentChapterIndex >= 0 && currentChapterIndex < sortedChapters.length - 1) {
-        const fallbackNextChapter = sortedChapters[currentChapterIndex + 1]
-        if (fallbackNextChapter && fallbackNextChapter.id) {
-          setChapterId(fallbackNextChapter.id); setContentId(undefined)
-          return
-        }
-      }
-      if (!isCompleted) {
-        await handleMarkComplete()
-      }
-      toast.success('Course completed! 🎉')
-      setChapterId(undefined); setContentId(undefined)
     } else {
-      if (!isCompleted) {
-        await handleMarkComplete()
-      }
       toast.success('Course completed! 🎉')
       setChapterId(undefined); setContentId(undefined)
+      router.push('/lms/student/my-courses')
     }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handlePrevious = () => {
     if (currentContentIndex > 0) {
-      const prevIndex = currentContentIndex - 1
-      setCurrentContentIndex(prevIndex)
-      const prevContent = (contents as Content[])?.[prevIndex]
-      if (prevContent) {
-        setContentId(prevContent.id)
-      }
+      const prevIdx = currentContentIndex - 1
+      setCurrentContentIndex(prevIdx)
+      const prev = (contents as Content[])?.[prevIdx]
+      if (prev) setContentId(prev.id)
     }
   }
 
-  // Touch swipe navigation — tracks horizontal swipe on content area
   const swipeTouchStartX = useRef<number | null>(null)
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
+  const onTouchStart = (e: React.TouchEvent) => {
     swipeTouchStartX.current = e.touches[0].clientX
-  }, [])
-  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+  }
+  const onTouchEnd = (e: React.TouchEvent) => {
     if (swipeTouchStartX.current === null) return
     const dx = e.changedTouches[0].clientX - swipeTouchStartX.current
     swipeTouchStartX.current = null
-    if (Math.abs(dx) < 60) return // ignore small movements
-    if (dx < 0) handleNext()       // swipe left → next
-    else handlePrevious()           // swipe right → previous
-  }, [handleNext, handlePrevious])
+    if (Math.abs(dx) < 60) return
+    if (dx < 0) handleNext()
+    else handlePrevious()
+  }
 
   const handleMarkComplete = useCallback(async () => {
     if (!currentContent || !chapterId || !courseId) return false
-
     const userId = getStoredUserId()
-    if (!userId) {
-      toast.error('Please log in to save progress')
-      return false
-    }
+    if (!userId) { toast.error('Please log in to save progress'); return false }
 
-    // Optimistic update
+    // Optimistic overlay — instant UI feedback (reconciled by refetch below).
     setContentCompleted(currentContent.id, chapterId, courseId, true)
+    setSavingProgress(currentContent.id, true)
 
-    let allContentCompleted = false
+    let allDone = false
     if (contents && Array.isArray(contents)) {
-      const contentsArray = contents as Content[]
-      allContentCompleted = contentsArray.every(
-        (content: Content) => content.id === currentContent.id || isContentCompleted(content.id)
+      allDone = contents.every(
+        (c: Content) => c.id === currentContent!.id || isDone(c)
       )
-      if (allContentCompleted) {
-        setChapterCompleted(chapterId, courseId, true, 100)
-      }
+      if (allDone) setChapterCompleted(chapterId, courseId, true, 100)
     }
 
     try {
-      // Save content-level progress record
-      try {
-        await studentApi.progress.simpleSave({
-          studentId: userId,
-          courseId,
-          chapterId,
-          contentId: currentContent.id,
-          isCompleted: true,
-        })
-      } catch (contentError) {
-        console.error('Progress save failed:', contentError)
+      await studentApi.progress.simpleSave({ courseId, chapterId, contentId: currentContent.id, isCompleted: true })
+      if (allDone) {
+        await studentApi.progress.simpleSave({ courseId, chapterId, isCompleted: true }).catch(() => {})
       }
-
-      // When all content in the chapter is done, also write a chapter-level record
-      // (no contentId). The hybrid backend algorithm counts every content item under
-      // a chapter-level-completed chapter, so this guarantees 100% even if an
-      // individual content save failed silently.
-      if (allContentCompleted) {
-        try {
-          await studentApi.progress.simpleSave({
-            studentId: userId,
-            courseId,
-            chapterId,
-            isCompleted: true,
-          })
-        } catch {}
-      }
-
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["courseChapters", courseId] }),
-        queryClient.invalidateQueries({ queryKey: ["studentDashboardStats"] }),
-        queryClient.invalidateQueries({ queryKey: ["studentCourses"] }),
-        queryClient.invalidateQueries({ queryKey: ["chapterContents", chapterId] })
+        queryClient.invalidateQueries({ queryKey: ['courseChapters', courseId] }),
+        queryClient.invalidateQueries({ queryKey: ['studentDashboardStats'] }),
+        queryClient.invalidateQueries({ queryKey: ['studentCourses'] }),
+        queryClient.invalidateQueries({ queryKey: ['chapterContents', chapterId] }),
       ])
-
-      if (allContentCompleted) {
-        toast.success('Chapter completed! 🎉', 3000)
-      } else {
-        toast.success('Progress saved!', 2000)
-      }
-
+      toast.success(allDone ? 'Chapter completed! 🎉' : 'Progress saved!', allDone ? 3000 : 2000)
       return true
-
     } catch (error) {
-      const errorMessage = error instanceof Error
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ? ((error as any).response?.data?.message || error.message)
-        : 'Unexpected error'
-      console.error('Progress save error:', error)
-      toast.error(`Failed to save progress: ${errorMessage}`)
+      const msg = error instanceof Error ? (error as { response?: { data?: { message?: string } } }).response?.data?.message || error.message : 'Unexpected error'
+      toast.error(`Failed to save progress: ${msg}`)
+      return false
+    } finally {
+      setSavingProgress(currentContent.id, false)
     }
-  }, [currentContent, chapterId, courseId, contents, isContentCompleted, setContentCompleted, setChapterCompleted, toast, queryClient])
+  }, [currentContent, chapterId, courseId, contents, isDone, setContentCompleted, setChapterCompleted, setSavingProgress, toast, queryClient])
+
+  // Latest-handler refs so the timer/keyboard effects stay stable across renders.
+  handleNextRef.current = () => { void handleNext() }
+  handlePrevRef.current = handlePrevious
+
+  // ── Up-next auto-advance ───────────────────────────────────────────────────
+  // When the current lesson is complete and another item follows, surface a
+  // short countdown that auto-advances (cancelable).
+  useEffect(() => {
+    if (!currentContent) return
+    const id = currentContent.id
+    if (isCompleted && hasNextItem && !upNextShownRef.current.has(id)) {
+      upNextShownRef.current.add(id)
+      setUpNextCountdown(5)
+    }
+  }, [isCompleted, currentContent, hasNextItem])
+
+  useEffect(() => {
+    if (upNextCountdown === null) return
+    if (upNextCountdown <= 0) {
+      setUpNextCountdown(null)
+      handleNextRef.current()
+      return
+    }
+    const t = setTimeout(() => setUpNextCountdown((c) => (c === null ? null : c - 1)), 1000)
+    return () => clearTimeout(t)
+  }, [upNextCountdown])
+
+  // Dismiss the card whenever the active item changes.
+  useEffect(() => {
+    setUpNextCountdown(null)
+  }, [contentId, chapterId])
+
+  // ── Keyboard shortcuts: ← prev · → next · F fullscreen ─────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return
+      if (e.key === 'ArrowLeft') handlePrevRef.current()
+      else if (e.key === 'ArrowRight') { if (isCompleted) handleNextRef.current() }
+      else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault()
+        const root = playerRootRef.current
+        if (!document.fullscreenElement) root?.requestFullscreen?.().catch(() => {})
+        else document.exitFullscreen?.().catch(() => {})
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isCompleted])
+
+  // ── Content renderer ──────────────────────────────────────────────────────
+
+  const chapterDisplayName = currentChapter?.name || currentChapter?.title || ''
 
   const renderContentViewer = (): React.ReactNode => {
-    // Show loading state while contents are loading
     if (contentsLoading) {
       return (
-        <div className="text-center py-12 text-gray-500">
-          <Loader2 className="h-16 w-16 mx-auto mb-4 text-gray-300 animate-spin" />
-          <p>Loading content...</p>
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
         </div>
       )
     }
-
-    // Show error state if there's an error
     if (contentsError) {
       return (
-        <div className="text-center py-12 text-gray-500">
-          <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-          <p className="text-red-600 mb-2">Error loading content</p>
-          <p className="text-sm text-gray-400">{contentsError.message}</p>
-          {contentId && (
-            <Button
-              onClick={() => setContentId(undefined)}
-              className="mt-4"
-            >
-              Back to Chapter
-            </Button>
-          )}
+        <div className="max-w-3xl mx-auto px-6 py-12 text-center text-gray-500">
+          <FileText className="h-14 w-14 mx-auto mb-4 text-gray-300" />
+          <p className="text-red-600 mb-1">Error loading content</p>
+          <p className="text-sm">{contentsError.message}</p>
         </div>
       )
     }
-
-    // Show message if no contents available
     if (!contents || contents.length === 0) {
       return (
-        <div className="text-center py-12 text-gray-500">
-          <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-          <p>No content available for this chapter</p>
-          {chapterId && (
-            <Button
-              onClick={() => setContentId(undefined)}
-              className="mt-4"
-              variant="outline"
-            >
-              Back to Chapter
-            </Button>
-          )}
+        <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+          <FileText className="h-14 w-14 mb-4 opacity-30" />
+          <p className="text-sm">No content available for this chapter</p>
         </div>
       )
     }
-
-    // Show message if contentId is specified but content not found
-    if (contentId && !currentContent) {
-      return (
-        <div className="text-center py-12 text-gray-500">
-          <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-          <p className="mb-2">Content not found</p>
-          <p className="text-sm text-gray-400 mb-4">
-            The requested content (ID: {contentId}) could not be found in this chapter.
-          </p>
-          {contents.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm">Available content:</p>
-              {(contents as Content[]).map((c: Content, idx: number) => (
-                <Button
-                  key={c.id || idx}
-                  onClick={() => setContentId(c.id)}
-                  variant="outline"
-                  className="mr-2"
-                >
-                  {c.title || c.name || `Content ${idx + 1}`}
-                </Button>
-              ))}
-            </div>
-          )}
-        </div>
-      )
-    }
-
-    // Show message if no current content (shouldn't happen, but handle gracefully)
     if (!currentContent) {
       return (
-        <div className="text-center py-12 text-gray-500">
-          <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-          <p>No content available</p>
-          <p className="text-sm text-gray-400 mt-2">
-            {contentId ? `Content ID: ${contentId}` : 'Please select a content item from the sidebar'}
+        <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+          <Play className="h-14 w-14 mb-4 opacity-20" />
+          <p className="text-sm">Select a lesson from the sidebar to start</p>
+        </div>
+      )
+    }
+
+    // Strict gating: a locked item cannot be opened.
+    if (!currentUnlocked) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24 text-center text-gray-500 px-6">
+          <div className="bg-gray-100 rounded-full p-4 mb-4">
+            <Lock className="h-8 w-8 text-gray-400" />
+          </div>
+          <p className="font-semibold text-gray-700 mb-1">This item is locked</p>
+          <p className="text-sm max-w-sm">
+            Complete the previous item to unlock <span className="font-medium">{currentContent.title}</span>.
           </p>
         </div>
       )
     }
 
     const contentType = (currentContent.content_type || '').toLowerCase()
-
     switch (contentType) {
       case 'video':
       case 'video_link':
         return (
           <VideoContentViewer
+            key={currentContent.id}
             content={currentContent as { id: string; title: string; content_url?: string; content_type?: string; chapter_id?: string; course_id?: string }}
             courseId={courseId}
             chapterId={chapterId}
@@ -580,6 +468,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       case 'html':
         return (
           <TextContentViewer
+            key={currentContent.id}
             content={currentContent as { id: string; title: string; content_text?: string; content_url?: string; chapter_id?: string; course_id?: string }}
             courseId={courseId}
             chapterId={chapterId}
@@ -590,17 +479,29 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       case 'file':
         return (
           <PDFContentViewer
+            key={currentContent.id}
             content={currentContent as { id: string; title: string; content_url?: string; chapter_id?: string; course_id?: string }}
             courseId={courseId}
             chapterId={chapterId}
+            chapterName={chapterDisplayName}
             onComplete={handleMarkComplete}
           />
         )
       case 'quiz':
-      case 'assignment':
         return (
           <QuizContentViewer
+            key={currentContent.id}
             content={currentContent as { id: string; title: string; content_url?: string; source?: string; content_text?: string; max_score?: number; auto_grading_enabled?: boolean }}
+            courseId={courseId || ''}
+            chapterId={chapterId || ''}
+            onComplete={handleMarkComplete}
+          />
+        )
+      case 'assignment':
+        return (
+          <AssignmentContentViewer
+            key={currentContent.id}
+            content={currentContent as { id: string; title: string; content_text?: string; chapter_id?: string; course_id?: string }}
             courseId={courseId || ''}
             chapterId={chapterId || ''}
             onComplete={handleMarkComplete}
@@ -608,109 +509,47 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
         )
       default:
         return (
-          <div className="text-center py-12 text-gray-500">
-            <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+          <div className="max-w-3xl mx-auto px-6 py-12 text-center text-gray-400">
+            <FileText className="h-14 w-14 mx-auto mb-4 opacity-30" />
             <p>Unsupported content type: {contentType}</p>
           </div>
         )
     }
   }
 
-  // Enhanced error logging
+  // ── Error handling ────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (courseError || chaptersError || contentsError) {
       const error = courseError || chaptersError || contentsError
-      const _errorCode = (error as ErrorWithCode)?.code
-      
-      // Better error serialization for logging
-      const errorDetails = error instanceof Error 
-        ? { message: error.message, stack: error.stack, name: error.name }
-        : typeof error === 'object' 
-          ? JSON.stringify(error, null, 2)
-          : String(error)
-
-      console.error('[CoursePlayer] Error:', errorDetails)
+      console.error('[CoursePlayer] Error:', error instanceof Error ? error.message : String(error))
     }
   }, [courseError, chaptersError, contentsError, courseId, chapterId, contentId, retryCount])
 
-  // Retry handler
   const handleRetry = () => {
-    if (retryCount < 3) {
-      setRetryCount(prev => prev + 1)
-      window.location.reload()
-    }
+    if (retryCount < 3) { setRetryCount(p => p + 1); window.location.reload() }
   }
 
-  // Handle errors with specific messages based on error codes
-  if (courseError || chaptersError || contentsError) {
-    const error = courseError || chaptersError || contentsError
-    interface SupabaseError {
-      code?: string;
-      message?: string;
-    }
-    
+  if (courseError || chaptersError) {
+    const error = courseError || chaptersError
+    interface SupabaseError { code?: string; message?: string }
     const errorCode = (error as SupabaseError)?.code
-    
-    // Determine error message based on error code
-    let errorTitle = 'Error Loading Course'
-    let errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    let actionMessage = ''
-    let canRetry = retryCount < 3 && errorCode !== 'NO_ACCESS' && errorCode !== 'ACCESS_DENIED'
-
-    if (errorCode === 'NO_ACCESS') {
-      errorTitle = 'Access Denied'
-      errorMessage = 'You do not have access to this course content.'
-      actionMessage = 'Please contact your administrator to enroll you in this course.'
-      canRetry = false
-    } else if (errorCode === 'ENROLLMENT_PENDING') {
-      errorTitle = 'Enrollment Processing'
-      errorMessage = 'Your enrollment is being processed.'
-      actionMessage = 'Please refresh the page in a moment. If the issue persists, contact your administrator.'
-      canRetry = true
-    } else if (errorCode === 'ACCESS_DENIED') {
-      errorTitle = 'Permission Denied'
-      errorMessage = 'You do not have permission to access this content.'
-      actionMessage = 'Please contact your administrator if you believe this is an error.'
-      canRetry = false
-    } else if (chaptersError) {
-      errorTitle = 'Chapters Not Available'
-      errorMessage = 'Failed to load course chapters.'
-      actionMessage = 'The course may not have published chapters yet, or there may be an access issue. Please contact your administrator.'
-      canRetry = true
-    } else if (contentsError) {
-      errorTitle = 'Content Not Available'
-      errorMessage = 'Failed to load course content.'
-      actionMessage = 'Please try refreshing the page. If the issue persists, contact your administrator.'
-      canRetry = true
-    }
+    const canRetry = retryCount < 3 && errorCode !== 'NO_ACCESS' && errorCode !== 'ACCESS_DENIED'
 
     return (
-      <div className="container mx-auto px-4 py-6">
-        <Card className="p-6">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-red-600 mb-2">{errorTitle}</h2>
-            <p className="text-gray-700 mb-2">{errorMessage}</p>
-            {actionMessage && (
-              <p className="text-sm text-gray-500 mb-4">{actionMessage}</p>
-            )}
-            <div className="flex gap-2 justify-center flex-wrap">
-              <Button onClick={() => router.push('/lms/student/my-courses')} variant="outline">
-                Back to Courses
-              </Button>
-              {canRetry && (
-                <Button onClick={handleRetry} variant="default">
-                  {retryCount > 0 ? `Retry (${retryCount}/3)` : 'Retry'}
-                </Button>
-              )}
-              <Button onClick={() => window.location.reload()} variant="default">
-                Refresh Page
-              </Button>
-            </div>
-            {retryCount > 0 && (
-              <p className="text-xs text-gray-400 mt-2 text-center">
-                Retry attempt {retryCount} of 3
-              </p>
-            )}
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <Card className="p-8 max-w-md w-full text-center">
+          <h2 className="text-xl font-semibold text-red-600 mb-2">
+            {errorCode === 'NO_ACCESS' ? 'Access Denied' : 'Error Loading Course'}
+          </h2>
+          <p className="text-gray-700 mb-4">
+            {error instanceof Error ? error.message : 'Unknown error'}
+          </p>
+          <div className="flex gap-2 justify-center flex-wrap">
+            <Button onClick={() => router.push('/lms/student/my-courses')} variant="outline">
+              Back to Courses
+            </Button>
+            {canRetry && <Button onClick={handleRetry}>Retry</Button>}
           </div>
         </Card>
       </div>
@@ -725,492 +564,202 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     )
   }
 
-  // Guard against missing courseId - after all hooks are called
   if (!courseId) {
     return (
-      <div className="container mx-auto px-4 py-6">
-        <div className="text-center py-12">
-          <p className="text-gray-500">Course ID is missing</p>
-          <Button onClick={() => router.push('/lms/student/my-courses')} className="mt-4">
-            Back to Courses
-          </Button>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-gray-500">Course ID is missing</p>
       </div>
     )
   }
 
-  // If course is null but chapters exist, we can still show the course
-  // This handles cases where RLS blocks course query but allows chapters
-  if (!course) {
-    // If we have chapters, we can infer the course exists and has access
-    // Create a minimal course object from the first chapter
-    if (chapters && chapters.length > 0) {
-      const fallbackCourse: Course = {
-        id: courseId || '',
-        name: 'Course',
-        title: 'Course',
-        course_name: 'Course',
-        description: 'Course content is available',
-        is_published: true,
-        status: 'Published',
-      }
-      
-      // Use fallback course but log the issue
-      
-      // If we have chapterId or contentId, render the content viewer (same as normal flow)
-      if (chapterId) {
-        // Render the main player layout with content viewer
-        return (
-          <ErrorBoundary>
-            <div className="min-h-screen bg-gray-50 flex flex-col">
-              {/* Course Header */}
-              <CourseHeader
-                course={fallbackCourse}
-                totalChapters={totalChapters}
-                completedChapters={completedChapters}
-              />
-
-              <div className="flex-1 max-w-[1600px] w-full mx-auto p-0 sm:p-4 md:p-6 lg:p-8">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 md:gap-6 h-full">
-
-                  {/* Left Sidebar - Navigation */}
-                  <div className="lg:col-span-3 xl:col-span-3 h-full order-2 lg:order-1 px-2 sm:px-0">
-                     <div className="lg:sticky lg:top-8 space-y-4">
-                       <CourseSidebar
-                          courseId={courseId}
-                          chapters={chapters || []}
-                          currentChapterId={chapterId}
-                          currentContentId={currentContent?.id}
-                          onChapterSelect={(id) => { setChapterId(id); setContentId(undefined) }}
-                          onContentSelect={(id) => setContentId(id)}
-                        />
-
-                        {/* Progress Summary Card */}
-                        <Card className="p-4 bg-white shadow-sm border-blue-100">
-                          <h4 className="text-sm font-semibold text-gray-700 mb-2">Course Progress</h4>
-                          <div className="space-y-2">
-                             <div className="flex justify-between text-xs text-gray-500">
-                               <span>{completedChapters} of {totalChapters} chapters completed</span>
-                               <span>{overallProgressPercent}%</span>
-                             </div>
-                             <Progress value={overallProgressPercent} className="h-2" />
-                          </div>
-                        </Card>
-                     </div>
-                  </div>
-
-                  {/* Main Content Area */}
-                  <div className="lg:col-span-9 xl:col-span-9 space-y-4 md:space-y-6 order-1 lg:order-2">
-
-                    {/* Content Viewer Card */}
-                    <div className="bg-white rounded-none sm:rounded-xl shadow-sm border-y sm:border border-gray-200 overflow-hidden min-h-[60vh] md:min-h-[500px] flex flex-col">
-                      {/* Content Header */}
-                      {currentContent && (
-                        <div className="border-b px-4 py-3 md:px-6 md:py-4 bg-gray-50 flex justify-between items-center">
-                          <div className="min-w-0 flex-1">
-                            <h2 className="text-base md:text-xl font-bold text-gray-900 line-clamp-1">{currentContent.title}</h2>
-                            <p className="text-xs md:text-sm text-gray-500 mt-0.5">
-                              {currentChapter?.name || currentChapter?.title || 'Chapter'}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 ml-2 shrink-0">
-                            {isCompleted && (
-                              <Badge className="bg-green-500 text-white text-xs">
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                <span className="hidden sm:inline">Completed</span>
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Content Viewer */}
-                      <div className="flex-1 p-3 sm:p-6 overflow-y-auto" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                        {renderContentViewer()}
-                      </div>
-
-                      {/* Navigation Footer */}
-                      <div className="border-t px-4 py-3 md:px-6 md:py-4 bg-gray-50 flex justify-between items-center">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handlePrevious}
-                          disabled={currentContentIndex === 0 && !(chapters || []).find((c: Chapter, idx: number) => idx > 0 && c.id === chapterId)}
-                        >
-                          <ChevronLeft className="h-4 w-4 mr-1 md:mr-2" />
-                          <span className="hidden sm:inline">Previous</span>
-                        </Button>
-
-                        <div className="text-xs md:text-sm text-gray-500">
-                          {currentContentIndex + 1} of {contents?.length || 0}
-                        </div>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleNext}
-                        >
-                          <span className="hidden sm:inline">{currentContentIndex >= (contents?.length || 0) - 1 && !nextChapter ? 'Finish Course' : 'Next'}</span>
-                          {currentContentIndex >= (contents?.length || 0) - 1 && !nextChapter ? <CheckCircle className="h-4 w-4 sm:ml-2" /> : <ChevronRight className="h-4 w-4 sm:ml-2" />}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </ErrorBoundary>
-        )
-      }
-      
-      // If no chapterId, show overview
+  // No chapter selected — show the course overview landing (unless resuming, in
+  // which case the resume effect above is about to pick a chapter).
+  if (!chapterId) {
+    if (isResuming) {
       return (
-        <div className="container mx-auto px-4 py-6">
-          <CourseHeader
-            course={fallbackCourse}
-            totalChapters={totalChapters}
-            completedChapters={completedChapters}
-            overallProgress={overallProgressPercent}
-            nextChapterId={firstIncompleteChapter?.id}
-          />
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-1">
-              <CourseSidebar
-                courseId={courseId}
-                chapters={chapters || []}
-                onChapterSelect={(id) => { setChapterId(id); setContentId(undefined) }}
-                onContentSelect={(id) => setContentId(id)}
-              />
-            </div>
-            <div className="lg:col-span-3">
-              <Card className="p-6">
-                <h2 className="text-2xl font-bold mb-4">Course Content</h2>
-                <p className="text-gray-600 mb-6">Select a chapter from the sidebar to begin learning.</p>
-                {totalChapters === 0 ? (
-                  <div className="text-center py-12">
-                    <BookOpen className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                    <p className="text-gray-500 mb-2">No chapters available for this course yet.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                      <div className="p-4 border rounded-lg">
-                        <h3 className="font-semibold mb-2">Total Chapters</h3>
-                        <p className="text-2xl font-bold">{totalChapters}</p>
-                      </div>
-                      <div className="p-4 border rounded-lg">
-                        <h3 className="font-semibold mb-2">Completed</h3>
-                        <p className="text-2xl font-bold text-green-600">{completedChapters}</p>
-                      </div>
-                      <div className="p-4 border rounded-lg">
-                        <h3 className="font-semibold mb-2">Progress</h3>
-                        <p className="text-2xl font-bold">
-                          {totalChapters > 0 ? ((completedChapters / totalChapters) * 100).toFixed(0) : 0}%
-                        </p>
-                      </div>
-                    </div>
-                    {firstIncompleteChapter && (
-                      <div className="mt-6 text-center">
-                        <Button
-                          size="lg"
-                          className="w-full md:w-auto"
-                          onClick={() => { setChapterId(firstIncompleteChapter.id); setContentId(undefined) }}
-                        >
-                          <Play className="h-5 w-5 mr-2" />
-                          {completedChapters > 0 ? 'Continue Learning' : 'Start Course'}
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </Card>
-            </div>
-          </div>
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
       )
     }
-    
-    // If no chapters either, show error
     return (
-      <div className="container mx-auto px-4 py-6">
-        <Card className="p-6">
-          <div className="text-center py-12">
-            <p className="text-gray-500 mb-4">Course not found</p>
-            <p className="text-sm text-gray-400 mb-4">
-              {courseError ? `Error: ${(courseError as Error | { message?: string })?.message ?? String(courseError)}` : 'The course may not exist or you may not have access to it.'}
-            </p>
-            <Button onClick={() => router.push('/lms/student/my-courses')} variant="outline">
-              Back to Courses
-            </Button>
-          </div>
-        </Card>
-      </div>
+      <CourseOverview
+        courseId={courseId}
+        course={course as Course}
+        chapters={sortedChapters}
+        courseName={courseName}
+        overallProgressPercent={overallProgressPercent}
+        completedContentItems={completedContentItems}
+        totalContentItems={totalContentItems}
+        onStart={(chId, ctId) => { setChapterId(chId); setContentId(ctId) }}
+        onExit={() => router.push('/lms/student/my-courses')}
+      />
     )
   }
 
-  if (!chapterId) {
-    const lastViewedEntry = courseId ? getLastViewed(courseId) : null
+  // ── Coursera 3-column player layout ──────────────────────────────────────
 
-    // Show course overview
-    return (
-      <div className="container mx-auto px-4 py-6">
-        <CourseHeader
-          course={course as Course}
-          totalChapters={totalChapters}
-          completedChapters={completedChapters}
-          nextChapterId={firstIncompleteChapter?.id}
-        />
+  const isLastContent =
+    (!contents || currentContentIndex >= (contents?.length || 0) - 1) && !nextChapterReachable
+  const nextDisabled = !isCompleted
 
-        {/* Resume card — shown when student has a saved position */}
-        {lastViewedEntry && (
-          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="bg-blue-100 rounded-lg p-2 shrink-0">
-                <Play className="h-5 w-5 text-blue-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-blue-900">Continue where you left off</p>
-                <p className="text-xs text-blue-600 mt-0.5 truncate">
-                  {lastViewedEntry.chapterTitle || 'Chapter'}
-                  {lastViewedEntry.contentTitle ? ` · ${lastViewedEntry.contentTitle}` : ''}
-                </p>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
-              onClick={() => {
-                setChapterId(lastViewedEntry.chapterId)
-                if (lastViewedEntry.contentId) setContentId(lastViewedEntry.contentId)
-              }}
-            >
-              Resume
-            </Button>
-          </div>
-        )}
+  // Lesson tabs (Overview/Notes/Resources) only under reading/watching content;
+  // quiz & assignment viewers are self-contained interactive flows.
+  const lessonTabContentType = (currentContent?.content_type || '').toLowerCase()
+  const showLessonTabs =
+    !!currentContent &&
+    currentUnlocked &&
+    !contentsLoading &&
+    !contentsError &&
+    ['video', 'video_link', 'text', 'html', 'pdf', 'file'].includes(lessonTabContentType)
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1">
-            <CourseSidebar
-              courseId={courseId}
-              chapters={chapters || []}
-              onChapterSelect={(id) => { setChapterId(id); setContentId(undefined) }}
-              onContentSelect={(id) => setContentId(id)}
-            />
-          </div>
-          <div className="lg:col-span-3">
-            <Card className="p-6">
-              <h2 className="text-2xl font-bold mb-4">Course Overview</h2>
-              <p className="text-gray-600 mb-6">{(course as Course).description || 'No description available.'}</p>
-              
-              {totalChapters === 0 ? (
-                <div className="text-center py-12">
-                  <BookOpen className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-gray-500 mb-2">No chapters available for this course yet.</p>
-                  <p className="text-xs text-gray-400">
-                    {chaptersLoading 
-                      ? 'Loading chapters...' 
-                      : 'Chapters may need to be published or created by your instructor.'}
-                  </p>
-                  {!chaptersLoading && chaptersError && (
-                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded">
-                      <p className="text-sm font-semibold text-red-800 mb-2">Error Loading Chapters:</p>
-                      <p className="text-xs text-red-600 mb-1">
-                        {chaptersError && typeof chaptersError === 'object' && 'message' in chaptersError ? (chaptersError as Error).message : 'Failed to load chapters'}
-                      </p>
-                      {(chaptersError as ErrorWithCode)?.code && (
-                        <p className="text-xs text-red-500">Error Code: {(chaptersError as ErrorWithCode).code}</p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-2">
-                        Check browser console for detailed error information.
-                      </p>
-                    </div>
-                  )}
-                  {!chaptersLoading && !chaptersError && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      Check browser console for debugging information.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                    <div className="p-4 border rounded-lg">
-                      <h3 className="font-semibold mb-2">Total Chapters</h3>
-                      <p className="text-2xl font-bold">{totalChapters}</p>
-                    </div>
-                    <div className="p-4 border rounded-lg">
-                      <h3 className="font-semibold mb-2">Completed</h3>
-                      <p className="text-2xl font-bold text-green-600">{completedChapters}</p>
-                    </div>
-                    <div className="p-4 border rounded-lg">
-                      <h3 className="font-semibold mb-2">Progress</h3>
-                      <p className="text-2xl font-bold">
-                        {totalChapters > 0 ? ((completedChapters / totalChapters) * 100).toFixed(0) : 0}%
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {firstIncompleteChapter && (
-                    <div className="mt-6 text-center">
-                      <Button
-                        size="lg"
-                        className="w-full md:w-auto"
-                        onClick={() => { setChapterId(firstIncompleteChapter.id); setContentId(undefined) }}
-                      >
-                        <Play className="h-5 w-5 mr-2" />
-                        {completedChapters > 0 ? 'Continue Learning' : 'Start Course'}
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )}
-            </Card>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Render main player layout
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div ref={playerRootRef} className="flex overflow-hidden bg-white" style={{ height: '100vh' }}>
 
-        
-        {/* Course Header - Simplified for player view */}
-        <CourseHeader
-          course={course as Course}
-          totalChapters={totalChapters}
-          completedChapters={completedChapters}
-          overallProgress={overallProgressPercent}
+        {/* ─── Left: module sidebar ─────────────────────────────────────── */}
+        <CourseSidebar
+          courseId={courseId}
+          courseName={courseName}
+          chapters={chapters || []}
+          currentChapterId={chapterId}
+          currentContentId={currentContent?.id}
+          completedContentItems={completedContentItems}
+          totalContentItems={totalContentItems}
+          onChapterSelect={id => { setChapterId(id); setContentId(undefined) }}
+          onContentSelect={id => setContentId(id)}
         />
 
-        <div className="flex-1 max-w-[1600px] w-full mx-auto p-0 sm:p-4 md:p-6 lg:p-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 md:gap-6 h-full">
+        {/* ─── Center: top-bar + scrollable content + bottom nav ────────── */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-            {/* Left Sidebar - Navigation */}
-            <div className="lg:col-span-3 xl:col-span-3 h-full order-2 lg:order-1 px-2 sm:px-0">
-               <div className="lg:sticky lg:top-8 space-y-4">
-                 <CourseSidebar
-                    courseId={courseId}
-                    chapters={chapters || []}
-                    currentChapterId={chapterId}
-                    currentContentId={currentContent?.id}
-                    onChapterSelect={(id) => { setChapterId(id); setContentId(undefined) }}
-                    onContentSelect={(id) => setContentId(id)}
-                  />
+          {/* Top bar — breadcrumb · progress bar · progress ring */}
+          <div className="flex-shrink-0 border-b border-gray-200 bg-white px-5 flex items-center gap-4" style={{ minHeight: 52 }}>
+            {/* Breadcrumb: Course › Module › Lesson */}
+            <nav className="flex items-center gap-1.5 text-sm min-w-0 flex-shrink" aria-label="Breadcrumb">
+              <button
+                onClick={() => { setChapterId(undefined); setContentId(undefined) }}
+                className="flex items-center gap-1 text-gray-500 hover:text-gray-900 transition-colors font-medium truncate max-w-[150px] flex-shrink-0"
+                title="Course overview"
+              >
+                <ChevronLeft className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{courseName}</span>
+              </button>
+              {chapterDisplayName && (
+                <>
+                  <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0 hidden md:block" />
+                  <span className="text-gray-500 truncate max-w-[140px] hidden md:inline">{chapterDisplayName}</span>
+                </>
+              )}
+              {currentContent?.title && (
+                <>
+                  <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0 hidden lg:block" />
+                  <span className="text-gray-900 font-medium truncate max-w-[180px] hidden lg:inline">{currentContent.title}</span>
+                </>
+              )}
+            </nav>
 
-                  {/* Progress Summary Card */}
-                  <Card className="p-4 bg-white shadow-sm border-blue-100">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Course Progress</h4>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>{completedChapters} of {totalChapters} chapters completed</span>
-                        <span>{overallProgressPercent}%</span>
-                      </div>
-                      <Progress value={overallProgressPercent} className="h-2" />
-                    </div>
-                  </Card>
-               </div>
+            {/* Progress bar (center) */}
+            <div className="flex-1 flex items-center justify-center gap-3 min-w-0">
+              <div className="w-40 sm:w-56 md:w-72 h-1.5 bg-gray-200 rounded-full overflow-hidden flex-shrink-0">
+                <div
+                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                  style={{ width: `${overallProgressPercent}%` }}
+                />
+              </div>
+              <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0 hidden sm:inline">
+                {completedContentItems}/{totalContentItems} items
+              </span>
             </div>
 
-            {/* Main Content Area */}
-            <div className="lg:col-span-9 xl:col-span-9 space-y-4 md:space-y-6 order-1 lg:order-2">
+            {/* Progress ring (right) */}
+            <CircularProgress value={overallProgressPercent} size={34} stroke={4} className="flex-shrink-0" />
+          </div>
 
-              {/* Content Viewer Card */}
-              <div className="bg-white rounded-none sm:rounded-xl shadow-sm border-y sm:border border-gray-200 overflow-hidden min-h-[60vh] md:min-h-[500px] flex flex-col">
-                {/* Content Header */}
-                {currentContent && (
-                  <div className="border-b px-4 py-3 md:px-6 md:py-4 bg-gray-50 flex justify-between items-center">
-                    <div className="min-w-0 flex-1">
-                      <h2 className="text-base md:text-xl font-bold text-gray-900 line-clamp-1">{currentContent.title}</h2>
-                      <p className="text-xs md:text-sm text-gray-500 mt-0.5">
-                        {currentChapter && (currentChapter.name || currentChapter.title)}
-                      </p>
-                    </div>
-                    {isCompleted && (
-                       <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100 ml-2 shrink-0 text-xs">
-                         <CheckCircle className="w-3 h-3 mr-1" />
-                         <span className="hidden sm:inline">Completed</span>
-                       </Badge>
-                    )}
-                  </div>
-                )}
+          {/* Scrollable content area */}
+          <div
+            className="flex-1 overflow-y-auto bg-white"
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+          >
+            {renderContentViewer()}
+            {showLessonTabs && currentContent && (
+              <LessonTabs
+                courseId={courseId}
+                chapterId={chapterId}
+                chapterName={chapterDisplayName}
+                content={currentContent}
+                chapterContents={(contents as Content[]) || []}
+                courseDescription={(course as Course)?.description}
+              />
+            )}
+          </div>
 
-                {/* Content Body */}
-                <div className="flex-1 p-3 sm:p-6 relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                  {contentsLoading ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 z-10">
-                      <div className="text-center">
-                        <Loader2 className="h-10 w-10 animate-spin text-blue-600 mx-auto mb-3" />
-                        <p className="text-gray-500 font-medium">Loading lesson...</p>
-                      </div>
-                    </div>
-                  ) : !contents || contents.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center py-20 px-4">
-                      <div className="bg-gray-100 p-4 rounded-full mb-4">
-                         <FileText className="h-8 w-8 text-gray-400" />
-                      </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">No Content Available</h3>
-                      <p className="text-gray-500 max-w-sm">This chapter does not have any published content yet.</p>
-                       {contentsError && (
-                          <div className="mt-4 p-3 bg-red-50 text-red-700 text-sm rounded max-w-md">
-                            <p className="font-semibold mb-1">Error Details:</p>
-                            <p>{(contentsError as ErrorWithCode)?.message || 'Failed to load content'}</p>
-                            {(contentsError as ErrorWithCode)?.code && (
-                              <p className="text-xs mt-1">Code: {(contentsError as ErrorWithCode).code}</p>
-                            )}
-                          </div>
-                       )}
-                    </div>
-                  ) : !currentContent ? (
-                     <div className="flex flex-col items-center justify-center h-full text-center py-20 px-4">
-                        <Play className="h-12 w-12 text-blue-200 mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Learn?</h3>
-                        <p className="text-gray-500 mb-6">Select a lesson from the sidebar to start.</p>
-                        {contents[0] && (
-                           <Button onClick={() => setContentId(contents[0].id)}>Start Chapter</Button>
-                        )}
-                     </div>
-                  ) : (
-                    renderContentViewer()
-                  )}
+          {/* Up-next auto-advance card */}
+          {upNextCountdown !== null && nextItemLabel && (
+            <div className="flex-shrink-0 px-5 pb-2">
+              <div className="flex items-center gap-3 bg-gray-900 text-white rounded-xl px-4 py-3 shadow-lg">
+                <div className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+                  <Play className="h-4 w-4 fill-white" />
                 </div>
-
-                {/* Content Footer / Navigation */}
-                <div className="border-t px-4 py-3 md:px-6 md:py-4 bg-gray-50 flex justify-between items-center">
-                   <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handlePrevious}
-                   >
-                      <ChevronLeft className="h-4 w-4 mr-1 md:mr-2" />
-                      <span className="hidden sm:inline">Previous</span>
-                    </Button>
-                   <Button
-                      size="sm"
-                      onClick={handleNext}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                   >
-                      <span className="hidden sm:inline">
-                        {contents && currentContentIndex < contents.length - 1
-                          ? 'Next Lesson'
-                          : (nextChapter ? 'Next Chapter' : 'Finish Course')}
-                      </span>
-                      {(!nextChapter && currentContentIndex >= (contents?.length || 0) - 1)
-                        ? <CheckCircle className="h-4 w-4 sm:ml-2" />
-                        : <ChevronRight className="h-4 w-4 sm:ml-2" />}
-                   </Button>
-                  </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">
+                    Up next in {upNextCountdown}s
+                  </p>
+                  <p className="text-sm font-medium truncate">{nextItemLabel}</p>
                 </div>
+                <button
+                  onClick={() => setUpNextCountdown(null)}
+                  className="text-xs text-gray-300 hover:text-white px-2 py-1.5 rounded-md hover:bg-white/10 transition-colors flex items-center gap-1"
+                >
+                  <X className="h-3.5 w-3.5" /> Cancel
+                </button>
+                <button
+                  onClick={() => { setUpNextCountdown(null); handleNext() }}
+                  className="text-sm font-semibold bg-white text-gray-900 hover:bg-gray-100 px-3.5 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+                >
+                  Next <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               </div>
+            </div>
+          )}
 
+          {/* Bottom navigation bar */}
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-5 py-3 flex items-center justify-between gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePrevious}
+              disabled={currentContentIndex === 0}
+              className="text-gray-600 hover:text-gray-900 disabled:opacity-30"
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Previous</span>
+            </Button>
+
+            <div className="flex items-center gap-3 min-w-0">
+              {nextDisabled && currentUnlocked && (
+                <span className="hidden md:inline text-xs text-gray-400 truncate">
+                  Complete this item to continue
+                </span>
+              )}
+              <Button
+                onClick={handleNext}
+                disabled={nextDisabled}
+                className="bg-blue-700 hover:bg-blue-800 text-white rounded-lg px-4 py-2 text-sm font-medium flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={nextDisabled ? 'Complete this item to continue' : undefined}
+              >
+                {isLastContent ? 'Finish Course' : 'Go to next item'}
+                {isLastContent ? (
+                  <CheckCircle className="h-4 w-4" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
+              </Button>
             </div>
           </div>
         </div>
+      </div>
     </ErrorBoundary>
   )
 }
-
-

@@ -15,9 +15,16 @@ const getSafeStorage = () => {
 
 /**
  * Course Progress Store
- * 
- * Global state management for course progress with optimistic updates.
- * Matches Coursera/Udemy patterns for instant UI feedback.
+ *
+ * The SERVER is the source of truth for completion. This store is a thin,
+ * per-user client cache:
+ *   - `videoPositions` / `lastViewed` are PERSISTED (so resume works across reloads).
+ *   - `contentProgress` / `chapterProgress` are an IN-MEMORY optimistic overlay only
+ *     (instant tick right after "Mark complete"); they are NOT persisted and are
+ *     reconciled away once React Query refetches the authoritative `is_completed`.
+ *
+ * `ownerUserId` guards against cross-user contamination on a shared browser: whenever
+ * a different user is detected (login/logout), the entire store is reset.
  */
 
 export interface LastViewedEntry {
@@ -47,20 +54,27 @@ export interface ChapterProgress {
 }
 
 export interface CourseProgressState {
-  // Progress data keyed by contentId
+  // Identity of the user this cache belongs to (guards shared-browser leakage)
+  ownerUserId: string | null;
+
+  // Optimistic overlay keyed by contentId (in-memory only, not persisted)
   contentProgress: Record<string, ContentProgress>;
 
-  // Chapter progress keyed by chapterId
+  // Optimistic chapter overlay keyed by chapterId (in-memory only, not persisted)
   chapterProgress: Record<string, ChapterProgress>;
 
-  // Last viewed position keyed by courseId
+  // Last viewed position keyed by courseId (persisted, per-user)
   lastViewed: Record<string, LastViewedEntry>;
 
-  // Video positions keyed by contentId
+  // Video positions keyed by contentId (persisted, per-user)
   videoPositions: Record<string, number>;
 
   // Loading states
   savingProgress: Set<string>;
+
+  // Identity / lifecycle
+  ensureOwner: (userId: string | null) => void;
+  clearAllProgress: () => void;
 
   // Actions
   setContentCompleted: (contentId: string, chapterId: string, courseId: string, completed: boolean) => void;
@@ -81,14 +95,42 @@ export interface CourseProgressState {
   clearCourseProgress: (courseId: string) => void;
 }
 
+const emptyMaps = () => ({
+  contentProgress: {} as Record<string, ContentProgress>,
+  chapterProgress: {} as Record<string, ChapterProgress>,
+  lastViewed: {} as Record<string, LastViewedEntry>,
+  videoPositions: {} as Record<string, number>,
+});
+
 export const useCourseProgressStore = create<CourseProgressState>()(
   persist(
     (set, get) => ({
+      ownerUserId: null,
       contentProgress: {},
       chapterProgress: {},
       lastViewed: {},
       videoPositions: {},
       savingProgress: new Set<string>(),
+
+      // If the active user differs from the cached owner, wipe everything and
+      // re-own. This is the single guarantee against cross-user contamination.
+      ensureOwner: (userId) => {
+        const current = get().ownerUserId;
+        if (current === userId) return;
+        set({
+          ownerUserId: userId,
+          ...emptyMaps(),
+          savingProgress: new Set<string>(),
+        });
+      },
+
+      clearAllProgress: () => {
+        set({
+          ownerUserId: null,
+          ...emptyMaps(),
+          savingProgress: new Set<string>(),
+        });
+      },
 
       setContentCompleted: (contentId, chapterId, courseId, completed) => {
         set((state) => ({
@@ -212,8 +254,8 @@ export const useCourseProgressStore = create<CourseProgressState>()(
             }
           });
 
-          const newLastViewed = { ...state.lastViewed }
-          delete newLastViewed[courseId]
+          const newLastViewed = { ...state.lastViewed };
+          delete newLastViewed[courseId];
 
           return {
             contentProgress: newContentProgress,
@@ -227,18 +269,41 @@ export const useCourseProgressStore = create<CourseProgressState>()(
     {
       name: 'course-progress-store',
       storage: createJSONStorage(() => getSafeStorage()),
+      // Persist ONLY resume data + owner identity. Completion overlays
+      // (contentProgress / chapterProgress) are intentionally in-memory so
+      // stale completion can never survive a reload or leak across users.
       partialize: (state) => ({
-        contentProgress: state.contentProgress,
-        chapterProgress: state.chapterProgress,
+        ownerUserId: state.ownerUserId,
         lastViewed: state.lastViewed,
         videoPositions: state.videoPositions,
       }),
-      // Handle Set serialization
-      merge: (persistedState: unknown, currentState: CourseProgressState) => ({
+      merge: (persistedState: unknown, currentState: CourseProgressState): CourseProgressState => ({
         ...currentState,
         ...(persistedState as Partial<CourseProgressState>),
+        // Overlays always start empty on a fresh page load
+        contentProgress: {} as Record<string, ContentProgress>,
+        chapterProgress: {} as Record<string, ChapterProgress>,
         savingProgress: new Set<string>(),
       }),
     }
   )
 );
+
+/**
+ * Imperative reset for non-React callers (e.g. logout in session-utils).
+ * Clears in-memory state AND the persisted localStorage entry.
+ */
+export function resetCourseProgressStore(): void {
+  try {
+    useCourseProgressStore.getState().clearAllProgress();
+  } catch {
+    // store may not be initialised yet
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem('course-progress-store');
+    } catch {
+      // ignore storage errors
+    }
+  }
+}

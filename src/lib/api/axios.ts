@@ -8,8 +8,11 @@ import {
   clearStoredSession,
   getInMemoryToken,
   getStoredSession,
+  getStoredUser,
   setInMemoryToken,
   setStoredSession,
+  tryRefreshSession,
+  setLogoutReason,
 } from '../session-utils';
 
 type RefreshableAxiosRequestConfig = AxiosRequestConfig & {
@@ -47,6 +50,7 @@ function performLogout(): void {
   clearStoredSession();
   setAuthToken(null);
   if (typeof window !== 'undefined') {
+    setLogoutReason('session_expired');
     window.location.href = '/lms/login';
   }
 }
@@ -79,11 +83,54 @@ async function refreshAccessToken(): Promise<string> {
   return newAccessToken;
 }
 
+// Deduped silent token bootstrap.
+//
+// The access token lives in memory only and is wiped on every page reload, so
+// after a reload it must be rehydrated from the httpOnly refresh cookie before
+// any authenticated request goes out. Without this, data hooks that fire on
+// mount race the layout's session bootstrap and leave without an Authorization
+// header — producing benign-but-noisy 401s (and an extra refresh + retry) on
+// every dashboard. We rehydrate proactively here, once, at the single chokepoint
+// every request passes through.
+//
+// tryRefreshSession() uses fetch (not apiClient), so it never re-enters this
+// interceptor — no recursion. Concurrent callers share one in-flight promise.
+let tokenBootstrapPromise: Promise<boolean> | null = null;
+
+function bootstrapTokenOnce(): Promise<boolean> {
+  if (!tokenBootstrapPromise) {
+    tokenBootstrapPromise = tryRefreshSession().finally(() => {
+      tokenBootstrapPromise = null;
+    });
+  }
+  return tokenBootstrapPromise;
+}
+
+function isAuthFlowUrl(url: string): boolean {
+  return (
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/login') ||
+    url.includes('/auth/signup')
+  );
+}
+
 // Request interceptor: attach in-memory token + CSRF header.
 apiClient.interceptors.request.use(
   async (config) => {
     if (typeof window !== 'undefined') {
-      const token = getInMemoryToken();
+      let token = getInMemoryToken();
+
+      // Token missing but a user was logged in this session (metadata survives
+      // reloads): rehydrate before sending so the request isn't rejected with a
+      // 401. Skip for auth-flow endpoints and explicit refresh calls to avoid
+      // loops, and skip when there's no session metadata so anonymous/public
+      // pages never trigger refresh attempts.
+      const skipRefresh = (config as RefreshableAxiosRequestConfig).skipAuthRefresh;
+      if (!token && !skipRefresh && !isAuthFlowUrl(config.url ?? '') && getStoredUser()) {
+        await bootstrapTokenOnce();
+        token = getInMemoryToken();
+      }
+
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }

@@ -49,13 +49,56 @@ async function getIdentifier(request: NextRequest, customIdentifier?: string): P
   }
   
   // Fallback to IP address for unauthenticated requests
-  const forwarded = request.headers.get('x-forwarded-for');
-  const ip = forwarded ? forwarded.split(',')[0].trim() : 
-             request.headers.get('x-real-ip') || 
-             'unknown';
-  
-  return `ip:${ip}`;
+  return `ip:${getClientIp(request)}`;
 }
+
+/**
+ * Resolve the genuine client IP from X-Forwarded-For without trusting
+ * client-spoofable entries.
+ *
+ * Proxies APPEND to X-Forwarded-For, so the rightmost entries are the ones our
+ * own infrastructure added and can be trusted; anything further left may have
+ * been injected by the client. With N trusted proxy hops, the real client is the
+ * Nth entry from the right — picking the leftmost entry (the previous behaviour)
+ * let a client spoof `X-Forwarded-For` and dodge per-IP limits entirely.
+ *
+ * Set TRUSTED_PROXY_HOPS to the number of proxies/CDN hops in front of the app
+ * (default 1). This mirrors Express `trust proxy` semantics on the backend.
+ */
+function getClientIp(request: NextRequest): string {
+  const hops = Math.max(1, Number(process.env.TRUSTED_PROXY_HOPS ?? 1) || 1);
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const parts = forwarded.split(',').map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0) {
+      const idx = parts.length - hops;
+      return parts[idx >= 0 ? idx : 0];
+    }
+  }
+  return request.headers.get('x-real-ip') || 'unknown';
+}
+
+/**
+ * Atomic sliding-window rate limit, evaluated server-side in Redis.
+ *
+ * KEYS[1] = sorted-set key
+ * ARGV[1] = now (ms)         ARGV[2] = windowStart (ms)
+ * ARGV[3] = maxRequests      ARGV[4] = windowSeconds (TTL)
+ * ARGV[5] = unique member
+ * Returns { allowed(0|1), countInWindow, oldestScoreMs }
+ */
+const SLIDING_WINDOW_SCRIPT = `
+redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, tonumber(ARGV[2]))
+local count = redis.call('ZCARD', KEYS[1])
+if count >= tonumber(ARGV[3]) then
+  local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+  local oldestScore = oldest[2] or ARGV[1]
+  return {0, count, oldestScore}
+end
+redis.call('ZADD', KEYS[1], tonumber(ARGV[1]), ARGV[5])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
+return {1, count + 1, 0}
+`;
 
 export async function rateLimit(
   request: NextRequest,
@@ -73,43 +116,46 @@ export async function rateLimit(
   if (isRedisAvailable()) {
     try {
       const key = `ratelimit:${identifier}:${endpoint}:${config.windowSeconds}`;
-      
-      // Remove expired entries (older than window)
-      await redis.zremrangebyscore(key, 0, windowStart);
-      
-      // Count current requests in window
-      const currentCount = await redis.zcard(key);
-      
-      if (currentCount !== null && currentCount >= config.maxRequests) {
-        // Rate limit exceeded - get oldest request time to calculate retry after
-        const oldest = await redis.zrange(key, 0, 0, { withScores: true });
-        // Upstash returns [member, score, member, score, ...] when withScores is true
-        const oldestTime = oldest && oldest.length > 1 ? parseInt(oldest[1]) : now;
-        const retryAfter = Math.ceil((oldestTime + windowMs - now) / 1000);
-        
+      const member = `${now}-${Math.random()}`;
+
+      // Prune-count-add is run as a single atomic Lua script. Doing these as
+      // separate round-trips (zcard then zadd) is a check-then-act race: under
+      // concurrency many requests read a count below the limit and all get
+      // admitted. The script makes the whole decision atomic per request.
+      // Returns [allowed (0|1), countInWindow, oldestScoreMs].
+      const result = await redis.eval<[number, number, number]>(
+        SLIDING_WINDOW_SCRIPT,
+        [key],
+        [now, windowStart, config.maxRequests, config.windowSeconds, member],
+      );
+
+      if (result) {
+        const allowed = Number(result[0]) === 1;
+        const count = Number(result[1]);
+
+        if (!allowed) {
+          const oldestTime = Number(result[2]) || now;
+          const retryAfter = Math.max(
+            1,
+            Math.ceil((oldestTime + windowMs - now) / 1000),
+          );
+          return {
+            success: false,
+            limit: config.maxRequests,
+            remaining: 0,
+            reset: Math.floor((now + windowMs) / 1000),
+            retryAfter,
+          };
+        }
+
         return {
-          success: false,
+          success: true,
           limit: config.maxRequests,
-          remaining: 0,
+          remaining: Math.max(0, config.maxRequests - count),
           reset: Math.floor((now + windowMs) / 1000),
-          retryAfter,
         };
       }
-      
-      // Add current request
-      await redis.zadd(key, now, `${now}-${Math.random()}`);
-      
-      // Set expiration
-      await redis.expire(key, config.windowSeconds);
-      
-      const newCount = (currentCount || 0) + 1;
-      
-      return {
-        success: true,
-        limit: config.maxRequests,
-        remaining: Math.max(0, config.maxRequests - newCount),
-        reset: Math.floor((now + windowMs) / 1000),
-      };
+      // eval returned null (script error / unavailable) → fall through to fail open
     } catch (error) {
       console.error('[RateLimit] Redis error, failing open:', error);
     }
@@ -155,6 +201,17 @@ export const RateLimitPresets = {
   /** Write endpoints: 50 requests per minute */
   WRITE: {
     maxRequests: 50,
+    windowSeconds: 60,
+  },
+
+  /**
+   * Admin bulk operations (e.g. importing many student accounts).
+   * Keyed per admin user, so this is a generous per-admin budget — high enough
+   * that a bulk import firing one request per account isn't throttled, while
+   * still capping a runaway loop.
+   */
+  BULK: {
+    maxRequests: 300,
     windowSeconds: 60,
   },
 } as const;

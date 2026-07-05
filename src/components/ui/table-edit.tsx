@@ -20,6 +20,7 @@ export type StudentManagementTableProps<T extends StudentManagementRow = Student
     onView: (row: T) => void;
     onEdit: (row: T) => void;
     onDelete: (row: T) => void;
+    onEnroll?: (row: T) => void;
     onBulkDeleteSelected?: (rows: T[]) => void;
     resetSelectionKey?: number;
     searchPlaceholder?: string;
@@ -34,6 +35,7 @@ export function StudentManagementTable<T extends StudentManagementRow>({
   onView,
   onEdit,
   onDelete,
+  onEnroll,
   onBulkDeleteSelected,
   resetSelectionKey,
   searchPlaceholder = "Search students by name, email, school, grade...",
@@ -45,6 +47,9 @@ export function StudentManagementTable<T extends StudentManagementRow>({
     () => [
       { id: "view", label: "View", onClick: onView },
       { id: "edit", label: "Edit", onClick: onEdit },
+      ...(onEnroll
+        ? [{ id: "enroll", label: "Enroll in Courses", onClick: onEnroll }]
+        : []),
       {
         id: "delete",
         label: "Delete",
@@ -52,7 +57,7 @@ export function StudentManagementTable<T extends StudentManagementRow>({
         onClick: onDelete,
       },
     ],
-    [onView, onEdit, onDelete],
+    [onView, onEdit, onDelete, onEnroll],
   );
 
   return (

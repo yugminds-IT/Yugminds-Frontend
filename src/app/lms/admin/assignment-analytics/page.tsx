@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminApi } from "@/lib/api/admin.api";
+import { RankingTable, type RankingRow } from "@/components/ui/ranking-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,10 +30,12 @@ type SchoolRanking = {
 
 type TopStudent = {
   rank: number;
+  system_rank?: number;
   student_id: number;
   student_name: string;
   school_name: string;
   grade: string;
+  section?: string;
   course_assignment_score: number;
   daily_assignment_score: number;
   overall_score: number;
@@ -129,43 +132,40 @@ export default function AdminAssignmentAnalyticsPage() {
 
       {/* Platform Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <School className="h-5 w-5 text-blue-600" />
-              <span className="text-2xl font-bold text-blue-700">{summary.total_schools}</span>
-            </div>
-            <p className="text-xs font-medium text-blue-600">Schools</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <BookOpen className="h-5 w-5 text-purple-600" />
-              <span className="text-2xl font-bold text-purple-700">{summary.total_assignments}</span>
-            </div>
-            <p className="text-xs font-medium text-purple-600">Assignments</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <TrendingUp className="h-5 w-5 text-green-600" />
-              <span className="text-2xl font-bold text-green-700">{summary.platform_avg_score.toFixed(1)}%</span>
-            </div>
-            <p className="text-xs font-medium text-green-600">Platform Avg Score</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <RotateCcw className="h-5 w-5 text-amber-600" />
-              <span className="text-2xl font-bold text-amber-700">{retakeUsage.toFixed(1)}%</span>
-            </div>
-            <p className="text-xs font-medium text-amber-600">Retake Usage</p>
-          </CardContent>
-        </Card>
+        {[
+          { label: "Schools", value: String(summary.total_schools), icon: School, color: "text-blue-600", bg: "bg-blue-50" },
+          { label: "Assignments", value: String(summary.total_assignments), icon: BookOpen, color: "text-purple-600", bg: "bg-purple-50" },
+          { label: "Platform Avg Score", value: `${summary.platform_avg_score.toFixed(1)}%`, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Retake Usage", value: `${retakeUsage.toFixed(1)}%`, icon: RotateCcw, color: "text-amber-600", bg: "bg-amber-50" },
+        ].map((s) => (
+          <Card key={s.label} className="bg-white border border-gray-100 shadow-sm">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{s.label}</p>
+                  <p className="text-3xl font-bold text-gray-900 mt-1">{s.value}</p>
+                </div>
+                <div className={`h-11 w-11 rounded-xl ${s.bg} flex items-center justify-center`}>
+                  <s.icon className={`h-5 w-5 ${s.color}`} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
+
+      {/* No-activity hint */}
+      {summary.total_attempts === 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+          <BarChart2 className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-blue-900">No assignment submissions yet</p>
+            <p className="text-blue-700 text-xs mt-0.5">
+              {summary.total_assignments} assignment{summary.total_assignments !== 1 ? "s" : ""} published across {summary.total_schools} school{summary.total_schools !== 1 ? "s" : ""}. Scores and rankings will populate as students submit their work.
+            </p>
+          </div>
+        </div>
+      )}
 
       <Tabs defaultValue="schools">
         <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -268,7 +268,7 @@ export default function AdminAssignmentAnalyticsPage() {
                 <Star className="h-4 w-4 text-yellow-500" />
                 Top 50 Students Platform-wide
               </CardTitle>
-              <p className="text-xs text-gray-500">Overall = Course (60%) + Daily (40%)</p>
+              <p className="text-xs text-gray-500">Overall = Course (60%) + Daily (40%) · Ranked system-wide</p>
             </CardHeader>
             <CardContent>
               {topStudents.length === 0 ? (
@@ -277,64 +277,24 @@ export default function AdminAssignmentAnalyticsPage() {
                   <p className="text-sm">No student data yet</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-xs uppercase text-gray-500 tracking-wider">
-                        <th className="py-2 pr-3 text-left w-14">Rank</th>
-                        <th className="py-2 pr-3 text-left">Student</th>
-                        <th className="py-2 pr-3 text-left hidden md:table-cell">School</th>
-                        <th className="py-2 pr-3 text-right hidden lg:table-cell">Course</th>
-                        <th className="py-2 pr-3 text-right hidden lg:table-cell">Daily</th>
-                        <th className="py-2 text-right">Overall</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {topStudents.map((student) => (
-                        <tr
-                          key={student.student_id}
-                          className={`hover:bg-gray-50 ${student.rank <= 3 ? "bg-yellow-50/40" : ""}`}
-                        >
-                          <td className="py-2.5 pr-3">
-                            <RankBadge rank={student.rank} />
-                          </td>
-                          <td className="py-2.5 pr-3">
-                            <p className="font-medium text-gray-900">{student.student_name}</p>
-                            <p className="text-xs text-gray-400">{student.grade || "—"}</p>
-                          </td>
-                          <td className="py-2.5 pr-3 hidden md:table-cell">
-                            <span className="text-xs text-gray-500">{student.school_name || "—"}</span>
-                          </td>
-                          <td className="py-2.5 pr-3 text-right hidden lg:table-cell">
-                            <span className="text-xs text-indigo-700 font-medium">
-                              {student.course_assignment_score.toFixed(1)}%
-                            </span>
-                          </td>
-                          <td className="py-2.5 pr-3 text-right hidden lg:table-cell">
-                            <span className="text-xs text-blue-700 font-medium">
-                              {student.daily_assignment_score.toFixed(1)}%
-                            </span>
-                          </td>
-                          <td className="py-2.5 text-right">
-                            <Badge
-                              className={`border-0 text-xs font-bold ${
-                                student.overall_score >= 90
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : student.overall_score >= 75
-                                  ? "bg-green-100 text-green-800"
-                                  : student.overall_score >= 60
-                                  ? "bg-blue-100 text-blue-800"
-                                  : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {student.overall_score.toFixed(1)}%
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <RankingTable
+                  rows={topStudents.map((s): RankingRow => ({
+                    student_id: s.student_id,
+                    student_name: s.student_name,
+                    grade: s.grade,
+                    section: s.section,
+                    school_name: s.school_name,
+                    course_score: s.course_assignment_score,
+                    daily_score: s.daily_assignment_score,
+                    overall_score: s.overall_score,
+                    rank: s.system_rank ?? s.rank,
+                    system_rank: s.system_rank ?? s.rank,
+                  }))}
+                  showRanks={["system"]}
+                  showSchool
+                  showGrade
+                  showScoreBreakdown
+                />
               )}
             </CardContent>
           </Card>

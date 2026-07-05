@@ -53,6 +53,8 @@ import {
 } from "lucide-react";
 import { useSchoolAdmin } from "@/contexts/SchoolAdminContext";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
+import { toast } from "@/components/ui/toast";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Schedule {
   id: string;
@@ -559,7 +561,7 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error creating schedule:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create schedule';
-      alert(`Error: ${errorMessage}`);
+      toast.error(errorMessage);
     }
   };
 
@@ -584,12 +586,16 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error updating schedule:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to update schedule';
-      alert(`Error: ${errorMessage}`);
+      toast.error(errorMessage);
     }
   };
 
   const handleDeleteSchedule = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this schedule?')) return;
+    if (!(await confirmDialog({
+      title: 'Delete this schedule?',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
 
     try {
       await schoolAdminApi.schedules.delete(id);
@@ -597,7 +603,7 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error deleting schedule:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete schedule';
-      alert(`Error: ${errorMessage}`);
+      toast.error(errorMessage);
     }
   };
 
@@ -667,7 +673,7 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error creating period:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
-      alert(`Error: ${err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to create period'}`);
+      toast.error(err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to create period');
     }
   };
 
@@ -683,17 +689,22 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error updating period:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
-      alert(`Error: ${err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to update period'}`);
+      toast.error(err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to update period');
     }
   };
 
   const handleDeletePeriod = async (id: string) => {
     if (!id) {
-      alert('Error: Period ID is missing');
+      toast.error('Period ID is missing');
       return;
     }
 
-    if (!confirm('Are you sure you want to delete this period? This action cannot be undone.')) return;
+    if (!(await confirmDialog({
+      title: 'Delete this period?',
+      description: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
 
     try {
       await schoolAdminApi.periods.delete(id);
@@ -701,7 +712,7 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error deleting period:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
-      alert(`Error: ${err.response?.data?.error ?? err.response?.data?.details ?? (error instanceof Error ? error.message : 'Unknown error')}`);
+      toast.error(err.response?.data?.error ?? err.response?.data?.details ?? (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -767,12 +778,17 @@ export default function ClassSchedulingPage() {
       setBreakDuration({...breakDuration, [periodId]: ''});
     } catch(err) {
       console.error(err);
-      alert('Error inserting break');
+      toast.error('Error inserting break');
     }
   };
 
   const handleUseTemplate = async (template: 'standard' | 'extended' | 'halfday') => {
-    if (!confirm('This will delete all existing periods. Are you sure you want to apply this template?')) return;
+    if (!(await confirmDialog({
+      title: 'Apply this template?',
+      description: 'This will delete all existing periods.',
+      confirmText: 'Apply',
+      variant: 'danger',
+    }))) return;
     try {
       setLoading(true);
       await Promise.all(periods.map(p => schoolAdminApi.periods.delete(p.id)));
@@ -808,7 +824,7 @@ export default function ClassSchedulingPage() {
       await loadData();
     } catch (err) {
       console.error(err);
-      alert('Error applying template');
+      toast.error('Error applying template');
     } finally {
       setLoading(false);
     }
@@ -855,7 +871,7 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error creating room:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
-      alert(`Error: ${err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to create room'}`);
+      toast.error(err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to create room');
     }
   };
 
@@ -882,12 +898,17 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error updating room:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
-      alert(`Error: ${err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to update room'}`);
+      toast.error(err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to update room');
     }
   };
 
   const handleDeleteRoom = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this room? This action cannot be undone.')) return;
+    if (!(await confirmDialog({
+      title: 'Delete this room?',
+      description: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
 
     try {
       await schoolAdminApi.rooms.delete(id);
@@ -895,7 +916,7 @@ export default function ClassSchedulingPage() {
     } catch (error) {
       console.error('Error deleting room:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
-      alert(`Error: ${err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to delete room'}`);
+      toast.error(err.response?.data?.error ?? err.response?.data?.details ?? 'Failed to delete room');
     }
   };
 
@@ -913,7 +934,7 @@ export default function ClassSchedulingPage() {
       );
       
       if (hasConflict) {
-        alert(`Cannot copy to ${targetDay}: A conflict exists in that period.`);
+        toast.warning(`Cannot copy to ${targetDay}: A conflict exists in that period.`);
         return;
       }
 
@@ -937,14 +958,18 @@ export default function ClassSchedulingPage() {
       setTargetDay('');
     } catch (error) {
       console.error('Error copying schedule:', error);
-      alert(error instanceof Error ? error.message : 'Failed to copy schedule');
+      toast.error(error instanceof Error ? error.message : 'Failed to copy schedule');
     } finally {
       setIsCopying(false);
     }
   };
 
   const handleRepeatAcrossWeek = async (schedule: Schedule) => {
-    const confirmRepeat = confirm(`Repeat "${schedule.subject}" across all remaining days at the same time?`);
+    const confirmRepeat = await confirmDialog({
+      title: 'Repeat across the week?',
+      description: `Repeat "${schedule.subject}" across all remaining days at the same time.`,
+      confirmText: 'Repeat',
+    });
     if (!confirmRepeat) return;
 
     setIsCopying(true);
@@ -987,7 +1012,11 @@ export default function ClassSchedulingPage() {
 
     await loadData();
     setIsCopying(false);
-    alert(`Repeat complete: ${successCount} days added, ${skippedCount} skipped.${errors.length > 0 ? '\n\nErrors:\n' + errors.join('\n') : ''}`);
+    if (errors.length > 0) {
+      toast.warning(`Repeat complete: ${successCount} days added, ${skippedCount} skipped, ${errors.length} error(s).`);
+    } else {
+      toast.success(`Repeat complete: ${successCount} days added, ${skippedCount} skipped.`);
+    }
   };
 
   const handleCopyEntireDay = async () => {
@@ -996,7 +1025,7 @@ export default function ClassSchedulingPage() {
     
     const daySchedules = schedules.filter(s => s.day_of_week === sourceDayToCopy && s.is_active);
     if (daySchedules.length === 0) {
-      alert(`No schedules found for ${sourceDayToCopy}`);
+      toast.warning(`No schedules found for ${sourceDayToCopy}`);
       setIsCopying(false);
       return;
     }
@@ -1044,7 +1073,7 @@ export default function ClassSchedulingPage() {
       setCopyDayDialogOpen(false);
       setSourceDayToCopy(null);
       setTargetDays([]);
-      alert(`Successfully copied entire day! Total: ${totalSuccess} items added, ${totalSkipped} slots skipped due to existing entries.`);
+      toast.success(`Successfully copied entire day! Total: ${totalSuccess} items added, ${totalSkipped} slots skipped due to existing entries.`);
     } else {
       setCopyResults({ success: totalSuccess, skipped: totalSkipped, errors });
     }
@@ -1169,7 +1198,7 @@ export default function ClassSchedulingPage() {
       await loadData();
     } catch (error) {
       console.error('Error pushing schedules:', error);
-      alert('Failed to send notifications');
+      toast.error('Failed to send notifications');
     } finally {
       setIsSyncing(false);
     }
@@ -1285,7 +1314,7 @@ export default function ClassSchedulingPage() {
       doc.save(`timetable-${selectedGrade}-${selectedAcademicYear}.pdf`);
     } catch (error) {
       console.error('PDF Export Error:', error);
-      alert('Failed to generate PDF');
+      toast.error('Failed to generate PDF');
     }
   };
 
@@ -1327,13 +1356,13 @@ export default function ClassSchedulingPage() {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Excel Export Error:', error);
-      alert('Failed to generate Excel file');
+      toast.error('Failed to generate Excel file');
     }
   };
 
   if (loading) {
     return (
-      <div className="p-8 bg-gray-50/50 min-h-screen">
+      <div className="p-8 bg-gray-50/50">
         <div className="flex flex-col items-center justify-center h-64 gap-4">
           <div className="w-10 h-10 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
           <p className="text-sm text-gray-500 font-medium">Loading timetable...</p>
@@ -1343,7 +1372,7 @@ export default function ClassSchedulingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50/30">
+    <div className="bg-gray-50/30">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-8 py-5">
         <div className="flex items-center justify-between flex-wrap gap-4">

@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   TeacherManagementTable,
   type TeacherManagementRow,
@@ -279,66 +280,91 @@ function mapTeacherToTableRow(teacher: Teacher): TeacherTableRow {
 function renderTeacherSchoolsCell(teacher: TeacherTableRow) {
   const rawSchools = teacher.assignedSchools ?? teacher.teacher_schools ?? [];
   if ((rawSchools?.length ?? 0) === 0) {
-    return <span className="text-muted-foreground">No schools assigned</span>;
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-gray-400 italic">
+        No schools assigned
+      </span>
+    );
   }
   return (
-    <div className="space-y-1 max-w-md">
+    <div className="space-y-2">
       {rawSchools.map((rawSchool, index) => {
         const school = rawSchool as SchoolAssignmentRow;
         const schoolKey = school.schoolId ?? school.school_id ?? (school.schools?.id ?? index);
         const schoolName = school.schoolName ?? school.schools?.name ?? "School";
-        const gradesAssigned =
+        const gradesAssigned: Array<{
+          gradeName?: string; grade?: string;
+          sectionsAssigned?: string[]; sections?: string[];
+        }> =
           school.gradesAssigned ??
-          (school.grade_sections_assigned
-            ? Array.isArray(school.grade_sections_assigned)
-              ? school.grade_sections_assigned
-              : []
-            : []);
-        const otherBySection = new Map(
-          (school.sectionsAssignedToOtherTeachers ?? []).map((o) => [
-            o.section ?? o.sectionName ?? "",
-            o.teacherName ?? o.assignedToTeacherName ?? "",
-          ]),
-        );
-        const gradeSectionDisplay = (() => {
-          if (!Array.isArray(gradesAssigned) || gradesAssigned.length === 0) {
-            return school.grades_assigned && Array.isArray(school.grades_assigned)
-              ? school.grades_assigned.join(", ")
-              : "No grades";
-          }
-          return gradesAssigned
-            .map((gs) => {
-              const row = gs as {
-                gradeName?: string;
-                grade?: string;
-                sectionsAssigned?: string[];
-                sections?: string[];
-              };
-              const gradeName = row.gradeName ?? row.grade ?? "";
-              const sections = row.sectionsAssigned ?? row.sections ?? [];
-              const sectionsStr =
-                sections.length > 0
-                  ? sections
-                      .map((s: string) => {
-                        const other = otherBySection.get(s);
-                        return other ? `${s} (Assigned: ${other})` : s;
-                      })
-                      .join(", ")
-                  : "";
-              return sectionsStr ? `${gradeName} (${sectionsStr})` : gradeName;
-            })
-            .join("; ");
-        })();
+          (Array.isArray(school.grade_sections_assigned) ? school.grade_sections_assigned : []);
+        const gradeCount = gradesAssigned.length || (Array.isArray(school.grades_assigned) ? school.grades_assigned.length : 0);
+
+        // Collect all sections from all grades
+        const allSections: string[] = [];
+        gradesAssigned.forEach((gs) => {
+          (gs.sectionsAssigned ?? gs.sections ?? []).forEach((s) => allSections.push(s));
+        });
+
         const subjectsList = school.subjects ?? [];
         const subjectsStr =
-          Array.isArray(subjectsList) && subjectsList.length > 0 ? subjectsList.join(", ") : null;
+          Array.isArray(subjectsList) && subjectsList.length > 0
+            ? subjectsList.join(", ")
+            : null;
+
+        // Build tooltip text with full grade/section detail
+        const gradeDetail =
+          gradesAssigned.length > 0
+            ? gradesAssigned
+                .map((gs) => {
+                  const name = gs.gradeName ?? gs.grade ?? "";
+                  const secs = gs.sectionsAssigned ?? gs.sections ?? [];
+                  return secs.length > 0 ? `${name} (${secs.join(", ")})` : name;
+                })
+                .join(" · ")
+            : Array.isArray(school.grades_assigned)
+            ? (school.grades_assigned as string[]).join(", ")
+            : "";
+
         return (
-          <div key={String(schoolKey)} className="text-sm">
-            <span className="font-medium">{schoolName}</span>
-            <span className="text-muted-foreground ml-1">({gradeSectionDisplay})</span>
-            {subjectsStr && (
-              <span className="text-muted-foreground block mt-0.5">Subjects: {subjectsStr}</span>
-            )}
+          <div key={String(schoolKey)} className="group">
+            {/* School name chip */}
+            <div className="flex items-start gap-1.5">
+              <div className="flex-shrink-0 mt-0.5">
+                <div className="h-5 w-5 rounded bg-indigo-100 flex items-center justify-center">
+                  <School className="h-3 w-3 text-indigo-600" />
+                </div>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-800 leading-tight">{schoolName}</p>
+                <div className="flex flex-wrap items-center gap-1 mt-1">
+                  {gradeCount > 0 && (
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100 cursor-default"
+                      title={gradeDetail || undefined}
+                    >
+                      {gradeCount} grade{gradeCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {allSections.length > 0 && (
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100 cursor-default"
+                      title={allSections.join(", ")}
+                    >
+                      {allSections.length} section{allSections.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {subjectsStr && (
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-100 cursor-default"
+                      title={subjectsStr}
+                    >
+                      {subjectsList.length} subject{subjectsList.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         );
       })}
@@ -1014,7 +1040,11 @@ export default function TeachersManagement() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to change the password for "${editingTeacher.name ?? editingTeacher.full_name}"? They will need to use the new password to log in.`)) {
+    if (!(await confirmDialog({
+      title: 'Change password?',
+      description: `Change the password for "${editingTeacher.name ?? editingTeacher.full_name}". They will need to use the new password to log in.`,
+      confirmText: 'Change Password',
+    }))) {
       return;
     }
 
@@ -1108,7 +1138,12 @@ export default function TeachersManagement() {
 
   // Handle delete teacher
   const handleDeleteTeacher = async (teacherId: string) => {
-    if (!confirm('Are you sure you want to delete this teacher?')) return;
+    if (!(await confirmDialog({
+      title: 'Delete this teacher?',
+      description: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
 
     try {
       setActionLoading(teacherId);
@@ -1323,7 +1358,7 @@ export default function TeachersManagement() {
   }
 
   return (
-    <div className="p-6 space-y-6 bg-white min-h-screen">
+    <div className="p-6 space-y-6 bg-white">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -1348,46 +1383,60 @@ export default function TeachersManagement() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-white">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Users className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Total Teachers</p>
-                <p className="text-2xl font-bold">{stats.totalTeachers}</p>
+        <Card className="bg-white border border-gray-100 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Teachers</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalTeachers}</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center">
+                <Users className="h-6 w-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Active Teachers</p>
-                <p className="text-2xl font-bold">{stats.activeTeachers}</p>
+        <Card className="bg-white border border-gray-100 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.activeTeachers}</p>
+                <p className="text-xs text-green-600 mt-0.5">
+                  {stats.totalTeachers > 0 ? Math.round((stats.activeTeachers / stats.totalTeachers) * 100) : 0}% of total
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-green-50 flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-green-600" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Calendar className="h-8 w-8 text-yellow-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Pending Leaves</p>
-                <p className="text-2xl font-bold">{stats.pendingLeaves}</p>
+        <Card className="bg-white border border-gray-100 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending Leaves</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.pendingLeaves}</p>
+                {stats.pendingLeaves > 0 && (
+                  <p className="text-xs text-amber-600 mt-0.5">Needs review</p>
+                )}
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center">
+                <Calendar className="h-6 w-6 text-amber-600" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white">
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Clock className="h-8 w-8 text-purple-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Avg Attendance</p>
-                <p className="text-2xl font-bold">{stats.averageAttendance}%</p>
+        <Card className="bg-white border border-gray-100 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg Attendance</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.averageAttendance}%</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-purple-50 flex items-center justify-center">
+                <Clock className="h-6 w-6 text-purple-600" />
               </div>
             </div>
           </CardContent>

@@ -5,6 +5,7 @@ import { studentApi } from "@/lib/api/student.api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ActivityCalendar, { type ActivityDay } from "@/components/student/ActivityCalendar";
 import {
   FileText,
   Clock,
@@ -86,7 +87,16 @@ function getStatusConfig(a: Assignment) {
 
 function DueDateChip({ a }: { a: Assignment }) {
   if (!a.due_date) return <span className="text-xs text-gray-400">—</span>;
-  if (a.is_overdue && !a.submission)
+  const isSubmitted = !!a.submission;
+  // Once submitted/graded, show the static due date — no "overdue" or "Xd left" noise.
+  if (isSubmitted)
+    return (
+      <span className="text-xs text-gray-400 flex items-center gap-1">
+        <Calendar className="h-3 w-3" />
+        {new Date(a.due_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+      </span>
+    );
+  if (a.is_overdue)
     return (
       <span className="text-xs text-red-500 font-medium flex items-center gap-1">
         <AlertCircle className="h-3 w-3" />
@@ -198,9 +208,7 @@ function AssignmentTable({
               }`}
             >
               {key.charAt(0).toUpperCase() + key.slice(1)}
-              <span
-                className={`ml-1 ${filter === key ? "text-gray-300" : "text-gray-400"}`}
-              >
+              <span className={`ml-1 ${filter === key ? "text-gray-300" : "text-gray-400"}`}>
                 {counts[key]}
               </span>
             </button>
@@ -235,21 +243,11 @@ function AssignmentTable({
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           {/* Table header */}
           <div className="grid grid-cols-[2rem_1fr_auto_auto_auto] sm:grid-cols-[2.5rem_1fr_6rem_5rem_5.5rem] items-center gap-2 sm:gap-4 px-4 py-2 border-b border-gray-100 bg-gray-50/80">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide text-right">
-              #
-            </span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Assignment
-            </span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:block">
-              Due
-            </span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:block text-right">
-              Marks
-            </span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">
-              Status
-            </span>
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide text-right">#</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Assignment</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:block">Due</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:block text-right">Marks</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Status</span>
           </div>
 
           {/* Rows */}
@@ -258,10 +256,9 @@ function AssignmentTable({
             const isGraded =
               a.status === "graded" ||
               (a.submission?.grade !== null && a.submission?.grade !== undefined);
-            const href =
-              a.submission
-                ? `/lms/student/assignments/${a.id}/view`
-                : `/lms/student/assignments/${a.id}`;
+            const href = a.submission
+              ? `/lms/student/assignments/${a.id}/view`
+              : `/lms/student/assignments/${a.id}`;
             const score = a.submission?.grade;
 
             return (
@@ -270,10 +267,8 @@ function AssignmentTable({
                 href={href}
                 className={`grid grid-cols-[2rem_1fr_auto_auto_auto] sm:grid-cols-[2.5rem_1fr_6rem_5rem_5.5rem] items-center gap-2 sm:gap-4 px-4 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors group ${sc.rowClass}`}
               >
-                {/* Index */}
                 <span className="text-xs font-medium text-gray-400 text-right">{idx + 1}</span>
 
-                {/* Title + subject */}
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${sc.dotClass}`} />
@@ -286,12 +281,10 @@ function AssignmentTable({
                   </p>
                 </div>
 
-                {/* Due date */}
                 <div className="hidden sm:block">
                   <DueDateChip a={a} />
                 </div>
 
-                {/* Marks / Score */}
                 <div className="hidden sm:block text-right">
                   {isGraded && score !== null && score !== undefined ? (
                     <span
@@ -310,11 +303,8 @@ function AssignmentTable({
                   )}
                 </div>
 
-                {/* Status + action */}
                 <div className="flex items-center justify-end gap-1.5">
-                  <Badge
-                    className={`text-xs border-0 px-2 py-0.5 hidden sm:inline-flex ${sc.badgeClass}`}
-                  >
+                  <Badge className={`text-xs border-0 px-2 py-0.5 hidden sm:inline-flex ${sc.badgeClass}`}>
                     {sc.label}
                   </Badge>
                   <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
@@ -350,12 +340,24 @@ function normalizeAssignment(raw: Record<string, unknown>): Assignment {
   };
 }
 
+function toDateStr(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function StudentAssignmentsPage() {
   const [courseAssignments, setCourseAssignments] = useState<Assignment[]>([]);
   const [dailyAssignments, setDailyAssignments] = useState<Assignment[]>([]);
   const [loadingCourse, setLoadingCourse] = useState(true);
   const [loadingDaily, setLoadingDaily] = useState(true);
-  const [activeTab, setActiveTab] = useState<"all" | "course" | "daily">("all");
+  // Default to Daily — teacher-set homework is the most time-sensitive for school kids.
+  const [activeTab, setActiveTab] = useState<"all" | "course" | "daily">("daily");
+  // Captured once on mount to avoid calling Date.now() during render (purity rule).
+  const [nowMs, setNowMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -413,19 +415,59 @@ export default function StudentAssignmentsPage() {
     };
   }, [allAssignments]);
 
+  // Build calendar activity days from due dates and submission dates
+  const activityDays: ActivityDay[] = useMemo(() => {
+    const map = new Map<string, ActivityDay>();
+    allAssignments.forEach(a => {
+      if (a.due_date && isValidDate(a.due_date)) {
+        const key = toDateStr(a.due_date);
+        const existing = map.get(key) || { date: key };
+        map.set(key, { ...existing, hasAssignment: true });
+      }
+      if (a.submission?.submitted_at && isValidDate(a.submission.submitted_at)) {
+        const key = toDateStr(a.submission.submitted_at);
+        const existing = map.get(key) || { date: key };
+        map.set(key, { ...existing, hasLearning: true });
+      }
+    });
+    return Array.from(map.values());
+  }, [allAssignments]);
+
+  // Calendar stats — last 4 weeks (nowMs set on mount to avoid Date.now() in render)
+  const calendarStats = useMemo(() => {
+    const cutoffMs = (nowMs ?? 0) - 28 * 24 * 60 * 60 * 1000;
+    const submittedRecent = nowMs
+      ? allAssignments.filter(a =>
+          a.submission?.submitted_at &&
+          new Date(a.submission.submitted_at).getTime() >= cutoffMs,
+        ).length
+      : 0;
+    return [
+      { label: "Pending", value: summary.pending },
+      { label: "Submitted", value: submittedRecent },
+      { label: "Graded", value: summary.graded },
+    ];
+  }, [allAssignments, summary, nowMs]);
+
   const visibleAssignments =
     activeTab === "course"
       ? courseAssignments
       : activeTab === "daily"
       ? dailyAssignments
       : allAssignments;
-  const isLoading = activeTab === "course" ? loadingCourse : loadingCourse || loadingDaily;
+  // Each tab waits only on its own request; the "all" tab needs both.
+  const isLoading =
+    activeTab === "course"
+      ? loadingCourse
+      : activeTab === "daily"
+      ? loadingDaily
+      : loadingCourse || loadingDaily;
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">Assignments</h1>
             <p className="text-xs text-gray-500 mt-0.5">All your assignments in one place</p>
@@ -439,98 +481,101 @@ export default function StudentAssignmentsPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-5 space-y-5">
-        {/* Summary stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            {
-              label: "Total",
-              value: summary.total,
-              icon: FileText,
-              color: "text-gray-700 bg-gray-100",
-              ring: "",
-            },
-            {
-              label: "Pending",
-              value: summary.pending,
-              icon: Clock,
-              color: "text-amber-700 bg-amber-100",
-              ring: summary.pending > 0 ? "ring-1 ring-amber-200" : "",
-            },
-            {
-              label: "Graded",
-              value: summary.graded,
-              icon: Award,
-              color: "text-emerald-700 bg-emerald-100",
-              ring: "",
-            },
-            {
-              label: "Overdue",
-              value: summary.overdue,
-              icon: AlertCircle,
-              color: "text-red-700 bg-red-100",
-              ring: summary.overdue > 0 ? "ring-1 ring-red-200" : "",
-            },
-          ].map(({ label, value, icon: Icon, color, ring }) => (
-            <div
-              key={label}
-              className={`bg-white border border-gray-200 rounded-xl p-3.5 flex items-center gap-3 shadow-sm ${ring}`}
-            >
-              <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${color}`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-xl font-bold text-gray-900 leading-none">{value}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-              </div>
+      <div className="px-6 py-5">
+        {/* Two-column layout */}
+        <div className="flex gap-6 items-start">
+          {/* Left: assignment content */}
+          <div className="flex-1 min-w-0 space-y-5">
+            {/* Summary stat cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total", value: summary.total, icon: FileText, color: "text-gray-700 bg-gray-100", ring: "" },
+                {
+                  label: "Pending",
+                  value: summary.pending,
+                  icon: Clock,
+                  color: "text-amber-700 bg-amber-100",
+                  ring: summary.pending > 0 ? "ring-1 ring-amber-200" : "",
+                },
+                { label: "Graded", value: summary.graded, icon: Award, color: "text-emerald-700 bg-emerald-100", ring: "" },
+                {
+                  label: "Overdue",
+                  value: summary.overdue,
+                  icon: AlertCircle,
+                  color: "text-red-700 bg-red-100",
+                  ring: summary.overdue > 0 ? "ring-1 ring-red-200" : "",
+                },
+              ].map(({ label, value, icon: Icon, color, ring }) => (
+                <div
+                  key={label}
+                  className={`bg-white border border-gray-200 rounded-xl p-3.5 flex items-center gap-3 shadow-sm ${ring}`}
+                >
+                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${color}`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-gray-900 leading-none">{value}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* Retake / submitted notice */}
-        {summary.retakeable > 0 && (
-          <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-            <RotateCcw className="h-4 w-4 shrink-0" />
-            <span>
-              You have {summary.retakeable} submitted assignment
-              {summary.retakeable !== 1 ? "s" : ""} awaiting grading.
-            </span>
+            {/* Retake notice */}
+            {summary.retakeable > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <RotateCcw className="h-4 w-4 shrink-0" />
+                <span>
+                  You have {summary.retakeable} submitted assignment
+                  {summary.retakeable !== 1 ? "s" : ""} awaiting grading.
+                </span>
+              </div>
+            )}
+
+            {/* Tabs */}
+            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 w-fit shadow-sm">
+              {(
+                [
+                  { id: "all", label: "All", icon: FileText, count: allAssignments.length },
+                  { id: "course", label: "Course", icon: BookOpen, count: courseAssignments.length },
+                  { id: "daily", label: "Daily", icon: ClipboardList, count: dailyAssignments.length },
+                ] as const
+              ).map(({ id, label, icon: Icon, count }) => (
+                <button
+                  key={id}
+                  onClick={() => setActiveTab(id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    activeTab === id ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                  <span className={activeTab === id ? "text-blue-200" : "text-gray-400"}>{count}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Assignment table */}
+            <AssignmentTable
+              assignments={visibleAssignments}
+              loading={isLoading}
+              type={activeTab === "daily" ? "daily" : "course"}
+            />
           </div>
-        )}
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 w-fit shadow-sm">
-          {(
-            [
-              { id: "all", label: "All", icon: FileText, count: allAssignments.length },
-              { id: "course", label: "Course", icon: BookOpen, count: courseAssignments.length },
-              { id: "daily", label: "Daily", icon: ClipboardList, count: dailyAssignments.length },
-            ] as const
-          ).map(({ id, label, icon: Icon, count }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                activeTab === id
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-              <span className={activeTab === id ? "text-blue-200" : "text-gray-400"}>
-                {count}
-              </span>
-            </button>
-          ))}
+          {/* Right: calendar sidebar */}
+          <div className="w-72 shrink-0">
+            <ActivityCalendar
+              activityDays={activityDays}
+              stats={calendarStats}
+              legendLabels={{
+                dot: 'Submitted',
+                greenDot: 'Due date',
+                line: 'Due & submitted',
+              }}
+            />
+          </div>
         </div>
-
-        {/* Assignment table */}
-        <AssignmentTable
-          assignments={visibleAssignments}
-          loading={isLoading}
-          type={activeTab === "daily" ? "daily" : "course"}
-        />
       </div>
     </div>
   );

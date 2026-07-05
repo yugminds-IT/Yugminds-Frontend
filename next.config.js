@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+const path = require('path');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 });
@@ -26,7 +28,8 @@ const nextConfig = {
     dangerouslyAllowSVG: false,
   },
   // Ensure CSS is processed correctly
-  transpilePackages: [],
+  // Bundle Sentry/OpenTelemetry instrumentation deps — Turbopack external symlinks break in monorepos
+  transpilePackages: ['import-in-the-middle', 'require-in-the-middle'],
   // Force CSS to reload on changes
   reactStrictMode: true,
   // Performance optimizations
@@ -36,9 +39,9 @@ const nextConfig = {
   // Optimize bundle splitting
   experimental: {
     optimizeCss: true, // Optimize CSS
-    turbopack: {
-      root: __dirname, // Silence "multiple lockfiles" workspace root warning
-    },
+  },
+  turbopack: {
+    root: path.join(__dirname, '..'),
   },
   // Webpack optimizations
   webpack: (config, { isServer }) => {

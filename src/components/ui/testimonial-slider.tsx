@@ -140,7 +140,7 @@ export function TestimonialSlider({
         <CarouselContent className="-ml-2 md:-ml-4">
           {testimonials.map((testimonial, _index) => (
             <CarouselItem key={testimonial.id} className="pl-2 md:pl-4 basis-full">
-              <div className="testimonial-slider-card bg-white shadow-xl rounded-2xl border border-gray-100 p-6 md:p-8 relative z-10 w-full max-w-full">
+              <div className="testimonial-slider-card bg-white shadow-xl rounded-2xl border-2 border-blue-200 p-6 md:p-8 relative z-10 w-full max-w-full">
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex items-center gap-4">
                     <div

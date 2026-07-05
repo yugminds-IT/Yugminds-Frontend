@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/ui/modern-side-bar";
-import { useStudentProfile, useStudentAssignments } from "@/hooks/useStudentData";
+import { useStudentProfile, useStudentDashboardStats } from "@/hooks/useStudentData";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
-import { getStoredUserId, waitForSession } from "@/lib/session-utils";
+import { getStoredUserId, waitForSession, setLogoutReason } from "@/lib/session-utils";
 import { setAuthToken } from "@/lib/api";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
@@ -25,7 +25,9 @@ export default function StudentLayoutWrapper({
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const { data: profile } = useStudentProfile();
-  const { data: assignments } = useStudentAssignments();
+  // Pending count comes from the dashboard stats so the badge reflects BOTH
+  // course (chapter-based) and daily (school homework) assignments.
+  const { data: dashboardStats } = useStudentDashboardStats();
   const { count: unreadNotificationCount } = useUnreadNotificationCount({ enabled: !loading, role: 'student' });
   
   // Get sidebar state from store
@@ -103,6 +105,7 @@ export default function StudentLayoutWrapper({
           if (mounted) {
             setStatus('unauthenticated');
             setLoading(false);
+            setLogoutReason('error');
             router.push('/lms/login');
           }
           return;
@@ -232,6 +235,7 @@ export default function StudentLayoutWrapper({
     if (loadingTimeout && !user && !loading) {
       console.error('❌ User not loaded after timeout, redirecting to login');
       setStatus('unauthenticated');
+      setLogoutReason('session_timeout');
       router.push('/lms/login');
     }
   }, [loadingTimeout, user, loading, router]);
@@ -283,13 +287,8 @@ export default function StudentLayoutWrapper({
   const userName = profileTyped?.full_name || user?.email?.split('@')[0] || 'Student';
   const userEmail = user?.email || profileTyped?.email || '';
 
-  // Calculate badge counts (assignments from list; notifications from shared unread-count API)
-  type AssignmentItem = { status?: string };
-  const pendingAssignmentsCount = Array.isArray(assignments) 
-    ? (assignments as AssignmentItem[]).filter((a: AssignmentItem) => 
-        a.status === 'not_started' || a.status === 'in_progress' || a.status === 'overdue'
-      ).length 
-    : 0;
+  // Calculate badge counts (assignments from combined dashboard stats; notifications from shared unread-count API)
+  const pendingAssignmentsCount = dashboardStats?.pendingAssignments ?? 0;
 
   return (
     <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
@@ -303,7 +302,7 @@ export default function StudentLayoutWrapper({
         notificationBadgeCount={unreadNotificationCount}
       />
       
-      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+      <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
         {children}
       </div>
     </div>

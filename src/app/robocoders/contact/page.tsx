@@ -11,6 +11,7 @@ import { Textarea } from "../../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import Footer from "../../../components/Footer";
 import { commonApi } from "../../../lib/api";
+import { toast } from "../../../components/ui/toast";
 import { 
   Phone,
   Mail,
@@ -73,7 +74,7 @@ export default function ContactPage() {
       clearFormData('contact-form');
       clearSavedData();
 
-      alert("Thank you for your message! We'll get back to you soon.");
+      toast.success("Thank you for your message! We'll get back to you soon.");
       setFormData({
         firstName: "",
         lastName: "",
@@ -85,7 +86,7 @@ export default function ContactPage() {
       });
     } catch (error) {
       console.error("Error submitting form:", error);
-      alert(error instanceof Error ? error.message : "Network error: Please check your internet connection and try again.");
+      toast.error(error instanceof Error ? error.message : "Network error: Please check your internet connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -142,41 +143,97 @@ export default function ContactPage() {
         </div>
 
         {/* Find Us Section */}
-        <div className="flex-1 flex items-center justify-center bg-blue-600 flex-shrink-0 py-8 md:py-12 min-h-0">
-          <div className="container w-full py-4 md:py-6">
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold mb-6 md:mb-8 text-white max-w-5xl mx-auto">Find Us</h2>
-            <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-center justify-center">
-              <Card className="bg-white border-0 w-full max-w-sm mx-auto md:mx-auto">
-                <CardContent className="p-3 md:p-4 flex flex-col items-center text-center">
-                  <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-600 rounded-full flex items-center justify-center mb-2 md:mb-3 mx-auto">
-                    <MapPin className="h-6 w-6 md:h-7 md:w-7 text-white" />
+        <div className="bg-blue-600 py-16 md:py-24">
+          <div className="container mx-auto px-4 md:px-6 lg:px-8">
+
+            {/* Heading */}
+            <div className="text-center mb-10 md:mb-14">
+              <span className="inline-flex items-center gap-2 bg-white/20 text-white text-sm font-semibold px-4 py-2 rounded-full border border-white/30 mb-4">
+                <MapPin className="h-4 w-4" />
+                Our Location
+              </span>
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white mb-3">
+                Find Us
+              </h2>
+              <p className="text-white/80 text-lg max-w-xl mx-auto">
+                Come visit us in Hyderabad — we&apos;d love to meet you in person.
+              </p>
+            </div>
+
+            {/* Two-column: info left, map right */}
+            <div className="grid lg:grid-cols-5 gap-6 md:gap-8 items-stretch max-w-6xl mx-auto">
+
+              {/* Info card */}
+              <div className="lg:col-span-2 bg-white rounded-2xl p-6 md:p-8 flex flex-col gap-6 shadow-xl">
+
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center">
+                    <MapPin className="h-5 w-5 text-white" />
                   </div>
-                  <h3 className="font-bold text-base md:text-lg mb-1.5 md:mb-2 text-center text-gray-900">Address</h3>
-                  <p className="text-gray-700 leading-relaxed text-xs md:text-sm text-center">
-                    Begumpet, Hyderabad, Telangana, India.
-                  </p>
-                </CardContent>
-              </Card>
-              <a 
-                href="https://www.google.com/maps?q=17.447081,78.460012"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-gray-100 rounded-xl overflow-hidden shadow-lg w-full md:flex-1 mx-auto md:mx-0 self-start block cursor-pointer hover:opacity-90 transition-opacity"
-              >
-                <div className="w-full aspect-[2/1] pointer-events-none relative">
-                  <iframe
-                    src="https://maps.google.com/maps?q=17.447081,78.460012&hl=en&z=15&output=embed"
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0 }}
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    className="w-full h-full"
-                  ></iframe>
-                  <div className="absolute inset-0 z-10"></div>
+                  <div>
+                    <p className="font-bold text-gray-900 mb-1">Address</p>
+                    <p className="text-gray-600 text-sm leading-relaxed">
+                      Begumpet, Hyderabad,<br />Telangana, India.
+                    </p>
+                  </div>
                 </div>
-              </a>
+
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center">
+                    <Phone className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900 mb-1">Phone</p>
+                    <p className="text-gray-600 text-sm">+91 85003 45655</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center">
+                    <Mail className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900 mb-1">Email</p>
+                    <p className="text-gray-600 text-sm">robocoders07@gmail.com</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900 mb-1">Office Hours</p>
+                    <p className="text-gray-600 text-sm">Mon–Fri: 9am – 6pm</p>
+                    <p className="text-gray-600 text-sm">Saturday: 10am – 4pm</p>
+                  </div>
+                </div>
+
+                <a
+                  href="https://www.google.com/maps?q=17.447081,78.460012"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-auto w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-colors duration-200 text-sm"
+                >
+                  <MapPin className="h-4 w-4" />
+                  Open in Google Maps
+                </a>
+              </div>
+
+              {/* Map */}
+              <div className="lg:col-span-3 rounded-2xl overflow-hidden shadow-xl min-h-[340px] md:min-h-[420px]">
+                <iframe
+                  src="https://maps.google.com/maps?q=17.447081,78.460012&hl=en&z=15&output=embed"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0, display: "block", minHeight: "340px" }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Robo Coders Location"
+                />
+              </div>
+
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import Image from "next/image";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
-import { 
+import {
   Target,
   Eye,
   Heart,
@@ -11,13 +11,44 @@ import {
   Users,
   Trophy,
   BookOpen,
-  Network
+  Network,
+  Hammer,
+  Globe,
+  Rocket,
+  GraduationCap
 } from "lucide-react";
 
 // Enable ISR - revalidate every hour
 export const revalidate = 3600;
 
 export default function AboutPage() {
+
+  const ourValues = [
+    {
+      icon: Hammer,
+      title: "Hands-on Learning",
+      desc: "Every concept is taught by building something real. Students leave each session with a project they created themselves — not just notes in a book.",
+      accent: "Build, not just read.",
+    },
+    {
+      icon: Globe,
+      title: "Inclusive Education",
+      desc: "We believe every child deserves access to quality tech education, regardless of background, ability, or prior experience. Our doors are open to all.",
+      accent: "Education for everyone.",
+    },
+    {
+      icon: Rocket,
+      title: "Innovation First",
+      desc: "We stay ahead of the curve — constantly refreshing our curriculum with the latest in AI, robotics, and software so students are always learning what matters tomorrow.",
+      accent: "Always one step ahead.",
+    },
+    {
+      icon: GraduationCap,
+      title: "Student-Centred",
+      desc: "Our teaching pace, content, and support are shaped around each student's progress. Every child is unique, and we teach that way.",
+      accent: "You define the journey.",
+    },
+  ];
 
   const whyChoose = [
     { 
@@ -104,6 +135,53 @@ export default function AboutPage() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Our Values Section — WHITE */}
+      <section className="py-20 md:py-28 bg-white">
+        <div className="container mx-auto px-4 md:px-6 lg:px-8">
+
+          {/* Heading */}
+          <div className="text-center mb-14">
+            <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 text-sm font-semibold px-4 py-2 rounded-full border border-blue-100 mb-4">
+              <Heart className="h-4 w-4 fill-blue-600" />
+              What We Stand For
+            </span>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 max-w-3xl mx-auto leading-tight">
+              Our Core <span className="text-blue-600">Values</span>
+            </h2>
+            <p className="text-gray-500 text-lg md:text-xl max-w-2xl mx-auto">
+              The principles that guide every class, every project, and every interaction at Robo Coders™.
+            </p>
+            <div className="w-16 h-1 bg-blue-600 rounded-full mx-auto mt-6" />
+          </div>
+
+          {/* Value Cards */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
+            {ourValues.map(({ icon: Icon, title, desc, accent }) => (
+              <div
+                key={title}
+                className="group flex flex-col bg-white border-2 border-blue-100 rounded-2xl p-6 md:p-8 hover:border-blue-400 hover:shadow-xl transition-all duration-300"
+              >
+                {/* Icon */}
+                <div className="w-14 h-14 rounded-xl bg-blue-600 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300">
+                  <Icon className="h-7 w-7 text-white" />
+                </div>
+
+                {/* Title */}
+                <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-3">{title}</h3>
+
+                {/* Description */}
+                <p className="text-gray-500 text-sm leading-relaxed flex-1">{desc}</p>
+
+                {/* Accent tagline */}
+                <div className="mt-5 pt-4 border-t border-blue-100">
+                  <span className="text-blue-600 text-sm font-semibold">{accent}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>

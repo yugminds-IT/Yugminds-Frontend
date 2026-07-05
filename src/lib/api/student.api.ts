@@ -45,11 +45,24 @@ export const studentApi = {
       apiClient.post(`${STUDENT}/save-chapter-progress`, data),
     saveLastViewed: (data: { courseId: string; chapterId: string; contentId?: string }) =>
       apiClient.post(`${STUDENT}/last-viewed`, data),
+    getLastViewed: () => apiClient.get(`${STUDENT}/last-viewed`),
+  },
+
+  /** Activity feed + learning streak */
+  activity: {
+    get: () => apiClient.get(`${STUDENT}/activity`),
   },
 
   /** Analytics */
   analytics: {
-    get: () => apiClient.get(`${STUDENT}/analytics`),
+    get: (params?: { historyLimit?: number; from?: string; to?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.historyLimit) qs.set("historyLimit", String(params.historyLimit));
+      if (params?.from) qs.set("from", params.from);
+      if (params?.to) qs.set("to", params.to);
+      const query = qs.toString();
+      return apiClient.get(`${STUDENT}/analytics${query ? `?${query}` : ""}`);
+    },
   },
 
   /** Certificates */
@@ -57,5 +70,18 @@ export const studentApi = {
     list: () => apiClient.get(`${STUDENT}/certificates`),
     generate: (data?: Record<string, unknown>) =>
       apiClient.post(`${STUDENT}/certificates/generate`, data ?? {}),
+  },
+
+  /** Notifications (send to teachers in school) */
+  notifications: {
+    recipients: (params?: { school_id?: string }) =>
+      apiClient.get(withParams(`${STUDENT}/notifications/recipients`, params)),
+    create: (data: {
+      title: string;
+      message: string;
+      school_id?: string;
+      recipientType?: 'role' | 'individual';
+      recipients?: string[];
+    }) => apiClient.post(`${STUDENT}/notifications`, data),
   },
 };

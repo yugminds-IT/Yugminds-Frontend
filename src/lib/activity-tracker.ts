@@ -8,8 +8,6 @@ import { addTokensToHeaders, getAuthToken } from './csrf-client';
 
 // Configuration
 const ACTIVITY_UPDATE_INTERVAL_MS = 5 * 60 * 1000; // Update every 5 minutes
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes default
-const INACTIVITY_WARNING_MS = 25 * 60 * 1000; // 25 minutes (show warning 5 min before)
 
 let activityUpdateTimer: NodeJS.Timeout | null = null;
 let lastActivityUpdate: number = 0;
@@ -195,41 +193,6 @@ export function stopActivityTracking(): void {
   lastRateLimitError = 0;
 
   console.log('🛑 Activity tracking stopped');
-}
-
-/**
- * Get inactivity timeout configuration
- */
-export function getInactivityTimeout(): number {
-  // Check environment variable or use default
-  if (typeof window !== 'undefined') {
-    const envTimeout = process.env.NEXT_PUBLIC_INACTIVITY_TIMEOUT_MS;
-    if (envTimeout) {
-      return parseInt(envTimeout, 10);
-    }
-  }
-  return INACTIVITY_TIMEOUT_MS;
-}
-
-/**
- * Get inactivity warning time
- */
-export function getInactivityWarningTime(): number {
-  // Check environment variable or use default
-  if (typeof window !== 'undefined') {
-    const envWarning = process.env.NEXT_PUBLIC_INACTIVITY_WARNING_MS;
-    if (envWarning) {
-      return parseInt(envWarning, 10);
-    }
-  }
-  return INACTIVITY_WARNING_MS;
-}
-
-/**
- * Check if activity tracking is active
- */
-export function isActivityTracking(): boolean {
-  return isTracking;
 }
 
 

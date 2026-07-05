@@ -29,6 +29,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
+import { toast } from "@/components/ui/toast";
 
 interface TeacherReport {
   id: string;
@@ -139,7 +140,7 @@ export default function ReportsManagement() {
       await loadReports();
     } catch (error) {
       console.error('Error approving report:', error);
-      alert(`Failed to approve report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to approve report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -149,7 +150,7 @@ export default function ReportsManagement() {
       await loadReports();
     } catch (error) {
       console.error('Error rejecting report:', error);
-      alert(`Failed to reject report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to reject report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -157,13 +158,13 @@ export default function ReportsManagement() {
     try {
       const response = await schoolAdminApi.reports.bulk({ report_ids: selectedReports });
       const data = (response.data ?? {}) as { approved?: number };
-      alert(`Successfully approved ${data.approved ?? selectedReports.length} report(s)`);
+      toast.success(`Successfully approved ${data.approved ?? selectedReports.length} report(s)`);
       setSelectedReports([]);
       setIsBulkApproveOpen(false);
       await loadReports();
     } catch (error) {
       console.error('Error bulk approving reports:', error);
-      alert(`Failed to approve reports: ${error instanceof Error ? error.message : 'Please try again.'}`);
+      toast.error(`Failed to approve reports: ${error instanceof Error ? error.message : 'Please try again.'}`);
     }
   };
 

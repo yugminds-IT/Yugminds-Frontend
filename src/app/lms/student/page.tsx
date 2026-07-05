@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { frontendLogger } from "@/lib/frontend-logger";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { AreaChartAnalyticsCard } from "@/components/ui/area-chart-analytics-card";
-import { 
-  BookOpen, 
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/student/StatCard";
+import {
+  BookOpen,
   FileText,
   Calendar,
   Award,
@@ -16,15 +17,22 @@ import {
   Clock,
   Bell,
   Play,
-  Upload
+  Upload,
+  Flame,
+  Trophy,
+  ArrowRight
 } from "lucide-react";
 import Link from "next/link";
-import { 
+import {
   useStudentProfile,
   useStudentDashboardStats,
   useStudentCourses,
   useStudentAssignments,
-  useStudentNotifications
+  useStudentDailyAssignments,
+  useStudentNotifications,
+  useStudentLastViewed,
+  useStudentActivity,
+  useStudentRankings
 } from "@/hooks/useStudentData";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
@@ -34,31 +42,45 @@ interface Assignment {
   id?: string;
   title?: string;
   course_title?: string;
+  subject?: string;
+  assignment_type?: string;
   due_date?: string;
   status?: string;
   is_overdue?: boolean;
   days_until_due?: number;
 }
 
+interface Course {
+  id?: string;
+  title?: string;
+  name?: string;
+  grade?: string;
+  subject?: string;
+  thumbnail_url?: string;
+  progress_percentage?: number;
+  average_grade?: number | null;
+}
+
 export default function StudentDashboard() {
   const router = useRouter();
   const [greeting, setGreeting] = useState("Hello");
   const [isMounted, setIsMounted] = useState(false);
-  
+
   // OPTIMIZATION: Request deduplication - Track ongoing requests to prevent duplicates
   const _ongoingRequests = useRef<Map<string, Promise<unknown>>>(new Map());
-  
+
   // OPTIMIZATION: Incremental Loading - Load critical data first, defer non-critical
   // Critical: profile, stats (needed for header/stats cards)
-  // Non-critical: notifications (can be deferred)
-  const { data: profile, isLoading: _profileLoading } = useStudentProfile();
-  const { data: stats, isLoading: _statsLoading } = useStudentDashboardStats();
+  const { data: profile } = useStudentProfile();
+  const { data: stats } = useStudentDashboardStats();
   const { data: courses, isLoading: coursesLoading } = useStudentCourses();
   const { data: assignments, isLoading: assignmentsLoading } = useStudentAssignments();
-  
+  const { data: dailyAssignments, isLoading: dailyLoading } = useStudentDailyAssignments();
+  const { data: lastViewed, isLoading: lastViewedLoading } = useStudentLastViewed();
+
   // OPTIMIZATION: Defer non-critical data loading - load after initial render
   const [shouldLoadNonCritical, setShouldLoadNonCritical] = useState(false);
-  
+
   useEffect(() => {
     // Defer non-critical data loading using requestIdleCallback
     if (isMounted && !shouldLoadNonCritical) {
@@ -73,11 +95,10 @@ export default function StudentDashboard() {
       }
     }
   }, [isMounted, shouldLoadNonCritical]);
-  
-  // OPTIMIZATION: Only load notifications after initial render (non-critical)
-  // Notifications hook doesn't support enabled flag, so we'll handle it differently
-  // by conditionally rendering the notifications section
+
   const { data: notifications, isLoading: notificationsLoading } = useStudentNotifications();
+  const { data: activity } = useStudentActivity();
+  const { data: rankInfo } = useStudentRankings();
   useDashboardRealtime('student', {
     enabled: true,
     debugLabel: 'student-dashboard',
@@ -91,11 +112,11 @@ export default function StudentDashboard() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
-    
+
     frontendLogger.debug('Student dashboard mounted', {
       component: 'StudentDashboard',
     });
-    
+
     // Set greeting based on time of day
     const hour = new Date().getHours();
     if (hour < 12) setGreeting("Good morning");
@@ -108,7 +129,7 @@ export default function StudentDashboard() {
     interface Profile {
       force_password_change?: boolean;
     }
-    
+
     if (profile && typeof profile === 'object' && 'force_password_change' in (profile as Profile) && (profile as Profile).force_password_change) {
       router.push('/lms/student/settings?force_change=true');
     }
@@ -126,6 +147,51 @@ export default function StudentDashboard() {
     minRefreshInterval: 60000, // 1 minute minimum between refreshes
   });
 
+  // Combined daily + course pending assignments (not yet started), due soonest first.
+  const pendingAssignments = useMemo(() => {
+    const course = Array.isArray(assignments) ? (assignments as Assignment[]) : [];
+    const daily = Array.isArray(dailyAssignments) ? (dailyAssignments as Assignment[]) : [];
+    return [...course, ...daily]
+      .filter((a) => a.status === 'not_started' || a.status === 'pending' || a.status == null)
+      .sort((a, b) => {
+        const da = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+        const db = b.due_date ? new Date(b.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+        return da - db;
+      })
+      .slice(0, 4);
+  }, [assignments, dailyAssignments]);
+
+  // Recent unread notifications
+  const recentNotifications = useMemo(
+    () =>
+      ((notifications as Array<{ id?: string; title?: string; message?: string; created_at?: string; is_read?: boolean }> | undefined) || [])
+        .filter((n) => !n.is_read)
+        .slice(0, 5),
+    [notifications]
+  );
+
+  const courseList = useMemo(() => (courses as Course[] | undefined) || [], [courses]);
+
+  // Active courses = exist and not 100% complete (matches useStudentDashboardStats)
+  const activeCourses = useMemo(
+    () => courseList.filter((c) => (c.progress_percentage || 0) < 100).slice(0, 3),
+    [courseList]
+  );
+
+  // Performance: compute course-progress and average-grade once (was duplicated inline).
+  const performance = useMemo(() => {
+    const avgProgress =
+      courseList.length > 0
+        ? courseList.reduce((acc, c) => acc + (c.progress_percentage || 0), 0) / courseList.length
+        : 0;
+    const graded = courseList.filter((c) => c.average_grade != null);
+    const avgGrade =
+      graded.length > 0
+        ? graded.reduce((sum, c) => sum + (c.average_grade ?? 0), 0) / graded.length
+        : 0;
+    return { avgProgress, avgGrade };
+  }, [courseList]);
+
   if (!isMounted) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -133,40 +199,6 @@ export default function StudentDashboard() {
       </div>
     );
   }
-
-  // Get pending assignments (due soon)
-  const pendingAssignments = Array.isArray(assignments)
-    ? (assignments as Array<{ status?: string }>).filter((a: { status?: string }) =>
-        a.status === 'not_started'
-      ).slice(0, 3)
-    : [];
-
-  // Get recent notifications
-  const recentNotifications =
-    ((notifications as Array<{ id?: string; title?: string; message?: string; created_at?: string; is_read?: boolean }> | undefined) || [])
-      .filter((n) => !n.is_read)
-      .slice(0, 5);
-
-  // Get active courses - a course is "active" if it exists and is not 100% complete
-  // This matches the logic in useStudentDashboardStats
-  interface Course {
-    id?: string;
-    title?: string;
-    name?: string;
-    grade?: string;
-    subject?: string;
-    thumbnail_url?: string;
-    progress_percentage?: number;
-    average_grade?: number | null;
-  }
-  
-  const courseList = (courses as Course[] | undefined) || [];
-  const activeCourses = courseList
-    .filter((c) => {
-      const progress = c.progress_percentage || 0;
-      return progress < 100;
-    })
-    .slice(0, 3);
 
   const studentStats = stats as {
     activeCourses?: number;
@@ -176,21 +208,6 @@ export default function StudentDashboard() {
     unreadNotifications?: number;
   } | undefined;
 
-  const makeSparklineData = (value: number, points = 6) => {
-    const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-    const baseline = Math.max(1, safeValue);
-
-    return Array.from({ length: points }, (_, index) => {
-      const progress = (index + 1) / points;
-      const wave = Math.sin(index * 1.15) * baseline * 0.08;
-
-      return {
-        label: `${index + 1}`,
-        value: Math.max(0, Math.round(baseline * (0.62 + progress * 0.38) + wave)),
-      };
-    });
-  };
-
   const studentStatCards = [
     {
       title: "Active Courses",
@@ -199,10 +216,7 @@ export default function StudentDashboard() {
       badge: "In progress",
       icon: <BookOpen className="h-4 w-4" />,
       accentColor: "#2563eb",
-      sideMetric: `${studentStats?.activeCourses || 0}`,
-      sideLabel: "active",
       info: "Courses you have started and not yet completed.",
-      numericValue: studentStats?.activeCourses || 0,
     },
     {
       title: "Pending Assignments",
@@ -211,22 +225,16 @@ export default function StudentDashboard() {
       badge: "Pending",
       icon: <FileText className="h-4 w-4" />,
       accentColor: "#f97316",
-      sideMetric: `${studentStats?.pendingAssignments || 0}`,
-      sideLabel: "due",
-      info: "Assignments that still need your attention.",
-      numericValue: studentStats?.pendingAssignments || 0,
+      info: "Daily homework + course assignments that still need your attention.",
     },
     {
       title: "Courses Completed",
       value: studentStats?.completedCourses || 0,
-      description: "Total courses finished",
+      description: "Total finished",
       badge: "Finished",
       icon: <CheckCircle className="h-4 w-4" />,
       accentColor: "#16a34a",
-      sideMetric: `${studentStats?.completedCourses || 0}`,
-      sideLabel: "courses",
       info: "Courses you have completed.",
-      numericValue: studentStats?.completedCourses || 0,
     },
     {
       title: "Completed",
@@ -235,10 +243,7 @@ export default function StudentDashboard() {
       badge: "Done",
       icon: <CheckCircle className="h-4 w-4" />,
       accentColor: "#7c3aed",
-      sideMetric: `${studentStats?.completedAssignments || 0}`,
-      sideLabel: "assignments",
       info: "Assignments you have completed.",
-      numericValue: studentStats?.completedAssignments || 0,
     },
     {
       title: "Notifications",
@@ -247,12 +252,13 @@ export default function StudentDashboard() {
       badge: (studentStats?.unreadNotifications || 0) > 0 ? "Unread" : "Clear",
       icon: <Bell className="h-4 w-4" />,
       accentColor: "#0891b2",
-      sideMetric: `${studentStats?.unreadNotifications || 0}`,
-      sideLabel: "new",
       info: "Unread notifications for your account.",
-      numericValue: studentStats?.unreadNotifications || 0,
     },
   ];
+
+  const sectionRank = rankInfo?.rankings?.section;
+  const showRank = !!sectionRank && (rankInfo?.attempted ?? 0) > 0 && sectionRank.total > 1;
+  const currentStreak = activity?.currentStreak ?? 0;
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6">
@@ -267,6 +273,12 @@ export default function StudentDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {currentStreak > 0 && (
+            <div className="flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-600 ring-1 ring-orange-100">
+              <Flame className="h-4 w-4" />
+              {currentStreak}-day streak
+            </div>
+          )}
           <Link href="/lms/student/notifications">
             <Button variant="outline" className="relative">
               <Bell className="h-4 w-4" />
@@ -280,10 +292,43 @@ export default function StudentDashboard() {
         </div>
       </div>
 
+      {/* Jump back in — resume last viewed course */}
+      {lastViewedLoading ? (
+        <Skeleton className="h-24 w-full rounded-xl" />
+      ) : lastViewed ? (
+        <Card className="overflow-hidden border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+                <Play className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-blue-600">Jump back in</p>
+                <h3 className="truncate font-semibold text-gray-900">{lastViewed.courseTitle}</h3>
+                <p className="truncate text-sm text-gray-600">
+                  {lastViewed.chapterTitle
+                    ? `${lastViewed.chapterTitle}${lastViewed.contentTitle ? ` • ${lastViewed.contentTitle}` : ''}`
+                    : 'Continue where you left off'}
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/lms/student/my-courses/${lastViewed.courseId}`}
+              className="shrink-0"
+            >
+              <Button className="w-full sm:w-auto">
+                Resume
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         {studentStatCards.map((metric) => (
-          <AreaChartAnalyticsCard
+          <StatCard
             key={metric.title}
             title={metric.title}
             value={metric.value}
@@ -291,10 +336,7 @@ export default function StudentDashboard() {
             badge={metric.badge}
             icon={metric.icon}
             accentColor={metric.accentColor}
-            sideMetric={metric.sideMetric}
-            sideLabel={metric.sideLabel}
             info={metric.info}
-            data={makeSparklineData(metric.numericValue)}
           />
         ))}
       </div>
@@ -318,12 +360,18 @@ export default function StudentDashboard() {
             </CardHeader>
             <CardContent>
               {coursesLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="rounded-lg border p-4">
+                      <Skeleton className="h-5 w-1/2" />
+                      <Skeleton className="mt-2 h-4 w-1/3" />
+                      <Skeleton className="mt-4 h-2 w-full" />
+                    </div>
+                  ))}
                 </div>
               ) : activeCourses.length > 0 ? (
                 <div className="space-y-4">
-                  {activeCourses.map((course: Course & { id?: string; title?: string; name?: string; grade?: string; subject?: string; thumbnail_url?: string }) => (
+                  {activeCourses.map((course) => (
                     <div key={course.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -337,7 +385,7 @@ export default function StudentDashboard() {
                             <Progress value={course.progress_percentage || 0} className="h-2" />
                           </div>
                         </div>
-                        <Link href={`/student/my-courses/${course.id}`}>
+                        <Link href={`/lms/student/my-courses/${course.id}`}>
                           <Button size="sm" className="ml-4">
                             <Play className="h-4 w-4 mr-2" />
                             Continue
@@ -362,7 +410,7 @@ export default function StudentDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Pending Assignments</CardTitle>
-                  <CardDescription>Assignments due soon</CardDescription>
+                  <CardDescription>Daily homework &amp; course assignments due soon</CardDescription>
                 </div>
                 <Link href="/lms/student/assignments">
                   <Button variant="outline" size="sm">View All</Button>
@@ -370,9 +418,15 @@ export default function StudentDashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              {assignmentsLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              {assignmentsLoading || dailyLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="rounded-lg border p-4">
+                      <Skeleton className="h-5 w-2/3" />
+                      <Skeleton className="mt-2 h-4 w-1/3" />
+                      <Skeleton className="mt-3 h-4 w-1/2" />
+                    </div>
+                  ))}
                 </div>
               ) : pendingAssignments.length > 0 ? (
                 <div className="space-y-4">
@@ -380,13 +434,22 @@ export default function StudentDashboard() {
                     <div key={assignment.id} className="border rounded-lg p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900">{assignment.title}</h3>
-                          <p className="text-sm text-gray-600 mt-1">{assignment.course_title}</p>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-gray-900">{assignment.title}</h3>
+                            {assignment.assignment_type === 'DAILY' && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                Daily
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">{assignment.course_title || assignment.subject}</p>
                           <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                            <div className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-1" />
-                              Due: {new Date(String(assignment.due_date ?? '')).toLocaleDateString()}
-                            </div>
+                            {assignment.due_date && (
+                              <div className="flex items-center">
+                                <Calendar className="h-4 w-4 mr-1" />
+                                Due: {new Date(String(assignment.due_date)).toLocaleDateString()}
+                              </div>
+                            )}
                             <div className="flex items-center">
                               <Clock className="h-4 w-4 mr-1" />
                               {(assignment.days_until_due ?? 0) > 0
@@ -398,7 +461,7 @@ export default function StudentDashboard() {
                             </div>
                           </div>
                         </div>
-                        <Link href={`/student/assignments/${assignment.id}`}>
+                        <Link href={`/lms/student/assignments/${assignment.id}`}>
                           <Button size="sm" variant={(assignment.days_until_due ?? 0) <= 2 ? "default" : "outline"}>
                             <Upload className="h-4 w-4 mr-2" />
                             Start
@@ -418,8 +481,34 @@ export default function StudentDashboard() {
           </Card>
         </div>
 
-        {/* Right Column - Quick Actions & Notifications */}
+        {/* Right Column - Ranking, Quick Actions & Notifications */}
         <div className="space-y-6">
+          {/* Class Ranking */}
+          {showRank && sectionRank && (
+            <Card className="overflow-hidden border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-amber-500" />
+                    Your Rank
+                  </CardTitle>
+                  <Link href="/lms/student/analytics">
+                    <Button variant="ghost" size="sm">Details</Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-amber-600">#{sectionRank.rank}</span>
+                  <span className="text-sm text-gray-600">of {sectionRank.total} in your section</span>
+                </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  Top {Math.max(1, Math.round(100 - sectionRank.percentile))}% of your class
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Quick Actions */}
           <Card>
             <CardHeader>
@@ -461,8 +550,10 @@ export default function StudentDashboard() {
               </CardHeader>
               <CardContent>
                 {notificationsLoading ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                    ))}
                   </div>
                 ) : recentNotifications.length > 0 ? (
                   <div className="space-y-3">
@@ -495,9 +586,10 @@ export default function StudentDashboard() {
                 <CardTitle>Notifications</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-2">Loading notifications...</p>
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -514,52 +606,26 @@ export default function StudentDashboard() {
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-600">Course Progress</span>
-                    <span className="font-medium">
-                      {courseList.length > 0
-                        ? Math.round(
-                            courseList.reduce(
-                              (acc: number, c: { progress_percentage?: number }) => acc + (c.progress_percentage || 0),
-                              0
-                            ) / courseList.length
-                          )
-                        : 0}
-                      %
-                    </span>
+                    <span className="font-medium">{Math.round(performance.avgProgress)}%</span>
                   </div>
-                  <Progress
-                    value={
-                      courseList.length > 0
-                        ? courseList.reduce(
-                            (acc: number, c: { progress_percentage?: number }) => acc + (c.progress_percentage || 0),
-                            0
-                          ) / courseList.length
-                        : 0
-                    }
-                    className="h-2"
-                  />
+                  <Progress value={performance.avgProgress} className="h-2" />
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-600">Average Grade</span>
-                    <span className="font-medium">
-                      {(() => {
-                        const gradedCourses = courseList.filter((c: { average_grade?: number | null }) => c.average_grade != null);
-                        return gradedCourses.length > 0
-                          ? Math.round(gradedCourses.reduce((sum: number, c: { average_grade?: number | null }) => sum + (c.average_grade ?? 0), 0) / gradedCourses.length)
-                          : 0;
-                      })()}%
-                    </span>
+                    <span className="font-medium">{Math.round(performance.avgGrade)}%</span>
                   </div>
-                  <Progress
-                    value={(() => {
-                      const gradedCourses = courseList.filter((c: { average_grade?: number | null }) => c.average_grade != null);
-                      return gradedCourses.length > 0
-                        ? gradedCourses.reduce((sum: number, c: { average_grade?: number | null }) => sum + (c.average_grade ?? 0), 0) / gradedCourses.length
-                        : 0;
-                    })()}
-                    className="h-2"
-                  />
+                  <Progress value={performance.avgGrade} className="h-2" />
                 </div>
+                {(activity?.activeDaysLast28 ?? 0) > 0 && (
+                  <div className="flex items-center justify-between border-t pt-3 text-sm">
+                    <span className="flex items-center gap-1.5 text-gray-600">
+                      <Flame className="h-4 w-4 text-orange-500" />
+                      Active days (28d)
+                    </span>
+                    <span className="font-medium">{activity?.activeDaysLast28}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ) : (
@@ -568,11 +634,9 @@ export default function StudentDashboard() {
                 <CardTitle>Performance</CardTitle>
                 <CardDescription>Your overall stats</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-gray-500">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-2">Loading performance data...</p>
-                </div>
+              <CardContent className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
               </CardContent>
             </Card>
           )}
@@ -581,7 +645,3 @@ export default function StudentDashboard() {
     </div>
   );
 }
-
-
-
-

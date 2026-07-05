@@ -4,8 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateTeacherSchoolAccess } from './teacher-auth';
-import { getSchoolAdminSchoolId, validateSchoolAccess } from './school-admin-auth';
 import { backendRequest } from './backend-client';
 
 // Cache for user profiles (30 seconds TTL)
@@ -150,7 +148,7 @@ export async function getUserProfileFromRequest(request: NextRequest): Promise<{
   return null;
 }
 
-export async function verifyRole(
+async function verifyRole(
   request: NextRequest,
   allowedRoles: string[]
 ): Promise<{ success: true; userId: string; role: string } | { success: false; response: NextResponse }> {
@@ -186,119 +184,9 @@ export async function verifyAdmin(request: NextRequest): Promise<{ success: true
   return { success: true, userId: result.userId };
 }
 
-export async function verifySchoolAdminAccess(
-  request: NextRequest,
-  schoolId: string
-): Promise<{ success: true; userId: string; schoolId: string } | { success: false; response: NextResponse }> {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return { success: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-
-  const profile = await getUserProfileFromRequest(request) ?? await getUserProfile(userId);
-  if (!profile || profile.role !== 'school_admin') {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden: School admin access required' }, { status: 403 }) };
-  }
-
-  const hasAccess = await validateSchoolAccess(schoolId, request);
-  if (!hasAccess) {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden', message: 'You do not have access to this school' }, { status: 403 }) };
-  }
-
-  return { success: true, userId, schoolId: schoolId || '' };
-}
-
-export async function verifyTeacherAccess(
-  request: NextRequest,
-  schoolId: string
-): Promise<{ success: true; userId: string; schoolId: string } | { success: false; response: NextResponse }> {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return { success: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-
-  const profile = await getUserProfileFromRequest(request) ?? await getUserProfile(userId);
-  if (!profile || profile.role !== 'teacher') {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden: Teacher access required' }, { status: 403 }) };
-  }
-
-  const hasAccess = await validateTeacherSchoolAccess(schoolId, request);
-  if (!hasAccess) {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden', message: 'You do not have access to this school' }, { status: 403 }) };
-  }
-
-  return { success: true, userId, schoolId: schoolId || '' };
-}
-
-export async function verifyResourceAccess(
-  request: NextRequest,
-  resourceType: 'student' | 'teacher' | 'school',
-  resourceId: string,
-  _resourceOwnerField = 'id'
-): Promise<{ success: true; userId: string } | { success: false; response: NextResponse }> {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return { success: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-
-  const profile = await getUserProfileFromRequest(request) ?? await getUserProfile(userId);
-  if (!profile) return { success: false, response: NextResponse.json({ error: 'User profile not found' }, { status: 404 }) };
-
-  if (resourceType === 'student' && profile.role !== 'student') {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden: Student access required' }, { status: 403 }) };
-  }
-  if (resourceType === 'teacher' && profile.role !== 'teacher') {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden: Teacher access required' }, { status: 403 }) };
-  }
-  if (resourceType === 'school') {
-    if (profile.role !== 'school_admin') {
-      return { success: false, response: NextResponse.json({ error: 'Forbidden: School admin access required' }, { status: 403 }) };
-    }
-    const hasAccess = await validateSchoolAccess(resourceId, request);
-    if (!hasAccess) {
-      return { success: false, response: NextResponse.json({ error: 'Forbidden', message: 'You do not have access to this school' }, { status: 403 }) };
-    }
-  }
-
-  return { success: true, userId };
-}
-
 export async function verifyStudent(request: NextRequest): Promise<{ success: true; userId: string } | { success: false; response: NextResponse }> {
   const result = await verifyRole(request, ['student']);
   if (!result.success) return result;
   return { success: true, userId: result.userId };
 }
 
-export async function verifyTeacher(request: NextRequest): Promise<{ success: true; userId: string } | { success: false; response: NextResponse }> {
-  const result = await verifyRole(request, ['teacher']);
-  if (!result.success) return result;
-  return { success: true, userId: result.userId };
-}
-
-export async function verifySchoolAdmin(request: NextRequest): Promise<{ success: true; userId: string; schoolId: string } | { success: false; response: NextResponse }> {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return { success: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-
-  const profile = await getUserProfileFromRequest(request) ?? await getUserProfile(userId);
-  if (!profile || profile.role !== 'school_admin') {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden: School admin access required' }, { status: 403 }) };
-  }
-
-  const schoolId = await getSchoolAdminSchoolId(request);
-  if (!schoolId) {
-    return { success: false, response: NextResponse.json({ error: 'School not found for user' }, { status: 404 }) };
-  }
-
-  return { success: true, userId, schoolId };
-}
-
-export async function verifyUser(
-  request: NextRequest,
-  resourceUserId: string
-): Promise<{ success: true; userId: string } | { success: false; response: NextResponse }> {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return { success: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-
-  const profile = await getUserProfileFromRequest(request) ?? await getUserProfile(userId);
-  if (!profile) return { success: false, response: NextResponse.json({ error: 'User profile not found' }, { status: 404 }) };
-
-  if (profile.role === 'admin') return { success: true, userId };
-  if (userId !== resourceUserId) {
-    return { success: false, response: NextResponse.json({ error: 'Forbidden', message: 'You can only access your own data' }, { status: 403 }) };
-  }
-  return { success: true, userId };
-}

@@ -582,7 +582,7 @@ export default function CoursesManagement() {
   // All the old form code (cases 1-6) has been removed since we now use CourseCreationWizard.
 
   return (
-    <div className="p-8 bg-white min-h-screen">
+    <div className="p-8 bg-white">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Course Management</h1>
@@ -1201,6 +1201,9 @@ export default function CoursesManagement() {
             } catch (error: unknown) {
               const errorMessage = error instanceof Error ? error.message : 'Failed to create course';
               toast.error(errorMessage);
+              // Re-throw so the wizard keeps the dialog open, preserves the
+              // recovery draft, and shows the error instead of resetting.
+              throw error instanceof Error ? error : new Error(errorMessage);
             }
           }}
           onCancel={() => {

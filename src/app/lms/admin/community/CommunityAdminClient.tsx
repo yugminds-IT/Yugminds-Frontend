@@ -10,7 +10,6 @@ import {
   Save,
   Image as ImageIcon,
   ArrowLeft,
-  RefreshCw,
   Eye,
   EyeOff,
   Star,
@@ -36,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { adminApi } from "@/lib/api/admin.api";
 import { useToast } from "@/components/ui/toast";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   COMMUNITY_TABS,
   SECTION_TYPE_LABELS,
@@ -173,17 +173,6 @@ export default function CommunityAdminClient() {
     }
   };
 
-  const handleMigrate = async () => {
-    if (!confirm("Migrate all success stories to community projects/reels?")) return;
-    try {
-      const { data } = await adminApi.community.migrateSuccessStories();
-      toast.success((data as { message?: string })?.message ?? "Migration complete.");
-      if (activeTab !== "settings" && activeTab !== "corner_pillars") await loadItems(activeTab as CommunitySectionType);
-    } catch {
-      toast.error("Migration failed.");
-    }
-  };
-
   const openCreate = () => {
     if (activeTab === "settings" || activeTab === "corner_pillars") return;
     setEditingId("new");
@@ -242,7 +231,12 @@ export default function CommunityAdminClient() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this item permanently?")) return;
+    if (!(await confirmDialog({
+      title: 'Delete this item?',
+      description: 'This item will be permanently deleted.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
     try {
       await adminApi.community.deleteItem(id);
       revalidateCommunity();
@@ -308,7 +302,7 @@ export default function CommunityAdminClient() {
   /* ── Edit view ── */
   if (view === "edit" && activeTab !== "settings" && activeTab !== "corner_pillars") {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="bg-gray-50">
         <div className="max-w-3xl mx-auto px-4 md:px-6 py-8">
           {/* Edit header */}
           <div className="flex items-center gap-3 mb-6">
@@ -527,7 +521,7 @@ export default function CommunityAdminClient() {
 
   /* ── List / Settings view ── */
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="bg-gray-50">
       {/* Page header */}
       <div className="bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -538,14 +532,6 @@ export default function CommunityAdminClient() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleMigrate}
-              className="border-gray-200 text-gray-600 hover:text-gray-900 text-xs"
-            >
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Migrate Stories
-            </Button>
             {activeTab !== "settings" && activeTab !== "corner_pillars" && (
               <Button
                 size="sm"

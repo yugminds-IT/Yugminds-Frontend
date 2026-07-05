@@ -1,11 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Card } from '../../ui/card'
-import { Button } from '../../ui/button'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Badge } from '../../ui/badge'
-import { Download, File, CheckCircle, Loader2, Clock, ExternalLink } from 'lucide-react'
-import { getStoredUserId } from '../../../lib/session-utils'
+import { File, CheckCircle, Loader2, ExternalLink } from 'lucide-react'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 
 interface PDFContentViewerProps {
@@ -18,243 +15,116 @@ interface PDFContentViewerProps {
   }
   courseId?: string
   chapterId?: string
+  chapterName?: string
   onComplete?: () => void
 }
 
-// Debounce utility
-function debounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: number) {
-  let timeoutId: NodeJS.Timeout
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId)
-    timeoutId = setTimeout(() => fn(...args), delay)
-  }
-}
+// Minimum time the document must be open before completion can be confirmed.
+const MIN_DWELL_SECONDS = 8
 
-export default function PDFContentViewer({ 
-  content, 
-  courseId,
-  chapterId,
-  onComplete 
-}: PDFContentViewerProps) {
-  const [timeRemaining, setTimeRemaining] = useState(15)
-  const [timerStarted, setTimerStarted] = useState(false)
+export default function PDFContentViewer({ content, chapterName, onComplete }: PDFContentViewerProps) {
   const [pdfLoaded, setPdfLoaded] = useState(false)
+  const [dwellDone, setDwellDone] = useState(false)
   const [hasCompleted, setHasCompleted] = useState(false)
-  
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Global progress store
-  const { 
-    setContentCompleted, 
-    isContentCompleted,
-    isSaving 
-  } = useCourseProgressStore()
-
+  const { isContentCompleted, isSaving } = useCourseProgressStore()
   const isCompleted = isContentCompleted(content.id)
   const saving = isSaving(content.id)
 
-  // Resolve IDs
-  const resolvedCourseId = courseId || content.course_id || ''
-  const resolvedChapterId = chapterId || content.chapter_id || ''
+  const canComplete = (pdfLoaded && dwellDone) || isCompleted
 
-  // Check server for existing completion
-  useEffect(() => {
-    const checkCompletion = async () => {
-      try {
-        const userId = getStoredUserId()
-        if (!userId) return
-      } catch (error) {
-        console.warn('Failed to check completion:', error)
-      }
-    }
-
-    checkCompletion()
-  }, [content.id, resolvedChapterId, resolvedCourseId, setContentCompleted])
-
-  // Mark as complete - delegate to parent for database saving
+  // Explicit, gated completion only — never silent/auto.
   const handleMarkComplete = useCallback(() => {
-    if (hasCompleted) return
+    if (hasCompleted || !canComplete) return
     setHasCompleted(true)
-
-    console.log('📄 [PDFViewer] Marking as complete, calling parent onComplete...')
-    
-    // Call parent's onComplete which handles database saving
     onComplete?.()
-    
-    // Update local UI state
-    setContentCompleted(content.id, resolvedChapterId, resolvedCourseId, true)
-    
-    console.log('✅ [PDFViewer] Marked as complete')
-  }, [content.id, resolvedCourseId, resolvedChapterId, onComplete, setContentCompleted, hasCompleted])
+  }, [hasCompleted, canComplete, onComplete])
 
-  // Debounced version for UI interactions
-  const debouncedMarkComplete = useMemo(
-    () => debounce(handleMarkComplete, 500),
-    [handleMarkComplete]
-  )
-
-  // Start timer when PDF loads
+  // Start the dwell timer once the PDF iframe has loaded.
   useEffect(() => {
-    if (pdfLoaded && !timerStarted && !isCompleted && !hasCompleted) {
-      // Use setTimeout to avoid calling setState synchronously in effect
-      const timer = setTimeout(() => {
-        setTimerStarted(true)
-      }, 0)
-      return () => clearTimeout(timer)
-    }
-  }, [pdfLoaded, timerStarted, isCompleted, hasCompleted])
+    if (!pdfLoaded || isCompleted) return
+    const t = setTimeout(() => setDwellDone(true), MIN_DWELL_SECONDS * 1000)
+    return () => clearTimeout(t)
+  }, [pdfLoaded, isCompleted])
 
-  // Countdown timer
-  useEffect(() => {
-    if (!timerStarted || isCompleted || hasCompleted) return
-
-    const interval = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval)
-          debouncedMarkComplete()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [timerStarted, isCompleted, hasCompleted, debouncedMarkComplete])
+  const shortTitle = content.title.length > 60 ? content.title.slice(0, 57) + '…' : content.title
 
   return (
-    <Card className="p-6" ref={containerRef}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <File className="h-5 w-5 text-red-600" aria-hidden="true" />
-          <h2 className="text-xl font-semibold">{content.title}</h2>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {/* Timer indicator */}
-          {!isCompleted && timerStarted && timeRemaining > 0 && (
-            <Badge 
-              variant="outline" 
-              className="text-gray-600"
-              role="timer"
-              aria-label={`Auto-complete in ${timeRemaining} seconds`}
-            >
-              <Clock className="h-3 w-3 mr-1" aria-hidden="true" />
-              {timeRemaining}s
-            </Badge>
-          )}
-          
-          {/* Completion status */}
-          {(isCompleted || saving) && (
-            <Badge 
-              variant="secondary" 
-              className={saving ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}
-              role="status"
-              aria-label={saving ? 'Saving progress' : 'Document viewed'}
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" aria-hidden="true" /> Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" /> Viewed
-                </>
-              )}
-            </Badge>
-          )}
-          
-          {/* Download button */}
-          {content.content_url && (
-            <a 
-              href={content.content_url} 
-              download 
-              target="_blank" 
-              rel="noopener noreferrer"
-              aria-label={`Download ${content.title}`}
-            >
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" aria-hidden="true" />
-                Download
-              </Button>
-            </a>
-          )}
-        </div>
+    <div className="max-w-4xl mx-auto px-6 py-6" ref={containerRef}>
+      {/* Title + status */}
+      <div className="flex items-start justify-between gap-4 mb-1">
+        <h2 className="text-xl font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
+        {(isCompleted || saving) && (
+          <Badge className={`flex-shrink-0 border-0 text-xs ${saving ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+            {saving
+              ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Saving...</>
+              : <><CheckCircle className="h-3 w-3 mr-1" />Completed</>}
+          </Badge>
+        )}
       </div>
 
-      {/* PDF Viewer */}
+      {chapterName && <p className="text-sm text-gray-500 mb-4">{chapterName}</p>}
+
+      {/* File header row */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+        <File className="h-6 w-6 text-red-500 flex-shrink-0" />
+        <span className="flex-1 text-sm text-gray-800 font-medium truncate">{shortTitle}</span>
+        {isCompleted && (
+          <Badge className="bg-green-100 text-green-700 border-0 text-xs flex-shrink-0">
+            <CheckCircle className="h-3 w-3 mr-1" /> Viewed
+          </Badge>
+        )}
+      </div>
+
+      {/* PDF iframe — #toolbar=0 suppresses browser's download/print toolbar */}
       {content.content_url ? (
-        <div className="border rounded-lg overflow-hidden bg-gray-100">
+        <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-100">
           <iframe
-            src={content.content_url}
-            className="w-full h-[600px]"
+            src={`${content.content_url}#toolbar=0&navpanes=0`}
+            className="w-full"
+            style={{ height: '70vh', minHeight: 480 }}
             title={content.title}
             onLoad={() => setPdfLoaded(true)}
             aria-label={`PDF document: ${content.title}`}
           />
         </div>
       ) : (
-        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
-          <File className="h-16 w-16 mx-auto mb-4 text-gray-300" aria-hidden="true" />
+        <div className="flex flex-col items-center justify-center py-16 bg-gray-50 rounded-lg border border-dashed border-gray-200 text-gray-400">
+          <File className="h-14 w-14 mb-3 opacity-30" />
           <p>PDF not available</p>
         </div>
       )}
 
-      {/* Actions */}
-      <div className="mt-4 flex items-center justify-between">
-        {/* Open in new tab */}
-        {content.content_url && (
-          <a 
-            href={content.content_url} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
-            aria-label="Open PDF in new tab"
+      {content.content_url && (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <button
+            onClick={() => window.open(content.content_url!, '_blank', 'noopener,noreferrer')}
+            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5 transition-colors"
           >
-            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+            <ExternalLink className="h-4 w-4" />
             Open in new tab
-          </a>
-        )}
+          </button>
 
-        {/* Manual complete button */}
-        {!isCompleted && !hasCompleted && (
-          <Button 
-            onClick={() => {
-              setTimeRemaining(0)
-              debouncedMarkComplete()
-            }} 
-            className="flex items-center gap-2"
-            disabled={saving}
-            aria-label="Mark this document as viewed"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle className="h-4 w-4" />
-            )}
-            Mark as Complete
-          </Button>
-        )}
-      </div>
-
-      {/* Timer hint */}
-      {!isCompleted && !hasCompleted && timerStarted && timeRemaining > 0 && (
-        <p className="text-xs text-gray-500 mt-2 text-right">
-          Auto-completing in {timeRemaining} seconds...
-        </p>
+          {!isCompleted && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleMarkComplete}
+                disabled={saving || !canComplete}
+                className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Mark as Complete
+              </button>
+              {!canComplete && (
+                <span className="text-xs text-gray-400">
+                  {pdfLoaded ? 'Reviewing document…' : 'Loading document…'}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       )}
-    </Card>
+    </div>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-

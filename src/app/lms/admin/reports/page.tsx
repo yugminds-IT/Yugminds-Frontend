@@ -51,6 +51,7 @@ import {
   Legend
 } from "recharts";
 import { adminApi } from '@/lib/api/admin.api';
+import { toast } from '@/components/ui/toast';
 
 interface TeacherReport {
   id: string;
@@ -62,6 +63,7 @@ interface TeacherReport {
   student_count: number;
   duration_hours: number;
   notes: string;
+  admin_notes?: string;
   status?: string;
   created_at: string;
 
@@ -147,12 +149,16 @@ export default function TeacherReports() {
         admin_notes: reviewNotes.trim() || undefined,
       });
       setReports((prev) =>
-        prev.map((r) => r.id === reviewingReport.id ? { ...r, status: reviewStatus, notes: reviewNotes.trim() || r.notes } : r)
+        prev.map((r) =>
+          r.id === reviewingReport.id
+            ? { ...r, status: reviewStatus, admin_notes: reviewNotes.trim() || r.admin_notes }
+            : r
+        )
       );
       setReviewingReport(null);
     } catch (err) {
       console.error('Failed to update report status', err);
-      alert('Failed to update report status. Please try again.');
+      toast.error('Failed to update report status. Please try again.');
     } finally {
       setIsReviewSaving(false);
     }
@@ -383,7 +389,7 @@ export default function TeacherReports() {
 
   const exportToCSV = () => {
     if (filteredReports.length === 0) {
-      alert('No reports to export');
+      toast.warning('No reports to export');
       return;
     }
 
@@ -716,7 +722,7 @@ export default function TeacherReports() {
                                 onClick={() => {
                                   setReviewingReport(report);
                                   setReviewStatus(report.status || 'submitted');
-                                  setReviewNotes(report.notes || '');
+                                  setReviewNotes(report.admin_notes || '');
                                 }}
                               >
                                 <Eye className="h-4 w-4 mr-1" />
@@ -965,6 +971,7 @@ export default function TeacherReports() {
                 <p><span className="font-medium">Date:</span> {new Date(reviewingReport.date).toLocaleDateString()}</p>
                 <p><span className="font-medium">Topics:</span> {reviewingReport.topics_taught}</p>
                 {reviewingReport.notes && <p><span className="font-medium">Teacher Notes:</span> {reviewingReport.notes}</p>}
+                {reviewingReport.admin_notes && <p><span className="font-medium">Previous Admin Notes:</span> {reviewingReport.admin_notes}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>Update Status</Label>

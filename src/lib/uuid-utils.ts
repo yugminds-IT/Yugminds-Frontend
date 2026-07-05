@@ -28,27 +28,6 @@ export function generateUUID(): string {
   });
 }
 
-/**
- * Validate if a string is a valid UUID format
- * 
- * @param id - String to validate
- * @returns true if the string is a valid UUID format
- */
-export function isValidUUID(id: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(id);
-}
-
-/**
- * Check if an ID is a temporary ID (starts with "temp-")
- * 
- * @param id - ID to check
- * @returns true if the ID is a temporary ID
- */
-export function isTempId(id: string | undefined | null): boolean {
-  return !!(id && typeof id === 'string' && id.startsWith('temp-'));
-}
-
 
 
 

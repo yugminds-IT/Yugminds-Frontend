@@ -26,6 +26,7 @@ interface NavItemsProps {
   items: {
     name: string;
     link: string;
+    exact?: boolean;
   }[];
   className?: string;
   onItemClick?: () => void;
@@ -205,12 +206,10 @@ export const NavItems = ({ items, className, onItemClick, visible }: NavItemsPro
     }
   }, [visible]);
 
-  // Check if a route is active (exact match for home, or starts with for others)
-  const isActive = (link: string) => {
-    if (link === "/") {
-      return pathname === "/";
-    }
-    return pathname.startsWith(link);
+  const isActive = (item: { link: string; exact?: boolean }) => {
+    const link = item.link.replace(/\/$/, '');
+    if (item.exact) return pathname === link;
+    return pathname === link || pathname.startsWith(link + '/');
   };
 
   return (
@@ -223,7 +222,7 @@ export const NavItems = ({ items, className, onItemClick, visible }: NavItemsPro
       )}
     >
       {items.map((item, idx) => {
-        const active = isActive(item.link);
+        const active = isActive(item);
         return (
           <Link
             onMouseEnter={() => setHovered(idx)}

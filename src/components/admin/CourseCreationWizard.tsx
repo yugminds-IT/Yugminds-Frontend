@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -28,11 +28,6 @@ import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
 import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
 import { adminApi } from "../../lib/api/admin.api";
-import { 
-  saveCourseFormState, 
-  clearCourseFormState,
-  type CourseFormState 
-} from "../../lib/course-form-persistence";
 
 export interface Chapter {
   id?: string;
@@ -42,6 +37,70 @@ export interface Chapter {
   learning_outcomes: string[];
   order_number: number;
   [key: string]: unknown;
+}
+
+interface BasicInfo {
+  name: string;
+  description: string;
+  duration_weeks: string;
+  prerequisites_text: string;
+  prerequisites_course_ids: string[];
+  thumbnail_url: string;
+  difficulty_level: string;
+}
+
+interface WizardDraft {
+  savedAt: number;
+  basicInfo: BasicInfo;
+  selectedSchoolIds: string[];
+  selectedGrades: string[];
+  chapters: Chapter[];
+  chapterContents: Record<string, ChapterContent[]>;
+  assignments: Record<string, Assignment>;
+  currentStep: number;
+}
+
+// Self-contained draft persistence so an in-progress course survives an
+// accidental close/refresh. Restores the *complete* wizard state (including
+// chapter content and assignments), unlike the previous write-only helper.
+const DRAFT_KEY = "admin_course_wizard_draft_v1";
+const DRAFT_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+
+function loadWizardDraft(): WizardDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as WizardDraft;
+    if (!draft?.savedAt || Date.now() - draft.savedAt > DRAFT_MAX_AGE_MS) {
+      window.localStorage.removeItem(DRAFT_KEY);
+      return null;
+    }
+    return draft;
+  } catch {
+    return null;
+  }
+}
+
+function saveWizardDraft(draft: Omit<WizardDraft, "savedAt">): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ ...draft, savedAt: Date.now() }),
+    );
+  } catch {
+    // ignore quota / serialization errors — drafting is best-effort
+  }
+}
+
+function clearWizardDraft(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 interface CourseCreationWizardProps {
@@ -57,7 +116,7 @@ interface CourseCreationWizardProps {
     grades?: string[];
     chapters?: Chapter[];
   };
-  onComplete: (courseData: Record<string, unknown>) => void;
+  onComplete: (courseData: Record<string, unknown>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -74,71 +133,90 @@ export function CourseCreationWizard({
   onComplete,
   onCancel,
 }: CourseCreationWizardProps) {
-  const [currentStep, setCurrentStep] = useState(1);
+  // Restore an in-progress draft only when creating (not editing an existing course).
+  const draftRef = useRef<WizardDraft | null>(courseId ? null : loadWizardDraft());
+  const draft = draftRef.current;
+
+  const [currentStep, setCurrentStep] = useState(draft?.currentStep ?? 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+  const [restoredFromDraft, setRestoredFromDraft] = useState(!!draft);
+
   // Step 1: Basic Information
-  const [basicInfo, setBasicInfo] = useState({
-    name: initialData?.name || "",
-    description: initialData?.description || "",
-    duration_weeks: initialData?.duration_weeks?.toString() || "",
-    prerequisites_text: initialData?.prerequisites_text || "",
-    prerequisites_course_ids: initialData?.prerequisites_course_ids || [] as string[],
-    thumbnail_url: initialData?.thumbnail_url || "",
-    difficulty_level: (initialData as { difficulty_level?: string })?.difficulty_level || "Beginner",
-  });
+  const [basicInfo, setBasicInfo] = useState<BasicInfo>(
+    draft?.basicInfo ?? {
+      name: initialData?.name || "",
+      description: initialData?.description || "",
+      duration_weeks: initialData?.duration_weeks?.toString() || "",
+      prerequisites_text: initialData?.prerequisites_text || "",
+      prerequisites_course_ids: initialData?.prerequisites_course_ids || [],
+      thumbnail_url: initialData?.thumbnail_url || "",
+      difficulty_level: (initialData as { difficulty_level?: string })?.difficulty_level || "Beginner",
+    },
+  );
 
   // Step 2: School & Grade
   const [selectedSchoolIds, setSelectedSchoolIds] = useState<string[]>(
-    initialData?.school_ids || []
+    draft?.selectedSchoolIds ?? initialData?.school_ids ?? []
   );
   const [selectedGrades, setSelectedGrades] = useState<string[]>(
-    initialData?.grades || []
+    draft?.selectedGrades ?? initialData?.grades ?? []
   );
 
   // Step 3: Chapters
   const [chapters, setChapters] = useState<Chapter[]>(
-    initialData?.chapters || []
+    draft?.chapters ?? initialData?.chapters ?? []
   );
   const [pendingDeleteChapterIndex, setPendingDeleteChapterIndex] = useState<number | null>(null);
-  const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>({});
-  const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
+  const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>(
+    draft?.chapterContents ?? {}
+  );
+  const [assignments, setAssignments] = useState<Record<string, Assignment>>(
+    draft?.assignments ?? {}
+  );
   const [availableCourses, setAvailableCourses] = useState<Array<{ id: string; name: string }>>([]);
 
-  // Load available courses for prerequisites
+  // Load available courses for prerequisites once on mount (needed by both the
+  // basic-info step and the review step, which a restored draft can open on).
   useEffect(() => {
-    if (currentStep === 1) {
-      loadAvailableCourses();
-    }
-  /* eslint-disable-next-line react-hooks/exhaustive-deps -- load when step is 1 only */
-  }, [currentStep]);
+    loadAvailableCourses();
+  /* eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount */
+  }, []);
 
-  // Auto-save form state
+  // Auto-save the full wizard state so an accidental close/refresh can be
+  // recovered. Only persist when the form actually has content, and never
+  // while editing an existing course.
   useEffect(() => {
-    const formState: Partial<CourseFormState> = {
-      formData: {
-        name: basicInfo.name,
-        description: basicInfo.description,
-        school_ids: selectedSchoolIds,
-        grades: selectedGrades,
-        total_chapters: chapters.length,
-        total_videos: 0,
-        total_materials: 0,
-        total_assignments: Object.keys(assignments).length,
-        release_type: 'Weekly',
-        status: 'Draft',
-      },
-      chapters: chapters,
-      uiState: {
-        currentStep,
-        selectedSchools: selectedSchoolIds,
-        selectedGrades: selectedGrades,
-        currentChapterIndex: -1,
-      },
-    };
-    saveCourseFormState(formState);
-  }, [basicInfo, selectedSchoolIds, selectedGrades, chapters, currentStep, assignments]);
+    if (courseId) return;
+    const hasContent =
+      basicInfo.name.trim() !== "" ||
+      basicInfo.description.trim() !== "" ||
+      chapters.length > 0 ||
+      selectedSchoolIds.length > 0 ||
+      selectedGrades.length > 0;
+    if (!hasContent) {
+      clearWizardDraft();
+      return;
+    }
+    saveWizardDraft({
+      basicInfo,
+      selectedSchoolIds,
+      selectedGrades,
+      chapters,
+      chapterContents,
+      assignments,
+      currentStep,
+    });
+  }, [
+    courseId,
+    basicInfo,
+    selectedSchoolIds,
+    selectedGrades,
+    chapters,
+    chapterContents,
+    assignments,
+    currentStep,
+  ]);
 
   const loadAvailableCourses = async () => {
     try {
@@ -165,6 +243,13 @@ export function CourseCreationWizard({
         if (!basicInfo.name.trim()) {
           setError("Course name is required");
           return false;
+        }
+        if (basicInfo.duration_weeks.trim() !== "") {
+          const weeks = Number(basicInfo.duration_weeks);
+          if (!Number.isInteger(weeks) || weeks < 1) {
+            setError("Duration must be a whole number of weeks (1 or more)");
+            return false;
+          }
         }
         return true;
       
@@ -213,6 +298,45 @@ export function CourseCreationWizard({
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  // Jump directly to an already-visited step (validating each forward hop).
+  const goToStep = (target: number) => {
+    if (target === currentStep) return;
+    if (target < currentStep) {
+      setError(null);
+      setCurrentStep(target);
+      return;
+    }
+    for (let s = currentStep; s < target; s++) {
+      if (!validateStep(s)) {
+        setCurrentStep(s);
+        return;
+      }
+    }
+    setCurrentStep(target);
+  };
+
+  // Discard the recovered draft and start with an empty form.
+  const startFresh = () => {
+    clearWizardDraft();
+    setBasicInfo({
+      name: "",
+      description: "",
+      duration_weeks: "",
+      prerequisites_text: "",
+      prerequisites_course_ids: [],
+      thumbnail_url: "",
+      difficulty_level: "Beginner",
+    });
+    setSelectedSchoolIds([]);
+    setSelectedGrades([]);
+    setChapters([]);
+    setChapterContents({});
+    setAssignments({});
+    setCurrentStep(1);
+    setError(null);
+    setRestoredFromDraft(false);
   };
 
   const handleThumbnailUpload = (fileUrl: string) => {
@@ -303,8 +427,11 @@ export function CourseCreationWizard({
         status: 'Draft',
       };
 
-      clearCourseFormState();
-      onComplete(courseData);
+      // Await the parent's save so the button stays disabled until the
+      // request actually resolves (prevents duplicate course creation), and
+      // only clear the recovery draft once the save succeeds.
+      await onComplete(courseData);
+      clearWizardDraft();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save course");
     } finally {
@@ -335,18 +462,26 @@ export function CourseCreationWizard({
               const isCompleted = currentStep > step.id;
               const Icon = isCompleted ? CheckCircle2 : isActive ? StepIcon : Circle;
               
+              const isClickable = step.id < currentStep && !loading;
+
               return (
                 <div key={step.id} className="flex items-center flex-1">
                   <div className="flex flex-col items-center flex-1">
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
-                      isActive 
-                        ? "border-blue-500 bg-blue-50 text-blue-600" 
-                        : isCompleted
-                        ? "border-green-500 bg-green-50 text-green-600"
-                        : "border-gray-300 bg-white text-gray-400"
-                    }`}>
+                    <button
+                      type="button"
+                      disabled={!isClickable}
+                      onClick={() => goToStep(step.id)}
+                      title={isClickable ? `Go to ${step.title}` : undefined}
+                      className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors ${
+                        isActive
+                          ? "border-blue-500 bg-blue-50 text-blue-600"
+                          : isCompleted
+                          ? "border-green-500 bg-green-50 text-green-600"
+                          : "border-gray-300 bg-white text-gray-400"
+                      } ${isClickable ? "cursor-pointer hover:border-green-600" : "cursor-default"}`}
+                    >
                       <Icon className="h-5 w-5" />
-                    </div>
+                    </button>
                     <span className={`text-xs mt-1 ${isActive ? "font-medium text-blue-600" : "text-gray-500"}`}>
                       {step.title}
                     </span>
@@ -362,6 +497,17 @@ export function CourseCreationWizard({
           </div>
           <Progress value={progress} className="h-2" />
         </div>
+
+        {restoredFromDraft && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between gap-2">
+            <span className="text-sm text-amber-800">
+              Restored your unsaved course draft. Continue where you left off, or start over.
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={startFresh}>
+              Start fresh
+            </Button>
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
@@ -554,8 +700,13 @@ export function CourseCreationWizard({
                 </Card>
               ) : (
                 <div className="space-y-4">
-                  {chapters.map((chapter, index) => (
-                    <Card key={index}>
+                  {chapters.map((chapter, index) => {
+                    // Stable key shared by the React key, the content/assignment
+                    // store, and the child managers so nothing desyncs when a
+                    // chapter is deleted or reordered.
+                    const chapterKey = chapter.id || `temp-${index}`;
+                    return (
+                    <Card key={chapterKey}>
                       <CardHeader>
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-2">
@@ -610,11 +761,10 @@ export function CourseCreationWizard({
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <ChapterContentManager
-                          chapterId={chapter.id || generateChapterId()}
+                          chapterId={chapterKey}
                           chapterName={chapter.name || `Chapter ${index + 1}`}
-                          contents={chapterContents[chapter.id || `temp-${index}`] || []}
+                          contents={chapterContents[chapterKey] || []}
                           onContentsChange={(contents) => {
-                            const chapterKey = chapter.id || `temp-${index}`;
                             setChapterContents({
                               ...chapterContents,
                               [chapterKey]: contents,
@@ -623,11 +773,10 @@ export function CourseCreationWizard({
                           courseId={courseId}
                         />
                         <AssignmentBuilder
-                          chapterId={chapter.id || generateChapterId()}
+                          chapterId={chapterKey}
                           chapterName={chapter.name || `Chapter ${index + 1}`}
-                          assignment={assignments[chapter.id || `temp-${index}`] || null}
+                          assignment={assignments[chapterKey] || null}
                           onAssignmentChange={(assignment) => {
-                            const chapterKey = chapter.id || `temp-${index}`;
                             if (assignment) {
                               setAssignments({
                                 ...assignments,
@@ -642,7 +791,8 @@ export function CourseCreationWizard({
                         />
                       </CardContent>
                     </Card>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -675,6 +825,29 @@ export function CourseCreationWizard({
                       <span className="font-medium">Difficulty Level:</span> {basicInfo.difficulty_level}
                     </div>
                   )}
+                  {basicInfo.prerequisites_text && (
+                    <div>
+                      <span className="font-medium">Prerequisites:</span> {basicInfo.prerequisites_text}
+                    </div>
+                  )}
+                  {basicInfo.prerequisites_course_ids.length > 0 && (
+                    <div>
+                      <span className="font-medium">Prerequisite Courses:</span>{" "}
+                      {basicInfo.prerequisites_course_ids
+                        .map((id) => availableCourses.find((c) => c.id === id)?.name || id)
+                        .join(", ")}
+                    </div>
+                  )}
+                  {basicInfo.thumbnail_url && (
+                    <div className="relative h-24 w-36 mt-1">
+                      <Image
+                        src={basicInfo.thumbnail_url}
+                        alt="Course thumbnail"
+                        fill
+                        className="object-contain rounded border"
+                      />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -704,14 +877,40 @@ export function CourseCreationWizard({
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Chapters</CardTitle>
+                  <CardTitle>Chapters & Content</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div>
-                    <span className="font-medium">Total Chapters:</span> {chapters.length}
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-x-6 gap-y-1">
+                    <span>
+                      <span className="font-medium">Chapters:</span> {chapters.length}
+                    </span>
+                    <span>
+                      <span className="font-medium">Content items:</span>{" "}
+                      {Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0)}
+                    </span>
+                    <span>
+                      <span className="font-medium">Assignments:</span> {Object.keys(assignments).length}
+                    </span>
                   </div>
-                  <div>
-                    <span className="font-medium">Total Assignments:</span> {Object.keys(assignments).length}
+                  <div className="divide-y rounded-md border">
+                    {chapters.map((chapter, index) => {
+                      const chapterKey = chapter.id || `temp-${index}`;
+                      const contentCount = (chapterContents[chapterKey] || []).length;
+                      const hasAssignment = !!assignments[chapterKey];
+                      return (
+                        <div key={chapterKey} className="flex items-center justify-between px-3 py-2 text-sm">
+                          <span className="font-medium text-gray-800">
+                            {index + 1}. {chapter.name.trim() || `Chapter ${index + 1}`}
+                          </span>
+                          <span className="flex items-center gap-2 text-xs text-gray-500">
+                            <Badge variant="secondary">{contentCount} content</Badge>
+                            <Badge variant={hasAssignment ? "default" : "outline"}>
+                              {hasAssignment ? "Assignment" : "No assignment"}
+                            </Badge>
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>

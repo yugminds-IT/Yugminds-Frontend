@@ -24,6 +24,7 @@ type RedisClientInstance = {
   zremrangebyscore: (key: string, min: number, max: number) => Promise<number>;
   zcard: (key: string) => Promise<number>;
   zrange: (key: string, start: number, stop: number, opts?: { withScores?: boolean }) => Promise<unknown>;
+  eval: (script: string, keys: string[], args: (string | number)[]) => Promise<unknown>;
 };
 let RedisConstructor: (new (opts: { url: string; token: string }) => RedisClientInstance) | null = null;
 try {
@@ -490,6 +491,23 @@ export const redis = {
       return Array.isArray(result) ? result.map(String) : null;
     } catch (error) {
       console.error(`[Redis] ZRANGE error for key ${key}:`, error);
+      return null;
+    }
+  },
+
+  /**
+   * Run a Lua script atomically (used for race-free sliding-window rate limiting)
+   */
+  async eval<T>(script: string, keys: string[], args: (string | number)[]): Promise<T | null> {
+    try {
+      const client = getRedisClient();
+      if (!client) {
+        return null;
+      }
+
+      return (await client.eval(script, keys, args)) as T;
+    } catch (error) {
+      console.error('[Redis] EVAL error:', error);
       return null;
     }
   },

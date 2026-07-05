@@ -5,8 +5,7 @@ import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
-import ExcelJS from 'exceljs';
-import Papa from 'papaparse';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,18 +142,23 @@ function mapStudentToTableRow(student: Student): StudentTableRow {
   const sectionDisplay =
     schools.length === 0
       ? "-"
-      : schools.map((a) => a.section || "-").join(", ");
+      : schools
+          .map((a) => {
+            if (!a.section) return "-";
+            const raw = a.section.trim();
+            return raw.toLowerCase().startsWith("section ")
+              ? raw.slice(8).trim()
+              : raw;
+          })
+          .join(", ");
 
   const courseList = student.student_courses ?? [];
   let coursesDisplay = "-";
   if (courseList.length > 0) {
-    const lines = courseList
-      .slice(0, 2)
-      .map((c) => String(c.courses?.course_name ?? c.course_id ?? ""));
-    coursesDisplay = lines.join(", ");
-    if (courseList.length > 2) {
-      coursesDisplay += ` (+${courseList.length - 2} more)`;
-    }
+    coursesDisplay = courseList
+      .map((c) => String(c.courses?.course_name ?? c.course_id ?? ""))
+      .filter(Boolean)
+      .join(", ");
   }
 
   return {
@@ -166,10 +170,23 @@ function mapStudentToTableRow(student: Student): StudentTableRow {
   };
 }
 
+interface SchoolSection {
+  id: string;
+  name: string;
+}
+
+interface SchoolGrade {
+  id: string;
+  name: string;
+  sections: SchoolSection[];
+}
+
 interface School {
   id: string;
   name: string;
   number_of_sections?: number;
+  grades?: SchoolGrade[];
+  gradesOffered?: string[];
 }
 
 interface BulkImportData {
@@ -189,6 +206,7 @@ interface BulkImportData {
 
 export default function StudentsManagement() {
   const [students, setStudents] = useState<Student[]>([]);
+  const [totalStudentsCount, setTotalStudentsCount] = useState<number>(0);
   const { schools: rawSchools } = useAdminSchools();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const schools = (rawSchools ?? []) as School[];
@@ -197,6 +215,8 @@ export default function StudentsManagement() {
     students_completed: number;
   }>({ average_system_progress: 0, students_completed: 0 });
   const [isStudentsLoading, setIsStudentsLoading] = useState(true);
+  const [isSyncingEnrollments, setIsSyncingEnrollments] = useState(false);
+  const [isEnrollingStudent, setIsEnrollingStudent] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isBulkImportDialogOpen, setIsBulkImportDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -227,6 +247,7 @@ export default function StudentsManagement() {
         email: string;
         school_id: string;
         grade: string;
+        section: string;
         parent_name: string;
         parent_phone: string;
       }>('admin-students-form')
@@ -238,7 +259,7 @@ export default function StudentsManagement() {
     password: "", // Never save password
     school_id: savedFormData?.school_id || "",
     grade: savedFormData?.grade || "",
-    section: "",
+    section: savedFormData?.section || "",
     parent_name: savedFormData?.parent_name || "",
     parent_phone: savedFormData?.parent_phone || ""
   });
@@ -251,6 +272,7 @@ export default function StudentsManagement() {
       email: formData.email,
       school_id: formData.school_id,
       grade: formData.grade,
+      section: formData.section,
       parent_name: formData.parent_name,
       parent_phone: formData.parent_phone,
       // Intentionally exclude password
@@ -267,6 +289,7 @@ export default function StudentsManagement() {
           email: data.email || prev.email,
           school_id: data.school_id || prev.school_id,
           grade: data.grade || prev.grade,
+          section: data.section || prev.section,
           parent_name: data.parent_name || prev.parent_name,
           parent_phone: data.parent_phone || prev.parent_phone,
         }));
@@ -297,20 +320,27 @@ export default function StudentsManagement() {
     'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'
   ];
 
-  // State to track selected school's section configuration
-  const [selectedSchoolSections, setSelectedSchoolSections] = useState<number | null>(null);
+  // Grades/sections configured for the currently selected school
+  const [selectedSchoolGrades, setSelectedSchoolGrades] = useState<SchoolGrade[]>([]);
 
-  // Generate section options based on school's number_of_sections
-  const predefinedSections = useMemo(() => {
-    if (selectedSchoolSections && selectedSchoolSections > 0) {
-      // Generate sections A, B, C, ... up to the number specified
-      return Array.from({ length: Math.min(selectedSchoolSections, 26) }, (_, i) => 
-        String.fromCharCode(65 + i) // 65 is 'A' in ASCII
-      );
+  // Grades to show in dropdown: school-specific list, or all grades as fallback
+  const availableGradesForSchool = useMemo(() => {
+    if (selectedSchoolGrades.length > 0) {
+      return selectedSchoolGrades.map((g) => g.name);
     }
-    // Default fallback if no school selected or no sections configured
+    return availableGrades;
+  }, [selectedSchoolGrades]);
+
+  // Sections to show in dropdown: grade-specific list, or A-L as fallback
+  const availableSectionsForGrade = useMemo(() => {
+    if (selectedSchoolGrades.length > 0 && formData.grade) {
+      const gradeObj = selectedSchoolGrades.find((g) => g.name === formData.grade);
+      if (gradeObj && gradeObj.sections.length > 0) {
+        return gradeObj.sections.map((s) => s.name);
+      }
+    }
     return ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
-  }, [selectedSchoolSections]);
+  }, [selectedSchoolGrades, formData.grade]);
 
   useEffect(() => {
     loadData();
@@ -332,10 +362,8 @@ export default function StudentsManagement() {
       }))
     );
     
-    // Also update selected school's section configuration for section dropdown
-    if (selectedSchool?.number_of_sections) {
-      setSelectedSchoolSections(selectedSchool.number_of_sections);
-    }
+    // Update grade/section options when school changes for bulk import
+    setSelectedSchoolGrades(selectedSchool?.grades ?? []);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- bulkData excluded to avoid update loops
   }, [selectedSchoolForImport, schools]);
 
@@ -346,8 +374,9 @@ export default function StudentsManagement() {
     setIsStudentsLoading(true);
     try {
       try {
-        const { data: responseData } = await adminApi.students.list({ limit: 1000 });
+        const { data: responseData } = await adminApi.students.list({ limit: 5000 });
         let loadedStudents: Student[] = [];
+        let apiTotal: number | null = null;
         if (Array.isArray(responseData)) {
           loadedStudents = responseData as Student[];
         } else {
@@ -360,7 +389,12 @@ export default function StudentsManagement() {
               : root;
           const list = payload?.students;
           loadedStudents = Array.isArray(list) ? (list as Student[]) : [];
+          // Backend returns { students, total } — extract total directly
+          apiTotal = typeof payload?.total === 'number' ? (payload.total as number)
+            : typeof root?.total === 'number' ? (root.total as number)
+            : null;
         }
+        setTotalStudentsCount(apiTotal ?? loadedStudents.length);
 
         type ProgressRow = {
           student_id?: string;
@@ -383,7 +417,7 @@ export default function StudentsManagement() {
 
         try {
           const progRes = await adminApi.studentProgress.list({
-            limit: 500,
+            limit: 5000,
             offset: 0,
           });
           const raw = progRes.data as Record<string, unknown>;
@@ -454,9 +488,9 @@ export default function StudentsManagement() {
   useEffect(() => {
     if (formData.school_id && schools.length) {
       const selectedSchool = schools.find((s: School) => s.id === formData.school_id);
-      if (selectedSchool) {
-        setSelectedSchoolSections((selectedSchool as School & { number_of_sections?: number | null }).number_of_sections ?? null);
-      }
+      setSelectedSchoolGrades(selectedSchool?.grades ?? []);
+    } else if (!formData.school_id) {
+      setSelectedSchoolGrades([]);
     }
   }, [formData.school_id, schools]);
 
@@ -534,26 +568,90 @@ export default function StudentsManagement() {
     setIsViewDialogOpen(true);
   };
 
+  const handleEnrollStudent = async (student: StudentTableRow) => {
+    if (isEnrollingStudent) return;
+    setIsEnrollingStudent(student.id);
+    try {
+      const { data } = await adminApi.students.enroll(student.id);
+      const result = data as { new_enrollments?: number } | undefined;
+      const count = result?.new_enrollments ?? 0;
+      if (count > 0) {
+        toast.success(`Enrolled ${student.full_name} in ${count} new course${count !== 1 ? 's' : ''}.`);
+        await loadData();
+      } else {
+        toast.success(`${student.full_name} is already enrolled in all applicable courses.`);
+      }
+    } catch (error) {
+      toast.error(`Failed to enroll ${student.full_name}. Please try again.`);
+      console.error('Enroll student error:', error);
+    } finally {
+      setIsEnrollingStudent(null);
+    }
+  };
+
+  const handleSyncEnrollments = async () => {
+    if (isSyncingEnrollments) return;
+    setIsSyncingEnrollments(true);
+    try {
+      const { data } = await adminApi.students.syncEnrollments();
+      const result = data as { students_processed?: number; students_updated?: number; new_enrollments?: number } | undefined;
+      const updated = result?.students_updated ?? 0;
+      const enrolled = result?.new_enrollments ?? 0;
+      if (enrolled > 0) {
+        toast.success(`Sync complete — enrolled ${enrolled} course${enrolled !== 1 ? 's' : ''} across ${updated} student${updated !== 1 ? 's' : ''}.`);
+        await loadData();
+      } else {
+        toast.success('Sync complete — all students are already up to date.');
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Enrollment sync failed.';
+      if (message.toLowerCase().includes('timeout')) {
+        toast.error(
+          'Sync is still running on the server or took too long. Refresh the page in a moment — enrollments may already be updated.',
+        );
+      } else {
+        toast.error('Enrollment sync failed. Please try again.');
+      }
+      console.error('Sync enrollments error:', error);
+    } finally {
+      setIsSyncingEnrollments(false);
+    }
+  };
+
   const handleEditStudent = (student: StudentTableRow) => {
     setEditingStudent(student);
-    // Set form data for editing
     const schoolAssignment = student.student_schools?.[0];
+    const schoolId = schoolAssignment?.school_id || "";
     const sectionValue = schoolAssignment?.section || "";
-    const isPredefined = predefinedSections.includes(sectionValue);
+
+    // Load the school's grades so the dropdowns are filtered correctly
+    const editSchool = schools.find((s: School) => s.id === schoolId);
+    setSelectedSchoolGrades(editSchool?.grades ?? []);
+
+    const editGrade = schoolAssignment?.grade || "";
+    const gradeSections: string[] = (() => {
+      const gradeObj = (editSchool?.grades ?? []).find((g) => g.name === editGrade);
+      return gradeObj && gradeObj.sections.length > 0
+        ? gradeObj.sections.map((s) => s.name)
+        : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+    })();
+    const isPredefined = gradeSections.includes(sectionValue);
+
     setFormData({
       full_name: student.full_name || "",
       email: student.email || "",
-      password: "", // Don't pre-fill password
-      school_id: schoolAssignment?.school_id || "",
-      grade: schoolAssignment?.grade || "",
+      password: "",
+      school_id: schoolId,
+      grade: editGrade,
       section: sectionValue,
       parent_name: student.parent_name || "",
       parent_phone: student.parent_phone || ""
     });
     setSectionInputMode(isPredefined ? 'predefined' : 'custom');
     setCustomSection(isPredefined ? "" : sectionValue);
-    setNewPassword(""); // Reset new password
-    setShowNewPassword(false); // Reset new password visibility
+    setNewPassword("");
+    setShowNewPassword(false);
     setIsEditDialogOpen(true);
   };
 
@@ -936,7 +1034,8 @@ export default function StudentsManagement() {
           return '';
         };
 
-        // Parse CSV using PapaParse
+        // Parse CSV using PapaParse (loaded on demand)
+        const Papa = (await import('papaparse')).default;
         Papa.parse(file, {
           header: true,
           skipEmptyLines: true,
@@ -1036,6 +1135,7 @@ export default function StudentsManagement() {
               setIsParsingFile(false);
               return;
             }
+            const ExcelJS = (await import('exceljs')).default;
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.load(arrayBuffer);
             
@@ -1563,18 +1663,16 @@ export default function StudentsManagement() {
   );
 
   // Real-time derived stats (no dummy values)
-  const activeSchoolsWithStudents = (() => {
-    const ids = new Set<string>();
-    for (const s of students) {
-      for (const ss of (s.student_schools || [])) {
-        if (ss?.school_id) ids.add(String(ss.school_id));
-      }
-    }
-    return ids.size;
-  })();
+  // Count schools that have at least 1 student using the school list's studentCount field.
+  // Deriving this from the loaded students array is wrong when students are paginated/limited.
+  const activeSchoolsWithStudents = schools.filter(
+    (s) => (s as { studentCount?: number }).studentCount != null
+      ? ((s as { studentCount?: number }).studentCount ?? 0) > 0
+      : true // if studentCount not available, assume active
+  ).length;
 
   return (
-    <div className="p-8 bg-white min-h-screen">
+    <div className="p-8 bg-white">
           {/* Header */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Students Management</h1>
@@ -1589,7 +1687,7 @@ export default function StudentsManagement() {
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{students.length}</div>
+                <div className="text-2xl font-bold">{totalStudentsCount || students.length}</div>
                 <p className="text-xs text-muted-foreground">Enrolled students</p>
               </CardContent>
             </Card>
@@ -1601,7 +1699,11 @@ export default function StudentsManagement() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{activeSchoolsWithStudents}</div>
-                <p className="text-xs text-muted-foreground">With enrolled students</p>
+                <p className="text-xs text-muted-foreground">
+                  {activeSchoolsWithStudents === schools.length
+                    ? `All ${schools.length} schools active`
+                    : `of ${schools.length} schools have students`}
+                </p>
               </CardContent>
             </Card>
 
@@ -1693,6 +1795,7 @@ export default function StudentsManagement() {
                             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                             placeholder="Enter temporary password"
                           />
+                          <p className="text-xs text-gray-500">Min 8 chars, uppercase, lowercase &amp; number required.</p>
                         </div>
                         <div className="grid gap-2">
                           <Label htmlFor="school_id">School <span className="text-red-500">*</span></Label>
@@ -1706,8 +1809,8 @@ export default function StudentsManagement() {
                               value={formData.school_id || undefined}
                               onValueChange={(value) => {
                                 const selectedSchool = schools.find((s: School) => s.id === value);
-                                setSelectedSchoolSections(selectedSchool?.number_of_sections || null);
-                                setFormData({ ...formData, school_id: value, section: "" }); // Reset section when school changes
+                                setSelectedSchoolGrades(selectedSchool?.grades ?? []);
+                                setFormData({ ...formData, school_id: value, grade: "", section: "" });
                               }}
                             >
                               <SelectTrigger id="school_id" className="w-full">
@@ -1733,13 +1836,18 @@ export default function StudentsManagement() {
                           <Label htmlFor="grade">Grade</Label>
                           <Select
                             value={formData.grade || undefined}
-                            onValueChange={(value) => setFormData({ ...formData, grade: value })}
+                            onValueChange={(value) => {
+                              setFormData({ ...formData, grade: value, section: "" });
+                              setSectionInputMode('predefined');
+                              setCustomSection("");
+                            }}
+                            disabled={!formData.school_id}
                           >
                             <SelectTrigger id="grade" className="w-full">
-                              <SelectValue placeholder="Select grade" />
+                              <SelectValue placeholder={formData.school_id ? "Select grade" : "Select school first"} />
                             </SelectTrigger>
                             <SelectContent className="bg-white">
-                              {availableGrades.map((grade) => (
+                              {availableGradesForSchool.map((grade) => (
                                 <SelectItem key={grade} value={grade}>
                                   {grade}
                                 </SelectItem>
@@ -1760,12 +1868,13 @@ export default function StudentsManagement() {
                                 setFormData({ ...formData, section: value });
                               }
                             }}
+                            disabled={!formData.school_id}
                           >
                             <SelectTrigger id="section" className="w-full">
-                              <SelectValue placeholder="Select section" />
+                              <SelectValue placeholder={formData.school_id ? "Select section" : "Select school first"} />
                             </SelectTrigger>
                             <SelectContent className="bg-white">
-                              {predefinedSections.map((section) => (
+                              {availableSectionsForGrade.map((section) => (
                                 <SelectItem key={section} value={section}>
                                   {section}
                                 </SelectItem>
@@ -1843,12 +1952,31 @@ export default function StudentsManagement() {
                     </DialogContent>
                   </Dialog>
                   
-                  <Button 
+                  <Button
                     onClick={handleOpenExportDialog}
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     <Download className="mr-2 h-4 w-4" />
                     Export Credentials
+                  </Button>
+
+                  <Button
+                    onClick={handleSyncEnrollments}
+                    disabled={isSyncingEnrollments}
+                    variant="outline"
+                    className="border-green-600 text-green-700 hover:bg-green-50"
+                  >
+                    {isSyncingEnrollments ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Sync Enrollments
+                      </>
+                    )}
                   </Button>
                   </div>
                 </div>
@@ -1860,7 +1988,7 @@ export default function StudentsManagement() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle>Students ({students.length})</CardTitle>
+                      <CardTitle>Students ({totalStudentsCount || students.length})</CardTitle>
                       <CardDescription>
                         Manage all student accounts — use the table search and column filters to narrow the list.
                       </CardDescription>
@@ -1883,10 +2011,11 @@ export default function StudentsManagement() {
                       onView={handleViewStudent}
                       onEdit={handleEditStudent}
                       onDelete={requestDeleteStudent}
+                      onEnroll={handleEnrollStudent}
                       onBulkDeleteSelected={requestBulkDeleteStudents}
                       resetSelectionKey={bulkSelectionResetKey}
                       searchPlaceholder="Search students by name, email, school, grade..."
-                      itemsPerPage={15}
+                      itemsPerPage={25}
                       emptyMessage="No students match your filters or search."
                       className="shadow-sm"
                     />
@@ -2285,7 +2414,13 @@ export default function StudentsManagement() {
                     ) : (
                       <Select
                         value={formData.school_id || undefined}
-                        onValueChange={(value) => setFormData({ ...formData, school_id: value })}
+                        onValueChange={(value) => {
+                          const sel = schools.find((s: School) => s.id === value);
+                          setSelectedSchoolGrades(sel?.grades ?? []);
+                          setFormData({ ...formData, school_id: value, grade: "", section: "" });
+                          setSectionInputMode('predefined');
+                          setCustomSection("");
+                        }}
                       >
                         <SelectTrigger id="edit_school_id" className="w-full">
                           <SelectValue placeholder="Select school" />
@@ -2304,13 +2439,18 @@ export default function StudentsManagement() {
                     <Label htmlFor="edit_grade">Grade</Label>
                     <Select
                       value={formData.grade || undefined}
-                      onValueChange={(value) => setFormData({ ...formData, grade: value })}
+                      onValueChange={(value) => {
+                        setFormData({ ...formData, grade: value, section: "" });
+                        setSectionInputMode('predefined');
+                        setCustomSection("");
+                      }}
+                      disabled={!formData.school_id}
                     >
                       <SelectTrigger id="edit_grade" className="w-full">
-                        <SelectValue placeholder="Select grade" />
+                        <SelectValue placeholder={formData.school_id ? "Select grade" : "Select school first"} />
                       </SelectTrigger>
                       <SelectContent className="bg-white">
-                        {availableGrades.map((grade) => (
+                        {availableGradesForSchool.map((grade) => (
                           <SelectItem key={grade} value={grade}>
                             {grade}
                           </SelectItem>
@@ -2331,12 +2471,13 @@ export default function StudentsManagement() {
                           setFormData({ ...formData, section: value });
                         }
                       }}
+                      disabled={!formData.school_id}
                     >
                       <SelectTrigger id="edit_section" className="w-full">
-                        <SelectValue placeholder="Select section" />
+                        <SelectValue placeholder={formData.school_id ? "Select section" : "Select school first"} />
                       </SelectTrigger>
                       <SelectContent className="bg-white">
-                        {predefinedSections.map((section) => (
+                        {availableSectionsForGrade.map((section) => (
                           <SelectItem key={section} value={section}>
                             {section}
                           </SelectItem>

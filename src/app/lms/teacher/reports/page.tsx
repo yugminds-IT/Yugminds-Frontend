@@ -22,6 +22,7 @@ import { FileText, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
+import { toast } from "@/components/ui/toast";
 
 type ScheduleRow = { day_of_week?: string; period_id?: string; start_time?: string; end_time?: string; grade?: string; subject?: string };
 type PeriodRow = { id: string; period_number?: number; grade?: string; subject?: string; start_time?: string; end_time?: string; class_name?: string };
@@ -240,18 +241,18 @@ export default function SubmitReportPage() {
     e.stopPropagation();
     
     if (!selectedSchool) {
-      alert('Please select a school first');
+      toast.warning('Please select a school first');
       return;
     }
 
     if (!formData.period_id) {
-      alert('Please select a period');
+      toast.warning('Please select a period');
       return;
     }
 
     // Use the calculated finalGrade
     if (!finalGrade) {
-      alert('Please select a period to get the grade information. If the issue persists, please contact support.');
+      toast.warning('Please select a period to get the grade information. If the issue persists, please contact support.');
       console.error('No grade available:', {
         formData,
         matchingSchedule,
@@ -264,7 +265,7 @@ export default function SubmitReportPage() {
     // Check if topics_taught has content (not just whitespace)
     const topicsTrimmed = formData.topics_taught?.trim() || '';
     if (!topicsTrimmed) {
-      alert('Please enter the topics you taught');
+      toast.warning('Please enter the topics you taught');
       return;
     }
 
@@ -300,7 +301,7 @@ export default function SubmitReportPage() {
       clearFormData('teacher-report-form');
       clearSavedData();
 
-      alert('Report submitted successfully! Your attendance has been marked as Present.');
+      toast.success('Report submitted successfully! Your attendance has been marked as Present.');
      
     } catch (error: unknown) {
       const err = error as { message?: string; response?: { json: () => Promise<{ details?: string; error?: string }> }; data?: { details?: string; error?: string }; details?: string; hint?: string };
@@ -327,7 +328,7 @@ export default function SubmitReportPage() {
       } else if (err?.data?.error) {
         errorMessage = err.data.error;
       }
-      alert(`Error submitting report: ${errorMessage}`);
+      toast.error(`Error submitting report: ${errorMessage}`);
     }
   };
 

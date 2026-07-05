@@ -7,7 +7,7 @@
 
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authApi, commonApi, setAuthToken, studentApi } from "../lib/api";
+import { commonApi, setAuthToken, studentApi } from "../lib/api";
 import { getSession, getStoredUserId } from "../lib/session-utils";
 
 // -------------------- Helpers --------------------
@@ -58,7 +58,7 @@ export function useStudentCourses() {
   return query;
 }
 
-export function useStudentCourse(courseId: string) {
+function useStudentCourse(courseId: string) {
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["studentCourse", courseId],
@@ -103,6 +103,101 @@ export function useStudentAssignments() {
   });
 }
 
+export function useStudentDailyAssignments() {
+  return useQuery({
+    queryKey: ["studentDailyAssignments"],
+    retry: 2,
+    retryDelay: 1000,
+    queryFn: async () => {
+      await ensureAccessToken();
+      const { data } = await studentApi.assignments.list({ type: "DAILY" });
+      return (data as { assignments?: unknown[] })?.assignments || [];
+    },
+  });
+}
+
+export interface StudentLastViewed {
+  courseId: string;
+  courseTitle: string;
+  thumbnailUrl: string | null;
+  chapterId: string | null;
+  chapterTitle: string | null;
+  contentId: string | null;
+  contentTitle: string | null;
+  contentType: string | null;
+  progress: number;
+  updatedAt: string;
+}
+
+export function useStudentLastViewed() {
+  return useQuery({
+    queryKey: ["studentLastViewed"],
+    queryFn: async () => {
+      await ensureAccessToken();
+      const { data } = await studentApi.progress.getLastViewed();
+      return ((data as { lastViewed?: StudentLastViewed | null })?.lastViewed ?? null);
+    },
+    staleTime: 60_000,
+  });
+}
+
+export interface StudentActivity {
+  activityDays: Array<{ date: string; hasLearning?: boolean; hasAssignment?: boolean }>;
+  currentStreak: number;
+  longestStreak: number;
+  activeDaysLast28: number;
+}
+
+export function useStudentActivity() {
+  return useQuery({
+    queryKey: ["studentActivity"],
+    queryFn: async (): Promise<StudentActivity> => {
+      await ensureAccessToken();
+      const { data } = await studentApi.activity.get();
+      const d = (data as Partial<StudentActivity>) ?? {};
+      return {
+        activityDays: d.activityDays ?? [],
+        currentStreak: Number(d.currentStreak ?? 0),
+        longestStreak: Number(d.longestStreak ?? 0),
+        activeDaysLast28: Number(d.activeDaysLast28 ?? 0),
+      };
+    },
+    staleTime: 60_000,
+  });
+}
+
+interface StudentRankScope {
+  rank: number;
+  total: number;
+  percentile: number;
+}
+
+export interface StudentRankings {
+  section?: StudentRankScope;
+  grade?: StudentRankScope;
+  school?: StudentRankScope;
+  system?: StudentRankScope & { schools?: number };
+}
+
+export function useStudentRankings() {
+  return useQuery({
+    queryKey: ["studentRankings"],
+    queryFn: async () => {
+      await ensureAccessToken();
+      const { data } = await studentApi.analytics.get({ historyLimit: 1 });
+      const d = data as {
+        rankings?: StudentRankings;
+        summary?: { assignments_attempted?: number };
+      };
+      return {
+        rankings: d?.rankings ?? null,
+        attempted: Number(d?.summary?.assignments_attempted ?? 0),
+      };
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useStudentAssignment(assignmentId: string) {
   return useQuery({
     queryKey: ["studentAssignment", assignmentId],
@@ -110,43 +205,15 @@ export function useStudentAssignment(assignmentId: string) {
     queryFn: async () => {
       await ensureAccessToken();
       const { data } = await studentApi.assignments.get(assignmentId);
+      // Pass ALL four top-level fields through — previous bug silently dropped
+      // `attempts` and `retake`, causing the retake button to never appear.
+      const d = data as Record<string, unknown>;
       return {
-        assignment: (data as { assignment?: unknown })?.assignment,
-        submission: (data as { submission?: unknown | null })?.submission || null,
+        assignment: d?.assignment ?? null,
+        submission: (d?.submission as unknown | null) ?? null,
+        attempts: (d?.attempts as unknown[]) ?? [],
+        retake: (d?.retake as unknown) ?? null,
       };
-    },
-  });
-}
-
-// NOT_IMPLEMENTED: Student attendance endpoint not yet built. Returns empty array.
-export function useStudentAttendance(_month?: Date) {
-  return useQuery({
-    queryKey: ["studentAttendance", _month?.toISOString()],
-    queryFn: async () => {
-      await ensureAccessToken();
-      return [] as never[];
-    },
-  });
-}
-
-// NOT_IMPLEMENTED: Student attendance stats endpoint not yet built. Returns zero stats.
-export function useStudentAttendanceStats() {
-  return useQuery({
-    queryKey: ["studentAttendanceStats"],
-    queryFn: async () => {
-      await ensureAccessToken();
-      return { total: 0, present: 0, absent: 0, late: 0, percentage: 0 };
-    },
-  });
-}
-
-// NOT_IMPLEMENTED: Student calendar endpoint not yet built. Returns empty array.
-export function useStudentCalendar() {
-  return useQuery({
-    queryKey: ["studentCalendar"],
-    queryFn: async () => {
-      await ensureAccessToken();
-      return [] as never[];
     },
   });
 }
@@ -206,27 +273,6 @@ export function useStudentCertificates() {
   });
 }
 
-export function useUpdateStudentProgress() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (data: { courseId: string; chapterId?: string; isCompleted: boolean }) => {
-      await ensureAccessToken();
-      const { data: res } = await studentApi.progress.simpleSave({
-        courseId: data.courseId,
-        chapterId: data.chapterId ?? null,
-        isCompleted: data.isCompleted,
-      });
-      return res;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["studentCourses"] });
-      queryClient.invalidateQueries({ queryKey: ["courseChapters"] });
-      queryClient.invalidateQueries({ queryKey: ["studentDashboardStats"] });
-    },
-  });
-}
-
 export function useSubmitAssignment() {
   const queryClient = useQueryClient();
 
@@ -243,6 +289,8 @@ export function useSubmitAssignment() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["studentAssignments"] });
       queryClient.invalidateQueries({ queryKey: ["studentAssignment", variables.assignmentId] });
+      // Refresh the combined pending count (sidebar badge + dashboard stat card).
+      queryClient.invalidateQueries({ queryKey: ["studentDashboardStats"] });
     },
   });
 }
@@ -269,43 +317,6 @@ export function useMarkNotificationAsRead() {
   });
 }
 
-export function useUpdateProfile() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (
-      updates: {
-        full_name?: string;
-        email?: string;
-        email_notifications?: boolean;
-        assignment_reminders?: boolean;
-        grade_notifications?: boolean;
-        course_updates?: boolean;
-      },
-    ) => {
-      await ensureAccessToken();
-      const { data } = await commonApi.profile.update(updates as Record<string, unknown>);
-      return (data as { profile?: unknown })?.profile ?? data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["studentProfile"] });
-    },
-  });
-}
-
-export function useChangePassword() {
-  return useMutation({
-    mutationFn: async (payload: { current_password: string; new_password: string }) => {
-      await ensureAccessToken();
-      const { data } = await authApi.updatePassword({
-        current_password: payload.current_password,
-        new_password: payload.new_password,
-      });
-      return data;
-    },
-  });
-}
-
 export function useCourseWithRealtime(courseId: string) {
   const courseQuery = useStudentCourse(courseId || "");
   return { ...courseQuery, isSynced: false };
@@ -322,19 +333,12 @@ export function useChapterContents(chapterId: string, courseId?: string) {
         throw new Error("Course ID is required for chapter contents");
       }
       const { data } = await studentApi.courses.getChapterContents(resolvedCourseId, chapterId);
-      return (data as { contents?: unknown[] })?.contents || [];
-    },
-  });
-}
-
-// NOT_IMPLEMENTED: Course materials endpoint not yet built. Returns empty array.
-export function useCourseMaterials(_courseId: string) {
-  return useQuery({
-    queryKey: ["courseMaterials", _courseId],
-    enabled: !!_courseId,
-    queryFn: async () => {
-      await ensureAccessToken();
-      return [] as never[];
+      const contents = (data as { contents?: unknown[] })?.contents || [];
+      // Assignments always appear after regular content regardless of sortOrder
+      return [
+        ...contents.filter((c: unknown) => (c as { content_type?: string }).content_type !== "assignment"),
+        ...contents.filter((c: unknown) => (c as { content_type?: string }).content_type === "assignment"),
+      ];
     },
   });
 }

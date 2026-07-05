@@ -19,7 +19,7 @@ import {
   Lock
 } from "lucide-react";
 import { adminApi, commonApi, authApi, setAuthToken } from "@/lib/api";
-import { clearStoredSession, getSession, getStoredUserId } from "@/lib/session-utils";
+import { clearStoredSession, getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 
 type PasswordVisibility = {
   current: boolean;
@@ -59,6 +59,7 @@ export default function AdminSettings() {
       if (accessToken) setAuthToken(accessToken);
 
       if (!userId) {
+        setLogoutReason('session_expired');
         router.push("/lms/login");
         return;
       }
@@ -88,6 +89,7 @@ export default function AdminSettings() {
       setCurrentPasswordStatus(null);
     } catch (error) {
       console.error('Error fetching user:', error);
+      setLogoutReason('session_expired');
       router.push('/lms/login');
     } finally {
       setLoading(false);
@@ -123,6 +125,7 @@ export default function AdminSettings() {
 
   const _handleLogout = async () => {
     clearStoredSession();
+    setLogoutReason('session_expired');
     router.push('/lms/login');
   };
 

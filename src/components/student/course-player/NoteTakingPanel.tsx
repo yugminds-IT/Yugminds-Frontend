@@ -6,6 +6,7 @@ import { Button } from '../../ui/button'
 import { Textarea } from '../../ui/textarea'
 import { Save, FileText, X } from 'lucide-react'
 import { getStoredUserId } from '../../../lib/session-utils'
+import { toast } from '../../ui/toast'
 
 interface NoteTakingPanelProps {
   courseId: string
@@ -56,7 +57,7 @@ export default function NoteTakingPanel({
       setTimeout(() => setSaved(false), 2000)
     } catch (error) {
       console.error('Error saving note:', error)
-      alert('Failed to save note. Please try again.')
+      toast.error('Failed to save note. Please try again.')
     } finally {
       setSaving(false)
     }

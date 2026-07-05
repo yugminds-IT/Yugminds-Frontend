@@ -9,6 +9,7 @@ import { Download, AlertCircle, Clock, Loader2 } from "lucide-react";
 import { SkeletonDashboard } from "../ui/skeleton-dashboard";
 import { adminApi } from "../../lib/api/admin.api";
 import ReportFilterDialog from "./ReportFilterDialog";
+import { toast } from "../ui/toast";
 
 interface DashboardStats {
   totalSchools: number;
@@ -85,7 +86,7 @@ export default function AdminReportsTab({
     } catch (error) {
       console.error(`❌ Error downloading ${reportName}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      alert(`Failed to download ${reportName}.\n\nError: ${errorMessage}\n\nPlease try again.`);
+      toast.error(`Failed to download ${reportName}. ${errorMessage}. Please try again.`);
     } finally {
       setDownloading(null);
     }

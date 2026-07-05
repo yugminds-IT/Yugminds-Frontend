@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { 
+import { Switch } from "@/components/ui/switch";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -36,12 +37,11 @@ import {
   MessageSquare
 } from "lucide-react";
 import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
 } from "@/components/ui/dialog";
 import { useSchoolAdmin } from "@/contexts/SchoolAdminContext";
 import { useRouter } from "next/navigation";
@@ -73,6 +73,7 @@ interface Notification {
   message: string;
   type: string;
   is_read: boolean;
+  allow_replies?: boolean;
   created_at: string;
   profiles?: {
     id: string;
@@ -109,6 +110,7 @@ export default function SchoolAdminNotifications() {
   const [type, setType] = useState('general');
   const [recipientType, setRecipientType] = useState<'role' | 'individual'>('role');
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [allowReplies, setAllowReplies] = useState(true);
 
   // Recipients data
   const [roles, setRoles] = useState<RecipientOption[]>([]);
@@ -126,6 +128,8 @@ export default function SchoolAdminNotifications() {
   const [replies, setReplies] = useState<Reply[]>([]);
   const [loadingReplies, setLoadingReplies] = useState(false);
   const [replyDialogOpen, setReplyDialogOpen] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -230,8 +234,41 @@ export default function SchoolAdminNotifications() {
 
   const handleViewReplies = async (notification: Notification) => {
     setSelectedNotification(notification);
+    setReplyText('');
     setReplyDialogOpen(true);
     await loadReplies(notification.id);
+  };
+
+  const handleSendReply = async () => {
+    if (!selectedNotification || !replyText.trim()) return;
+    try {
+      setSendingReply(true);
+      const { data: { session } } = await getSession();
+      if (!session?.access_token) {
+        toast.error('Authentication error. Please log in again.');
+        return;
+      }
+      setAuthToken(session.access_token);
+      await commonApi.notifications.createReply({
+        notification_id: selectedNotification.id,
+        reply_text: replyText.trim(),
+      });
+      setReplyText('');
+      await loadReplies(selectedNotification.id);
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === selectedNotification.id
+            ? { ...n, reply_count: (n.reply_count ?? 0) + 1 }
+            : n
+        )
+      );
+      toast.success('Reply sent');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to send reply: ${msg}`);
+    } finally {
+      setSendingReply(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -300,6 +337,7 @@ export default function SchoolAdminNotifications() {
         recipientType,
         recipients: selectedRecipients,
         school_id: schoolInfo?.id,
+        allowReplies,
       });
 
       const data = response.data ?? {};
@@ -311,6 +349,7 @@ export default function SchoolAdminNotifications() {
         setType('general');
         setRecipientType('role');
         setSelectedRecipients([]);
+        setAllowReplies(true);
         // Reload notifications
         await loadNotifications();
         // Switch to view tab
@@ -526,6 +565,22 @@ export default function SchoolAdminNotifications() {
                   )}
                 </div>
               )}
+
+              {/* Allow replies toggle */}
+              <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="allow-replies" className="flex items-center gap-2">
+                    <Reply className="h-4 w-4 text-muted-foreground" />
+                    Allow recipients to reply
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {allowReplies
+                      ? 'Recipients can reply to start a conversation.'
+                      : 'One-way announcement — replies are turned off.'}
+                  </p>
+                </div>
+                <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
+              </div>
 
               <Button
                 onClick={handleSendNotification}
@@ -757,11 +812,50 @@ export default function SchoolAdminNotifications() {
               ))
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
+          {/* Reply composer */}
+          {selectedNotification?.allow_replies === false ? (
+            <div className="border-t pt-4 mt-2 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4" />
+                Replies are disabled for this notification.
+              </p>
+              <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
+                Close
+              </Button>
+            </div>
+          ) : (
+            <div className="border-t pt-4 mt-2 space-y-2">
+              <Textarea
+                placeholder="Write a reply…"
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                rows={2}
+                className="resize-none text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSendReply();
+                }}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Ctrl+Enter to send</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
+                    Close
+                  </Button>
+                  <Button
+                    onClick={handleSendReply}
+                    disabled={sendingReply || !replyText.trim()}
+                  >
+                    {sendingReply ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Send Reply
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

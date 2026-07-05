@@ -201,90 +201,103 @@ export type StudentManagementRow = {
   progress?: number;
 };
 
+function studentInitials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+const STUDENT_AVATAR_COLORS = [
+  "bg-violet-500", "bg-sky-500", "bg-emerald-500", "bg-rose-500",
+  "bg-amber-500", "bg-cyan-500", "bg-pink-500", "bg-indigo-500",
+];
+
+function studentAvatarColor(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = id.charCodeAt(i) + ((h << 5) - h);
+  return STUDENT_AVATAR_COLORS[Math.abs(h) % STUDENT_AVATAR_COLORS.length];
+}
+
 export const STUDENT_MANAGEMENT_COLUMNS: ManagementTableColumn<StudentManagementRow>[] = [
   {
     id: "full_name",
-    header: "Name",
+    header: "Student",
     sortable: true,
     sortValue: (r) => r.full_name,
-    searchValue: (r) => r.full_name,
+    searchValue: (r) => `${r.full_name} ${r.email}`,
     filterable: true,
     filterValue: (r) => r.full_name,
-    render: (r) => <span className="font-medium">{r.full_name}</span>,
+    render: (r) => (
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className={`flex-shrink-0 h-8 w-8 rounded-full ${studentAvatarColor(r.id)} flex items-center justify-center`}>
+          <span className="text-white text-[11px] font-semibold">{studentInitials(r.full_name)}</span>
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900 text-sm truncate max-w-[140px]" title={r.full_name}>{r.full_name}</p>
+          <p className="text-[11px] text-gray-400 truncate max-w-[140px]" title={r.email}>{r.email}</p>
+        </div>
+      </div>
+    ),
   },
   {
-    id: "email",
-    header: "Email",
-    sortable: true,
-    sortValue: (r) => r.email,
-    searchValue: (r) => r.email,
-    filterable: true,
-    filterValue: (r) => r.email,
-    render: (r) => r.email,
-  },
-  {
-    id: "parent_name",
-    header: "Parent",
+    id: "parent",
+    header: "Parent / Phone",
     sortable: true,
     sortValue: (r) => r.parent_name ?? "",
-    searchValue: (r) => r.parent_name,
+    searchValue: (r) => `${r.parent_name ?? ""} ${r.parent_phone ?? ""}`,
     filterable: true,
     filterValue: (r) => String(r.parent_name ?? ""),
-    render: (r) => (r.parent_name ? String(r.parent_name) : "—"),
+    render: (r) => (
+      <div className="min-w-0">
+        <p className="text-sm text-gray-700 truncate max-w-[140px]" title={r.parent_name ?? ""}>{r.parent_name ?? "—"}</p>
+        <p className="text-[11px] text-gray-400">{r.parent_phone ?? "—"}</p>
+      </div>
+    ),
   },
   {
-    id: "parent_phone",
-    header: "Phone",
-    sortable: true,
-    sortValue: (r) => r.parent_phone ?? "",
-    searchValue: (r) => r.parent_phone,
-    filterable: true,
-    filterValue: (r) => String(r.parent_phone ?? ""),
-    render: (r) => (r.parent_phone ? String(r.parent_phone) : "—"),
-  },
-  {
-    id: "schoolDisplay",
-    header: "School",
+    id: "school_grade",
+    header: "School & Class",
     sortable: true,
     sortValue: (r) => r.schoolDisplay,
-    searchValue: (r) => r.schoolDisplay,
+    searchValue: (r) => `${r.schoolDisplay} ${r.gradeDisplay} ${r.sectionDisplay}`,
     filterable: true,
-    filterValue: (r) => r.schoolDisplay,
-    render: (r) => r.schoolDisplay,
-  },
-  {
-    id: "gradeDisplay",
-    header: "Grade",
-    sortable: true,
-    sortValue: (r) => r.gradeDisplay,
-    searchValue: (r) => r.gradeDisplay,
-    filterable: true,
-    filterValue: (r) => r.gradeDisplay,
-    render: (r) => r.gradeDisplay,
-  },
-  {
-    id: "sectionDisplay",
-    header: "Section",
-    sortable: true,
-    sortValue: (r) => r.sectionDisplay,
-    searchValue: (r) => r.sectionDisplay,
-    filterable: true,
-    filterValue: (r) => r.sectionDisplay,
-    render: (r) => r.sectionDisplay,
+    filterValue: (r) => `${r.schoolDisplay} ${r.gradeDisplay}`,
+    render: (r) => (
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-800 truncate max-w-[160px]" title={r.schoolDisplay}>{r.schoolDisplay}</p>
+        <div className="flex items-center gap-1 mt-0.5">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
+            {r.gradeDisplay}
+          </span>
+          {r.sectionDisplay && r.sectionDisplay !== "—" && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100">
+              Sec {r.sectionDisplay}
+            </span>
+          )}
+        </div>
+      </div>
+    ),
   },
   {
     id: "coursesDisplay",
     header: "Courses",
-    sortable: true,
-    sortValue: (r) => r.coursesDisplay,
+    sortable: false,
     searchValue: (r) => r.coursesDisplay,
     filterable: true,
     filterValue: (r) => r.coursesDisplay,
-    render: (r) => (
-      <span className="max-w-[200px] truncate" title={r.coursesDisplay}>
-        {r.coursesDisplay}
-      </span>
-    ),
+    render: (r) => {
+      if (!r.coursesDisplay || r.coursesDisplay === "—") {
+        return <span className="text-xs text-gray-400 italic">No courses</span>;
+      }
+      const courses = r.coursesDisplay.split(/,\s*/);
+      return (
+        <div className="space-y-0.5 max-w-[180px]">
+          {courses.map((c, i) => (
+            <p key={i} className="text-xs text-gray-700 truncate" title={c}>{c}</p>
+          ))}
+        </div>
+      );
+    },
   },
   {
     id: "progress",
@@ -294,19 +307,18 @@ export const STUDENT_MANAGEMENT_COLUMNS: ManagementTableColumn<StudentManagement
     sortValue: (r) => r.progress ?? 0,
     filterable: true,
     filterValue: (r) => String(r.progress ?? 0),
-    render: (r) => (
-      <div className="flex items-center justify-end gap-2">
-        <div className="h-2 w-16 overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary"
-            style={{
-              width: `${Math.min(100, Math.max(0, Number(r.progress ?? 0)))}%`,
-            }}
-          />
+    render: (r) => {
+      const pct = Math.min(100, Math.max(0, Number(r.progress ?? 0)));
+      const color = pct >= 80 ? "bg-green-500" : pct >= 40 ? "bg-blue-500" : "bg-gray-300";
+      return (
+        <div className="flex items-center justify-end gap-2">
+          <div className="h-1.5 w-14 overflow-hidden rounded-full bg-gray-100">
+            <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+          </div>
+          <span className="text-xs tabular-nums text-gray-600 w-8 text-right">{pct}%</span>
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground">{r.progress ?? 0}%</span>
-      </div>
-    ),
+      );
+    },
   },
 ];
 
@@ -326,9 +338,37 @@ export type TeacherManagementRow = {
 
 function teacherStatusBadgeClass(status: string) {
   const s = status?.toLowerCase() ?? "";
-  if (s === "active") return "bg-green-500 hover:bg-green-600";
-  if (s === "on leave") return "bg-yellow-500 hover:bg-yellow-600";
-  return "bg-red-500 hover:bg-red-600";
+  if (s === "active") return "bg-green-100 text-green-800 border border-green-200 hover:bg-green-100";
+  if (s === "on leave") return "bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-100";
+  return "bg-red-100 text-red-800 border border-red-200 hover:bg-red-100";
+}
+
+function teacherStatusDot(status: string) {
+  const s = status?.toLowerCase() ?? "";
+  if (s === "active") return "bg-green-500";
+  if (s === "on leave") return "bg-amber-500";
+  return "bg-red-500";
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  "bg-blue-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500",
+  "bg-teal-500", "bg-orange-500", "bg-cyan-500", "bg-rose-500",
+];
+
+function avatarColor(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
 export function createTeacherManagementColumns<T extends TeacherManagementRow>(
@@ -337,53 +377,57 @@ export function createTeacherManagementColumns<T extends TeacherManagementRow>(
   return [
     {
       id: "nameDisplay",
-      header: "Name",
+      header: "Teacher",
       sortable: true,
       sortValue: (r) => r.nameDisplay,
-      searchValue: (r) => r.nameDisplay,
+      searchValue: (r) => `${r.nameDisplay} ${r.email} ${r.phoneDisplay}`,
       filterable: true,
       filterValue: (r) => r.nameDisplay,
-      render: (r) => <span className="font-medium">{r.nameDisplay}</span>,
+      render: (r) => (
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`flex-shrink-0 h-9 w-9 rounded-full ${avatarColor(r.id)} flex items-center justify-center`}>
+            <span className="text-white text-xs font-semibold">{getInitials(r.nameDisplay)}</span>
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-900 truncate">{r.nameDisplay}</p>
+            <p className="text-xs text-gray-500 truncate">{r.email}</p>
+          </div>
+        </div>
+      ),
     },
     {
-      id: "email",
-      header: "Email",
-      sortable: true,
-      sortValue: (r) => r.email,
-      searchValue: (r) => r.email,
-      filterable: true,
-      filterValue: (r) => r.email,
-      render: (r) => r.email,
-    },
-    {
-      id: "phoneDisplay",
-      header: "Phone",
-      sortable: true,
-      sortValue: (r) => r.phoneDisplay,
-      searchValue: (r) => r.phoneDisplay,
-      filterable: true,
+      id: "contact",
+      header: "Contact",
+      sortable: false,
+      searchValue: (r) => `${r.phoneDisplay} ${r.email}`,
+      filterable: false,
       filterValue: (r) => r.phoneDisplay,
-      render: (r) => r.phoneDisplay,
+      render: (r) => (
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1.5 text-sm text-gray-700">
+            <Phone className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+            <span>{r.phoneDisplay}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <span className="capitalize">{r.roleDisplay}</span>
+          </div>
+        </div>
+      ),
     },
     {
       id: "qualificationDisplay",
-      header: "Qualification",
+      header: "Qualification & Exp.",
       sortable: true,
       sortValue: (r) => r.qualificationDisplay,
-      searchValue: (r) => r.qualificationDisplay,
+      searchValue: (r) => `${r.qualificationDisplay} ${r.experienceDisplay}`,
       filterable: true,
       filterValue: (r) => r.qualificationDisplay,
-      render: (r) => r.qualificationDisplay,
-    },
-    {
-      id: "experienceDisplay",
-      header: "Experience",
-      sortable: true,
-      sortValue: (r) => r.experienceDisplay,
-      searchValue: (r) => r.experienceDisplay,
-      filterable: true,
-      filterValue: (r) => r.experienceDisplay,
-      render: (r) => r.experienceDisplay,
+      render: (r) => (
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium text-gray-800">{r.qualificationDisplay}</p>
+          <p className="text-xs text-gray-500">{r.experienceDisplay} exp.</p>
+        </div>
+      ),
     },
     {
       id: "status",
@@ -393,25 +437,22 @@ export function createTeacherManagementColumns<T extends TeacherManagementRow>(
       searchValue: (r) => r.status,
       filterable: true,
       filterValue: (r) => r.status,
-      render: (r) => <Badge className={teacherStatusBadgeClass(r.status)}>{r.status}</Badge>,
-    },
-    {
-      id: "roleDisplay",
-      header: "Role",
-      sortable: true,
-      sortValue: (r) => r.roleDisplay,
-      searchValue: (r) => r.roleDisplay,
-      filterable: true,
-      filterValue: (r) => r.roleDisplay,
-      render: (r) => <span className="text-muted-foreground">{r.roleDisplay}</span>,
+      render: (r) => (
+        <div className="flex items-center gap-2">
+          <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${teacherStatusDot(r.status)}`} />
+          <Badge className={`text-xs font-medium ${teacherStatusBadgeClass(r.status)}`}>
+            {r.status}
+          </Badge>
+        </div>
+      ),
     },
     {
       id: "schools",
-      header: "Schools & Grades/Sections",
+      header: "Assigned Schools",
       searchValue: (r) => r.schoolsSearchText,
       filterable: true,
       filterValue: (r) => r.schoolsSearchText,
-      render: (r) => <div className="max-w-md align-top">{renderSchoolsCell(r)}</div>,
+      render: (r) => <div className="min-w-[180px]">{renderSchoolsCell(r)}</div>,
     },
   ];
 }

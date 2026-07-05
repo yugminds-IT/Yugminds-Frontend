@@ -25,7 +25,6 @@ const robocodersRoutes: Route[] = [
   { path: "/robocoders/for-schools", changeFrequency: "monthly", priority: 0.85 },
   { path: "/robocoders/for-parents", changeFrequency: "monthly", priority: 0.85 },
   { path: "/robocoders/contact", changeFrequency: "monthly", priority: 0.75 },
-  { path: "/robocoders/success-stories", changeFrequency: "monthly", priority: 0.7 },
 ];
 
 // LMS auth pages only — dashboards/portals are auth-gated, excluded from sitemap

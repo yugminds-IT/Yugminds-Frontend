@@ -190,3 +190,23 @@ section, main, article, aside {
   visibility: visible !important;
   opacity: 1 !important;
 }
+
+/* Dashboard layout: pages inside the scrollable content pane should never
+   force a min-height of 100vh — that creates blank space below the content. */
+[data-dashboard-content] > * {
+  min-height: 0 !important;
+}
+
+/* Broader override — targets .min-h-screen anywhere inside the dashboard scroll container,
+   regardless of Next.js framework wrapper divs between the layout and the page. */
+[data-dashboard-content] .min-h-screen {
+  min-height: auto !important;
+}
+
+/* Lock html/body to viewport so dashboard scroll stays inside the
+   overflow-y-auto content pane, not on the document body. */
+html:has([data-dashboard-content]),
+body:has([data-dashboard-content]) {
+  height: 100%;
+  overflow: hidden;
+}

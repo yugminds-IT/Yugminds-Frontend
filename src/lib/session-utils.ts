@@ -63,13 +63,18 @@ export function setStoredSession(session: Session): void {
   if (session.user) writeMeta(session.user);
 }
 
-export function clearStoredSession(broadcast = true): void {
+export function clearStoredSession(broadcast = true, reason: LogoutReason = 'logged_out'): void {
   _inMemoryToken = null;
   removeMeta();
+  // Wipe per-user course progress cache so completion never leaks to the next
+  // user on a shared browser. Lazy import avoids any module-init ordering issues.
+  void import('../store/course-progress-store')
+    .then((m) => m.resetCourseProgressStore())
+    .catch(() => {});
   if (broadcast && typeof window !== 'undefined' && 'BroadcastChannel' in window) {
     try {
       const ch = new BroadcastChannel(LOGOUT_CHANNEL);
-      ch.postMessage({ type: 'logout' });
+      ch.postMessage({ type: 'logout', reason });
       ch.close();
     } catch {
       // Non-fatal if BroadcastChannel is unavailable.
@@ -87,8 +92,10 @@ export function subscribeToLogoutBroadcast(): () => void {
   }
   const ch = new BroadcastChannel(LOGOUT_CHANNEL);
   ch.onmessage = (event: MessageEvent) => {
-    if ((event.data as { type?: string })?.type === 'logout') {
+    const msg = event.data as { type?: string; reason?: LogoutReason };
+    if (msg?.type === 'logout') {
       clearStoredSession(false); // clear without re-broadcasting
+      setLogoutReason(msg.reason ?? 'logged_out');
       window.location.href = '/lms/login';
     }
   };
@@ -190,5 +197,60 @@ function removeMeta(): void {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
   } catch {
     // ignore
+  }
+}
+
+// ── Logout reason ─────────────────────────────────────────────────────────────
+// Written before any forced redirect to /lms/login so the login page can show
+// a human-readable explanation instead of silently kicking the user out.
+
+const LOGOUT_REASON_KEY = '_logout_reason';
+
+export type LogoutReason =
+  | 'session_expired'
+  | 'session_timeout'
+  | 'wrong_role'
+  | 'error'
+  | 'logged_out';
+
+const LOGOUT_MESSAGES: Record<LogoutReason, { title: string; detail: string }> = {
+  logged_out: {
+    title: 'You have been signed out',
+    detail: 'Sign in again to continue.',
+  },
+  session_expired: {
+    title: 'Your session has expired',
+    detail: 'You were automatically logged out because your session is no longer valid. Please sign in again to continue.',
+  },
+  session_timeout: {
+    title: 'Session timed out',
+    detail: 'We could not reach the server in time to verify your session. Please check your connection and sign in again.',
+  },
+  wrong_role: {
+    title: 'Access denied',
+    detail: 'Your account does not have permission to access that area. Please sign in with the correct account.',
+  },
+  error: {
+    title: 'Something went wrong',
+    detail: 'An unexpected error occurred. Please sign in again.',
+  },
+};
+
+export function setLogoutReason(reason: LogoutReason): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(LOGOUT_REASON_KEY, reason);
+  } catch { /* ignore */ }
+}
+
+export function consumeLogoutReason(): { title: string; detail: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(LOGOUT_REASON_KEY) as LogoutReason | null;
+    if (!raw) return null;
+    sessionStorage.removeItem(LOGOUT_REASON_KEY);
+    return LOGOUT_MESSAGES[raw] ?? null;
+  } catch {
+    return null;
   }
 }

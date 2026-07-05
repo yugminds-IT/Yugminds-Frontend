@@ -33,12 +33,19 @@ async function postAuthBff(
   const data = parsed as Partial<AuthResponse> & { message?: string; error?: string };
 
   if (!res.ok) {
-    const msg =
-      data?.message ||
-      data?.error ||
-      (typeof parsed === 'string' ? parsed : null) ||
-      `Request failed (${res.status})`;
-    const err = new Error(msg) as Error & { status?: number; data?: unknown };
+    // Normalize message — NestJS can nest the full error object inside `message`
+    const rawMsg = data?.message;
+    const msgStr =
+      typeof rawMsg === 'string'
+        ? rawMsg
+        : typeof rawMsg === 'object' && rawMsg !== null && 'message' in (rawMsg as object)
+          ? String((rawMsg as { message: unknown }).message)
+          : typeof data?.error === 'string'
+            ? data.error
+            : typeof parsed === 'string'
+              ? parsed
+              : `Request failed (${res.status})`;
+    const err = new Error(msgStr) as Error & { status?: number; data?: unknown };
     err.status = res.status;
     err.data = parsed;
     throw err;

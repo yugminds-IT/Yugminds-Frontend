@@ -187,7 +187,7 @@ export default function PasswordResetRequestsPage() {
   const historyCount = historyRequests.length;
 
   return (
-    <div className="p-8 bg-white min-h-screen">
+    <div className="p-8 bg-white">
       <Toast toasts={toasts} remove={removeToast} />
 
       <div className="flex items-center justify-between mb-6">

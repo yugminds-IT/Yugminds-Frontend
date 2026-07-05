@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '../../ui/card'
 import { Button } from '../../ui/button'
@@ -50,16 +50,7 @@ interface Submission {
   submitted_at?: string
 }
 
-// Debounce utility
-function debounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: number) {
-  let timeoutId: NodeJS.Timeout
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId)
-    timeoutId = setTimeout(() => fn(...args), delay)
-  }
-}
-
-export default function QuizContentViewer({ 
+export default function QuizContentViewer({
   content, 
   courseId, 
   chapterId,
@@ -82,28 +73,6 @@ export default function QuizContentViewer({
 
   const isCompleted = isContentCompleted(content.id)
   const saving = isSaving(content.id)
-
-  // Mark as complete - delegate to parent for database saving
-  const handleMarkComplete = useCallback(() => {
-    if (hasCompletedRef.current) return
-    hasCompletedRef.current = true
-
-    console.log('📝 [QuizViewer] Marking as complete, calling parent onComplete...')
-    
-    // Call parent's onComplete which handles database saving
-    onComplete?.()
-    
-    // Update local UI state
-    setContentCompleted(content.id, chapterId, courseId, true)
-    
-    console.log('✅ [QuizViewer] Marked as complete')
-  }, [content.id, courseId, chapterId, onComplete, setContentCompleted])
-
-  // Debounced version for UI interactions
-  const debouncedMarkComplete = useMemo(
-    () => debounce(handleMarkComplete, 500),
-    [handleMarkComplete]
-  )
 
   useEffect(() => {
     const fetchAssignment = async () => {
@@ -178,11 +147,9 @@ export default function QuizContentViewer({
           }
 
           if (detail?.submission) {
+            // Completion is decided by the pass/submit rule below, not merely by
+            // a submission existing.
             setSubmission(detail.submission as unknown as Submission)
-            if (!hasCompletedRef.current) {
-              setContentCompleted(content.id, chapterId, courseId, true)
-              hasCompletedRef.current = true
-            }
             console.log('✅ [QuizViewer] Found existing submission')
           }
         } catch (err) {
@@ -211,6 +178,35 @@ export default function QuizContentViewer({
       setLoading(false)
     }
   }, [content.id, content.auto_grading_enabled, content.content_text, content.max_score, content.source, content.title, chapterId, courseId, isContentCompleted, setContentCompleted])
+
+  // ── Pass / submit rule ──────────────────────────────────────────────────────
+  // A quiz counts as complete only when there is a real submission. For an
+  // auto-graded quiz with a max score we additionally require >= 50%; otherwise a
+  // submission (pending manual grading) is enough.
+  const PASS_THRESHOLD = 0.5
+  const isSubmitted = !!(
+    submission &&
+    (submission.status === 'submitted' || submission.status === 'graded' || submission.submitted_at)
+  )
+  const maxScore =
+    questions.reduce((sum, q) => sum + (q.marks || 1), 0) || assignment?.max_score || 0
+  const autoGraded = !!assignment?.auto_grading_enabled
+  const isPassed = (() => {
+    if (!isSubmitted) return false
+    if (autoGraded && maxScore > 0 && submission?.status === 'graded' && submission.score != null) {
+      return submission.score / maxScore >= PASS_THRESHOLD
+    }
+    return true // submitted (or awaiting manual grade) counts
+  })()
+
+  // Record completion when (and only when) the pass/submit rule is satisfied.
+  useEffect(() => {
+    if (isPassed && !hasCompletedRef.current) {
+      hasCompletedRef.current = true
+      setContentCompleted(content.id, chapterId, courseId, true)
+      onComplete?.()
+    }
+  }, [isPassed, content.id, chapterId, courseId, onComplete, setContentCompleted])
 
   if (loading) {
     return (
@@ -320,16 +316,12 @@ export default function QuizContentViewer({
             className="w-full transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]" 
             size="lg"
             onClick={() => {
-              // Mark as viewed when starting
-              if (!hasCompletedRef.current) {
-                debouncedMarkComplete()
-              }
               router.push(`/lms/student/assignments/${assignment.id}?courseId=${courseId}&chapterId=${chapterId}`)
             }}
             aria-label={submission ? 'View your submission' : questions.length > 0 ? 'Start this assignment' : 'View assignment details'}
           >
             <CheckCircle className="h-4 w-4 mr-2" aria-hidden="true" />
-            {submission ? 'View Submission' : questions.length > 0 ? 'Start Assignment' : 'View Assignment'}
+            {isSubmitted ? (isPassed ? 'View Submission' : 'Retake Quiz') : questions.length > 0 ? 'Start Quiz' : 'View Assignment'}
           </Button>
         )}
         
@@ -358,23 +350,14 @@ export default function QuizContentViewer({
           </div>
         )}
 
-        {/* Manual complete button if not already completed */}
-        {!isCompleted && !submission && (
+        {/* Gating hint */}
+        {!isPassed && (
           <div className="mt-4 pt-4 border-t">
-            <Button 
-              variant="outline"
-              onClick={debouncedMarkComplete}
-              disabled={saving}
-              className="w-full"
-              aria-label="Mark this assignment as viewed"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <CheckCircle className="h-4 w-4 mr-2" />
-              )}
-              Mark as Viewed
-            </Button>
+            <p className="text-sm text-gray-500 text-center">
+              {isSubmitted && autoGraded
+                ? `Score at least ${Math.round(PASS_THRESHOLD * 100)}% to complete this quiz and unlock the next item.`
+                : 'Submit this assignment to mark it complete and unlock the next item.'}
+            </p>
           </div>
         )}
       </div>

@@ -3,7 +3,6 @@ import { verifyAdmin } from '../../../lib/auth-utils';
 import { getMetrics, getRecentMetrics, getEndpointMetrics } from '../../../lib/monitoring';
 import { rateLimit, RateLimitPresets, createRateLimitHeaders } from '../../../lib/rate-limit';
 import { logger, handleApiError } from '../../../lib/logger';
-import { ensureCsrfToken } from '../../../lib/csrf-middleware';
 
 /**
  * Metrics Endpoint (Admin Only)
@@ -16,8 +15,10 @@ import { ensureCsrfToken } from '../../../lib/csrf-middleware';
  * - recent: Get recent N metrics (default: 100)
  */
 export async function GET(request: NextRequest) {
-  ensureCsrfToken(request);
-  
+  // The CSRF token cookie is already ensured by the global middleware for /api/
+  // routes, so there's no per-route call here (passing a request to
+  // ensureCsrfToken is a no-op — it can only set cookies on a response).
+
   // Apply rate limiting
   const rateLimitResult = await rateLimit(request, RateLimitPresets.READ);
   if (!rateLimitResult.success) {

@@ -41,22 +41,6 @@ export const level2TextBook: Book = {
 };
 
 /**
- * Helper function to generate page URLs based on a pattern
- * Useful when pages follow a naming convention
- */
-export function generatePageUrls(
-  basePath: string,
-  totalPages: number,
-  extension: string = 'png'
-): BookPage[] {
-  return Array.from({ length: totalPages }, (_, i) => ({
-    imageUrl: `${basePath}/page-${i + 1}.${extension}`,
-    alt: `Page ${i + 1}`,
-    pageNumber: i + 1,
-  }));
-}
-
-/**
  * Level 1 TextBook configuration
  * All 7 pages from Level 1 Book Preview folder
  */
@@ -97,16 +81,4 @@ export const level1KidsTextBook: Book = {
     { imageUrl: '/Level 1 Kids Edition Preview/44.png', alt: 'Page 44', pageNumber: 44 },
   ],
 };
-
-/**
- * Get book by ID
- */
-export function getBookById(id: string): Book | undefined {
-  const books: Record<string, Book> = {
-    'level-1': level1TextBook,
-    'level-1-kids': level1KidsTextBook,
-    'level-2': level2TextBook,
-  };
-  return books[id];
-}
 

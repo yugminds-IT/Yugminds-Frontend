@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { adminApi } from "@/lib/api/admin.api";
 import {
   Award,
@@ -121,7 +122,12 @@ export default function AdminCertificatesPage() {
   };
 
   const handleRevoke = async (cert: Cert) => {
-    if (!confirm(`Revoke certificate for ${cert.student_name} (${cert.course_title})? This cannot be undone.`)) return;
+    if (!(await confirmDialog({
+      title: 'Revoke this certificate?',
+      description: `Revoke the certificate for ${cert.student_name} (${cert.course_title}). This cannot be undone.`,
+      confirmText: 'Revoke',
+      variant: 'danger',
+    }))) return;
     setRevoking(cert.id);
     try {
       await adminApi.certificates.revoke(cert.id);
@@ -150,7 +156,11 @@ export default function AdminCertificatesPage() {
   const handleRegenerateAll = async () => {
     const broken = certs.filter((c) => c.status === "pending");
     if (broken.length === 0) { toast.success("No broken certificates found"); return; }
-    if (!confirm(`Regenerate ${broken.length} broken certificate(s)?`)) return;
+    if (!(await confirmDialog({
+      title: 'Regenerate certificates?',
+      description: `Regenerate ${broken.length} broken certificate(s)?`,
+      confirmText: 'Regenerate',
+    }))) return;
     setBatchLoading(true);
     let ok = 0;
     for (const cert of broken) {
@@ -162,7 +172,11 @@ export default function AdminCertificatesPage() {
   };
 
   const handleBatchGenerate = async () => {
-    if (!confirm("Generate certificates for ALL eligible students who don't have one yet? This may take a moment.")) return;
+    if (!(await confirmDialog({
+      title: 'Generate all certificates?',
+      description: "Generate certificates for ALL eligible students who don't have one yet. This may take a moment.",
+      confirmText: 'Generate',
+    }))) return;
     setBatchLoading(true);
     try {
       const res = await adminApi.certificates.batchGenerate({});
@@ -207,7 +221,12 @@ export default function AdminCertificatesPage() {
   };
 
   const handleDeleteTemplate = async () => {
-    if (!confirm("Remove custom template? Certificates will fall back to the default design.")) return;
+    if (!(await confirmDialog({
+      title: 'Remove custom template?',
+      description: 'Certificates will fall back to the default design.',
+      confirmText: 'Remove',
+      variant: 'danger',
+    }))) return;
     setDeletingTemplate(true);
     try {
       await adminApi.certificates.deleteTemplate();

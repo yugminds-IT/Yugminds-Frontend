@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
+import { toast } from "@/components/ui/toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -292,7 +293,7 @@ function TeachersContent() {
 
   const handleExportTeachers = () => {
     if (filteredTeachers.length === 0) {
-      alert('No teachers to export');
+      toast.warning('No teachers to export');
       return;
     }
 
@@ -341,14 +342,14 @@ function TeachersContent() {
 
       // Reload leave requests and teachers to refresh state
       await loadTeachers();
-      alert(
+      toast.success(
         `Leave request ${
           action === 'approve' ? 'approved' : 'rejected'
         } successfully! Attendance has been updated automatically.`,
       );
     } catch (error) {
       console.error('Error updating leave request:', error);
-      alert(`Error ${action === 'approve' ? 'approving' : 'rejecting'} leave request. Please try again.`);
+      toast.error(`Error ${action === 'approve' ? 'approving' : 'rejecting'} leave request. Please try again.`);
     }
   };
 

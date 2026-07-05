@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -45,6 +46,7 @@ interface NotificationItem {
   message: string;
   type: string;
   is_read: boolean;
+  allow_replies?: boolean;
   created_at: string;
   profiles?: { id: string; full_name: string; email: string; role: string };
   replies?: ReplyItem[];
@@ -207,26 +209,36 @@ function ReplyDialog({
         </div>
 
         {/* Reply input */}
-        <div className="border-t pt-3 space-y-2">
-          <Textarea
-            placeholder="Write a reply…"
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            rows={2}
-            className="resize-none text-sm"
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend(); }}
-          />
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-gray-400">Ctrl+Enter to send</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
-              <Button size="sm" onClick={handleSend} disabled={sending || !replyText.trim()} className="bg-blue-600 hover:bg-blue-700 text-white">
-                {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
-                Send
-              </Button>
+        {notification.allow_replies === false ? (
+          <div className="border-t pt-3 flex items-center justify-between">
+            <p className="text-xs text-gray-500 flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5" />
+              Replies are disabled for this notification.
+            </p>
+            <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+          </div>
+        ) : (
+          <div className="border-t pt-3 space-y-2">
+            <Textarea
+              placeholder="Write a reply…"
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              rows={2}
+              className="resize-none text-sm"
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend(); }}
+            />
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-400">Ctrl+Enter to send</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+                <Button size="sm" onClick={handleSend} disabled={sending || !replyText.trim()} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
+                  Send
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -362,6 +374,7 @@ export default function NotificationsManagement() {
   const [notifType, setNotifType] = useState("general");
   const [recipientType, setRecipientType] = useState<"all" | "role" | "school" | "individual">("all");
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [allowReplies, setAllowReplies] = useState(true);
   const [sending, setSending] = useState(false);
 
   // Recipients data
@@ -541,6 +554,7 @@ export default function NotificationsManagement() {
         type: notifType,
         recipientType,
         recipients: recipientType === "all" ? [] : selectedRecipients,
+        allowReplies,
       });
       const sendPayload = unwrapApiPayload<{ recipients?: number; success?: boolean }>(
         sendBody as Record<string, unknown>,
@@ -549,7 +563,7 @@ export default function NotificationsManagement() {
         `Sent to ${sendPayload?.recipients ?? 0} recipient${(sendPayload?.recipients ?? 0) !== 1 ? "s" : ""}`,
       );
       setTitle(""); setMessage(""); setNotifType("general");
-      setRecipientType("all"); setSelectedRecipients([]);
+      setRecipientType("all"); setSelectedRecipients([]); setAllowReplies(true);
       setActiveTab("sent");
     } catch (err) {
       toast.error(`Failed to send: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -592,7 +606,7 @@ export default function NotificationsManagement() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="p-8 bg-white min-h-screen">
+    <div className="p-8 bg-white">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -734,6 +748,22 @@ export default function NotificationsManagement() {
                 `${selectedRecipients.length} school${selectedRecipients.length !== 1 ? "s" : ""}`)}
               {recipientType === "individual" && (selectedRecipients.length === 0 ? "No users selected" :
                 `${selectedRecipients.length} user${selectedRecipients.length !== 1 ? "s" : ""}`)}
+            </div>
+
+            {/* Allow replies toggle */}
+            <div className="flex items-center justify-between rounded-xl border px-4 py-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="allow-replies" className="flex items-center gap-2">
+                  <Reply className="h-4 w-4 text-gray-500" />
+                  Allow recipients to reply
+                </Label>
+                <p className="text-xs text-gray-400">
+                  {allowReplies
+                    ? "Recipients can reply to start a conversation."
+                    : "This is a one-way announcement — replies are turned off."}
+                </p>
+              </div>
+              <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
             </div>
 
             <div className="flex justify-end">

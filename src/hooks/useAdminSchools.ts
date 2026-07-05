@@ -37,6 +37,10 @@ export type AdminSchoolsListResponse = {
   schools?: AdminSchoolItem[];
 };
 
+// Stable empty fallback — avoids new reference on every render which would
+// cause useEffects that depend on this array to fire in an infinite loop.
+const EMPTY_SCHOOLS: AdminSchoolItem[] = [];
+
 /**
  * Single source of truth for admin schools list.
  * Supports EdTech-style response: { data: { schools }, meta } or legacy { schools }.
@@ -64,7 +68,7 @@ export function useAdminSchools(options?: { enabled?: boolean }) {
 
   return {
     data: query.data,
-    schools: query.data?.schools ?? ([] as AdminSchoolItem[]),
+    schools: query.data?.schools ?? EMPTY_SCHOOLS,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     error: query.error,

@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { commonApi, authApi, setAuthToken } from "@/lib/api";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
-import { getSession, getStoredUserId } from "@/lib/session-utils";
+import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 
 type PasswordVisibility = { current: boolean; new: boolean; confirm: boolean };
 type CurrentPasswordStatus = null | "checking" | "valid" | "invalid";
@@ -45,6 +45,7 @@ export default function SchoolAdminSettings() {
       const accessToken = sessionData.session?.access_token;
       if (accessToken) setAuthToken(accessToken);
 
+      setLogoutReason('session_expired');
       if (!userId) { router.push("/lms/login"); return; }
 
       const authUser = { id: userId, email: sessionData.session?.user?.email } as { id: string; email?: string };
@@ -67,6 +68,7 @@ export default function SchoolAdminSettings() {
       setCurrentPasswordStatus(null);
     } catch (error) {
       console.error("Error fetching user:", error);
+      setLogoutReason('session_expired');
       router.push("/lms/login");
     } finally {
       setLoading(false);

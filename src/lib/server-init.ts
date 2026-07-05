@@ -44,14 +44,17 @@ export async function initializeServer(): Promise<void> {
     
     // Warm cache - don't await, let it run in background
     // Add timeout to prevent blocking server startup
-    const warmCachePromise = warmAllDashboardCaches();
+    let warmTimeoutId: ReturnType<typeof setTimeout>;
+    const warmCachePromise = warmAllDashboardCaches().finally(() => {
+      clearTimeout(warmTimeoutId);
+    });
     const timeoutPromise = new Promise<void>((resolve) => {
-      setTimeout(() => {
+      warmTimeoutId = setTimeout(() => {
         logger.warn('Initial cache warming taking too long, continuing startup');
         resolve();
       }, 10000); // 10 second timeout for initial warm
     });
-    
+
     // Race between cache warming and timeout - don't block startup
     Promise.race([warmCachePromise, timeoutPromise]).catch((error) => {
       logger.warn('Initial cache warming failed, continuing startup', {

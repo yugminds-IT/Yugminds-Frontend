@@ -65,24 +65,6 @@ export function validatePassword(
 }
 
 /**
- * Get user-friendly password requirements message
- */
-export function getPasswordRequirementsMessage(requireSpecialChar: boolean = false): string {
-  const requirements = [
-    'At least 8 characters',
-    'At least one uppercase letter (A-Z)',
-    'At least one lowercase letter (a-z)',
-    'At least one number (0-9)'
-  ];
-
-  if (requireSpecialChar) {
-    requirements.push('At least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)');
-  }
-
-  return requirements.join(', ');
-}
-
-/**
  * Client-side password validation (synchronous, for use in React components)
  * Returns first error message or null if valid
  */

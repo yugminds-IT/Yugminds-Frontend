@@ -391,7 +391,7 @@ export function ManagementTable<T extends ManagementTableRow>({
       </div>
       )}
 
-      <div className="max-h-[min(560px,70vh)] overflow-auto">
+      <div className="overflow-auto">
         <table className="w-full caption-bottom text-sm">
           <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]">
             <TableRow className="border-b border-border hover:bg-transparent">

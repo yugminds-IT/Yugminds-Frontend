@@ -108,7 +108,7 @@ export default function AssignmentHierarchyPage() {
                 {c.items.map((a) => (
                   <Link
                     key={a.id}
-                    href={`/student/assignments/${a.id}/view`}
+                    href={`/lms/student/assignments/${a.id}/view`}
                     className="block rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <div className="p-4 flex items-center justify-between gap-4">

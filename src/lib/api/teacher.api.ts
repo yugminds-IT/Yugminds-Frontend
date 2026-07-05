@@ -70,6 +70,17 @@ export const teacherApi = {
     get: (id: string) => apiClient.get(`${TEACHER}/notifications/${id}`),
     recipients: (params?: { school_id?: string }) =>
       apiClient.get(withParams(`${TEACHER}/notifications/recipients`, params)),
+    create: (data: {
+      title: string;
+      message: string;
+      type?: string;
+      recipientType?: string;
+      recipients?: string[];
+      school_id?: string;
+      allowReplies?: boolean;
+    }) => apiClient.post(`${TEACHER}/notifications`, data),
+    markRead: (id: string) =>
+      apiClient.patch(`${TEACHER}/notifications/${id}`, { is_read: true }),
   },
 
   /** Student progress */

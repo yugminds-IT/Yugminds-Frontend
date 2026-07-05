@@ -72,11 +72,14 @@ export function SchoolGradeSelector({
     );
   }, [schools, searchTerm]);
 
-  // Get selected school names
-  const selectedSchoolNames = useMemo(() => {
-    return schools
-      .filter((s) => selectedSchoolIds.includes(s.id))
-      .map((s) => s.name);
+  // Get selected school objects (preserves id↔name pairing, deduplicates)
+  const selectedSchools = useMemo(() => {
+    const seen = new Set<string>();
+    return schools.filter((s) => {
+      if (!selectedSchoolIds.includes(s.id) || seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
   }, [schools, selectedSchoolIds]);
 
   // Toggle school selection
@@ -142,31 +145,28 @@ export function SchoolGradeSelector({
         )}
 
         {/* Selected Schools Display */}
-        {selectedSchoolIds.length > 0 && (
+        {selectedSchools.length > 0 && (
           <div className="flex flex-wrap gap-2 p-2 bg-gray-50 rounded-md border">
-            {selectedSchoolNames.map((name, idx) => {
-              const schoolId = selectedSchoolIds[idx];
-              return (
-                <Badge
-                  key={schoolId || 'undefined'}
-                  variant="secondary"
-                  className="flex items-center gap-1 px-2 py-1"
-                >
-                  {name}
-                  {!disabled && (
-                    <button
-                      type="button"
-                      onClick={() => removeSchool(schoolId)}
-                      className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
-                      aria-label={`Remove ${name}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </Badge>
-              );
-            })}
-            {!disabled && selectedSchoolIds.length > 0 && (
+            {selectedSchools.map((school) => (
+              <Badge
+                key={school.id}
+                variant="secondary"
+                className="flex items-center gap-1 px-2 py-1"
+              >
+                {school.name}
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => removeSchool(school.id)}
+                    className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
+                    aria-label={`Remove ${school.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </Badge>
+            ))}
+            {!disabled && (
               <Button
                 type="button"
                 variant="ghost"
@@ -246,7 +246,7 @@ export function SchoolGradeSelector({
           )}
         </div>
 
-        {selectedSchoolIds.length === 0 && (
+        {selectedSchools.length === 0 && (
           <p className="text-sm text-gray-500">
             Select at least one school {required && "(required)"}
           </p>

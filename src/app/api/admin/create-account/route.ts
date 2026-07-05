@@ -65,11 +65,12 @@ export async function POST(request: NextRequest) {
   if (csrfError) {
     return csrfError;
   }
-
-  ensureCsrfToken(request);
+  // NOTE: the removed `ensureCsrfToken(request)` here was a no-op (it only sets
+  // cookies on a response). The token cookie IS correctly set on the success
+  // response below via ensureCsrfToken(successResponse, request).
 
   // Apply rate limiting
-  const rateLimitResult = await rateLimit(request, RateLimitPresets.WRITE);
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.BULK);
   if (!rateLimitResult.success) {
     return NextResponse.json(
       { 

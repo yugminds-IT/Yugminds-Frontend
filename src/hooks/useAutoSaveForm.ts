@@ -299,10 +299,10 @@ export function useAutoSaveForm<T extends object>(
   // Clear form data
   const clearSavedData = useCallback(() => {
     clearFormData(formId, useSession);
-    formStore.clearFormData(formId);
-    formStore.setDirty(formId, false);
+    useFormStore.getState().clearFormData(formId);
+    useFormStore.getState().setDirty(formId, false);
     previousDataRef.current = null;
-  }, [formId, useSession, formStore]);
+  }, [formId, useSession]);
 
   // Get auto-save status
   const autoSaveStatus = formStore.getAutoSaveStatus(formId);

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { addTokensToHeaders } from "@/lib/csrf-client";
 import { apiClient, withParams } from "@/lib/api";
-import { getStoredUserId, getSession, clearStoredSession } from "@/lib/session-utils";
+import { getStoredUserId, getSession, clearStoredSession, setLogoutReason } from "@/lib/session-utils";
 
 // Circuit breaker: if the user lands on /redirect more than this many times
 // inside the window below, something is bouncing them in a loop. Stop and
@@ -70,6 +70,7 @@ export default function RedirectPage() {
         if (!session || !userId) {
           console.log('No session found, redirecting to login');
           clearRedirectHopCount();
+          setLogoutReason('session_expired');
           router.push('/lms/login');
           return;
         }

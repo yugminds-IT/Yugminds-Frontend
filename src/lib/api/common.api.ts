@@ -55,11 +55,6 @@ export const commonApi = {
     list: () => apiClient.get('/api/logos'),
   },
 
-  /** Success stories (public) */
-  successStories: {
-    list: () => apiClient.get('/success-stories'),
-  },
-
   /** Community page (public) */
   community: {
     get: () => apiClient.get('/community'),

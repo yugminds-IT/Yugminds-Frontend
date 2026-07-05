@@ -21,6 +21,8 @@ import {
   GripVertical
 } from "lucide-react";
 import { FileUploadZone } from "./FileUploadZone";
+import { toast } from "../ui/toast";
+import { confirmDialog } from "../ui/confirm-dialog";
 
 export interface ChapterContent {
   id?: string;
@@ -172,7 +174,7 @@ export function ChapterContentManager({
 
   const handleSave = () => {
     if (!formData.title.trim()) {
-      alert('Title is required');
+      toast.warning('Title is required');
       return;
     }
 
@@ -191,14 +193,14 @@ export function ChapterContentManager({
     if (finalContentType === 'link' && formData.content_url) {
       const validation = validateDriveLink(formData.content_url);
       if (!validation.valid) {
-        alert(validation.message || 'Invalid link format');
+        toast.warning(validation.message || 'Invalid link format');
         return;
       }
     }
 
     // Validate video links require URL
     if (finalContentType === 'video_link' && !formData.content_url.trim()) {
-      alert('Video URL is required');
+      toast.warning('Video URL is required');
       return;
     }
 
@@ -246,14 +248,19 @@ export function ChapterContentManager({
     closeDialog();
   };
 
-  const handleDelete = (contentId: string | undefined) => {
+  const handleDelete = async (contentId: string | undefined) => {
     if (!contentId) {
       console.warn('Cannot delete: content ID is missing');
-      alert('Error: Cannot delete content. Missing content ID.');
+      toast.error('Cannot delete content. Missing content ID.');
       return;
     }
-    
-    if (confirm('Are you sure you want to delete this content?')) {
+
+    if (await confirmDialog({
+      title: 'Delete this content?',
+      description: 'This content will be removed from the chapter.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    })) {
       const updatedContents = contents.filter((c: ChapterContent) => {
         const cId = c.id || c.content_id;
         // Also check by title as fallback if IDs don't match
@@ -273,7 +280,7 @@ export function ChapterContentManager({
       
       if (updatedContents.length === contents.length) {
         console.error('Delete failed: Content not found', { contentId, contents });
-        alert('Error: Content not found. It may have already been deleted.');
+        toast.error('Content not found. It may have already been deleted.');
         return;
       }
       
@@ -517,7 +524,7 @@ export function ChapterContentManager({
                             console.log('✅ Content deleted using property matching fallback');
                           } else {
                             console.error('Cannot delete: content not found', { content, contents: contents.map((c: ChapterContent) => ({ id: c.id, content_id: c.content_id, title: c.title })) });
-                            alert('Error: Cannot delete this content. Please refresh the page and try again.');
+                            toast.error('Cannot delete this content. Please refresh the page and try again.');
                           }
                         }
                       }}

@@ -25,14 +25,15 @@ Sentry.init({
   // in development and sample at a lower rate in production
   replaysSessionSampleRate: 0.1,
 
-  // You can remove this option if you're not planning to use the Sentry Session Replay feature:
-  integrations: [
-    Sentry.replayIntegration({
-      // Additional Replay configuration goes in here, for example:
-      maskAllText: true,
-      blockAllMedia: true,
-    }),
-  ],
+  // Only load Session Replay in production to avoid ~358KB replay SDK in dev
+  integrations: process.env.NODE_ENV === 'production'
+    ? [
+        Sentry.replayIntegration({
+          maskAllText: true,
+          blockAllMedia: true,
+        }),
+      ]
+    : [],
 
   // Filter out sensitive data and Promise props
   beforeSend(event) {

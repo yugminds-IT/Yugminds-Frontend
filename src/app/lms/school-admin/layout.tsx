@@ -11,7 +11,7 @@ import { useAppStore, type AppState } from "@/store/app-store";
 import { useBrowserNavigation } from "@/hooks/useBrowserNavigation";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { setAuthToken } from "@/lib/api";
-import { clearStoredSession, getStoredUserId } from "@/lib/session-utils";
+import { clearStoredSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 
@@ -142,6 +142,7 @@ export default function SchoolAdminLayout({
           console.error('❌ This might indicate a session persistence issue');
           if (mounted) {
             setStatus('unauthenticated');
+            setLogoutReason('session_timeout');
             router.push('/lms/login');
           }
           return;
@@ -152,6 +153,7 @@ export default function SchoolAdminLayout({
         if (session.access_token) setAuthToken(session.access_token);
         const userId = getStoredUserId();
         if (!userId) {
+          setLogoutReason('wrong_role');
           if (mounted) router.push("/lms/login");
           return;
         }
@@ -189,6 +191,7 @@ export default function SchoolAdminLayout({
          
         } catch (err: unknown) {
           console.error('Error loading bootstrap data:', err instanceof Error ? err.message : err);
+          setLogoutReason('error');
           if (mounted) router.push('/lms/login');
           return;
         }
@@ -196,6 +199,7 @@ export default function SchoolAdminLayout({
         if (!profile) {
           console.error('Profile not found after all attempts');
           if (mounted) {
+            setLogoutReason('error');
             router.push('/lms/login');
           }
           return;
@@ -212,6 +216,7 @@ export default function SchoolAdminLayout({
             // /redirect calls /get-role and then routes by role — which
             // would just bounce the user right back here and loop.
             clearStoredSession();
+            setLogoutReason('wrong_role');
             router.push('/lms/login');
           }
           return;
@@ -242,6 +247,7 @@ export default function SchoolAdminLayout({
           // Don't redirect immediately on error, give it a moment
           timeoutId = setTimeout(() => {
             if (mounted) {
+              setLogoutReason('session_timeout');
               router.push('/lms/login');
             }
           }, 1000);
@@ -322,7 +328,7 @@ export default function SchoolAdminLayout({
           notificationBadgeCount={unreadNotificationCount}
         />
         
-        <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+        <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
           {children}
         </div>
       </div>

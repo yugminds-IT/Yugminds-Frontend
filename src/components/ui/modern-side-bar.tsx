@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { commonApi } from '../../lib/api';
 import { clearStoredSession, getStoredUserId } from '../../lib/session-utils';
@@ -28,9 +28,10 @@ import {
   Clock,
   KeyRound,
   Activity,
-  ClipboardCheck,
   Award,
-  MessageSquare
+  MessageSquare,
+  Key,
+  Cpu
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -74,13 +75,14 @@ const getNavigationItems = (role: string, assignmentCount?: number, notification
         { id: "notifications", name: "Notifications", icon: Bell, href: "/lms/admin/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
         { id: "password-reset-requests", name: "Password Reset Requests", icon: KeyRound, href: "/lms/admin/password-reset-requests", badge: passwordResetCount && passwordResetCount > 0 ? String(passwordResetCount) : undefined },
         { id: "reports", name: "Teacher Reports", icon: ClipboardList, href: "/lms/admin/reports" },
+        { id: "joining-codes", name: "Joining Codes", icon: Key, href: "/lms/admin/joining-codes" },
+        { id: "licenses", name: "RoboCoders Licenses", icon: Cpu, href: "/lms/admin/licenses" },
         { id: "logos", name: "School Logo Management", icon: School, href: "/lms/admin/logos" },
         { id: "community", name: "Community Management", icon: FileText, href: "/lms/admin/community" },
         { id: "analytics", name: "Performance Analytics", icon: TrendingUp, href: "/lms/admin/analytics" },
         { id: "assignment-analytics", name: "Assignment Analytics", icon: BarChart3, href: "/lms/admin/assignment-analytics" },
         { id: "monitoring", name: "System Monitoring", icon: Activity, href: "/lms/admin/monitoring" },
         { id: "contact-submissions", name: "Contact Submissions", icon: MessageSquare, href: "/lms/admin/contact-submissions" },
-        { id: "audit-log", name: "Audit Log", icon: ClipboardCheck, href: "/lms/admin/audit-log" },
         { id: "settings", name: "Settings", icon: Settings, href: "/lms/admin/settings" },
       ];
     case 'school_admin':
@@ -134,7 +136,10 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
   const router = useRouter();
   const pathname = usePathname();
 
-  const navigationItems = getNavigationItems(userRole, assignmentBadgeCount, resolvedNotificationCount, passwordResetBadgeCount);
+  const navigationItems = useMemo(
+    () => getNavigationItems(userRole, assignmentBadgeCount, resolvedNotificationCount, passwordResetBadgeCount),
+    [userRole, assignmentBadgeCount, resolvedNotificationCount, passwordResetBadgeCount]
+  );
 
   // Keep local notification count in sync when parent provides it (e.g. student layout)
   useEffect(() => {
@@ -239,7 +244,7 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
     if (parentMatches.length > 0) {
       setActiveItem(parentMatches[0].id);
     }
-  }, [pathname, navigationItems, activeItem]);
+  }, [pathname, navigationItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);

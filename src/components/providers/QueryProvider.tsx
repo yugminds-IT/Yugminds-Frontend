@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { ToastProvider } from '../ui/toast'
+import { ConfirmProvider } from '../ui/confirm-dialog'
 import { subscribeToLogoutBroadcast } from '@/lib/session-utils'
 
 export default function QueryProvider({ children }: { children: React.ReactNode }) {
@@ -28,7 +29,9 @@ export default function QueryProvider({ children }: { children: React.ReactNode 
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        {children}
+        <ConfirmProvider>
+          {children}
+        </ConfirmProvider>
       </ToastProvider>
     </QueryClientProvider>
   )

@@ -10,7 +10,7 @@ import { waitForSession } from "@/lib/session-utils";
 import { useAppStore, type AppState } from "@/store/app-store";
 import { useBrowserNavigation } from "@/hooks/useBrowserNavigation";
 import { commonApi, teacherApi, setAuthToken, apiClient } from "@/lib/api";
-import { getStoredUserId } from "@/lib/session-utils";
+import { getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 
@@ -139,6 +139,7 @@ export default function TeacherLayout({
           console.error('❌ This might indicate a session persistence issue');
           if (mounted) {
             setStatus('unauthenticated');
+            setLogoutReason('session_timeout');
             router.push('/lms/login');
           }
           return;
@@ -148,6 +149,7 @@ export default function TeacherLayout({
         if (!session.user?.id) {
           if (mounted) {
             setStatus('unauthenticated');
+            setLogoutReason('session_expired');
             router.push('/lms/login');
           }
           return;
@@ -169,6 +171,7 @@ export default function TeacherLayout({
         if (expiresAtSec && expiresAtSec < now) {
           console.error('❌ Teacher layout: Session is expired');
           if (mounted) {
+            setLogoutReason('wrong_role');
             router.push('/lms/login');
           }
           return;
@@ -187,11 +190,13 @@ export default function TeacherLayout({
                 : null;
         } catch (err) {
           console.error('Error loading profile:', err);
+          setLogoutReason('wrong_role');
           if (mounted) router.push('/lms/login');
           return;
         }
 
         if (!profile) {
+          setLogoutReason('wrong_role');
           if (mounted) router.push('/lms/login');
           return;
         }
@@ -257,6 +262,7 @@ export default function TeacherLayout({
         if (mounted) {
           setStatus('unauthenticated');
           setLoading(false);
+          setLogoutReason('error');
           router.push('/lms/login');
         }
       } finally {
@@ -307,6 +313,7 @@ export default function TeacherLayout({
         getUserInProgressRef.current = false;
         userLoadedRef.current = false;
         setUser(null);
+        setLogoutReason('session_expired');
         router.push('/lms/login');
       }
     };
@@ -391,7 +398,7 @@ export default function TeacherLayout({
         notificationBadgeCount={unreadNotificationCount}
       />
       
-      <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+      <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
         {/* School Selector Topbar */}
         {schools.length > 1 && (
           <div className="bg-white border-b border-gray-200 px-6 py-3">

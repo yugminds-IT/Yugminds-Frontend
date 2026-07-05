@@ -17,6 +17,7 @@ import {
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import { Calendar, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { toast } from "@/components/ui/toast";
 
 /**
  * Leave Application Page
@@ -70,17 +71,17 @@ export default function LeavesPage() {
     e.preventDefault();
     
     if (!selectedSchool) {
-      alert('Please select a school first');
+      toast.warning('Please select a school first');
       return;
     }
 
     if (!formData.start_date || !formData.end_date) {
-      alert('Please select start and end dates');
+      toast.warning('Please select start and end dates');
       return;
     }
 
     if (!formData.reason.trim()) {
-      alert('Please provide a reason for leave');
+      toast.warning('Please provide a reason for leave');
       return;
     }
 
@@ -88,7 +89,7 @@ export default function LeavesPage() {
     const start = new Date(formData.start_date);
     const end = new Date(formData.end_date);
     if (start > end) {
-      alert('End date must be after start date');
+      toast.warning('End date must be after start date');
       return;
     }
 
@@ -115,10 +116,10 @@ export default function LeavesPage() {
         substitute_required: false
       });
 
-      alert('Leave request submitted successfully! It will be reviewed by your School Admin and System Admin.');
-     
+      toast.success('Leave request submitted successfully! It will be reviewed by your School Admin and System Admin.');
+
     } catch (error: unknown) {
-      alert('Error submitting leave request: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      toast.error('Error submitting leave request: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 

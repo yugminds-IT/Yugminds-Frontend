@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { teacherApi } from "@/lib/api/teacher.api";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useTeacherSchools } from "@/hooks/useTeacherData";
+import { useTeacherSchool } from "../context";
+import { RankingTable, type RankingRow } from "@/components/ui/ranking-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,6 +74,23 @@ type Submission = {
   score: number | null;
   max_score: number | null;
   feedback?: string | null;
+  submitted_at?: string | null;
+  is_retake?: boolean;
+  grade?: string | null;
+  section?: string | null;
+  school_name?: string | null;
+};
+
+// Attempts grouped per student — the view key structure
+type StudentRow = {
+  student_id: number;
+  student_name: string;
+  grade: string | null;
+  section: string | null;
+  school_name: string | null;
+  attempts: Submission[];
+  best: Submission | null;   // highest-score graded attempt
+  latest: Submission;        // most recent attempt
 };
 
 type RetakeGrant = { studentId: number; additionalAttempts: number };
@@ -100,8 +120,13 @@ type AssignmentRow = {
 
 type StudentRank = {
   rank: number;
+  school_rank?: number;
+  grade_rank?: number;
+  section_rank?: number;
   student_id: number;
   student_name: string;
+  grade?: string;
+  section?: string;
   course_score: number;
   daily_score: number;
   overall_score: number;
@@ -159,6 +184,10 @@ function Avatar({ name, color = "blue" }: { name: string; color?: string }) {
 /* ─── main page ─── */
 export default function TeacherAssignmentsPage() {
   const { data: schools = [] } = useTeacherSchools();
+  // Follow the active school chosen in the dashboard topbar so assignments,
+  // analytics, and new-assignment defaults all stay scoped to one school.
+  const { selectedSchool } = useTeacherSchool();
+  const activeSchoolId = selectedSchool?.id;
   const [tab, setTab] = useState<"daily" | "course" | "analytics">("daily");
   const [dailyAssignments, setDailyAssignments] = useState<TeacherAssignment[]>([]);
   const [courseAssignments, setCourseAssignments] = useState<TeacherAssignment[]>([]);
@@ -167,6 +196,9 @@ export default function TeacherAssignmentsPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [grading, setGrading] = useState<Record<string, { score: string; feedback: string }>>({});
   const [retakeGrant, setRetakeGrant] = useState<RetakeGrant>({ studentId: 0, additionalAttempts: 1 });
+  const [grantingStudentId, setGrantingStudentId] = useState<number | null>(null);
+  const [grantSearch, setGrantSearch] = useState("");
+  const [grantFilter, setGrantFilter] = useState<"all" | "graded" | "pending">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -176,6 +208,9 @@ export default function TeacherAssignmentsPage() {
   const [analyticsSubTab, setAnalyticsSubTab] = useState<"leaderboard" | "assignments" | "subjects">("leaderboard");
   const [grades, setGrades] = useState<GradeInfo[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [subSearch, setSubSearch] = useState("");
+  const [subFilter, setSubFilter] = useState<"all" | "graded" | "pending">("all");
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [createPayload, setCreatePayload] = useState({
     dueDate: "",
     schoolId: "",
@@ -206,6 +241,67 @@ export default function TeacherAssignmentsPage() {
   const gradedSubmissions = useMemo(() => submissions.filter((s) => s.status === "graded"), [submissions]);
   const pendingSubmissions = useMemo(() => submissions.filter((s) => s.status !== "graded"), [submissions]);
 
+  // Group all submission rows by student, pick best (highest graded score) and latest attempt.
+  const studentRows = useMemo((): StudentRow[] => {
+    const map = new Map<number, StudentRow>();
+    for (const s of submissions) {
+      const row = map.get(s.student_id) ?? {
+        student_id: s.student_id,
+        student_name: s.student_name,
+        grade: s.grade ?? null,
+        section: s.section ?? null,
+        school_name: s.school_name ?? null,
+        attempts: [],
+        best: null,
+        latest: s,
+      };
+      row.attempts.push(s);
+      // latest = highest attempt_number
+      if (s.attempt_number >= row.latest.attempt_number) row.latest = s;
+      // best = graded attempt with highest score
+      if (s.status === "graded" && s.score != null) {
+        if (!row.best || (row.best.score ?? -1) < s.score) row.best = s;
+      }
+      map.set(s.student_id, row);
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.student_name.localeCompare(b.student_name)
+    );
+  }, [submissions]);
+
+  const filteredStudentRows = useMemo(() => {
+    let rows = studentRows;
+    if (subFilter === "graded") rows = rows.filter((r) => r.best !== null);
+    if (subFilter === "pending") rows = rows.filter((r) => r.best === null);
+    if (subSearch.trim()) {
+      const q = subSearch.toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          r.student_name.toLowerCase().includes(q) ||
+          (r.grade ?? "").toLowerCase().includes(q) ||
+          (r.section ?? "").toLowerCase().includes(q) ||
+          (r.school_name ?? "").toLowerCase().includes(q)
+      );
+    }
+    return rows;
+  }, [studentRows, subFilter, subSearch]);
+
+  const filteredGrantRows = useMemo(() => {
+    let rows = studentRows;
+    if (grantFilter === "graded") rows = rows.filter((r) => r.best !== null);
+    if (grantFilter === "pending") rows = rows.filter((r) => r.best === null);
+    if (grantSearch.trim()) {
+      const q = grantSearch.toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          r.student_name.toLowerCase().includes(q) ||
+          (r.grade ?? "").toLowerCase().includes(q) ||
+          (r.section ?? "").toLowerCase().includes(q)
+      );
+    }
+    return rows;
+  }, [studentRows, grantFilter, grantSearch]);
+
   const statsBar = useMemo(() => {
     const total = assignments.length;
     const published = assignments.filter((a) => a.is_published).length;
@@ -216,7 +312,7 @@ export default function TeacherAssignmentsPage() {
   /* ─── data loaders ─── */
   const loadAssignments = useCallback(async (type: "DAILY" | "COURSE") => {
     try {
-      const { data } = await teacherApi.assignments.list({ type });
+      const { data } = await teacherApi.assignments.list({ type, school_id: activeSchoolId });
       const list = (data as { assignments?: TeacherAssignment[] }).assignments ?? [];
       if (type === "DAILY") setDailyAssignments(list);
       else setCourseAssignments(list);
@@ -224,7 +320,7 @@ export default function TeacherAssignmentsPage() {
     } catch {
       setError("Failed to load assignments");
     }
-  }, []);
+  }, [activeSchoolId]);
 
   const loadSubmissions = useCallback(async (assignmentId: string) => {
     if (!assignmentId) return;
@@ -248,27 +344,35 @@ export default function TeacherAssignmentsPage() {
   useEffect(() => {
     if (tab === "analytics" && !analyticsData) {
       setAnalyticsLoading(true);
-      teacherApi.assignments.analytics({})
+      teacherApi.assignments.analytics({ school_id: activeSchoolId })
         .then(({ data }) => setAnalyticsData((data as { analytics?: AnalyticsData }).analytics ?? null))
         .catch(() => setAnalyticsData(null))
         .finally(() => setAnalyticsLoading(false));
     }
-  }, [tab, analyticsData]);
+  }, [tab, analyticsData, activeSchoolId]);
+
+  // When the active school changes, drop school-specific selections and cached
+  // analytics so everything reloads scoped to the newly selected school.
+  useEffect(() => {
+    setSelectedId("");
+    setSubmissions([]);
+    setAnalyticsData(null);
+  }, [activeSchoolId]);
 
   useEffect(() => { if (selectedId) void loadSubmissions(selectedId); else setSubmissions([]); }, [selectedId, loadSubmissions]);
 
   useEffect(() => { setSelectedId(""); setSubmissions([]); setSearchQuery(""); }, [tab]);
 
   useEffect(() => {
-    const sid = createPayload.schoolId || (Array.isArray(schools) && schools.length > 0 ? String((schools[0] as { id?: string }).id ?? "") : "");
+    const sid = createPayload.schoolId || activeSchoolId || (Array.isArray(schools) && schools.length > 0 ? String((schools[0] as { id?: string }).id ?? "") : "");
     if (sid) void loadGrades(sid);
-  }, [createPayload.schoolId, schools, loadGrades]);
+  }, [createPayload.schoolId, activeSchoolId, schools, loadGrades]);
 
   /* ─── actions ─── */
   const handleCreate = async () => {
     setLoading(true);
     try {
-      const effectiveSchoolId = createPayload.schoolId || (Array.isArray(schools) && schools.length > 0 ? String((schools[0] as { id?: string }).id ?? "") : "");
+      const effectiveSchoolId = createPayload.schoolId || activeSchoolId || (Array.isArray(schools) && schools.length > 0 ? String((schools[0] as { id?: string }).id ?? "") : "");
       if (!effectiveSchoolId) { setError("No school found. Please contact admin."); return; }
       await teacherApi.assignments.create({
         title: builderAssignment?.title || "Daily Assignment",
@@ -340,7 +444,11 @@ export default function TeacherAssignmentsPage() {
 
   const handleOpenRetakeForAll = async () => {
     if (!selectedId) return;
-    if (!window.confirm("Open retake window for all students who have already submitted?")) return;
+    if (!(await confirmDialog({
+      title: 'Open retake for all?',
+      description: 'Open the retake window for all students who have already submitted.',
+      confirmText: 'Open Retake',
+    }))) return;
     setLoading(true);
     try {
       await teacherApi.assignments.openRetakeForAll(selectedId);
@@ -351,7 +459,12 @@ export default function TeacherAssignmentsPage() {
   };
 
   const handleDelete = async (assignmentId: string) => {
-    if (!window.confirm("Delete this assignment? This cannot be undone.")) return;
+    if (!(await confirmDialog({
+      title: 'Delete this assignment?',
+      description: 'This action cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    }))) return;
     setLoading(true);
     try {
       await teacherApi.assignments.delete(assignmentId);
@@ -365,7 +478,7 @@ export default function TeacherAssignmentsPage() {
      RENDER
   ══════════════════════════════════════ */
   return (
-    <div className="min-h-screen bg-[#f4f6f9]">
+    <div className="bg-[#f4f6f9]">
 
       {/* ── Top navigation bar ── */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
@@ -501,8 +614,8 @@ export default function TeacherAssignmentsPage() {
 
               {/* Leaderboard */}
               {analyticsSubTab === "leaderboard" && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="font-semibold text-gray-900 text-sm">Student Rankings</h3>
                       <p className="text-xs text-gray-400 mt-0.5">Overall = Course (60%) + Daily (40%)</p>
@@ -515,45 +628,24 @@ export default function TeacherAssignmentsPage() {
                       <p className="text-sm">No ranking data yet</p>
                     </div>
                   ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100 bg-gray-50/60 text-xs text-gray-500 uppercase tracking-wide">
-                          <th className="py-3 px-5 text-left w-12">Rank</th>
-                          <th className="py-3 px-4 text-left">Student</th>
-                          <th className="py-3 px-4 text-right hidden sm:table-cell">Course</th>
-                          <th className="py-3 px-4 text-right hidden sm:table-cell">Daily</th>
-                          <th className="py-3 px-5 text-right">Overall</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {analyticsData.top_students.map((s, i) => (
-                          <tr key={s.student_id} className={`hover:bg-gray-50/60 transition-colors ${i < 3 ? "bg-amber-50/20" : ""}`}>
-                            <td className="py-3 px-5 text-center">
-                              {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (
-                                <span className="text-xs font-semibold text-gray-400">#{i + 1}</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2.5">
-                                <Avatar name={s.student_name} color={i < 3 ? "green" : "blue"} />
-                                <span className="font-semibold text-gray-900 text-sm">{s.student_name}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-right hidden sm:table-cell">
-                              <span className="text-xs font-semibold text-indigo-600">{s.course_score.toFixed(1)}%</span>
-                            </td>
-                            <td className="py-3 px-4 text-right hidden sm:table-cell">
-                              <span className="text-xs font-semibold text-blue-600">{s.daily_score.toFixed(1)}%</span>
-                            </td>
-                            <td className="py-3 px-5 text-right">
-                              <span className={`text-sm font-bold ${s.overall_score >= 90 ? "text-amber-600" : s.overall_score >= 75 ? "text-emerald-600" : s.overall_score >= 60 ? "text-blue-600" : "text-gray-700"}`}>
-                                {s.overall_score.toFixed(1)}%
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <RankingTable
+                      rows={(analyticsData.top_students ?? []).map((s): RankingRow => ({
+                        student_id: s.student_id,
+                        student_name: s.student_name,
+                        grade: s.grade,
+                        section: s.section,
+                        course_score: s.course_score,
+                        daily_score: s.daily_score,
+                        overall_score: s.overall_score,
+                        rank: s.school_rank ?? s.rank,
+                        school_rank: s.school_rank ?? s.rank,
+                        grade_rank: s.grade_rank,
+                        section_rank: s.section_rank,
+                      }))}
+                      showRanks={["school", "grade", "section"]}
+                      showGrade
+                      showScoreBreakdown
+                    />
                   )}
                 </div>
               )}
@@ -685,41 +777,47 @@ export default function TeacherAssignmentsPage() {
                       <button
                         key={a.id}
                         onClick={() => { setSelectedId(a.id === selectedId ? "" : a.id); setDetailTab("submissions"); }}
-                        className={`w-full text-left px-4 py-3.5 transition-colors ${
+                        className={`w-full text-left px-4 py-3.5 transition-all border-l-[3px] ${
                           isSelected
-                            ? "bg-blue-50 border-l-2 border-l-blue-500"
-                            : "hover:bg-gray-50 border-l-2 border-l-transparent"
+                            ? "bg-blue-600 border-l-blue-400 shadow-sm"
+                            : "hover:bg-gray-50 border-l-transparent"
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2 mb-1.5">
-                          <p className={`text-sm font-semibold leading-snug truncate ${isSelected ? "text-blue-900" : "text-gray-900"}`}>
+                          <p className={`text-sm font-semibold leading-snug truncate ${isSelected ? "text-white" : "text-gray-900"}`}>
                             {a.title}
                           </p>
-                          <StatusPill published={a.is_published} />
+                          {isSelected ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-white/20 text-white px-2 py-0.5 rounded-full shrink-0">
+                              <CheckCircle className="h-3 w-3" /> Viewing
+                            </span>
+                          ) : (
+                            <StatusPill published={a.is_published} />
+                          )}
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           {a.subject && (
-                            <span className="text-[11px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                            <span className={`text-[11px] px-1.5 py-0.5 rounded ${isSelected ? "bg-white/15 text-blue-100" : "text-gray-500 bg-gray-100"}`}>
                               {a.subject}
                             </span>
                           )}
                           {a.grade_name && (
-                            <span className="text-[11px] text-gray-500">{a.grade_name}</span>
+                            <span className={`text-[11px] ${isSelected ? "text-blue-200" : "text-gray-500"}`}>{a.grade_name}</span>
                           )}
                         </div>
                         <div className="flex items-center gap-3 mt-2 text-[11px]">
-                          <span className="text-gray-400 flex items-center gap-1">
+                          <span className={`flex items-center gap-1 ${isSelected ? "text-blue-200" : "text-gray-400"}`}>
                             <Users className="h-3 w-3" />
                             {a.submission_count ?? 0}
                           </span>
                           {(a.avg_score ?? 0) > 0 && (
-                            <span className="text-emerald-600 font-medium flex items-center gap-1">
+                            <span className={`font-medium flex items-center gap-1 ${isSelected ? "text-green-300" : "text-emerald-600"}`}>
                               <Star className="h-3 w-3" />
                               {a.avg_score?.toFixed(1)}%
                             </span>
                           )}
                           {dueDate && (
-                            <span className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : "text-gray-400"}`}>
+                            <span className={`flex items-center gap-1 ${isOverdue ? (isSelected ? "text-red-300" : "text-red-500") : isSelected ? "text-blue-200" : "text-gray-400"}`}>
                               <Clock className="h-3 w-3" />
                               {isOverdue ? "Overdue" : dueDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                             </span>
@@ -850,80 +948,218 @@ export default function TeacherAssignmentsPage() {
 
                 {/* ── Submissions tab ── */}
                 {detailTab === "submissions" && (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    {submissions.length === 0 ? (
-                      <div className="text-center py-16 text-gray-400">
-                        <Users className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                        <p className="text-sm font-medium text-gray-500">No submissions yet</p>
-                        <p className="text-xs text-gray-400 mt-1">Students haven&apos;t submitted this assignment</p>
+                  <div className="space-y-3">
+                    {/* Controls bar */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative flex-1 min-w-[180px]">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                        <input
+                          placeholder="Search student, grade, section…"
+                          value={subSearch}
+                          onChange={(e) => setSubSearch(e.target.value)}
+                          className="w-full h-8 pl-8 pr-3 text-xs border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                        />
                       </div>
-                    ) : (
-                      <div className="divide-y divide-gray-50">
-                        {/* Header row */}
-                        <div className="px-5 py-3 bg-gray-50/80 grid grid-cols-[1fr,auto,auto] gap-4 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                          <span>Student</span>
-                          <span className="text-center">Attempt</span>
-                          <span className="text-right">Score</span>
-                        </div>
+                      {(["all", "graded", "pending"] as const).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setSubFilter(f)}
+                          className={`h-8 px-3 text-xs font-medium rounded-lg border transition-colors ${
+                            subFilter === f
+                              ? "bg-gray-900 text-white border-gray-900"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          {f.charAt(0).toUpperCase() + f.slice(1)}
+                          <span className={`ml-1.5 ${subFilter === f ? "text-gray-400" : "text-gray-400"}`}>
+                            {f === "all" ? studentRows.length : f === "graded" ? studentRows.filter(r => r.best).length : studentRows.filter(r => !r.best).length}
+                          </span>
+                        </button>
+                      ))}
+                      <span className="text-xs text-gray-400 ml-auto">
+                        {submissions.length} total submission{submissions.length !== 1 ? "s" : ""}
+                        {submissions.length !== studentRows.length && ` · ${studentRows.length} student${studentRows.length !== 1 ? "s" : ""}`}
+                      </span>
+                    </div>
 
-                        {submissions.map((sub) => (
-                          <div key={sub.id} className="px-5 py-4">
-                            <div className="flex items-center gap-3">
-                              <Avatar name={sub.student_name} color={tab === "course" ? "indigo" : "blue"} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="text-sm font-semibold text-gray-900 truncate">{sub.student_name}</p>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-[11px] text-gray-400">#{sub.attempt_number}</span>
-                                    {sub.status === "graded" ? (
-                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">
-                                        <CheckCircle className="h-3 w-3" />
-                                        {sub.score ?? 0}/{sub.max_score ?? selectedAssignment.total_marks ?? "—"}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      {studentRows.length === 0 ? (
+                        <div className="text-center py-16 text-gray-400">
+                          <Users className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                          <p className="text-sm font-medium text-gray-500">No submissions yet</p>
+                          <p className="text-xs text-gray-400 mt-1">Students haven&apos;t submitted this assignment</p>
+                        </div>
+                      ) : filteredStudentRows.length === 0 ? (
+                        <div className="text-center py-12 text-gray-400">
+                          <Search className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                          <p className="text-sm">No students match your search</p>
+                        </div>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50/80 border-b border-gray-100">
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-8" />
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Student</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Grade</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">Section</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide hidden lg:table-cell">School</th>
+                              <th className="px-4 py-3 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Attempts</th>
+                              <th className="px-4 py-3 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Best Score</th>
+                              <th className="px-4 py-3 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {filteredStudentRows.map((row) => {
+                              const isExpanded = expanded.has(row.student_id);
+                              const best = row.best;
+                              const latest = row.latest;
+                              const pct = best && best.max_score ? Math.round((best.score! / best.max_score) * 100) : null;
+                              const scoreColor = pct == null ? "" : pct >= 75 ? "text-emerald-700" : pct >= 50 ? "text-amber-600" : "text-red-600";
+
+                              return [
+                                /* ── Student summary row ── */
+                                <tr
+                                  key={`row-${row.student_id}`}
+                                  className="hover:bg-gray-50/60 transition-colors cursor-pointer"
+                                  onClick={() =>
+                                    setExpanded((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(row.student_id)) next.delete(row.student_id);
+                                      else next.add(row.student_id);
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  <td className="px-4 py-3.5 text-gray-400 text-xs select-none">
+                                    {row.attempts.length > 1 ? (isExpanded ? "▾" : "▸") : ""}
+                                  </td>
+                                  <td className="px-4 py-3.5">
+                                    <div className="flex items-center gap-2.5">
+                                      <Avatar name={row.student_name} color={tab === "course" ? "indigo" : "blue"} />
+                                      <span className="font-semibold text-gray-900 text-sm">{row.student_name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3.5 hidden md:table-cell text-xs text-gray-500">{row.grade ?? "—"}</td>
+                                  <td className="px-4 py-3.5 hidden md:table-cell text-xs text-gray-500">{row.section ?? "—"}</td>
+                                  <td className="px-4 py-3.5 hidden lg:table-cell text-xs text-gray-500 max-w-[140px] truncate">{row.school_name ?? "—"}</td>
+                                  <td className="px-4 py-3.5 text-center">
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600">
+                                      {row.attempts.length > 1 && <RotateCcw className="h-3 w-3 text-amber-500" />}
+                                      {row.attempts.length}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3.5 text-right">
+                                    {best ? (
+                                      <span className={`text-sm font-bold ${scoreColor}`}>
+                                        {best.score}/{best.max_score}
+                                        {pct != null && <span className="text-xs font-normal text-gray-400 ml-1">({pct}%)</span>}
+                                      </span>
+                                    ) : latest.status !== "graded" ? (
+                                      <span className="text-xs text-gray-400">Pending</span>
+                                    ) : (
+                                      <span className="text-xs text-gray-400">—</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3.5 text-right">
+                                    {best ? (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                                        <CheckCircle className="h-3 w-3" /> Graded
                                       </span>
                                     ) : (
-                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">
-                                        <Clock className="h-3 w-3" />
-                                        Pending
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                                        <Clock className="h-3 w-3" /> Pending
                                       </span>
                                     )}
-                                  </div>
-                                </div>
-                                {sub.status === "graded" && sub.feedback && (
-                                  <p className="text-xs text-gray-400 mt-1 italic truncate">&ldquo;{sub.feedback}&rdquo;</p>
-                                )}
-                              </div>
-                            </div>
+                                  </td>
+                                </tr>,
 
-                            {/* Grading inputs */}
-                            {sub.status !== "graded" && (
-                              <div className="flex items-center gap-2 mt-3 ml-11">
-                                <input
-                                  type="number"
-                                  placeholder="Score"
-                                  className="w-20 h-8 px-2.5 text-xs border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                  value={grading[sub.id]?.score ?? ""}
-                                  onChange={(e) => setGrading((prev) => ({ ...prev, [sub.id]: { score: e.target.value, feedback: prev[sub.id]?.feedback ?? "" } }))}
-                                />
-                                <input
-                                  type="text"
-                                  placeholder="Feedback (optional)"
-                                  className="flex-1 h-8 px-2.5 text-xs border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                  value={grading[sub.id]?.feedback ?? ""}
-                                  onChange={(e) => setGrading((prev) => ({ ...prev, [sub.id]: { score: prev[sub.id]?.score ?? "", feedback: e.target.value } }))}
-                                />
-                                <button
-                                  onClick={() => void handleGrade(sub.id)}
-                                  disabled={loading}
-                                  className="h-8 px-4 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                                >
-                                  Grade
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                                /* ── Expanded: all attempts with grade controls ── */
+                                ...(isExpanded
+                                  ? [
+                                      <tr key={`exp-${row.student_id}`} className="bg-gray-50/40">
+                                        <td colSpan={8} className="px-6 pb-4 pt-2">
+                                          <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
+                                            <table className="w-full text-xs">
+                                              <thead>
+                                                <tr className="bg-gray-50 border-b border-gray-100">
+                                                  <th className="px-3 py-2 text-left font-semibold text-gray-400 uppercase tracking-wide">Attempt</th>
+                                                  <th className="px-3 py-2 text-left font-semibold text-gray-400 uppercase tracking-wide">Submitted</th>
+                                                  <th className="px-3 py-2 text-center font-semibold text-gray-400 uppercase tracking-wide">Type</th>
+                                                  <th className="px-3 py-2 text-right font-semibold text-gray-400 uppercase tracking-wide">Score</th>
+                                                  <th className="px-3 py-2 text-left font-semibold text-gray-400 uppercase tracking-wide">Feedback</th>
+                                                  <th className="px-3 py-2 font-semibold text-gray-400 uppercase tracking-wide">Action</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-gray-50">
+                                                {row.attempts.map((att) => (
+                                                  <tr key={att.id} className={att.id === best?.id ? "bg-emerald-50/40" : ""}>
+                                                    <td className="px-3 py-2.5 font-medium text-gray-700">#{att.attempt_number}</td>
+                                                    <td className="px-3 py-2.5 text-gray-500">
+                                                      {att.submitted_at ? new Date(att.submitted_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}
+                                                    </td>
+                                                    <td className="px-3 py-2.5 text-center">
+                                                      {att.is_retake ? (
+                                                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                                          <RotateCcw className="h-2.5 w-2.5" /> Retake
+                                                        </span>
+                                                      ) : (
+                                                        <span className="text-gray-400">Initial</span>
+                                                      )}
+                                                    </td>
+                                                    <td className="px-3 py-2.5 text-right font-medium text-gray-700">
+                                                      {att.status === "graded" ? `${att.score}/${att.max_score}` : "—"}
+                                                      {att.id === best?.id && (
+                                                        <span className="ml-1.5 text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">Best</span>
+                                                      )}
+                                                    </td>
+                                                    <td className="px-3 py-2.5 text-gray-500 max-w-[200px] truncate">{att.feedback ?? "—"}</td>
+                                                    <td className="px-3 py-2.5">
+                                                      {att.status !== "graded" && (
+                                                        <div className="flex items-center gap-1.5">
+                                                          <input
+                                                            type="number"
+                                                            placeholder="Score"
+                                                            className="w-16 h-6 px-2 text-[11px] border border-gray-200 rounded outline-none focus:ring-1 focus:ring-blue-500"
+                                                            value={grading[att.id]?.score ?? ""}
+                                                            onChange={(e) => setGrading((prev) => ({ ...prev, [att.id]: { score: e.target.value, feedback: prev[att.id]?.feedback ?? "" } }))}
+                                                          />
+                                                          <input
+                                                            type="text"
+                                                            placeholder="Feedback"
+                                                            className="w-28 h-6 px-2 text-[11px] border border-gray-200 rounded outline-none focus:ring-1 focus:ring-blue-500"
+                                                            value={grading[att.id]?.feedback ?? ""}
+                                                            onChange={(e) => setGrading((prev) => ({ ...prev, [att.id]: { score: prev[att.id]?.score ?? "", feedback: e.target.value } }))}
+                                                          />
+                                                          <button
+                                                            onClick={() => void handleGrade(att.id)}
+                                                            disabled={loading}
+                                                            className="h-6 px-2.5 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded transition-colors disabled:opacity-50"
+                                                          >
+                                                            Grade
+                                                          </button>
+                                                        </div>
+                                                      )}
+                                                      {att.status === "graded" && (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
+                                                          <CheckCircle className="h-3 w-3" /> Graded
+                                                        </span>
+                                                      )}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </td>
+                                      </tr>,
+                                    ]
+                                  : []),
+                              ];
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -955,41 +1191,185 @@ export default function TeacherAssignmentsPage() {
                       </div>
                     </div>
 
-                    {/* Grant individual */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="h-7 w-7 rounded-lg bg-blue-100 flex items-center justify-center">
+                    {/* Grant to specific student — tabular */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      {/* Card header */}
+                      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-50">
+                        <div className="h-7 w-7 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
                           <Users className="h-3.5 w-3.5 text-blue-600" />
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-900">Grant to Specific Student</h3>
-                      </div>
-                      {submissions.length === 0 ? (
-                        <p className="text-xs text-gray-400 ml-9">No submissions yet — students must submit before you can grant a retake.</p>
-                      ) : (
-                        <div className="flex items-center gap-2 ml-9">
-                          <Select
-                            value={retakeGrant.studentId ? String(retakeGrant.studentId) : ""}
-                            onValueChange={(v) => setRetakeGrant((r) => ({ ...r, studentId: Number(v) }))}
-                          >
-                            <SelectTrigger className="flex-1 h-9 text-xs">
-                              <SelectValue placeholder="Select a student" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {submissions.map((s) => (
-                                <SelectItem key={s.student_id} value={String(s.student_id)}>
-                                  {s.student_name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <button
-                            onClick={() => void handleGrantRetake()}
-                            disabled={loading || !retakeGrant.studentId}
-                            className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            Grant
-                          </button>
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900">Grant to Specific Student</h3>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Grant an individual retake to any student who has already submitted.
+                          </p>
                         </div>
+                      </div>
+
+                      {studentRows.length === 0 ? (
+                        <div className="px-5 py-10 text-center text-gray-400">
+                          <Users className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                          <p className="text-xs">No submissions yet — students must submit before you can grant a retake.</p>
+                        </div>
+                      ) : (
+                        <>
+                        {/* Search + filter bar */}
+                        <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-gray-50 bg-gray-50/40">
+                          <div className="relative flex-1 min-w-[180px]">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                            <input
+                              placeholder="Search by name, grade or section…"
+                              value={grantSearch}
+                              onChange={(e) => setGrantSearch(e.target.value)}
+                              className="w-full h-8 pl-8 pr-3 text-xs border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {(["all", "graded", "pending"] as const).map((f) => (
+                              <button
+                                key={f}
+                                onClick={() => setGrantFilter(f)}
+                                className={`h-8 px-3 text-xs font-medium rounded-lg border transition-colors ${
+                                  grantFilter === f
+                                    ? "bg-gray-900 text-white border-gray-900"
+                                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                                }`}
+                              >
+                                {f.charAt(0).toUpperCase() + f.slice(1)}
+                                <span className="ml-1 text-gray-400">
+                                  {f === "all" ? studentRows.length
+                                    : f === "graded" ? studentRows.filter((r) => r.best).length
+                                    : studentRows.filter((r) => !r.best).length}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                          {filteredGrantRows.length !== studentRows.length && (
+                            <span className="text-xs text-gray-400 ml-auto">
+                              {filteredGrantRows.length} of {studentRows.length} students
+                            </span>
+                          )}
+                        </div>
+
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50/60 border-b border-gray-100">
+                              <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Student</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Grade</th>
+                              <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Section</th>
+                              <th className="px-4 py-3 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Attempts</th>
+                              <th className="px-4 py-3 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Best Score</th>
+                              <th className="px-5 py-3 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {filteredGrantRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="px-5 py-10 text-center text-xs text-gray-400">
+                                  No students match your search
+                                </td>
+                              </tr>
+                            ) : null}
+                            {filteredGrantRows.map((row) => {
+                              const isGranting = grantingStudentId === row.student_id;
+                              const pct = row.best && row.best.max_score
+                                ? Math.round((row.best.score! / row.best.max_score) * 100)
+                                : null;
+                              const scoreColor = pct == null ? "text-gray-400" : pct >= 75 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-red-600";
+
+                              return (
+                                <tr key={row.student_id} className="hover:bg-gray-50/40 transition-colors">
+                                  {/* Student */}
+                                  <td className="px-5 py-3.5">
+                                    <div className="flex items-center gap-2.5">
+                                      <Avatar name={row.student_name} color="blue" />
+                                      <span className="font-semibold text-gray-900 text-sm">{row.student_name}</span>
+                                    </div>
+                                  </td>
+
+                                  {/* Grade */}
+                                  <td className="px-4 py-3.5">
+                                    {row.grade ? (
+                                      <span className="inline-block bg-blue-50 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded">
+                                        Gr {row.grade}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-gray-300">—</span>
+                                    )}
+                                  </td>
+
+                                  {/* Section */}
+                                  <td className="px-4 py-3.5">
+                                    {row.section ? (
+                                      <span className="inline-block bg-indigo-50 text-indigo-700 text-[11px] font-semibold px-2 py-0.5 rounded">
+                                        Sec {row.section}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-gray-300">—</span>
+                                    )}
+                                  </td>
+
+                                  {/* Attempts */}
+                                  <td className="px-4 py-3.5 text-center">
+                                    <span className="text-xs font-medium text-gray-600 flex items-center justify-center gap-1">
+                                      {row.attempts.length > 1 && <RotateCcw className="h-3 w-3 text-amber-500" />}
+                                      {row.attempts.length}
+                                    </span>
+                                  </td>
+
+                                  {/* Best score */}
+                                  <td className="px-4 py-3.5 text-center">
+                                    {row.best ? (
+                                      <span className={`text-sm font-bold ${scoreColor}`}>
+                                        {row.best.score}/{row.best.max_score}
+                                        {pct != null && <span className="text-xs font-normal text-gray-400 ml-1">({pct}%)</span>}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-amber-600 font-medium">Pending</span>
+                                    )}
+                                  </td>
+
+                                  {/* Grant button */}
+                                  <td className="px-5 py-3.5 text-right">
+                                    <button
+                                      onClick={async () => {
+                                        if (!selectedId) return;
+                                        setGrantingStudentId(row.student_id);
+                                        setLoading(true);
+                                        try {
+                                          await teacherApi.assignments.grantRetake(selectedId, {
+                                            studentIds: [row.student_id],
+                                            additionalAttempts: 1,
+                                          });
+                                          await loadSubmissions(selectedId);
+                                          setError(null);
+                                        } catch (e: unknown) {
+                                          setError(
+                                            typeof e === "object" && e !== null && "message" in e
+                                              ? String((e as { message?: unknown }).message)
+                                              : "Failed to grant retake"
+                                          );
+                                        } finally {
+                                          setLoading(false);
+                                          setGrantingStudentId(null);
+                                        }
+                                      }}
+                                      disabled={loading}
+                                      className="inline-flex items-center gap-1.5 h-8 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                                    >
+                                      {isGranting ? (
+                                        <><RefreshCw className="h-3 w-3 animate-spin" /> Granting…</>
+                                      ) : (
+                                        <><RotateCcw className="h-3 w-3" /> Grant Retake</>
+                                      )}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        </>
                       )}
                     </div>
                   </div>

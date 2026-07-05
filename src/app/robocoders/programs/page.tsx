@@ -5,14 +5,18 @@ import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
 import Book3DModal from "../../../components/Book3DModal";
 import { level1KidsTextBook, level1TextBook, level2TextBook } from "../../../data/books";
-import { 
+import {
   Code,
   Cpu,
   Brain,
   Award,
   Rocket,
   RefreshCw,
-  Check
+  Check,
+  WifiOff,
+  MonitorPlay,
+  Layers,
+  ImageIcon
 } from "lucide-react";
 
 // Enable ISR - revalidate every hour
@@ -73,58 +77,163 @@ export default function ProgramsPage() {
     <div className="min-h-screen bg-white">
       {/* Top Navigation */}
 
-      {/* Combined Header & Program Offerings Section */}
-      <section className="min-h-screen flex flex-col justify-center bg-gray-50 py-20">
-        <div className="container flex-1 flex flex-col justify-center py-8 md:py-12">
-          {/* Header Content */}
-          <div className="text-center mb-8 md:mb-12">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto">Our Programs</h1>
-            <p className="text-lg md:text-xl lg:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              Discover the perfect STEM learning journey for every student, from coding basics to advanced AI and robotics.
+      {/* 1. Programs Section — thin white strip for navbar, then full blue */}
+      <section className="flex flex-col">
+
+        {/* White strip — only tall enough for the fixed navbar */}
+        <div className="bg-white h-20" />
+
+        {/* Blue: heading + cards */}
+        <div className="bg-blue-600 pt-16 pb-16 px-4">
+          <div className="container">
+
+            {/* Heading */}
+            <div className="text-center mb-10 md:mb-14">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto text-white">Our Programs</h1>
+              <p className="text-lg md:text-xl lg:text-2xl text-white/80 max-w-3xl mx-auto leading-relaxed">
+                Discover the perfect STEM learning journey for every student, from coding basics to advanced AI and robotics.
+              </p>
+            </div>
+
+            {/* Cards */}
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+              {programs.map(({ icon: Icon, title, description, badges }) => (
+                <Card key={title} className="bg-white border-0 hover:transform hover:scale-105 transition-all duration-300 shadow-lg">
+                  <CardContent className="p-6 md:p-8 flex flex-col">
+                    <div className="flex items-start gap-4 md:gap-5 mb-4 md:mb-5">
+                      <div className="w-16 h-16 md:w-18 md:h-18 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                        <Icon className="h-8 w-8 md:h-9 md:w-9 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold mb-2 md:mb-3 text-gray-900">{title}</h3>
+                      </div>
+                    </div>
+                    <p className="text-gray-600 text-sm md:text-base leading-relaxed mb-6 md:mb-8">{description}</p>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {badges.map((badge, idx) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1.5 md:px-4 md:py-2 bg-blue-600 text-white rounded-full text-xs md:text-sm font-medium whitespace-nowrap"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+
+      {/* 2. Offline Software — WHITE */}
+      <section className="py-24 bg-white px-4">
+        <div className="container max-w-7xl mx-auto">
+
+          <div className="flex justify-center mb-6">
+            <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-sm font-semibold px-4 py-2 rounded-full border border-blue-200">
+              <WifiOff className="h-4 w-4" />
+              New — Offline Learning Platform
+            </span>
+          </div>
+
+          <div className="text-center mb-14">
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-5 max-w-4xl mx-auto leading-tight">
+              One Platform. Coding, AI &amp; Robotics.{" "}
+              <span className="text-blue-600">Completely Offline.</span>
+            </h2>
+            <p className="text-lg md:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+              Our brand-new desktop software brings everything kids need to learn
+              programming, artificial intelligence, and robotics — all in one place,
+              with zero internet required. Built for young minds aged 8 and above.
             </p>
           </div>
 
-          {/* Program Cards */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-            {programs.map(({ icon: Icon, title, description, badges }) => (
-              <Card key={title} className="bg-blue-600 text-white border-2 border-white hover:transform hover:scale-105 transition-all duration-300">
-                <CardContent className="p-6 md:p-8 flex flex-col">
-                  <div className="flex items-start gap-4 md:gap-5 mb-4 md:mb-5">
-                    <div className="w-16 h-16 md:w-18 md:h-18 rounded-full bg-white border-2 border-blue-600 flex items-center justify-center flex-shrink-0">
-                      <Icon className="h-8 w-8 md:h-9 md:w-9 text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-xl md:text-2xl lg:text-3xl font-bold mb-2 md:mb-3 text-white">{title}</h3>
-                    </div>
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+
+            {/* Image placeholder */}
+            <div className="relative rounded-3xl overflow-hidden border-2 border-dashed border-blue-200 bg-blue-50 flex flex-col items-center justify-center min-h-[380px] md:min-h-[460px]">
+              <div className="text-center px-8 py-12">
+                <div className="w-20 h-20 rounded-2xl bg-blue-100 flex items-center justify-center mx-auto mb-5">
+                  <ImageIcon className="h-9 w-9 text-blue-400" />
+                </div>
+                <p className="text-blue-500 font-semibold text-lg">Software screenshot</p>
+                <p className="text-blue-300 text-sm mt-1">Image coming soon</p>
+              </div>
+              {/* Replace the div above with an <Image> once ready:
+                  <Image src="/offline-software.png" alt="Offline Software" fill className="object-cover rounded-3xl" />
+              */}
+            </div>
+
+            {/* Feature list */}
+            <div className="flex flex-col gap-6">
+              {[
+                {
+                  icon: Layers,
+                  title: "Coding, AI & Robotics — All in One",
+                  description:
+                    "Switch between block coding, Python, AI experiments, and robotics controls without juggling multiple apps. Everything lives under one roof.",
+                },
+                {
+                  icon: WifiOff,
+                  title: "Works 100% Offline",
+                  description:
+                    "No internet? No problem. The software runs entirely on the device — perfect for classrooms with limited connectivity or at-home learning.",
+                },
+                {
+                  icon: MonitorPlay,
+                  title: "Interactive & Guided Learning",
+                  description:
+                    "Step-by-step lessons, live visual feedback, and built-in project challenges keep students engaged from their very first session.",
+                },
+                {
+                  icon: Brain,
+                  title: "Designed for Ages 8+",
+                  description:
+                    "A carefully crafted experience that grows with the student — beginner-friendly enough to start, deep enough to keep them challenged for years.",
+                },
+              ].map(({ icon: Icon, title, description }) => (
+                <div key={title} className="flex gap-4 items-start">
+                  <div className="flex-shrink-0 w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                    <Icon className="h-6 w-6 text-white" />
                   </div>
-                  <p className="text-white/90 text-sm md:text-base leading-relaxed mb-6 md:mb-8">{description}</p>
-                  <div className="flex flex-wrap gap-2 justify-center">
-                    {badges.map((badge, idx) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1.5 md:px-4 md:py-2 bg-white text-blue-600 rounded-full text-xs md:text-sm font-medium whitespace-nowrap"
-                      >
-                        {badge}
-                      </span>
-                    ))}
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
+                    <p className="text-gray-600 text-sm leading-relaxed">{description}</p>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+              ))}
+
+              <div className="mt-4 flex flex-col sm:flex-row gap-4">
+                <Link href="/robocoders/contact">
+                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white h-12 px-8 text-base font-bold w-full sm:w-auto">
+                    Get Early Access
+                  </Button>
+                </Link>
+                <Link href="/robocoders/contact">
+                  <Button size="lg" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50 h-12 px-8 text-base font-bold w-full sm:w-auto">
+                    Learn More
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Latest Textbooks Section */}
+      {/* 3. Latest Textbooks — BLUE */}
       <section className="min-h-screen flex items-center justify-center bg-blue-600 py-20">
         <div className="container">
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 text-white max-w-5xl mx-auto">Our Latest Textbooks</h2>
-          <p className="text-white/90 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
+          <p className="text-white/80 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
             Comprehensive learning materials designed by experts.
           </p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 mb-8 md:mb-12">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-xl shadow-md aspect-[3/4] overflow-hidden hover:shadow-xl transition-shadow border-[5px] border-white max-w-full relative group">
+              <div key={i} className="bg-white rounded-xl shadow-md aspect-[3/4] overflow-hidden hover:shadow-xl transition-shadow border-[5px] border-white/20 max-w-full relative group">
                 {i === 1 ? (
                   <Book3DModal
                     book={level1KidsTextBook}
@@ -137,7 +246,6 @@ export default function ProgramsPage() {
                           height={533}
                           className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
                         />
-                        {/* Hover overlay with "Click here" button */}
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                           <div className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold text-lg shadow-lg transform transition-transform group-hover:scale-105">
                             Click Here to View
@@ -158,7 +266,6 @@ export default function ProgramsPage() {
                           height={533}
                           className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
                         />
-                        {/* Hover overlay with "Click here" button */}
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                           <div className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold text-lg shadow-lg transform transition-transform group-hover:scale-105">
                             Click Here to View
@@ -179,7 +286,6 @@ export default function ProgramsPage() {
                           height={533}
                           className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
                         />
-                        {/* Hover overlay with "Click here" button */}
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                           <div className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold text-lg shadow-lg transform transition-transform group-hover:scale-105">
                             Click Here to View
@@ -192,16 +298,16 @@ export default function ProgramsPage() {
               </div>
             ))}
           </div>
-          <p className="text-center text-white/90 max-w-3xl mx-auto text-base md:text-lg lg:text-xl">
+          <p className="text-center text-white/80 max-w-3xl mx-auto text-base md:text-lg lg:text-xl">
             A complete beginner-friendly guide to Programming, AI, and Robotics concepts, featuring hands-on exercises and projects for all the books we offer.
           </p>
         </div>
       </section>
 
-      {/* Robotics Kit Section */}
+      {/* 4. Robotics Kit — WHITE */}
       <section className="min-h-screen flex items-center justify-center bg-white py-20 px-4 md:px-8 lg:px-12 xl:px-20 2xl:px-32">
         <div className="container max-w-7xl mx-auto w-full">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-center mb-10 md:mb-16 max-w-5xl mx-auto">Our Robotics Kit</h2>
+          <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-center mb-10 md:mb-16 max-w-5xl mx-auto text-gray-900">Our Robotics Kit</h2>
           <div className="grid lg:grid-cols-2 gap-6 md:gap-8 items-center">
             <div className="order-2 lg:order-1 pl-0 lg:pl-8 xl:pl-12 2xl:pl-16 pr-0 lg:pr-4 xl:pr-8 2xl:pr-12">
               <p className="text-lg text-gray-700 leading-relaxed mb-8">
@@ -218,11 +324,11 @@ export default function ProgramsPage() {
                 ))}
               </ul>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button size="lg" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 h-12 text-lg">
+                <Button size="lg" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white h-12 text-lg font-bold">
                   Order Robotics Kit
                 </Button>
                 <Link href="/contact">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-blue-600 text-blue-600 hover:bg-blue-50 h-12 text-lg">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-blue-600 text-blue-600 hover:bg-blue-50 h-12 text-lg font-bold">
                     For More Information
                   </Button>
                 </Link>

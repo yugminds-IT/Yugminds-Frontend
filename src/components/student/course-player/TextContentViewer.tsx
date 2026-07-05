@@ -1,11 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Card } from '../../ui/card'
-import { Button } from '../../ui/button'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Badge } from '../../ui/badge'
-import { CheckCircle, Loader2, Clock } from 'lucide-react'
-import { getStoredUserId } from '../../../lib/session-utils'
+import { CheckCircle, Loader2, ArrowDown } from 'lucide-react'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 import { sanitizeHtml } from '../../../lib/sanitize-html'
 
@@ -23,199 +20,98 @@ interface TextContentViewerProps {
   onComplete?: () => void
 }
 
-// Debounce utility
-function debounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: number) {
-  let timeoutId: NodeJS.Timeout
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId)
-    timeoutId = setTimeout(() => fn(...args), delay)
-  }
-}
+// Minimum reading dwell before completion can be confirmed (engagement signal).
+const MIN_DWELL_SECONDS = 4
 
-export default function TextContentViewer({ 
-  content, 
-  courseId,
-  chapterId,
-  onComplete 
-}: TextContentViewerProps) {
+export default function TextContentViewer({ content, onComplete }: TextContentViewerProps) {
   const textContent = content.content_text || 'No content available.'
-  const [timeRemaining, setTimeRemaining] = useState(15)
-  const [timerStarted, setTimerStarted] = useState(false)
+  const [reachedEnd, setReachedEnd] = useState(false)
+  const [dwellDone, setDwellDone] = useState(false)
   const [hasCompleted, setHasCompleted] = useState(false)
-  
-  const contentRef = useRef<HTMLDivElement>(null)
+  const endSentinelRef = useRef<HTMLDivElement>(null)
 
-  // Global progress store
-  const { 
-    setContentCompleted, 
-    isContentCompleted,
-    isSaving 
-  } = useCourseProgressStore()
-
+  const { isContentCompleted, isSaving } = useCourseProgressStore()
   const isCompleted = isContentCompleted(content.id)
   const saving = isSaving(content.id)
 
-  // Resolve IDs
-  const resolvedCourseId = courseId || content.course_id || ''
-  const resolvedChapterId = chapterId || content.chapter_id || ''
-
-  // Check server for existing completion
-  useEffect(() => {
-    const checkCompletion = async () => {
-      try {
-        const userId = getStoredUserId()
-        if (!userId) return
-      } catch (error) {
-        console.warn('Failed to check completion:', error)
-      }
-    }
-
-    checkCompletion()
-  }, [content.id, resolvedChapterId, resolvedCourseId, setContentCompleted])
-
-  // Mark as complete - delegate to parent for database saving
+  // Completion is always an explicit, gated action — never silent.
+  const canComplete = (reachedEnd && dwellDone) || isCompleted
   const handleMarkComplete = useCallback(() => {
-    if (hasCompleted) return
+    if (hasCompleted || !canComplete) return
     setHasCompleted(true)
-
-    console.log('📖 [TextViewer] Marking as complete, calling parent onComplete...')
-    
-    // Call parent's onComplete which handles database saving
     onComplete?.()
-    
-    // Update local UI state
-    setContentCompleted(content.id, resolvedChapterId, resolvedCourseId, true)
-    
-    console.log('✅ [TextViewer] Marked as complete')
-  }, [content.id, resolvedCourseId, resolvedChapterId, onComplete, setContentCompleted, hasCompleted])
+  }, [hasCompleted, canComplete, onComplete])
 
-  // Debounced version for UI interactions
-  const debouncedMarkComplete = useMemo(
-    () => debounce(handleMarkComplete, 500),
-    [handleMarkComplete]
-  )
-
-  // Start timer when content becomes visible
+  // Minimum dwell timer.
   useEffect(() => {
-    if (isCompleted || hasCompleted) return
+    if (isCompleted) return
+    const t = setTimeout(() => setDwellDone(true), MIN_DWELL_SECONDS * 1000)
+    return () => clearTimeout(t)
+  }, [isCompleted])
 
+  // Detect scroll-to-end via a sentinel at the bottom of the article.
+  useEffect(() => {
+    if (isCompleted) return
+    const el = endSentinelRef.current
+    if (!el) return
     const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !timerStarted) {
-          setTimerStarted(true)
-        }
-      },
-      { threshold: 0.5 }
+      entries => { if (entries[0].isIntersecting) setReachedEnd(true) },
+      { threshold: 1.0 }
     )
-
-    if (contentRef.current) {
-      observer.observe(contentRef.current)
-    }
-
+    observer.observe(el)
     return () => observer.disconnect()
-  }, [isCompleted, hasCompleted, timerStarted])
-
-  // Countdown timer
-  useEffect(() => {
-    if (!timerStarted || isCompleted || hasCompleted) return
-
-    const interval = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval)
-          debouncedMarkComplete()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [timerStarted, isCompleted, hasCompleted, debouncedMarkComplete])
+  }, [isCompleted])
 
   return (
-    <Card className="p-6" ref={contentRef}>
-      <div className="flex justify-between items-start mb-4">
-        <h2 className="text-2xl font-bold">{content.title}</h2>
-        <div className="flex items-center gap-2">
-          {/* Timer indicator */}
-          {!isCompleted && timerStarted && timeRemaining > 0 && (
-            <Badge 
-              variant="outline" 
-              className="text-gray-600"
-              role="timer"
-              aria-label={`Auto-complete in ${timeRemaining} seconds`}
-            >
-              <Clock className="h-3 w-3 mr-1" aria-hidden="true" />
-              {timeRemaining}s
+    <div className="max-w-3xl mx-auto px-6 py-8">
+      {/* Title row */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <h1 className="text-3xl font-semibold text-gray-900 leading-tight">{content.title}</h1>
+        <div className="flex items-center gap-2 flex-shrink-0 mt-1">
+          {saving && (
+            <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Saving...
             </Badge>
           )}
-          
-          {/* Completion status */}
-          {(isCompleted || saving) && (
-            <Badge 
-              variant="secondary" 
-              className={saving ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}
-              role="status"
-              aria-label={saving ? 'Saving progress' : 'Content completed'}
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" aria-hidden="true" /> Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" /> Read
-                </>
-              )}
+          {isCompleted && !saving && (
+            <Badge className="bg-green-100 text-green-700 border-0 text-xs">
+              <CheckCircle className="h-3 w-3 mr-1" /> Read
             </Badge>
           )}
         </div>
       </div>
 
-      {/* Content */}
-      <article 
-        className="prose prose-lg max-w-none"
+      {/* Prose content */}
+      <article
+        className="prose prose-base prose-gray max-w-none leading-relaxed"
         dangerouslySetInnerHTML={{ __html: sanitizeHtml(textContent) }}
         aria-label="Lesson content"
       />
 
-      {/* Manual complete button */}
-      {!isCompleted && !hasCompleted && (
-        <div className="mt-6 pt-6 border-t">
-          <Button 
-            onClick={() => {
-              setTimeRemaining(0)
-              debouncedMarkComplete()
-            }} 
-            className="flex items-center gap-2"
-            disabled={saving}
-            aria-label="Mark this lesson as complete"
+      {/* End-of-content sentinel */}
+      <div ref={endSentinelRef} aria-hidden className="h-1" />
+
+      {/* Mark as complete (gated) */}
+      {!isCompleted && (
+        <div className="mt-10 pt-8 border-t border-gray-100">
+          <button
+            onClick={handleMarkComplete}
+            disabled={saving || !canComplete}
+            className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle className="h-4 w-4" />
-            )}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
             Mark as Complete
-          </Button>
-          <p className="text-xs text-gray-500 mt-2">
-            Or wait {timeRemaining > 0 ? `${timeRemaining} seconds` : 'a moment'} for auto-completion
-          </p>
+          </button>
+          {!canComplete && (
+            <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+              <ArrowDown className="h-3 w-3" />
+              {reachedEnd
+                ? 'Just a moment…'
+                : 'Scroll to the end of the reading to mark it complete'}
+            </p>
+          )}
         </div>
       )}
-    </Card>
+    </div>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-

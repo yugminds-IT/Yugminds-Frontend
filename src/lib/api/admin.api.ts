@@ -88,6 +88,13 @@ export const adminApi = {
     delete: (studentId: string) => apiClient.delete(`${ADMIN}/students/${studentId}`),
     update: (studentId: string, data: Record<string, unknown>) =>
       apiClient.patch(`${ADMIN}/students/${studentId}`, data),
+    enroll: (studentId: string) =>
+      apiClient.post(`${ADMIN}/students/${studentId}/enroll`, {}),
+    syncEnrollments: (params?: { school_id?: string }) =>
+      apiClient.post(withParams(`${ADMIN}/students/sync-enrollments`, params), {}, {
+        // Bulk enrollment across thousands of students can exceed the default 30s.
+        timeout: 120000,
+      }),
   },
 
   /** Reports */
@@ -103,10 +110,6 @@ export const adminApi = {
       apiClient.get(withParams(`${ADMIN}/teacher-reports`, params)),
     update: (body: { id: string; status?: string; admin_notes?: string }) =>
       apiClient.patch(`${ADMIN}/teacher-reports`, body),
-  },
-  auditLog: {
-    list: (params?: { limit?: number }) =>
-      apiClient.get(withParams(`${ADMIN}/audit-log`, params)),
   },
   teacherAttendance: {
     list: (params?: { school_id?: string; from?: string; to?: string; teacherId?: string }) =>
@@ -223,24 +226,6 @@ export const adminApi = {
       apiClient.get(`${ADMIN}/community/items/${id}/versions`),
     revert: (id: string, data?: Record<string, unknown>) =>
       apiClient.post(`${ADMIN}/community/items/${id}/revert`, data),
-    migrateSuccessStories: () =>
-      apiClient.post(`${ADMIN}/community/migrate-success-stories`),
-  },
-
-  /** Success stories */
-  successStories: {
-    list: (params?: Record<string, string | number | undefined>) =>
-      apiClient.get(withParams(`${ADMIN}/success-stories`, params)),
-    get: (id: string) => apiClient.get(`${ADMIN}/success-stories/${id}`),
-    create: (formData: FormData) =>
-      apiClient.post(`${ADMIN}/success-stories`, formData),
-    update: (id: string, data: Record<string, unknown> | FormData) =>
-      apiClient.put(`${ADMIN}/success-stories/${id}`, data),
-    delete: (id: string) => apiClient.delete(`${ADMIN}/success-stories/${id}`),
-    revert: (id: string, data?: Record<string, unknown>) =>
-      apiClient.post(`${ADMIN}/success-stories/${id}/revert`, data),
-    getVersions: (id: string) =>
-      apiClient.get(`${ADMIN}/success-stories/${id}/versions`),
   },
 
   /** Logos */
