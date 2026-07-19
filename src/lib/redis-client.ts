@@ -1,42 +1,16 @@
 /**
- * Redis Client for Upstash Redis
- * 
- * Provides a singleton Redis client with fallback to in-memory cache
- * Uses Upstash REST API for serverless compatibility
+ * Redis client — connects directly to the same Redis instance the backend
+ * uses (raw RESP protocol over TCP via `ioredis`), configured with REDIS_URL.
+ *
+ * Previously used Upstash's REST API client (@upstash/redis), which requires
+ * a separate hosted Redis-as-a-service. Standard Next.js API routes run in
+ * the Node.js runtime (not Edge), so a plain TCP connection works fine here
+ * and lets both frontend and backend share one Redis deployment.
  */
 
-// Optional import - only use if package is installed
-interface RedisPipeline {
-  incr(key: string): void;
-  expire(key: string, seconds: number): void;
-  exec(): Promise<unknown[]>;
-}
-type RedisClientInstance = {
-  get: (key: string) => Promise<unknown>;
-  set: (key: string, value: string, options?: { ex?: number }) => Promise<unknown>;
-  setex: (key: string, seconds: number, value: string | number) => Promise<unknown>;
-  del: (key: string) => Promise<unknown>;
-  exists: (key: string) => Promise<number>;
-  expire: (key: string, seconds: number) => Promise<unknown>;
-  incr: (key: string) => Promise<number>;
-  pipeline: () => RedisPipeline;
-  zadd: (key: string, opts: { score: number; member: string }) => Promise<number>;
-  zremrangebyscore: (key: string, min: number, max: number) => Promise<number>;
-  zcard: (key: string) => Promise<number>;
-  zrange: (key: string, start: number, stop: number, opts?: { withScores?: boolean }) => Promise<unknown>;
-  eval: (script: string, keys: string[], args: (string | number)[]) => Promise<unknown>;
-};
-let RedisConstructor: (new (opts: { url: string; token: string }) => RedisClientInstance) | null = null;
-try {
-  // Optional dependency; dynamic require for serverless compatibility
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const upstashRedis = require('@upstash/redis');
-  RedisConstructor = upstashRedis.Redis as typeof RedisConstructor;
-} catch {
-  console.log('[Redis] @upstash/redis not installed, Redis features will be disabled');
-}
+import Redis from 'ioredis';
 
-let redisClient: RedisClientInstance | null = null;
+let redisClient: Redis | null = null;
 let _redisEnabled = false;
 let redisLastHealthCheck: number = 0;
 let redisHealthStatus: 'healthy' | 'unhealthy' | 'unknown' = 'unknown';
@@ -45,28 +19,28 @@ const REDIS_HEALTH_CHECK_INTERVAL = 60000; // Check health every 60 seconds
 /**
  * Initialize Redis client
  */
-function getRedisClient(): RedisClientInstance | null {
-  if (!RedisConstructor) {
-    return null;
-  }
-
+function getRedisClient(): Redis | null {
   // Check if Redis is enabled via environment variable
   const redisEnabledEnv = process.env.REDIS_ENABLED !== 'false';
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const redisUrl = process.env.REDIS_URL;
 
-  if (!redisEnabledEnv || !redisUrl || !redisToken) {
-    if (redisEnabledEnv && (!redisUrl || !redisToken)) {
-      console.warn('[Redis] Redis is enabled but credentials are missing. Using fallback cache.');
+  if (!redisEnabledEnv || !redisUrl) {
+    if (redisEnabledEnv && !redisUrl) {
+      console.warn('[Redis] Redis is enabled but REDIS_URL is missing. Using fallback cache.');
     }
     return null;
   }
 
   if (!redisClient) {
     try {
-      redisClient = new RedisConstructor({
-        url: redisUrl,
-        token: redisToken,
+      redisClient = new Redis(redisUrl, {
+        maxRetriesPerRequest: 1,
+        lazyConnect: false,
+        retryStrategy: (times) => Math.min(times * 200, 2000),
+      });
+      redisClient.on('error', (err) => {
+        redisHealthStatus = 'unhealthy';
+        console.error('[Redis] Client error:', err.message);
       });
       _redisEnabled = true;
       redisHealthStatus = 'healthy';
@@ -114,16 +88,11 @@ export function isRedisAvailable(): boolean {
     return false;
   }
 
-  if (!RedisConstructor) {
-    return false;
-  }
-
   // Check environment variables first (fast check)
   const redisEnabledEnv = process.env.REDIS_ENABLED !== 'false';
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const redisUrl = process.env.REDIS_URL;
 
-  if (!redisEnabledEnv || !redisUrl || !redisToken) {
+  if (!redisEnabledEnv || !redisUrl) {
     return false;
   }
 
@@ -135,7 +104,7 @@ export function isRedisAvailable(): boolean {
 /**
  * Get Redis client (returns null if unavailable)
  */
-export function getRedis(): RedisClientInstance | null {
+export function getRedis(): Redis | null {
   return getRedisClient();
 }
 
@@ -211,6 +180,21 @@ export async function getRedisHealthStatus(): Promise<{
 }
 
 /**
+ * Parses a value stored by `redis.set` back into its original shape.
+ * `set` JSON-stringifies non-primitive values before writing; plain strings
+ * and numbers are written as-is. Mirrors Upstash's auto-deserialization so
+ * callers don't need to change based on which client is behind `redis.get`.
+ */
+function deserialize<T>(raw: string | null): T | null {
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return raw as unknown as T;
+  }
+}
+
+/**
  * Redis operations with automatic fallback
  */
 export const redis = {
@@ -227,7 +211,7 @@ export const redis = {
           return null;
         }
 
-        const value = await client.get(key) as T;
+        const value = deserialize<T>(await client.get(key));
 
         // Update health status on success
         if (attempt === 0) {
@@ -321,8 +305,7 @@ export const redis = {
   },
 
   /**
-   * Delete multiple keys matching pattern
-   * Note: Upstash REST API doesn't support SCAN, so we use a workaround
+   * Delete multiple keys matching pattern (uses SCAN, safe on large keyspaces).
    */
   async delPattern(pattern: string): Promise<number> {
     try {
@@ -331,11 +314,17 @@ export const redis = {
         return 0;
       }
 
-      // Upstash REST API doesn't support SCAN directly
-      // We'll need to track keys manually or use a different approach
-      // For now, return 0 and log a warning
-      console.warn('[Redis] Pattern deletion not fully supported via REST API. Consider using explicit keys.');
-      return 0;
+      let cursor = '0';
+      let deleted = 0;
+      do {
+        const [nextCursor, keys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+        cursor = nextCursor;
+        if (keys.length) {
+          deleted += await client.del(...keys);
+        }
+      } while (cursor !== '0');
+
+      return deleted;
     } catch (error) {
       console.error(`[Redis] DEL pattern error for ${pattern}:`, error);
       return 0;
@@ -405,13 +394,10 @@ export const redis = {
         return null;
       }
 
-      const pipeline = client.pipeline();
-      pipeline.incr(key);
-      pipeline.expire(key, ttlSeconds);
-      const results = await pipeline.exec();
-
-      if (results && results[0]) {
-        return results[0] as number;
+      const results = await client.pipeline().incr(key).expire(key, ttlSeconds).exec();
+      const incrResult = results?.[0];
+      if (incrResult && !incrResult[0]) {
+        return incrResult[1] as number;
       }
       return null;
     } catch (error) {
@@ -430,8 +416,7 @@ export const redis = {
         return null;
       }
 
-      // Upstash REST API uses different syntax
-      return await client.zadd(key, { score, member }) as number;
+      return await client.zadd(key, score, member);
     } catch (error) {
       console.error(`[Redis] ZADD error for key ${key}:`, error);
       return null;
@@ -482,13 +467,10 @@ export const redis = {
         return null;
       }
 
-      if (options?.withScores) {
-        const result = await client.zrange(key, start, stop, { withScores: true });
-        // Upstash returns array of [member, score, member, score, ...]
-        return Array.isArray(result) ? result.map(String) : null;
-      }
-      const result = await client.zrange(key, start, stop);
-      return Array.isArray(result) ? result.map(String) : null;
+      const result = options?.withScores
+        ? await client.zrange(key, start, stop, 'WITHSCORES')
+        : await client.zrange(key, start, stop);
+      return result;
     } catch (error) {
       console.error(`[Redis] ZRANGE error for key ${key}:`, error);
       return null;
@@ -505,11 +487,10 @@ export const redis = {
         return null;
       }
 
-      return (await client.eval(script, keys, args)) as T;
+      return (await client.eval(script, keys.length, ...keys, ...args)) as T;
     } catch (error) {
       console.error('[Redis] EVAL error:', error);
       return null;
     }
   },
 };
-

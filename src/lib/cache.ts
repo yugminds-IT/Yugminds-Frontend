@@ -842,10 +842,8 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
 
     // Clear from Redis (if available)
     if (isRedisAvailable()) {
-      // Note: Upstash REST API doesn't support SCAN directly
-      // For now, we'll clear matching keys from fallback cache only
-      // Redis keys matching the pattern will expire naturally
-      log(`[Cache] Pattern invalidation for ${pattern} - cleared ${keysToDelete.length} keys from fallback`);
+      const redisDeleted = await redis.delPattern(pattern);
+      log(`[Cache] Pattern invalidation for ${pattern} - cleared ${keysToDelete.length} keys from fallback, ${redisDeleted} from Redis`);
     }
 
   } catch (error) {

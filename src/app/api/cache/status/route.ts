@@ -115,8 +115,7 @@ export async function GET(request: NextRequest) {
       recentLogs: debugLogs.slice(-20), // Last 20 log entries
       environment: {
         redisEnabled: process.env.REDIS_ENABLED !== 'false',
-        hasRedisUrl: !!process.env.UPSTASH_REDIS_REST_URL,
-        hasRedisToken: !!process.env.UPSTASH_REDIS_REST_TOKEN,
+        hasRedisUrl: !!process.env.REDIS_URL,
         isServerless: process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NEXT_RUNTIME === 'edge'
       }
     });
