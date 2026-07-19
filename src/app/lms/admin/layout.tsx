@@ -13,6 +13,8 @@ import { clearStoredSession, getStoredUserId, setLogoutReason } from "@/lib/sess
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
+import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
 
 type UserProfile = {
   id: string;
@@ -300,6 +302,7 @@ export default function AdminLayout({
   return (
     <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
       <ForcePasswordChange />
+      <AnnouncementBanner />
       <Sidebar
         userRole="admin"
         userName={userProfile?.full_name || user?.email || "Admin User"}
@@ -311,6 +314,11 @@ export default function AdminLayout({
       
       <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
         {children}
+      </div>
+
+      {/* Global admin search (⌘K) — fixed so it never shifts page layout */}
+      <div className="fixed top-3 right-4 z-40 sm:top-4 sm:right-6">
+        <AdminCommandPalette />
       </div>
     </div>
   );

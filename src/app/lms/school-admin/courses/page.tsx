@@ -113,16 +113,20 @@ export default function CoursesManagement() {
 
       // Fetch courses, progress and students via centralized schoolAdminApi (bypasses RLS)
       const [coursesRes, progressRes, studentsRes] = await Promise.all([
-        schoolAdminApi.courses.list(),
+        schoolAdminApi.courses.list({ limit: 100 }),
         schoolAdminApi.courses.progress(),
-        schoolAdminApi.students.list(),
+        // Only the count is needed here — ask for one row and read the real
+        // `total`. Previously this fetched an unbounded page (backend capped
+        // it at 50) and used `students.length`, so any school with 50+
+        // students reported exactly 50.
+        schoolAdminApi.students.list({ limit: 1 }),
       ]);
 
       const coursesData = coursesRes.data ?? {};
       const apiCourses = (coursesData as { courses?: unknown[] }).courses ?? coursesData;
 
       const progressData = (progressRes.data ?? {}) as { progress?: unknown[] };
-      const studentsData = (studentsRes.data ?? {}) as { students?: unknown[] };
+      const studentsData = (studentsRes.data ?? {}) as { students?: unknown[]; total?: number };
 
       // Debug: Log raw API response
       console.log('🔍 Raw API courses response:', {
@@ -138,13 +142,8 @@ export default function CoursesManagement() {
         } : null
       });
 
-      // Set overall student count (distinct students in the school)
-      const studentsArray = Array.isArray(studentsData.students)
-        ? studentsData.students
-        : Array.isArray(studentsData)
-        ? (studentsData as unknown[])
-        : [];
-      if (isActive) setOverallStudentCount(studentsArray.length);
+      // Server-side total — not the length of a truncated page.
+      if (isActive) setOverallStudentCount(Number(studentsData.total ?? 0));
 
       // API now returns aggregated courses with all grades and chapters
       // Map API response directly to Course interface

@@ -8,6 +8,10 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 
 const nextConfig = {
   typescript: { ignoreBuildErrors: false },
+  // Standalone build for Docker: only bundle what this app needs, keyed to this
+  // folder (not the monorepo root the workspace-lockfile detection would infer).
+  output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname),
   images: {
     remotePatterns: [
       {
@@ -41,7 +45,7 @@ const nextConfig = {
     optimizeCss: true, // Optimize CSS
   },
   turbopack: {
-    root: path.join(__dirname, '..'),
+    root: path.join(__dirname),
   },
   // Webpack optimizations
   webpack: (config, { isServer }) => {

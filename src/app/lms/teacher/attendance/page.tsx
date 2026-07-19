@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useTeacherSchool } from "../context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTeacherAttendance, useTeacherMonthlyAttendance, useTeacherMonthlyAttendanceLog, useTodayAttendanceStatus, type TeacherMonthlyLog } from "@/hooks/useTeacherData";
+import { useTeacherAttendance, useTeacherMonthlyAttendance, useTeacherMonthlyAttendanceLog, useTodayAttendanceStatus, currentMonthKey, type TeacherMonthlyLog } from "@/hooks/useTeacherData";
 import { Calendar, CheckCircle, XCircle, Clock, AlertCircle, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress as ProgressBar } from "@/components/ui/progress";
@@ -74,7 +74,11 @@ export default function AttendancePage() {
     }
   };
 
-  const currentMonthData = monthlyAttendance?.[0];
+  // Only the entry for the ACTUAL current month — [0] is merely the most
+  // recent logged month and could silently show last month's numbers.
+  const currentMonthData = monthlyAttendance?.find(
+    (m) => String(m.month).slice(0, 7) === currentMonthKey(),
+  );
   const attendancePercentage = currentMonthData && currentMonthData.total_days > 0
     ? Math.round((currentMonthData.present_count / currentMonthData.total_days) * 100)
     : 0;

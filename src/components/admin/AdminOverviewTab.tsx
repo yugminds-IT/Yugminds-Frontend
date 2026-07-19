@@ -15,6 +15,18 @@ import {
 } from "lucide-react";
 import { SkeletonDashboard } from "../ui/skeleton-dashboard";
 
+/** "5m ago" / "3h ago" / "2d ago" — rolls up instead of showing "4320m ago". */
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 interface DashboardStats {
   totalSchools: number;
   totalTeachers: number;
@@ -68,7 +80,6 @@ interface AdminOverviewTabProps {
   isLoading?: boolean;
   onQuickAction?: (id: string) => void;
   teacherPerformance?: TeacherPerformance;
-  inactiveSchoolCount?: number;
 }
 
 export default function AdminOverviewTab({
@@ -78,9 +89,8 @@ export default function AdminOverviewTab({
   isLoading = false,
   onQuickAction,
   teacherPerformance,
-  inactiveSchoolCount = 0
 }: AdminOverviewTabProps) {
-  const _router = useRouter();
+  const router = useRouter();
 
   const safeInt = (value: number): number =>
     Number.isFinite(value) ? Math.trunc(value) : 0;
@@ -101,23 +111,12 @@ export default function AdminOverviewTab({
 
   return (
     <div className="space-y-6">
-      {inactiveSchoolCount > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-          <AlertCircle className="h-5 w-5 shrink-0 text-amber-500" />
-          <span className="text-sm font-medium">
-            {inactiveSchoolCount} school{inactiveSchoolCount > 1 ? 's are' : ' is'} currently inactive. Review and re-activate from the Schools management page.
-          </span>
-        </div>
-      )}
       <div className="space-y-6">
         {/* Quick Actions */}
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="border-b bg-slate-50/80">
-            <CardTitle className="flex items-center gap-2">
-              Quick Actions
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            </CardTitle>
-            <CardDescription>Common administrative tasks with real-time previews</CardDescription>
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>Common administrative tasks — latest 3 of each</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {quickActionPreviews.map((preview) => (
@@ -182,10 +181,7 @@ export default function AdminOverviewTab({
         {/* System Status */}
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="border-b bg-slate-50/80">
-            <CardTitle className="flex items-center gap-2">
-              System Status
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            </CardTitle>
+            <CardTitle>System Status</CardTitle>
             <CardDescription>Current system health and metrics</CardDescription>
           </CardHeader>
           <CardContent>
@@ -202,7 +198,10 @@ export default function AdminOverviewTab({
                 </div>
               )}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                <button
+                  onClick={() => router.push("/lms/admin/schools")}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+                >
                   <span className="text-sm font-medium text-slate-700">Pending Leave Requests</span>
                   <div className="flex items-center gap-2">
                     <Badge variant={safeInt(stats.pendingLeaves) > 0 ? "destructive" : "secondary"}>
@@ -212,8 +211,11 @@ export default function AdminOverviewTab({
                       <AlertCircle className="h-4 w-4 text-red-500" />
                     )}
                   </div>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                </button>
+                <button
+                  onClick={() => router.push("/lms/admin/password-reset-requests")}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+                >
                   <span className="text-sm font-medium text-slate-700">Pending Password Resets</span>
                   <div className="flex items-center gap-2">
                     <Badge variant={safeInt(stats.pendingPasswordResets) > 0 ? "destructive" : "secondary"}>
@@ -223,7 +225,7 @@ export default function AdminOverviewTab({
                       <AlertCircle className="h-4 w-4 text-orange-500" />
                     )}
                   </div>
-                </div>
+                </button>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
@@ -286,14 +288,11 @@ export default function AdminOverviewTab({
         </Card>
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Activity — real dated events only (recent school/teacher/student/course additions) */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Recent Activity
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-          </CardTitle>
-          <CardDescription>Latest system events and notifications</CardDescription>
+          <CardTitle>Recent Activity</CardTitle>
+          <CardDescription>Latest additions across the platform</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -304,7 +303,7 @@ export default function AdminOverviewTab({
                     activity.type === 'success' ? 'bg-green-500' :
                     activity.type === 'warning' ? 'bg-yellow-500' :
                     activity.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-                  } animate-pulse`}></div>
+                  }`}></div>
                   <div className="flex-1">
                     <p className="text-sm font-medium">{activity.title}</p>
                     <p className="text-xs text-gray-500">{activity.message}</p>
@@ -314,12 +313,7 @@ export default function AdminOverviewTab({
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3 text-gray-400" />
-                    <span className="text-xs text-gray-400">
-                      {(() => {
-                        const ms = Date.now() - new Date(activity.created_at).getTime();
-                        return `${Math.round(ms / (1000 * 60))}m ago`;
-                      })()}
-                    </span>
+                    <span className="text-xs text-gray-400">{timeAgo(activity.created_at)}</span>
                   </div>
                 </div>
               ))

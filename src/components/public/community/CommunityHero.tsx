@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import type { CommunityConfig } from "@/lib/community-types";
 
 export function CommunityHero({
@@ -26,7 +29,12 @@ export function CommunityHero({
 
       <div className="container mx-auto px-4 md:px-6">
         <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-8 items-center min-h-[260px] py-10 md:py-16">
-          <div className={`relative z-10 ${isBlue ? "text-white" : ""}`}>
+          <motion.div
+            initial={{ opacity: 0, x: -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, ease: [0.21, 0.61, 0.35, 1] }}
+            className={`relative z-10 ${isBlue ? "text-white" : ""}`}
+          >
             <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold mb-5 ${isBlue ? "bg-white/20 text-white" : "bg-blue-50 text-blue-700"}`}>
               <span className={`w-2 h-2 rounded-full inline-block ${isBlue ? "bg-white" : "bg-blue-600"}`} />
               Community
@@ -39,9 +47,14 @@ export function CommunityHero({
                 {config.hero_subtitle}
               </p>
             )}
-          </div>
+          </motion.div>
 
-          <div className="flex items-center justify-center min-h-[200px] md:min-h-[240px] relative z-10">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.7, delay: 0.2, ease: [0.21, 0.61, 0.35, 1] }}
+            className="flex items-center justify-center min-h-[200px] md:min-h-[240px] relative z-10"
+          >
             {config.hero_image_url ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
@@ -50,11 +63,15 @@ export function CommunityHero({
                 className="max-h-[300px] w-full object-contain drop-shadow-lg"
               />
             ) : (
-              <div className={`w-full max-w-xs aspect-square rounded-full flex items-center justify-center text-6xl border-2 ${isBlue ? "bg-blue-500/40 border-white/20" : "bg-blue-50 border-blue-100"}`}>
+              <motion.div
+                animate={{ y: [0, -12, 0] }}
+                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                className={`w-full max-w-xs aspect-square rounded-full flex items-center justify-center text-6xl border-2 ${isBlue ? "bg-blue-500/40 border-white/20" : "bg-blue-50 border-blue-100"}`}
+              >
                 👥
-              </div>
+              </motion.div>
             )}
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>

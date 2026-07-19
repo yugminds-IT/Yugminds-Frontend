@@ -37,13 +37,15 @@ export const adminApi = {
 
   /** Teachers */
   teachers: {
-    list: (params?: { school_id?: string }) =>
+    list: (params?: { school_id?: string; limit?: number; page?: number; search?: string; sort?: string; order?: string }) =>
       apiClient.get(withParams(`${ADMIN}/teachers`, params)),
     get: (id: string) => apiClient.get(`${ADMIN}/teachers/${id}`),
     create: (data: Record<string, unknown>) => apiClient.post(`${ADMIN}/teachers`, data),
     update: (id: string, data: Record<string, unknown>) =>
       apiClient.put(`${ADMIN}/teachers/${id}`, data),
     delete: (id: string) => apiClient.delete(`${ADMIN}/teachers/${id}`),
+    bulk: (data: { action: 'activate' | 'deactivate' | 'delete'; teacher_ids: Array<number | string> }) =>
+      apiClient.post(`${ADMIN}/teachers/bulk`, data),
   },
 
   /** School admins */
@@ -60,7 +62,7 @@ export const adminApi = {
 
   /** Courses */
   courses: {
-    list: () => apiClient.get(`${ADMIN}/courses`),
+    list: (params?: { limit?: number }) => apiClient.get(withParams(`${ADMIN}/courses`, params)),
     get: (courseId: string) => apiClient.get(`${ADMIN}/courses/${courseId}`),
     create: (data: Record<string, unknown>) => apiClient.post(`${ADMIN}/courses`, data),
     update: (courseId: string, data: Record<string, unknown>) =>
@@ -82,7 +84,7 @@ export const adminApi = {
 
   /** Students */
   students: {
-    list: (params?: { school_id?: string; limit?: number }) =>
+    list: (params?: { school_id?: string; limit?: number; page?: number; search?: string; grade?: string; section?: string; sort?: string; order?: string }) =>
       apiClient.get(withParams(`${ADMIN}/students`, params)),
     create: (data: Record<string, unknown>) => apiClient.post(`${ADMIN}/students`, data),
     delete: (studentId: string) => apiClient.delete(`${ADMIN}/students/${studentId}`),
@@ -90,6 +92,13 @@ export const adminApi = {
       apiClient.patch(`${ADMIN}/students/${studentId}`, data),
     enroll: (studentId: string) =>
       apiClient.post(`${ADMIN}/students/${studentId}/enroll`, {}),
+    bulk: (data: {
+      action: 'move' | 'enroll' | 'delete';
+      student_ids: Array<number | string>;
+      school_id?: string;
+      grade?: string;
+      section?: string;
+    }) => apiClient.post(`${ADMIN}/students/bulk`, data, { timeout: 120000 }),
     syncEnrollments: (params?: { school_id?: string }) =>
       apiClient.post(withParams(`${ADMIN}/students/sync-enrollments`, params), {}, {
         // Bulk enrollment across thousands of students can exceed the default 30s.
@@ -289,6 +298,60 @@ export const adminApi = {
     warm: () => apiClient.post(`${ADMIN}/warm-cache`),
   },
   restoreAllData: () => apiClient.post(`${ADMIN}/restore-all-data`),
+
+  /** Audit logs */
+  auditLogs: {
+    list: (params?: {
+      page?: number;
+      limit?: number;
+      actorEmail?: string;
+      entityType?: string;
+      method?: string;
+      search?: string;
+      from?: string;
+      to?: string;
+    }) =>
+      apiClient.get(withParams(`${ADMIN}/audit-logs`, params as Record<string, string | number | undefined>)),
+    entityTypes: () => apiClient.get(`${ADMIN}/audit-logs/entity-types`),
+  },
+
+  /** Global entity search (command palette) */
+  search: (q: string) =>
+    apiClient.get(withParams(`${ADMIN}/search`, { q })),
+
+  /** Impersonation ("view as user") */
+  impersonation: {
+    start: (userId: number) =>
+      apiClient.post(`${ADMIN}/impersonate`, { user_id: userId }),
+  },
+
+  /** Trash (soft-deleted records) */
+  trash: {
+    list: () => apiClient.get(`${ADMIN}/trash`),
+    restore: (entityType: string, id: string) =>
+      apiClient.post(`${ADMIN}/trash/restore`, { entity_type: entityType, id }),
+    purge: (entityType: string, id: string) =>
+      apiClient.delete(withParams(`${ADMIN}/trash`, { entity_type: entityType, id })),
+  },
+
+  /** System controls (maintenance mode, feature flags, announcements) */
+  systemControls: {
+    get: () => apiClient.get(`${ADMIN}/system-controls`),
+    update: (data: Record<string, unknown>) =>
+      apiClient.patch(`${ADMIN}/system-controls`, data),
+  },
+
+  /** Monitoring alerts (threshold breaches for needs-attention) */
+  alerts: () => apiClient.get(`${ADMIN}/alerts`),
+
+  /** Saved table views */
+  savedViews: {
+    list: (tableKey: string) =>
+      apiClient.get(withParams(`${ADMIN}/saved-views`, { table_key: tableKey })),
+    create: (data: { table_key: string; name: string; state: Record<string, unknown>; is_default?: boolean }) =>
+      apiClient.post(`${ADMIN}/saved-views`, data),
+    delete: (id: string) => apiClient.delete(`${ADMIN}/saved-views/${id}`),
+  },
 
   /** Contact Submissions */
   contactSubmissions: {

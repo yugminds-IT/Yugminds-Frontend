@@ -1,15 +1,17 @@
 "use client";
 
 import { useState, useEffect, useMemo, Suspense, lazy } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTeacherSchool } from "./context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatCard } from "@/components/student/StatCard";
 import { AreaChartAnalyticsCard } from "@/components/ui/area-chart-analytics-card";
-import { 
-  BookOpen, 
+import {
+  BookOpen,
   FileText,
   Calendar,
   Clock,
@@ -17,12 +19,15 @@ import {
   AlertCircle,
   RefreshCw
 } from "lucide-react";
-import { 
-  useTeacherClasses, 
-  useTeacherReports, 
+import {
+  useTeacherClasses,
+  useTeacherReports,
   useTeacherMonthlyAttendance,
   useTeacherLeaves,
-  useTodaysClasses
+  useTodaysClasses,
+  useTodayAttendanceStatus,
+  formatMonthLabel,
+  currentMonthKey,
 } from "@/hooks/useTeacherData";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { SkeletonDashboard } from "@/components/ui/skeleton-dashboard";
@@ -35,35 +40,27 @@ const TeacherAttendanceTab = lazy(() => import("@/components/teacher/TeacherAtte
 const TeacherReportsTab = lazy(() => import("@/components/teacher/TeacherReportsTab"));
 const TeacherAnalyticsTab = lazy(() => import("@/components/teacher/TeacherAnalyticsTab"));
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-interface DashboardStats {
-  todaysClasses: number;
-  pendingReports: number;
-  totalClasses: number;
-  monthlyAttendance: number;
-  pendingLeaves: number;
-  totalStudents: number;
-}
-
 export default function TeacherDashboard() {
-  const _router = useRouter();
   const queryClient = useQueryClient();
   const { selectedSchool } = useTeacherSchool();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isMounted, setIsMounted] = useState(false);
 
-  // React Query hooks - only load data needed for stats
+  // React Query hooks - only load data needed for stats.
+  // Reports: fetch the full window (backend caps at 500) — counting "pending"
+  // among only the 5 most recent reports undercounted the real number.
   const { data: classes, isLoading: classesLoading } = useTeacherClasses(selectedSchool?.id);
   const { data: todaysClasses, isLoading: todaysClassesLoading } = useTodaysClasses(selectedSchool?.id);
-  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchool?.id, { limit: 5 });
+  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchool?.id, { limit: 500 });
   const { data: monthlyAttendance, isLoading: attendanceLoading } = useTeacherMonthlyAttendance(selectedSchool?.id, 6);
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
+  const { data: todayStatus } = useTodayAttendanceStatus(selectedSchool?.id);
 
   // Refresh function to reload all dashboard data
   const loadDashboardData = async () => {
     if (!selectedSchool?.id) return;
-    
+
     setIsRefreshing(true);
     try {
       // Invalidate all teacher-related queries to force refetch (match actual query keys)
@@ -73,6 +70,7 @@ export default function TeacherDashboard() {
       await queryClient.invalidateQueries({ queryKey: ['teacher', 'monthly-attendance', selectedSchool.id] });
       await queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves', selectedSchool.id] });
       await queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'today-attendance', selectedSchool.id] });
       await queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress });
 
       setLastRefresh(new Date());
@@ -120,71 +118,40 @@ export default function TeacherDashboard() {
     minRefreshInterval: 60000, // 1 minute minimum between refreshes
   });
 
-  // Use useMemo to calculate stats and activity efficiently (only recalculates when data changes)
-  // Only calculate when data is actually loaded (not during loading states)
+  const statsLoading =
+    classesLoading || todaysClassesLoading || reportsLoading || attendanceLoading || leavesLoading;
+
+  // Current-month attendance: only trust the log entry whose month IS the
+  // current month — monthlyAttendance[0] is merely the most recent logged
+  // month and previously showed last month's numbers as "this month".
+  const currentMonthEntry = useMemo(() => {
+    if (!isMounted || !Array.isArray(monthlyAttendance)) return null;
+    const key = currentMonthKey();
+    return monthlyAttendance.find((m) => String(m.month).slice(0, 7) === key) ?? null;
+  }, [monthlyAttendance, isMounted]);
+
   const dashboardStats = useMemo(() => {
-    if (!selectedSchool) return {
-      todaysClasses: 0,
-      pendingReports: 0,
-      totalClasses: 0,
-      monthlyAttendance: 0,
-      pendingLeaves: 0,
-      totalStudents: 0
-    };
+    if (!selectedSchool) {
+      return { todaysClasses: 0, pendingReports: 0, totalClasses: 0, monthlyAttendance: 0, pendingLeaves: 0 };
+    }
 
-    // Only calculate stats if data is loaded (not undefined due to loading)
-    // For each data source, if it's still loading, return 0 to avoid showing stale/cached values
-    
-    // Today's classes count - use real schedule-based data
-    const todaysClassesCount = (() => {
-      // If still loading, return 0
-      if (todaysClassesLoading || todaysClasses === undefined) return 0;
-      return Array.isArray(todaysClasses) ? todaysClasses.length : 0;
-    })();
+    const todaysClassesCount = Array.isArray(todaysClasses) ? todaysClasses.length : 0;
+    const pendingReportsCount = Array.isArray(reports)
+      ? (reports as Array<{ report_status?: string }>).filter((r) => r.report_status === 'Pending').length
+      : 0;
+    const totalClassesCount = Array.isArray(classes) ? classes.length : 0;
 
-    // Pending reports count
-    const pendingReportsCount = (() => {
-      if (reportsLoading || reports === undefined) return 0;
-      return Array.isArray(reports)
-        ? (reports as Array<{ report_status?: string }>).filter((r) => r.report_status === 'Pending').length
-        : 0;
-    })();
-
-    // Total classes count
-    const totalClassesCount = (() => {
-      if (classesLoading || classes === undefined) return 0;
-      return Array.isArray(classes) ? classes.length : 0;
-    })();
-
-    // Calculate monthly attendance percentage
     const attendancePct = (() => {
-      if (attendanceLoading || !monthlyAttendance || monthlyAttendance.length === 0) return 0;
-      
-      // Get current month data - monthlyAttendance is sorted descending (most recent first)
-      const currentMonthData = monthlyAttendance[0];
-      
-      if (!currentMonthData) return 0;
-      
-      // Use total_days if available, otherwise calculate from individual counts
-      const total = currentMonthData.total_days || 
-        (currentMonthData.present_count + currentMonthData.absent_count + 
-         currentMonthData.leave_count + currentMonthData.unreported_count) || 1;
-      
-      const present = currentMonthData.present_count || 0;
-      
-      // Calculate percentage
-      const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
-      
-      return percentage;
+      if (!currentMonthEntry) return 0;
+      const total = currentMonthEntry.total_days ||
+        (currentMonthEntry.present_count + currentMonthEntry.absent_count +
+         currentMonthEntry.leave_count + currentMonthEntry.unreported_count) || 0;
+      return total > 0 ? Math.round((currentMonthEntry.present_count / total) * 100) : 0;
     })();
 
-    // Pending leaves count
-    const pendingLeavesCount = (() => {
-      if (leavesLoading || leaves === undefined) return 0;
-      return Array.isArray(leaves) 
-        ? (leaves as Array<{ status?: string }>).filter((l) => l.status === 'Pending').length 
-        : 0;
-    })();
+    const pendingLeavesCount = Array.isArray(leaves)
+      ? (leaves as Array<{ status?: string }>).filter((l) => l.status === 'Pending').length
+      : 0;
 
     return {
       todaysClasses: todaysClassesCount,
@@ -192,21 +159,62 @@ export default function TeacherDashboard() {
       totalClasses: totalClassesCount,
       monthlyAttendance: attendancePct,
       pendingLeaves: pendingLeavesCount,
-      totalStudents: 0
     };
-  }, [
-    selectedSchool, 
-    classes, 
-    classesLoading,
-    todaysClasses, 
-    todaysClassesLoading,
-    reports, 
-    reportsLoading,
-    leaves, 
-    leavesLoading,
-    monthlyAttendance, 
-    attendanceLoading
-  ]);
+  }, [selectedSchool, classes, todaysClasses, reports, leaves, currentMonthEntry]);
+
+  // Needs attention: real, actionable items only, each linking to its fix.
+  const needsAttention = useMemo(() => {
+    const items: Array<{ id: string; label: string; href: string; tone: 'red' | 'amber' }> = [];
+
+    const ts = todayStatus as { totalPeriods?: number; periodsWithReports?: number } | undefined;
+    const unreported = (ts?.totalPeriods ?? 0) - (ts?.periodsWithReports ?? 0);
+    if (unreported > 0) {
+      items.push({
+        id: 'unreported-periods',
+        label: `${unreported} period${unreported !== 1 ? 's' : ''} today without a report`,
+        href: '/lms/teacher/reports',
+        tone: 'amber',
+      });
+    }
+
+    const flagged = Array.isArray(reports)
+      ? (reports as Array<{ report_status?: string }>).filter((r) => r.report_status === 'Flagged').length
+      : 0;
+    if (flagged > 0) {
+      items.push({
+        id: 'flagged-reports',
+        label: `${flagged} report${flagged !== 1 ? 's' : ''} flagged by admin`,
+        href: '/lms/teacher/reports',
+        tone: 'red',
+      });
+    }
+
+    if (dashboardStats.pendingLeaves > 0) {
+      items.push({
+        id: 'pending-leaves',
+        label: `${dashboardStats.pendingLeaves} leave request${dashboardStats.pendingLeaves !== 1 ? 's' : ''} awaiting approval`,
+        href: '/lms/teacher/leaves',
+        tone: 'amber',
+      });
+    }
+
+    return items;
+  }, [todayStatus, reports, dashboardStats.pendingLeaves]);
+
+  // Real 6-month attendance series for the one card that has genuine trend data.
+  const attendanceSeries = useMemo(() => {
+    if (!Array.isArray(monthlyAttendance)) return [];
+    return [...monthlyAttendance]
+      .reverse()
+      .map((m) => {
+        const total = m.total_days ||
+          (m.present_count + m.absent_count + m.leave_count + m.unreported_count) || 0;
+        return {
+          label: formatMonthLabel(m.month),
+          value: total > 0 ? Math.round((m.present_count / total) * 100) : 0,
+        };
+      });
+  }, [monthlyAttendance]);
 
   if (!isMounted) {
     return (
@@ -234,45 +242,26 @@ export default function TeacherDashboard() {
     );
   }
 
-  const makeSparklineData = (value: number, points = 6) => {
-    const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-    const baseline = Math.max(1, safeValue);
-
-    return Array.from({ length: points }, (_, index) => {
-      const progress = (index + 1) / points;
-      const wave = Math.sin(index * 1.15) * baseline * 0.08;
-
-      return {
-        label: `${index + 1}`,
-        value: Math.max(0, Math.round(baseline * (0.62 + progress * 0.38) + wave)),
-      };
-    });
-  };
-
   const teacherStatCards = [
     {
       title: "Today's Classes",
       value: dashboardStats.todaysClasses,
-      description: "Classes scheduled today",
+      description: "Periods scheduled today",
       badge: "Today",
       icon: <BookOpen className="h-4 w-4" />,
       accentColor: "#2563eb",
-      sideMetric: `${dashboardStats.todaysClasses}`,
-      sideLabel: "scheduled",
-      info: "Classes scheduled for today at the selected school.",
-      numericValue: dashboardStats.todaysClasses,
+      info: "Scheduled periods for today at the selected school.",
+      href: "/lms/teacher/classes",
     },
     {
       title: "Pending Reports",
       value: dashboardStats.pendingReports,
-      description: "Reports awaiting approval",
+      description: "Awaiting admin review",
       badge: dashboardStats.pendingReports > 0 ? "Pending" : "Clear",
       icon: <FileText className="h-4 w-4" />,
       accentColor: dashboardStats.pendingReports > 0 ? "#f97316" : "#16a34a",
-      sideMetric: `${dashboardStats.pendingReports}`,
-      sideLabel: "reports",
-      info: "Teacher reports currently waiting for school admin review.",
-      numericValue: dashboardStats.pendingReports,
+      info: "Your submitted reports currently waiting for school admin review.",
+      href: "/lms/teacher/reports",
     },
     {
       title: "Total Classes",
@@ -281,22 +270,8 @@ export default function TeacherDashboard() {
       badge: "Assigned",
       icon: <Users className="h-4 w-4" />,
       accentColor: "#7c3aed",
-      sideMetric: `${dashboardStats.totalClasses}`,
-      sideLabel: "classes",
       info: "Total classes assigned to you in the selected school.",
-      numericValue: dashboardStats.totalClasses,
-    },
-    {
-      title: "Monthly Attendance",
-      value: `${dashboardStats.monthlyAttendance}%`,
-      description: "This month",
-      badge: "Attendance",
-      icon: <Calendar className="h-4 w-4" />,
-      accentColor: "#0891b2",
-      sideMetric: `${dashboardStats.monthlyAttendance}%`,
-      sideLabel: "present",
-      info: "Your attendance percentage for the current month.",
-      numericValue: dashboardStats.monthlyAttendance,
+      href: "/lms/teacher/classes",
     },
     {
       title: "Pending Leaves",
@@ -305,22 +280,8 @@ export default function TeacherDashboard() {
       badge: dashboardStats.pendingLeaves > 0 ? "Pending" : "Clear",
       icon: <Clock className="h-4 w-4" />,
       accentColor: dashboardStats.pendingLeaves > 0 ? "#f59e0b" : "#16a34a",
-      sideMetric: `${dashboardStats.pendingLeaves}`,
-      sideLabel: "leaves",
       info: "Leave requests that are still awaiting approval.",
-      numericValue: dashboardStats.pendingLeaves,
-    },
-    {
-      title: "Last Refresh",
-      value: lastRefresh.toLocaleTimeString(),
-      description: "Dashboard data sync",
-      badge: "Live",
-      icon: <RefreshCw className="h-4 w-4" />,
-      accentColor: "#64748b",
-      sideMetric: "Now",
-      sideLabel: "updated",
-      info: "The most recent time this dashboard data refreshed.",
-      numericValue: 1,
+      href: "/lms/teacher/leaves",
     },
   ];
 
@@ -332,6 +293,9 @@ export default function TeacherDashboard() {
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
           <p className="text-gray-600 mt-2">
             Welcome back! Here&apos;s an overview of your teaching activities at {selectedSchool.name}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Last updated {lastRefresh.toLocaleTimeString()}
           </p>
         </div>
         <Button
@@ -345,23 +309,67 @@ export default function TeacherDashboard() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-        {teacherStatCards.map((metric) => (
-          <AreaChartAnalyticsCard
-            key={metric.title}
-            title={metric.title}
-            value={metric.value}
-            description={metric.description}
-            badge={metric.badge}
-            icon={metric.icon}
-            accentColor={metric.accentColor}
-            sideMetric={metric.sideMetric}
-            sideLabel={metric.sideLabel}
-            info={metric.info}
-            data={makeSparklineData(metric.numericValue)}
-          />
-        ))}
+      {/* Needs attention — real, actionable items only */}
+      {needsAttention.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {needsAttention.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                item.tone === 'red'
+                  ? 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100'
+                  : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+              }`}
+            >
+              <AlertCircle className={`h-4 w-4 shrink-0 ${item.tone === 'red' ? 'text-red-500' : 'text-amber-500'}`} />
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* Stats Cards — skeletons while loading (a 0 is a claim, not a loading state) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        {statsLoading ? (
+          [...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-[132px] w-full rounded-xl" />
+          ))
+        ) : (
+          <>
+            {teacherStatCards.map((metric) => (
+              <StatCard
+                key={metric.title}
+                title={metric.title}
+                value={metric.value}
+                description={metric.description}
+                badge={metric.badge}
+                icon={metric.icon}
+                accentColor={metric.accentColor}
+                info={metric.info}
+                href={metric.href}
+              />
+            ))}
+            {/* Attendance is the one metric with a real monthly series — keep the chart card for it */}
+            <AreaChartAnalyticsCard
+              title="Monthly Attendance"
+              value={currentMonthEntry ? `${dashboardStats.monthlyAttendance}%` : "—"}
+              description={
+                currentMonthEntry
+                  ? formatMonthLabel(currentMonthEntry.month, { month: 'long', year: 'numeric' })
+                  : "No log for this month yet"
+              }
+              badge="6 months"
+              icon={<Calendar className="h-4 w-4" />}
+              accentColor="#0891b2"
+              sideMetric={currentMonthEntry ? `${dashboardStats.monthlyAttendance}%` : "—"}
+              sideLabel="present"
+              info="Attendance percentage per month over the last 6 logged months."
+              href="/lms/teacher/attendance"
+              data={attendanceSeries}
+            />
+          </>
+        )}
       </div>
 
       {/* Main Content Tabs */}
@@ -405,4 +413,3 @@ export default function TeacherDashboard() {
     </div>
   );
 }
-

@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Download, AlertCircle, Clock, Loader2 } from "lucide-react";
+import { Download, Loader2, TrendingUp } from "lucide-react";
 import { SkeletonDashboard } from "../ui/skeleton-dashboard";
 import { adminApi } from "../../lib/api/admin.api";
 import ReportFilterDialog from "./ReportFilterDialog";
 import { toast } from "../ui/toast";
+import NeedsAttentionPanel from "./NeedsAttentionPanel";
+import type { MonthlyGrowthPoint, NeedsAttentionItem } from "../../hooks/useAdminDashboard";
 
 interface DashboardStats {
   totalSchools: number;
@@ -25,13 +27,15 @@ interface DashboardStats {
 
 interface AdminReportsTabProps {
   stats: DashboardStats;
-  lastRefresh: Date;
+  monthlyGrowth?: MonthlyGrowthPoint[];
+  needsAttention?: NeedsAttentionItem[];
   isLoading?: boolean;
 }
 
 export default function AdminReportsTab({
   stats,
-  lastRefresh,
+  monthlyGrowth = [],
+  needsAttention = [],
   isLoading = false
 }: AdminReportsTabProps) {
   const _router = useRouter();
@@ -101,10 +105,7 @@ export default function AdminReportsTab({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Export Reports
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            </CardTitle>
+            <CardTitle>Export Reports</CardTitle>
             <CardDescription>Generate and download system reports</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -166,44 +167,60 @@ export default function AdminReportsTab({
                 <Badge variant="secondary" className="ml-auto">{stats.activeCourses} courses</Badge>
               </Button>
             </div>
-            <div className="pt-3 border-t">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Clock className="h-4 w-4" />
-                <span>Last report generated: {lastRefresh.toLocaleDateString()}</span>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              System Alerts
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-            </CardTitle>
-            <CardDescription>Important notifications and alerts</CardDescription>
+            <CardTitle>Needs Attention</CardTitle>
+            <CardDescription>Items across the platform waiting on admin action</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {stats.pendingLeaves > 0 && (
-                <div className="flex items-center p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mr-3" />
-                  <div>
-                    <p className="text-sm font-medium text-yellow-800">
-                      {stats.pendingLeaves} pending leave requests
-                    </p>
-                    <p className="text-xs text-yellow-600">Requires your attention</p>
-                  </div>
-                </div>
-              )}
-              
-              {stats.pendingLeaves === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No alerts at this time</p>
-              )}
-            </div>
+            <NeedsAttentionPanel items={needsAttention} />
           </CardContent>
         </Card>
       </div>
+
+      {/* Real 6-month growth — from the same aggregation the dashboard sparklines use */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-blue-500" />
+            Growth (last 6 months)
+          </CardTitle>
+          <CardDescription>New schools, teachers, students, and courses added per month</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {monthlyGrowth.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No growth data available yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="py-2 pr-4 font-medium">Month</th>
+                    <th className="py-2 pr-4 font-medium text-right">Schools</th>
+                    <th className="py-2 pr-4 font-medium text-right">Teachers</th>
+                    <th className="py-2 pr-4 font-medium text-right">Students</th>
+                    <th className="py-2 font-medium text-right">Courses</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyGrowth.map((m) => (
+                    <tr key={m.name} className="border-b last:border-0">
+                      <td className="py-2 pr-4 font-medium text-gray-700">{m.name}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">{m.schools}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">{m.teachers}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">{m.students}</td>
+                      <td className="py-2 text-right tabular-nums">{m.courses}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Filter Dialog */}
       <ReportFilterDialog

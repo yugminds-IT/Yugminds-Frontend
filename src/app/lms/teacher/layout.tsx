@@ -13,6 +13,8 @@ import { commonApi, teacherApi, setAuthToken, apiClient } from "@/lib/api";
 import { getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
 
 /**
  * Teacher Dashboard Layout
@@ -224,14 +226,17 @@ export default function TeacherLayout({
           setUserProfile(profile);
           setSchools(schoolsData);
           
-          // Restore selected school from sessionStorage if available, otherwise use first school
+          // Restore saved school selection, otherwise use first school
           if (schoolsData.length > 0) {
             let schoolToSelect = schoolsData[0];
-            
-            // Try to restore from sessionStorage
+
+            // localStorage survives new tabs; fall back to the old
+            // sessionStorage key so existing sessions keep their selection.
             if (typeof window !== 'undefined') {
               try {
-                const savedSchoolId = sessionStorage.getItem('selectedSchoolId');
+                const savedSchoolId =
+                  localStorage.getItem('teacherSelectedSchoolId') ||
+                  sessionStorage.getItem('selectedSchoolId');
                 if (savedSchoolId) {
                   const savedSchool = schoolsData.find((s: School) => s.id === savedSchoolId);
                   if (savedSchool) {
@@ -239,17 +244,17 @@ export default function TeacherLayout({
                   }
                 }
               } catch (err) {
-                console.warn('Error reading from sessionStorage:', err);
+                console.warn('Error reading saved school selection:', err);
               }
             }
-            
+
             setSelectedSchool(schoolToSelect);
-            // Store in sessionStorage for persistence
             if (typeof window !== 'undefined') {
               try {
+                localStorage.setItem('teacherSelectedSchoolId', schoolToSelect.id);
                 sessionStorage.setItem('selectedSchoolId', schoolToSelect.id);
               } catch (err) {
-                console.warn('Error writing to sessionStorage:', err);
+                console.warn('Error persisting school selection:', err);
               }
             }
           }
@@ -343,23 +348,25 @@ export default function TeacherLayout({
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem('selectedSchoolId');
+        localStorage.removeItem('teacherSelectedSchoolId');
       } catch (err) {
-        console.warn('Error removing from sessionStorage:', err);
+        console.warn('Error clearing school selection:', err);
       }
     }
     setAuthToken(null);
     await logout();
   };
 
-   
+
   const handleSchoolChange = (school: TeacherSchool | null) => {
     if (!school?.id) return;
     setSelectedSchool(school as School);
     if (typeof window !== 'undefined') {
       try {
+        localStorage.setItem('teacherSelectedSchoolId', school.id!);
         sessionStorage.setItem('selectedSchoolId', school.id!);
       } catch (err) {
-        console.warn('Error writing to sessionStorage:', err);
+        console.warn('Error persisting school selection:', err);
       }
     }
   };
@@ -390,6 +397,8 @@ export default function TeacherLayout({
   return (
     <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
       <ForcePasswordChange />
+      <AnnouncementBanner />
+      <ImpersonationBanner />
       <Sidebar 
         userRole="teacher"
         userName={userProfile?.full_name || user?.email || "Teacher"}

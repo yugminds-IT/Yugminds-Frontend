@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, CheckCircle, Clock, AlertCircle, Globe, Loader2, RotateCcw, FileText, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle, Clock, AlertCircle, Globe, Loader2, RotateCcw, FileText } from "lucide-react";
 import Link from "next/link";
 import { useStudentAssignment, useSubmitAssignment } from "@/hooks/useStudentData";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
@@ -88,20 +88,28 @@ export default function AssignmentDetailPage(props: PageProps) {
     return "essay";
   }, [assignment, questions]);
 
-  const answeredCount = useMemo(() => questions.filter(q => {
+  const isQuestionAnswered = useMemo(() => (q: Question) => {
     const a = answers[q.id];
     if (!a) return false;
     if (a.type === "mcq") return typeof a.value === "number" && a.value >= 0;
     if (a.type === "essay") return typeof a.value === "string" && a.value.trim().length > 0;
     if (a.type === "fill_blank") return Array.isArray(a.value) && (a.value as string[]).some(v => v?.trim().length > 0);
     return false;
-  }).length, [answers, questions]);
+  }, [answers]);
+
+  const answeredCount = useMemo(
+    () => questions.filter(isQuestionAnswered).length,
+    [isQuestionAnswered, questions]
+  );
+
+  // Unsubmitted draft restored from local auto-save — used for the overview notice.
+  const draftAnsweredCount = !submission ? Object.keys(savedData?.answers ?? {}).length : 0;
 
   const hasGrade = submission?.grade !== null && submission?.grade !== undefined;
   const isSubmitted = !!(submission && (submission.status === "submitted" || submission.status === "graded" || hasGrade || submission.submitted_at));
   const canRetake = !!retake?.allowed;
 
-  const { clearSavedData } = useAutoSaveForm({
+  const { clearSavedData, isSaving, lastSaved } = useAutoSaveForm({
     formId: `student-assignment-${assignmentId}`,
     formData: { answers, fileName: fileUploadName || fileUpload?.name || undefined },
     autoSave: true,
@@ -210,7 +218,7 @@ export default function AssignmentDetailPage(props: PageProps) {
     const ans = answers[q.id];
 
     const wrapper = (content: React.ReactNode) => (
-      <div key={q.id} className="py-7 border-b border-gray-100 last:border-0">
+      <div key={q.id} id={`question-${idx}`} className="py-7 border-b border-gray-100 last:border-0 scroll-mt-28">
         <div className="flex items-start justify-between gap-4 mb-5">
           <span className="text-[15px] font-semibold text-gray-700">{idx + 1}.</span>
           <span className="text-sm text-gray-400 whitespace-nowrap flex-shrink-0">
@@ -327,6 +335,22 @@ export default function AssignmentDetailPage(props: PageProps) {
             </div>
 
             <div className="flex items-center gap-4 flex-shrink-0">
+              {/* Live auto-save status — students should always know work is safe */}
+              <span className={`flex items-center gap-1 text-xs ${isSaving ? "text-gray-400" : "text-green-600"}`}>
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Saving…
+                  </>
+                ) : lastSaved ? (
+                  <>
+                    <CheckCircle className="h-3 w-3" />
+                    Saved
+                  </>
+                ) : (
+                  <span className="text-gray-400">Auto-save on</span>
+                )}
+              </span>
               {/* Progress */}
               {questions.length > 0 && (
                 <span className="hidden sm:block text-xs text-gray-500">
@@ -342,6 +366,34 @@ export default function AssignmentDetailPage(props: PageProps) {
               )}
             </div>
           </div>
+
+          {/* Question navigator — jump to any question, see what's left at a glance */}
+          {questions.length > 1 && (
+            <div className="border-t border-gray-100 px-5 py-2 flex items-center gap-1.5 overflow-x-auto">
+              {questions.map((q, i) => {
+                const answered = isQuestionAnswered(q);
+                return (
+                  <button
+                    key={q.id}
+                    onClick={() => document.getElementById(`question-${i}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    title={answered ? `Question ${i + 1} — answered` : `Question ${i + 1} — not answered`}
+                    className={`h-7 w-7 flex-shrink-0 rounded-full text-xs font-semibold transition-colors ${
+                      answered
+                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                        : "bg-white text-gray-500 border border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                );
+              })}
+              <span className="ml-2 text-[11px] text-gray-400 whitespace-nowrap">
+                {questions.length - answeredCount > 0
+                  ? `${questions.length - answeredCount} left`
+                  : "All answered ✓"}
+              </span>
+            </div>
+          )}
         </header>
 
         {/* All questions */}
@@ -471,6 +523,16 @@ export default function AssignmentDetailPage(props: PageProps) {
             </p>
           )}
 
+          {/* Saved-draft notice */}
+          {!isSubmitted && draftAnsweredCount > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2.5 mb-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>
+                You have a saved draft with {draftAnsweredCount} answer{draftAnsweredCount !== 1 ? "s" : ""} — pick up where you left off.
+              </span>
+            </div>
+          )}
+
           {/* Primary CTA */}
           <div className="flex items-center gap-3 flex-wrap">
             {!isSubmitted && (
@@ -478,7 +540,7 @@ export default function AssignmentDetailPage(props: PageProps) {
                 onClick={() => setMode("taking")}
                 className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
               >
-                Start Assignment
+                {draftAnsweredCount > 0 ? "Continue Assignment" : "Start Assignment"}
               </button>
             )}
 

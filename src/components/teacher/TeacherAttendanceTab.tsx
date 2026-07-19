@@ -10,6 +10,8 @@ import { useTeacherSchool } from "../../app/lms/teacher/context";
 import {
   useTodayAttendanceStatus,
   useTeacherMonthlyAttendance,
+  formatMonthLabel,
+  currentMonthKey,
 } from "../../hooks/useTeacherData";
 import { SkeletonDashboard } from "../ui/skeleton-dashboard";
 
@@ -28,7 +30,12 @@ export default function TeacherAttendanceTab() {
     return <SkeletonDashboard />;
   }
 
-  const currentMonth = monthlyAttendance?.[0];
+  // Only the log entry for the ACTUAL current month — monthlyAttendance[0] is
+  // just the most recent logged month and used to show last month's numbers
+  // under this month's heading.
+  const currentMonth = monthlyAttendance?.find(
+    (m) => String(m.month).slice(0, 7) === currentMonthKey(),
+  );
   const attendancePct =
     currentMonth && currentMonth.total_days > 0
       ? Math.round((currentMonth.present_count / currentMonth.total_days) * 100)
@@ -181,10 +188,7 @@ export default function TeacherAttendanceTab() {
               {[...monthlyAttendance].reverse().map((m) => {
                 const pct =
                   m.total_days > 0 ? Math.round((m.present_count / m.total_days) * 100) : 0;
-                const label = new Date(m.month + "-01").toLocaleDateString("en-US", {
-                  month: "short",
-                  year: "2-digit",
-                });
+                const label = formatMonthLabel(m.month, { month: "short", year: "2-digit" });
                 return (
                   <div key={m.month} className="flex items-center gap-3">
                     <span className="text-sm text-gray-600 w-12 shrink-0">{label}</span>

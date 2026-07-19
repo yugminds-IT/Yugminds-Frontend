@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,8 @@ export type AreaChartAnalyticsCardProps = {
   accentColor?: string;
   sideMetric?: string;
   sideLabel?: string;
+  /** when set, the whole card becomes a link to this route */
+  href?: string;
   className?: string;
 };
 
@@ -65,6 +68,7 @@ export function AreaChartAnalyticsCard({
   accentColor = "#0891b2",
   sideMetric,
   sideLabel,
+  href,
   className,
 }: AreaChartAnalyticsCardProps) {
   const displayValue =
@@ -72,10 +76,11 @@ export function AreaChartAnalyticsCard({
 
   const chartData = data.length > 0 ? data : defaultData;
 
-  return (
+  const card = (
     <Card
       className={cn(
         "flex h-full min-h-[132px] flex-col gap-0 overflow-hidden p-0 shadow-none",
+        href && "transition-all hover:border-gray-300 hover:shadow-md cursor-pointer",
         className,
       )}
       style={{ "--analytics-accent": accentColor } as React.CSSProperties}
@@ -171,6 +176,15 @@ export function AreaChartAnalyticsCard({
       </CardContent>
     </Card>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className="block h-full" aria-label={`${title}: ${displayValue}`}>
+        {card}
+      </Link>
+    );
+  }
+  return card;
 }
 
 export const Component = () => {

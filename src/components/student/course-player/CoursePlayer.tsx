@@ -11,8 +11,15 @@ import QuizContentViewer from './QuizContentViewer'
 import AssignmentContentViewer from './AssignmentContentViewer'
 import LessonTabs from './LessonTabs'
 import ErrorBoundary from './ErrorBoundary'
+import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCourseWithRealtime, useCourseChapters, useChapterContents } from '../../../hooks/useStudentData'
+import {
+  useCourseWithRealtime,
+  useCourseChapters,
+  useChapterContents,
+  useStudentAssignments,
+  useStudentDailyAssignments,
+} from '../../../hooks/useStudentData'
 import { Card } from '../../ui/card'
 import { Button } from '../../ui/button'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
@@ -29,6 +36,7 @@ import {
   ArrowRight,
   Lock,
   X,
+  AlertCircle,
 } from 'lucide-react'
 import { getStoredUserId } from '../../../lib/session-utils'
 import { studentApi } from '../../../lib/api'
@@ -124,6 +132,51 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
 
   const toast = useToast()
   const queryClient = useQueryClient()
+
+  // ── Deadline nudge: homework due today / overdue, surfaced inside the player ─
+  // Uses the same cached queries as the dashboard, so this adds no extra load
+  // when the student navigated here from the dashboard.
+  const { data: courseAssignmentsData } = useStudentAssignments()
+  const { data: dailyAssignmentsData } = useStudentDailyAssignments()
+  const [dueBannerDismissed, setDueBannerDismissed] = useState(true)
+  // One dismissal per day (key derived in the effect — no Date read during render).
+  const dueBannerKeyRef = useRef('')
+  useEffect(() => {
+    const key = `yug-due-banner-${new Date().toDateString()}`
+    dueBannerKeyRef.current = key
+    try {
+      setDueBannerDismissed(sessionStorage.getItem(key) === '1')
+    } catch {
+      setDueBannerDismissed(false)
+    }
+  }, [])
+
+  interface DueItem {
+    id?: string
+    title?: string
+    status?: string
+    is_overdue?: boolean
+    days_until_due?: number
+    submission?: unknown
+  }
+  const urgentAssignments = (() => {
+    const all = [
+      ...(Array.isArray(courseAssignmentsData) ? (courseAssignmentsData as DueItem[]) : []),
+      ...(Array.isArray(dailyAssignmentsData) ? (dailyAssignmentsData as DueItem[]) : []),
+    ]
+    const seen = new Set<string>()
+    return all.filter(a => {
+      if (!a.id || seen.has(a.id)) return false
+      seen.add(a.id)
+      const pending = (a.status === 'not_started' || a.status === 'pending' || a.status == null) && !a.submission
+      return pending && (a.is_overdue || a.days_until_due === 0)
+    })
+  })()
+
+  const dismissDueBanner = () => {
+    setDueBannerDismissed(true)
+    try { sessionStorage.setItem(dueBannerKeyRef.current, '1') } catch { /* ignore */ }
+  }
 
   // Combined completion predicate: server truth OR optimistic overlay.
   const isDone = makeIsCompleted(isContentCompleted)
@@ -675,6 +728,37 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
             {/* Progress ring (right) */}
             <CircularProgress value={overallProgressPercent} size={34} stroke={4} className="flex-shrink-0" />
           </div>
+
+          {/* Deadline nudge — homework due today shouldn't be invisible mid-lesson */}
+          {!dueBannerDismissed && urgentAssignments.length > 0 && (
+            <div className="flex-shrink-0 flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-5 py-2 text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-500" />
+              <span className="min-w-0 truncate">
+                {urgentAssignments.length === 1 ? (
+                  <>&ldquo;{urgentAssignments[0].title}&rdquo; is {urgentAssignments[0].is_overdue ? 'overdue' : 'due today'}</>
+                ) : (
+                  <>{urgentAssignments.length} assignments are due today or overdue</>
+                )}
+              </span>
+              <Link
+                href={
+                  urgentAssignments.length === 1
+                    ? `/lms/student/assignments/${urgentAssignments[0].id}`
+                    : '/lms/student/assignments?filter=pending'
+                }
+                className="ml-auto flex-shrink-0 text-xs font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-700"
+              >
+                {urgentAssignments.length === 1 ? 'Start now' : 'View all'}
+              </Link>
+              <button
+                onClick={dismissDueBanner}
+                aria-label="Dismiss reminder"
+                className="flex-shrink-0 text-amber-500 hover:text-amber-700 p-0.5"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Scrollable content area */}
           <div

@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import {
   ManagementTable,
   type ManagementTableRowAction,
+  type ManagementTableBulkAction,
 } from "@/components/ui/management-table";
 import {
   STUDENT_MANAGEMENT_COLUMNS,
@@ -22,6 +23,7 @@ export type StudentManagementTableProps<T extends StudentManagementRow = Student
     onDelete: (row: T) => void;
     onEnroll?: (row: T) => void;
     onBulkDeleteSelected?: (rows: T[]) => void;
+    bulkActions?: ManagementTableBulkAction<T>[];
     resetSelectionKey?: number;
     searchPlaceholder?: string;
     itemsPerPage?: number;
@@ -37,6 +39,7 @@ export function StudentManagementTable<T extends StudentManagementRow>({
   onDelete,
   onEnroll,
   onBulkDeleteSelected,
+  bulkActions,
   resetSelectionKey,
   searchPlaceholder = "Search students by name, email, school, grade...",
   itemsPerPage = 15,
@@ -67,6 +70,7 @@ export function StudentManagementTable<T extends StudentManagementRow>({
       rowActions={rowActions}
       loading={loading}
       onBulkDeleteSelected={onBulkDeleteSelected}
+      bulkActions={bulkActions}
       resetSelectionKey={resetSelectionKey}
       searchPlaceholder={searchPlaceholder}
       itemsPerPage={itemsPerPage}

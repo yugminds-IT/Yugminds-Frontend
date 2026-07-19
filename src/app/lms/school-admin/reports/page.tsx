@@ -87,11 +87,13 @@ export default function ReportsManagement() {
       }
 
       // Load teacher reports via centralized schoolAdminApi (bypasses RLS)
+      // Explicit limits — the backend defaults to 50, and this page computes its
+      // own status counts, filters, and per-teacher coverage from these lists.
       const [reportsRes, schedulesRes, periodsRes, teachersRes] = await Promise.all([
-        schoolAdminApi.reports.list(),
+        schoolAdminApi.reports.list({ limit: 500 }),
         schoolAdminApi.schedules.list(),
         schoolAdminApi.periods.list(),
-        schoolAdminApi.teachers.list()
+        schoolAdminApi.teachers.list({ limit: 500 })
       ]);
 
       // Reports

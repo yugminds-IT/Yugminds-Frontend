@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
+import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
 import {
   Target,
   Eye,
@@ -91,19 +92,22 @@ export default function AboutPage() {
       <section className="min-h-screen flex flex-col justify-center bg-gray-50 py-20">
         <div className="container flex-1 flex flex-col justify-center py-8 md:py-12">
           {/* Hero Content */}
-          <div className="text-center mb-8 md:mb-12">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto">
-              About <span className="text-blue-600">Robo Coders™</span>
-            </h1>
-            <p className="text-lg md:text-xl lg:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              Transforming education through innovative coding and robotics programs powered by Yugminds
-            </p>
-          </div>
+          <Reveal>
+            <div className="text-center mb-8 md:mb-12">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto">
+                About <span className="text-blue-600">Robo Coders™</span>
+              </h1>
+              <p className="text-lg md:text-xl lg:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
+                Transforming education through innovative coding and robotics programs powered by Yugminds
+              </p>
+            </div>
+          </Reveal>
 
           {/* Mission & Vision Cards */}
           <div className="grid md:grid-cols-2 gap-6 md:gap-8 lg:gap-10 mt-5">
             {/* Mission Card */}
-            <Card className="bg-blue-600 text-white border-0">
+            <HoverLift delay={0.1}>
+            <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full">
               <CardContent className="p-8 md:p-12 lg:p-16">
                 <div className="flex items-start gap-6">
                   <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -118,9 +122,11 @@ export default function AboutPage() {
                 </div>
               </CardContent>
             </Card>
+            </HoverLift>
 
             {/* Vision Card */}
-            <Card className="bg-blue-600 text-white border-0">
+            <HoverLift delay={0.2}>
+            <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full">
               <CardContent className="p-8 md:p-12 lg:p-16">
                 <div className="flex items-start gap-6">
                   <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -135,6 +141,38 @@ export default function AboutPage() {
                 </div>
               </CardContent>
             </Card>
+            </HoverLift>
+          </div>
+        </div>
+      </section>
+
+      {/* Our Story Section — BLUE */}
+      <section className="min-h-screen flex items-center justify-center bg-blue-600 py-20">
+        <div className="container">
+          <Reveal>
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-8 md:mb-12 text-center text-white max-w-5xl mx-auto">Our Story</h2>
+          </Reveal>
+          <div className="grid md:grid-cols-2 gap-10 md:gap-12 items-center">
+            <RevealX x={-48} className="space-y-6 md:space-y-8">
+              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
+                Founded by Yugminds, Robo Coders™ was born from a simple observation: students were eager to learn technology, but lacked engaging, practical programs that truly prepared them for the future.
+              </p>
+              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
+                Since our inception, we&apos;ve trained over 2,000 students across 10+ partner schools, delivering hands-on coding and robotics education that sparks curiosity and builds confidence.
+              </p>
+              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
+                Our team of expert instructors combines industry experience with a passion for teaching, creating an environment where students don&apos;t just learn, they thrive.
+              </p>
+            </RevealX>
+            <RevealX x={48} className="rounded-2xl overflow-hidden bg-gray-100 aspect-[4/3] relative max-h-[600px] shadow-2xl">
+              <Image
+                src={`/${encodeURI('About Us.jpg')}`}
+                alt="Students learning robotics and coding"
+                fill
+                className="object-cover max-w-full max-h-full hover:scale-105 transition-transform duration-700"
+                sizes="(max-width: 768px) 100vw, 50vw"
+              />
+            </RevealX>
           </div>
         </div>
       </section>
@@ -144,6 +182,7 @@ export default function AboutPage() {
         <div className="container mx-auto px-4 md:px-6 lg:px-8">
 
           {/* Heading */}
+          <Reveal>
           <div className="text-center mb-14">
             <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 text-sm font-semibold px-4 py-2 rounded-full border border-blue-100 mb-4">
               <Heart className="h-4 w-4 fill-blue-600" />
@@ -157,16 +196,17 @@ export default function AboutPage() {
             </p>
             <div className="w-16 h-1 bg-blue-600 rounded-full mx-auto mt-6" />
           </div>
+          </Reveal>
 
           {/* Value Cards */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
-            {ourValues.map(({ icon: Icon, title, desc, accent }) => (
+            {ourValues.map(({ icon: Icon, title, desc, accent }, idx) => (
+              <HoverLift key={title} delay={idx * 0.1}>
               <div
-                key={title}
-                className="group flex flex-col bg-white border-2 border-blue-100 rounded-2xl p-6 md:p-8 hover:border-blue-400 hover:shadow-xl transition-all duration-300"
+                className="group flex flex-col h-full bg-white border-2 border-blue-100 rounded-2xl p-6 md:p-8 hover:border-blue-400 hover:shadow-xl transition-all duration-300"
               >
                 {/* Icon */}
-                <div className="w-14 h-14 rounded-xl bg-blue-600 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300">
+                <div className="w-14 h-14 rounded-xl bg-blue-600 flex items-center justify-center mb-5 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
                   <Icon className="h-7 w-7 text-white" />
                 </div>
 
@@ -181,52 +221,50 @@ export default function AboutPage() {
                   <span className="text-blue-600 text-sm font-semibold">{accent}</span>
                 </div>
               </div>
+              </HoverLift>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Our Story Section */}
-      <section className="min-h-screen flex items-center justify-center bg-blue-600 py-20">
-        <div className="container">
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-8 md:mb-12 text-center text-white max-w-5xl mx-auto">Our Story</h2>
-          <div className="grid md:grid-cols-2 gap-10 md:gap-12 items-center">
-            <div className="space-y-6 md:space-y-8">
-              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
-                Founded by Yugminds, Robo Coders™ was born from a simple observation: students were eager to learn technology, but lacked engaging, practical programs that truly prepared them for the future.
-              </p>
-              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
-                Since our inception, we&apos;ve trained over 2,000 students across 10+ partner schools, delivering hands-on coding and robotics education that sparks curiosity and builds confidence.
-              </p>
-              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
-                Our team of expert instructors combines industry experience with a passion for teaching, creating an environment where students don&apos;t just learn, they thrive.
-              </p>
-            </div>
-            <div className="rounded-2xl overflow-hidden bg-gray-100 aspect-[4/3] relative max-h-[600px]">
-              <Image
-                src={`/${encodeURI('About Us.jpg')}`}
-                alt="Students learning robotics and coding"
-                fill
-                className="object-cover max-w-full max-h-full"
-                sizes="(max-width: 768px) 100vw, 50vw"
-              />
-            </div>
+      {/* Join Our Mission CTA Section — BLUE */}
+      <section className="flex items-center justify-center bg-blue-600 text-white py-16 md:py-20 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(#fff 2px, transparent 2px)", backgroundSize: "30px 30px" }} />
+        <Reveal className="container text-center relative z-10">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold mb-4 md:mb-6 max-w-5xl mx-auto">Join Our Mission</h2>
+          <p className="text-blue-100 mb-8 md:mb-10 max-w-3xl mx-auto text-base md:text-lg lg:text-xl leading-relaxed">
+            Be part of the educational revolution that&apos;s preparing students for tomorrow&apos;s world
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/contact">
+              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 text-base py-6 rounded-full shadow-lg transition-transform hover:scale-105">
+                Partner With Us
+              </Button>
+            </Link>
+            <Link href="/programs">
+              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 text-base py-6 rounded-full shadow-lg transition-transform hover:scale-105">
+                Explore Programs
+              </Button>
+            </Link>
           </div>
-        </div>
+        </Reveal>
       </section>
 
-      {/* Why Choose Robo Coders™? Section */}
+      {/* Why Choose Robo Coders™? Section — WHITE */}
       <section className="min-h-screen flex items-center justify-center bg-white py-20">
         <div className="container">
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-center mb-4 md:mb-6 max-w-5xl mx-auto">
-            Why Choose <span className="text-blue-600">Robo Coders™</span>?
-          </h2>
-          <p className="text-gray-600 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
-            Experience the future of education with our innovative approach to STEM learning
-          </p>
+          <Reveal>
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-center mb-4 md:mb-6 max-w-5xl mx-auto">
+              Why Choose <span className="text-blue-600">Robo Coders™</span>?
+            </h2>
+            <p className="text-gray-600 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
+              Experience the future of education with our innovative approach to STEM learning
+            </p>
+          </Reveal>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-            {whyChoose.map(({ icon: Icon, title, desc }) => (
-              <Card key={title} className="bg-blue-600 text-white border-0">
+            {whyChoose.map(({ icon: Icon, title, desc }, idx) => (
+              <HoverLift key={title} delay={idx * 0.08}>
+              <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full">
                 <CardContent className="p-6 md:p-8">
                   <div className="flex items-start gap-4 md:gap-5">
                     <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -239,29 +277,8 @@ export default function AboutPage() {
                   </div>
                 </CardContent>
               </Card>
+              </HoverLift>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Join Our Mission CTA Section */}
-      <section className="flex items-center justify-center bg-blue-600 text-white py-16 md:py-20">
-        <div className="container text-center">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold mb-4 md:mb-6 max-w-5xl mx-auto">Join Our Mission</h2>
-          <p className="text-blue-100 mb-8 md:mb-10 max-w-3xl mx-auto text-base md:text-lg lg:text-xl leading-relaxed">
-            Be part of the educational revolution that&apos;s preparing students for tomorrow&apos;s world
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/contact">
-              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 text-base py-6">
-                Partner With Us
-              </Button>
-            </Link>
-            <Link href="/programs">
-              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 text-base py-6">
-                Explore Programs
-              </Button>
-            </Link>
           </div>
         </div>
       </section>

@@ -17,6 +17,7 @@ import {
   Download
 } from "lucide-react";
 import { adminApi } from "../lib/api";
+import ImpersonateUserButton from "./admin/ImpersonateUserButton";
 
 interface GradeAssigned {
   gradeName: string;
@@ -283,6 +284,7 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-2xl font-bold">Teacher Profile</DialogTitle>
+            <ImpersonateUserButton userId={currentTeacher.id} label="Sign in as teacher" />
           </div>
         </DialogHeader>
 

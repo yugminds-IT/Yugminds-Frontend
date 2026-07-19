@@ -14,6 +14,8 @@ import { setAuthToken } from "@/lib/api";
 import { clearStoredSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
 
 type UserProfile = {
   id: string;
@@ -320,6 +322,8 @@ export default function SchoolAdminLayout({
     >
       <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
         <ForcePasswordChange />
+      <AnnouncementBanner />
+      <ImpersonationBanner />
         <Sidebar 
           userRole="school_admin"
           userName={userProfile?.full_name || user?.email || "School Admin"}

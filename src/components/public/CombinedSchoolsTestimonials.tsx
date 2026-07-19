@@ -8,6 +8,7 @@ import {
   CarouselItem,
 } from "../ui/carousel";
 import { apiClient } from "../../lib/api";
+import { Reveal } from "./robo-motion";
 
 interface Logo {
   id: string;
@@ -105,11 +106,14 @@ export default function CombinedSchoolsTestimonials() {
         className="bg-white py-12 md:py-16"
       >
         <div className="container mx-auto px-4 md:px-6 lg:px-8">
-          <div className="text-center mb-8 md:mb-10">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-              Our Leading Schools
-            </h2>
-          </div>
+          <Reveal>
+            <div className="text-center mb-8 md:mb-10">
+              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
+                Our Leading Schools
+              </h2>
+              <div className="w-16 h-1 bg-blue-600 rounded-full mx-auto" />
+            </div>
+          </Reveal>
           <div className="pt-4 md:pt-6">
             <div className="relative mx-auto flex items-center justify-center max-w-screen-xl overflow-hidden min-h-[200px]">
               {isLoading && (

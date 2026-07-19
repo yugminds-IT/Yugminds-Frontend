@@ -10,6 +10,7 @@ import { Label } from "../../../components/ui/label";
 import { Textarea } from "../../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import Footer from "../../../components/Footer";
+import { Reveal, HoverLift } from "../../../components/public/robo-motion";
 import { commonApi } from "../../../lib/api";
 import { toast } from "../../../components/ui/toast";
 import { 
@@ -101,43 +102,33 @@ export default function ContactPage() {
         {/* Get in Touch Section */}
         <div className="flex-1 flex items-start justify-center bg-gray-50 flex-shrink-0 py-8 md:py-12 min-h-0">
           <div className="container w-full py-4 md:py-6">
-            <h1 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold mb-3 md:mb-4 text-center max-w-5xl mx-auto">
-              Get in <span className="text-blue-600">Touch</span>
-            </h1>
-            <p className="text-sm md:text-base lg:text-lg text-gray-700 mb-4 md:mb-6 max-w-2xl mx-auto leading-relaxed text-center">
-              Have questions? We&apos;d love to hear from you. Send us a message and we&apos;ll respond as soon as possible.
-            </p>
+            <Reveal>
+              <h1 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold mb-3 md:mb-4 text-center max-w-5xl mx-auto">
+                Get in <span className="text-blue-600">Touch</span>
+              </h1>
+              <p className="text-sm md:text-base lg:text-lg text-gray-700 mb-4 md:mb-6 max-w-2xl mx-auto leading-relaxed text-center">
+                Have questions? We&apos;d love to hear from you. Send us a message and we&apos;ll respond as soon as possible.
+              </p>
+            </Reveal>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-              <Card className="bg-blue-600 text-white border-0">
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Phone className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-bold text-lg mb-2">Phone</h3>
-                  <p className="text-white/90 mb-1">+91 85003 45655</p>
-                  <p className="text-white/70 text-sm">Mon-Fri, 9am-6pm EST</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-blue-600 text-white border-0">
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Mail className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-bold text-lg mb-2">Email</h3>
-                  <p className="text-white/90 mb-1">robocoders07@gmail.com</p>
-                  <p className="text-white/70 text-sm">We reply within 24 hours</p>
-                </CardContent>
-              </Card>
-              <Card className="bg-blue-600 text-white border-0">
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Clock className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-bold text-lg mb-2">Office Hours</h3>
-                  <p className="text-white/90 mb-1">Mon-Fri: 9am-6pm</p>
-                  <p className="text-white/70 text-sm">Saturday: 10am-4pm</p>
-                </CardContent>
-              </Card>
+              {[
+                { icon: Phone, title: "Phone", a: "+91 85003 45655", b: "Mon-Fri, 9am-6pm EST" },
+                { icon: Mail, title: "Email", a: "robocoders07@gmail.com", b: "We reply within 24 hours" },
+                { icon: Clock, title: "Office Hours", a: "Mon-Fri: 9am-6pm", b: "Saturday: 10am-4pm" },
+              ].map(({ icon: Icon, title, a, b }, idx) => (
+                <HoverLift key={title} delay={idx * 0.1}>
+                <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full group">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
+                      <Icon className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="font-bold text-lg mb-2">{title}</h3>
+                    <p className="text-white/90 mb-1">{a}</p>
+                    <p className="text-white/70 text-sm">{b}</p>
+                  </CardContent>
+                </Card>
+                </HoverLift>
+              ))}
             </div>
           </div>
         </div>
@@ -147,6 +138,7 @@ export default function ContactPage() {
           <div className="container mx-auto px-4 md:px-6 lg:px-8">
 
             {/* Heading */}
+            <Reveal>
             <div className="text-center mb-10 md:mb-14">
               <span className="inline-flex items-center gap-2 bg-white/20 text-white text-sm font-semibold px-4 py-2 rounded-full border border-white/30 mb-4">
                 <MapPin className="h-4 w-4" />
@@ -159,12 +151,13 @@ export default function ContactPage() {
                 Come visit us in Hyderabad — we&apos;d love to meet you in person.
               </p>
             </div>
+            </Reveal>
 
             {/* Two-column: info left, map right */}
             <div className="grid lg:grid-cols-5 gap-6 md:gap-8 items-stretch max-w-6xl mx-auto">
 
               {/* Info card */}
-              <div className="lg:col-span-2 bg-white rounded-2xl p-6 md:p-8 flex flex-col gap-6 shadow-xl">
+              <Reveal className="lg:col-span-2 bg-white rounded-2xl p-6 md:p-8 flex flex-col gap-6 shadow-xl">
 
                 <div className="flex items-start gap-4">
                   <div className="flex-shrink-0 w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center">
@@ -218,10 +211,10 @@ export default function ContactPage() {
                   <MapPin className="h-4 w-4" />
                   Open in Google Maps
                 </a>
-              </div>
+              </Reveal>
 
               {/* Map */}
-              <div className="lg:col-span-3 rounded-2xl overflow-hidden shadow-xl min-h-[340px] md:min-h-[420px]">
+              <Reveal delay={0.1} className="lg:col-span-3 rounded-2xl overflow-hidden shadow-xl min-h-[340px] md:min-h-[420px]">
                 <iframe
                   src="https://maps.google.com/maps?q=17.447081,78.460012&hl=en&z=15&output=embed"
                   width="100%"
@@ -232,7 +225,7 @@ export default function ContactPage() {
                   referrerPolicy="no-referrer-when-downgrade"
                   title="Robo Coders Location"
                 />
-              </div>
+              </Reveal>
 
             </div>
           </div>
@@ -242,8 +235,11 @@ export default function ContactPage() {
       {/* Contact Form Section */}
       <section className="min-h-screen flex items-center justify-center bg-gray-50 py-20">
         <div className="container py-8 px-4 md:px-8 lg:px-12 xl:px-16">
-          <h2 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-extrabold mb-8 md:mb-10 text-center max-w-5xl mx-auto">Contact Us</h2>
-          <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+          <Reveal>
+            <h2 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-extrabold mb-8 md:mb-10 text-center max-w-5xl mx-auto">Contact Us</h2>
+          </Reveal>
+          <Reveal delay={0.1} className="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl border border-gray-100 p-6 md:p-10">
+          <form onSubmit={handleSubmit}>
           <div className="grid md:grid-cols-2 gap-6 md:gap-8 mb-6 md:mb-8">
             <div>
               <Label htmlFor="firstName" className="text-base md:text-lg font-medium">
@@ -368,23 +364,24 @@ export default function ContactPage() {
             <Button
               type="submit"
               size="lg"
-              className="bg-blue-600 hover:bg-blue-700 px-12 text-lg md:text-xl h-12 md:h-14"
+              className="bg-blue-600 hover:bg-blue-700 px-12 text-lg md:text-xl h-12 md:h-14 rounded-full shadow-lg shadow-blue-600/25 transition-transform hover:scale-105"
               disabled={isSubmitting}
             >
               {isSubmitting ? "Submitting..." : "Submit"}
             </Button>
           </div>
         </form>
+          </Reveal>
         </div>
       </section>
 
-      {/* Connect With Us Section */}
-      <section className="flex items-center justify-center bg-white py-12 md:py-16">
-        <div className="container">
-        <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold mb-3 md:mb-4 max-w-5xl mx-auto">
-          Connect <span className="text-blue-600">With Us</span>
+      {/* Connect With Us Section — BLUE */}
+      <section className="flex items-center justify-center bg-blue-600 py-12 md:py-16">
+        <Reveal className="container">
+        <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold mb-3 md:mb-4 max-w-5xl mx-auto text-white text-center">
+          Connect <span className="text-amber-300">With Us</span>
         </h2>
-        <p className="text-gray-700 mb-6 md:mb-8 max-w-2xl mx-auto text-center text-sm md:text-base lg:text-lg">
+        <p className="text-blue-100 mb-6 md:mb-8 max-w-2xl mx-auto text-center text-sm md:text-base lg:text-lg">
           Follow us on social media for updates, tips, and student showcases.
         </p>
         <div className="flex items-center justify-center gap-4">
@@ -392,7 +389,7 @@ export default function ContactPage() {
             href="https://www.instagram.com/robocoders?igsh=MTJweGVsMzg5M2I3MQ=="
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 hover:opacity-80 transition-opacity"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 hover:opacity-90 hover:scale-110 hover:-translate-y-1 transition-all duration-300 shadow-lg ring-2 ring-white/30"
             aria-label="Instagram"
           >
             <Instagram className="h-6 w-6 text-white" />
@@ -401,7 +398,7 @@ export default function ContactPage() {
             href="https://youtube.com/@robocoders?si=KcRjT1jfLJg7jMkq"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-12 w-12 items-center justify-center rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-600 hover:bg-red-700 hover:scale-110 hover:-translate-y-1 transition-all duration-300 shadow-lg ring-2 ring-white/30"
             aria-label="YouTube"
           >
             <Youtube className="h-6 w-6 text-white" />
@@ -410,13 +407,13 @@ export default function ContactPage() {
             href="https://www.facebook.com/share/1V8yjknAGv/?mibextid=wwXIfr"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 hover:scale-110 hover:-translate-y-1 transition-all duration-300 shadow-lg ring-2 ring-white/30"
             aria-label="Facebook"
           >
             <Facebook className="h-6 w-6 text-white" />
           </a>
         </div>
-        </div>
+        </Reveal>
       </section>
 
       {/* Footer */}

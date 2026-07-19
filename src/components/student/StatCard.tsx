@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,6 +23,8 @@ export interface StatCardProps {
   icon?: React.ReactNode
   /** tooltip text shown next to the title */
   info?: string
+  /** when set, the whole card becomes a link to this route */
+  href?: string
   className?: string
 }
 
@@ -40,15 +43,17 @@ export function StatCard({
   accentColor = '#2563eb',
   icon,
   info,
+  href,
   className,
 }: StatCardProps) {
   const displayValue =
     typeof value === 'number' ? value.toLocaleString('en-IN') : value
 
-  return (
+  const card = (
     <Card
       className={cn(
         'flex h-full min-h-[120px] flex-col justify-between gap-0 overflow-hidden p-0 shadow-none',
+        href && 'transition-all hover:border-gray-300 hover:shadow-md cursor-pointer',
         className,
       )}
       style={{ '--stat-accent': accentColor } as React.CSSProperties}
@@ -120,4 +125,13 @@ export function StatCard({
       </CardContent>
     </Card>
   )
+
+  if (href) {
+    return (
+      <Link href={href} className="block h-full" aria-label={`${title}: ${displayValue}`}>
+        {card}
+      </Link>
+    )
+  }
+  return card
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Key } from "lucide-react";
+import { Key, Eye } from "lucide-react";
 
 import {
   ManagementTable,
@@ -18,6 +18,8 @@ export type SchoolManagementTableProps<T extends SchoolManagementRow = SchoolMan
   {
     rows: T[];
     loading?: boolean;
+    /** optional — adds a "View details" row action linking to a school drill-down page */
+    onView?: (row: T) => void;
     onManageJoinCodes: (row: T) => void;
     onEdit: (row: T) => void;
     onToggleActive: (row: T) => void;
@@ -34,6 +36,7 @@ export type SchoolManagementTableProps<T extends SchoolManagementRow = SchoolMan
 export function SchoolManagementTable<T extends SchoolManagementRow>({
   rows,
   loading,
+  onView,
   onManageJoinCodes,
   onEdit,
   onToggleActive,
@@ -48,6 +51,16 @@ export function SchoolManagementTable<T extends SchoolManagementRow>({
 }: SchoolManagementTableProps<T>) {
   const rowActions = useMemo<ManagementTableRowAction<T>[]>(
     () => [
+      ...(onView
+        ? [
+            {
+              id: "view",
+              label: "View details",
+              icon: <Eye className="h-4 w-4" />,
+              onClick: onView,
+            } satisfies ManagementTableRowAction<T>,
+          ]
+        : []),
       {
         id: "join-codes",
         label: "Manage joining codes",
@@ -69,7 +82,7 @@ export function SchoolManagementTable<T extends SchoolManagementRow>({
         onClick: onDelete,
       },
     ],
-    [onManageJoinCodes, onEdit, onToggleActive, onDelete],
+    [onView, onManageJoinCodes, onEdit, onToggleActive, onDelete],
   );
 
   return (

@@ -10,6 +10,8 @@ import { getStoredUserId, waitForSession, setLogoutReason } from "@/lib/session-
 import { setAuthToken } from "@/lib/api";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
 
 import { useAppStore, type AppState } from "@/store/app-store";
 import { useBrowserNavigation } from "@/hooks/useBrowserNavigation";
@@ -293,6 +295,8 @@ export default function StudentLayoutWrapper({
   return (
     <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
       <ForcePasswordChange />
+      <AnnouncementBanner />
+      <ImpersonationBanner />
       <Sidebar 
         userRole="student"
         userName={userName}

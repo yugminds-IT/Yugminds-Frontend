@@ -1,5 +1,4 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -8,27 +7,26 @@ import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AreaChartAnalyticsCard } from "@/components/ui/area-chart-analytics-card";
-import { 
-  Users, 
-  User, 
-  BookOpen, 
-  AlertCircle,
-  Eye,
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/student/StatCard";
+import NeedsAttentionPanel, { type NeedsAttentionItem } from "@/components/admin/NeedsAttentionPanel";
+import {
+  Users,
+  User,
+  BookOpen,
+  CalendarCheck,
   ArrowRight,
   RefreshCw,
   Clock,
   CheckCircle,
   ClipboardList,
-  School
+  School,
 } from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 
-// Enhanced interfaces for real-time data
 interface DashboardStats {
   totalStudents: number;
   totalTeachers: number;
@@ -38,22 +36,25 @@ interface DashboardStats {
   averageAttendance: number;
 }
 
+interface PreviewItem {
+  id?: string;
+  name?: string;
+  full_name?: string;
+  title?: string;
+  created_at: string;
+  status?: string;
+  email?: string;
+}
+
 interface QuickActionPreview {
   id: string;
   title: string;
   description: string;
   icon: React.ReactNode;
-  data: Array<{
-    id?: string;
-    name?: string;
-    full_name?: string;
-    title?: string;
-    created_at: string;
-    status?: string;
-    email?: string;
-  }>;
+  data: PreviewItem[];
   loading: boolean;
-  lastUpdated: string;
+  /** real fetch time from React Query, not `new Date()` */
+  lastUpdated: number;
   route: string;
 }
 
@@ -62,24 +63,69 @@ interface RecentActivity {
   title: string;
   message: string;
   created_at: string;
-  type: 'success' | 'warning' | 'info' | 'error';
+  type: "success" | "warning" | "info" | "error";
+}
+
+/** "5m ago" / "3h ago" / "2d ago" — rolls up instead of showing "43200m ago". */
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(ms / 60_000);
+  if (!Number.isFinite(minutes)) return "";
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+const DEFAULT_STATS: DashboardStats = {
+  totalStudents: 0,
+  totalTeachers: 0,
+  activeCourses: 0,
+  pendingReports: 0,
+  pendingLeaves: 0,
+  averageAttendance: 0,
+};
+
+interface RawStudent {
+  id?: string;
+  profile?: { full_name?: string; email?: string };
+  enrolled_at?: string;
+  created_at?: string;
+}
+interface RawTeacher {
+  id?: string;
+  teacher_id?: string;
+  teacher?: { full_name?: string; email?: string };
+  full_name?: string;
+  email?: string;
+  assigned_at?: string;
+  created_at?: string;
+}
+interface RawReport {
+  id?: string;
+  teacher?: { full_name?: string };
+  topics_taught?: string;
+  created_at?: string;
+  date?: string;
+}
+interface RawCourse {
+  id?: string;
+  title?: string;
+  created_at?: string;
+  status?: string;
 }
 
 export default function SchoolAdminDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { schoolInfo: contextSchoolInfo, profileFullName } = useSchoolAdmin();
-  const defaultStats: DashboardStats = {
-    totalStudents: 0,
-    totalTeachers: 0,
-    activeCourses: 0,
-    pendingReports: 0,
-    pendingLeaves: 0,
-    averageAttendance: 0,
-  };
+  const { schoolInfo, profileFullName } = useSchoolAdmin();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    // Gates client-only time formatting so SSR and first client render match.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
   }, []);
 
@@ -103,7 +149,7 @@ export default function SchoolAdminDashboard() {
     queryKey: [...queryKeys.schoolAdmin.quickPreviews, "students"],
     queryFn: async () => {
       const res = await schoolAdminApi.students.list({ limit: 3 });
-      return (res.data as { students?: unknown[] })?.students ?? (Array.isArray(res.data) ? res.data : []);
+      return ((res.data as { students?: RawStudent[] })?.students ?? []) as RawStudent[];
     },
   });
 
@@ -111,15 +157,15 @@ export default function SchoolAdminDashboard() {
     queryKey: [...queryKeys.schoolAdmin.quickPreviews, "teachers"],
     queryFn: async () => {
       const res = await schoolAdminApi.teachers.list({ limit: 3 });
-      return (res.data as { teachers?: unknown[] })?.teachers ?? (Array.isArray(res.data) ? res.data : []);
+      return ((res.data as { teachers?: RawTeacher[] })?.teachers ?? []) as RawTeacher[];
     },
   });
 
   const reportsPreviewQuery = useQuery({
     queryKey: [...queryKeys.schoolAdmin.quickPreviews, "reports"],
     queryFn: async () => {
-      const res = await schoolAdminApi.reports.list({ limit: 3, pending: 1 as unknown as number });
-      return (res.data as { reports?: unknown[] })?.reports ?? (Array.isArray(res.data) ? res.data : []);
+      const res = await schoolAdminApi.reports.list({ limit: 3, pending: 1 });
+      return ((res.data as { reports?: RawReport[] })?.reports ?? []) as RawReport[];
     },
   });
 
@@ -127,156 +173,159 @@ export default function SchoolAdminDashboard() {
     queryKey: [...queryKeys.schoolAdmin.quickPreviews, "courses"],
     queryFn: async () => {
       const res = await schoolAdminApi.courses.list({ status: "Published", limit: 3 });
-      return (res.data as { courses?: unknown[] })?.courses ?? (Array.isArray(res.data) ? res.data : []);
+      return ((res.data as { courses?: RawCourse[] })?.courses ?? []) as RawCourse[];
     },
   });
 
-  const stats = statsQuery.data ?? defaultStats;
-  const displaySchoolInfo = contextSchoolInfo;
+  const stats = statsQuery.data ?? DEFAULT_STATS;
+  const statsLoading = statsQuery.isLoading;
 
   const quickActionPreviews = useMemo<QuickActionPreview[]>(() => {
     const previews: QuickActionPreview[] = [];
-    const nowIso = new Date().toISOString();
 
-    const recentStudents = Array.isArray(studentsPreviewQuery.data) ? studentsPreviewQuery.data : [];
     previews.push({
       id: "students",
       title: "Recent Students",
       description: "Latest student enrollments",
       icon: <User className="h-4 w-4" />,
-      data: recentStudents.map((s: any) => ({
-        id: s.id,
-        full_name: s.profile?.full_name || "Unknown",
-        email: s.profile?.email || "",
-        created_at: s.enrolled_at || s.created_at || nowIso,
-      })),
+      data: (studentsPreviewQuery.data ?? [])
+        .filter((s) => s.enrolled_at || s.created_at)
+        .map((s) => ({
+          id: s.id,
+          full_name: s.profile?.full_name || "Unknown",
+          email: s.profile?.email || "",
+          created_at: String(s.enrolled_at ?? s.created_at),
+        })),
       loading: studentsPreviewQuery.isFetching,
-      lastUpdated: nowIso,
+      lastUpdated: studentsPreviewQuery.dataUpdatedAt,
       route: "/lms/school-admin/students",
     });
 
-    const recentTeachers = Array.isArray(teachersPreviewQuery.data) ? teachersPreviewQuery.data : [];
     previews.push({
       id: "teachers",
       title: "Recent Teachers",
       description: "Latest teacher assignments",
       icon: <Users className="h-4 w-4" />,
-      data: recentTeachers.map((t: any) => {
-        const teacher = t.teacher || t;
-        return {
-          id: t.id,
-          full_name: teacher?.full_name || "Unknown",
-          email: teacher?.email || "",
-          created_at: t.assigned_at || t.created_at || nowIso,
-        };
-      }),
+      data: (teachersPreviewQuery.data ?? [])
+        .filter((t) => t.assigned_at || t.created_at)
+        .map((t) => {
+          const teacher = t.teacher ?? t;
+          return {
+            id: t.id,
+            full_name: teacher?.full_name || "Unknown",
+            email: teacher?.email || "",
+            created_at: String(t.assigned_at ?? t.created_at),
+          };
+        }),
       loading: teachersPreviewQuery.isFetching,
-      lastUpdated: nowIso,
+      lastUpdated: teachersPreviewQuery.dataUpdatedAt,
       route: "/lms/school-admin/teachers",
     });
 
-    const recentReports = Array.isArray(reportsPreviewQuery.data) ? reportsPreviewQuery.data : [];
+    const recentReports = reportsPreviewQuery.data ?? [];
     if (recentReports.length > 0) {
       previews.push({
         id: "reports",
         title: "Pending Reports",
         description: "Teacher reports awaiting approval",
         icon: <ClipboardList className="h-4 w-4" />,
-        data: recentReports.map((r: any) => {
-          const profile = r.teacher || {};
-          return {
+        data: recentReports
+          .filter((r) => r.created_at || r.date)
+          .map((r) => ({
             id: r.id,
-            full_name: profile?.full_name || "Unknown Teacher",
+            full_name: r.teacher?.full_name || "Unknown Teacher",
             name: r.topics_taught?.substring(0, 30) || "Report",
-            created_at: r.created_at || r.date || nowIso,
+            created_at: String(r.created_at ?? r.date),
             status: "Pending",
-          };
-        }),
+          })),
         loading: reportsPreviewQuery.isFetching,
-        lastUpdated: nowIso,
+        lastUpdated: reportsPreviewQuery.dataUpdatedAt,
         route: "/lms/school-admin/reports",
       });
     }
 
-    const recentCourses = Array.isArray(coursesPreviewQuery.data) ? coursesPreviewQuery.data : [];
     previews.push({
       id: "courses",
       title: "Active Courses",
       description: "Published courses in your school",
       icon: <BookOpen className="h-4 w-4" />,
-      data: recentCourses.map((c: any) => ({
-        id: c.id,
-        title: c.title,
-        created_at: c.created_at || nowIso,
-        status: c.status,
-      })),
+      data: (coursesPreviewQuery.data ?? [])
+        .filter((c) => c.created_at)
+        .map((c) => ({
+          id: c.id,
+          title: c.title,
+          created_at: String(c.created_at),
+          status: c.status,
+        })),
       loading: coursesPreviewQuery.isFetching,
-      lastUpdated: nowIso,
+      lastUpdated: coursesPreviewQuery.dataUpdatedAt,
       route: "/lms/school-admin/courses",
     });
 
     return previews;
   }, [
-    coursesPreviewQuery.data,
-    coursesPreviewQuery.isFetching,
-    reportsPreviewQuery.data,
-    reportsPreviewQuery.isFetching,
-    studentsPreviewQuery.data,
-    studentsPreviewQuery.isFetching,
-    teachersPreviewQuery.data,
-    teachersPreviewQuery.isFetching,
+    coursesPreviewQuery.data, coursesPreviewQuery.isFetching, coursesPreviewQuery.dataUpdatedAt,
+    reportsPreviewQuery.data, reportsPreviewQuery.isFetching, reportsPreviewQuery.dataUpdatedAt,
+    studentsPreviewQuery.data, studentsPreviewQuery.isFetching, studentsPreviewQuery.dataUpdatedAt,
+    teachersPreviewQuery.data, teachersPreviewQuery.isFetching, teachersPreviewQuery.dataUpdatedAt,
   ]);
 
+  /** Only genuinely dated events — pending counts belong in Needs Attention, not here. */
   const recentActivity = useMemo<RecentActivity[]>(() => {
-    const activityItems: RecentActivity[] = [];
-    const recentStudents = Array.isArray(studentsPreviewQuery.data) ? studentsPreviewQuery.data : [];
-    const recentTeachers = Array.isArray(teachersPreviewQuery.data) ? teachersPreviewQuery.data : [];
+    const items: RecentActivity[] = [];
 
-    recentStudents.slice(0, 2).forEach((s: any) => {
-      activityItems.push({
+    (studentsPreviewQuery.data ?? []).slice(0, 3).forEach((s) => {
+      const when = s.enrolled_at ?? s.created_at;
+      if (!when) return;
+      items.push({
         id: `student-${s.id}`,
         title: "New Student Enrollment",
         message: `${s.profile?.full_name || "A student"} enrolled in the school`,
-        created_at: s.enrolled_at || s.created_at || new Date().toISOString(),
+        created_at: String(when),
         type: "success",
       });
     });
 
-    recentTeachers.slice(0, 2).forEach((t: any) => {
-      const teacher = t.teacher || t;
-      activityItems.push({
-        id: `teacher-${t.id || t.teacher_id}`,
+    (teachersPreviewQuery.data ?? []).slice(0, 3).forEach((t) => {
+      const when = t.assigned_at ?? t.created_at;
+      if (!when) return;
+      const teacher = t.teacher ?? t;
+      items.push({
+        id: `teacher-${t.id ?? t.teacher_id}`,
         title: "New Teacher Assignment",
         message: `${teacher?.full_name || "A teacher"} was assigned to the school`,
-        created_at: t.assigned_at || t.created_at || new Date().toISOString(),
+        created_at: String(when),
         type: "info",
       });
     });
 
-    if (stats.pendingReports > 0) {
-      activityItems.push({
-        id: "pending-reports",
-        title: "Pending Reports",
-        message: `${stats.pendingReports} teacher report(s) awaiting approval`,
-        created_at: new Date().toISOString(),
-        type: "warning",
-      });
-    }
-
-    if (stats.pendingLeaves > 0) {
-      activityItems.push({
-        id: "pending-leaves",
-        title: "Pending Leave Requests",
-        message: `${stats.pendingLeaves} leave request(s) awaiting approval`,
-        created_at: new Date().toISOString(),
-        type: "warning",
-      });
-    }
-
-    return activityItems
+    return items
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 5);
-  }, [stats.pendingLeaves, stats.pendingReports, studentsPreviewQuery.data, teachersPreviewQuery.data]);
+  }, [studentsPreviewQuery.data, teachersPreviewQuery.data]);
+
+  const needsAttention = useMemo<NeedsAttentionItem[]>(() => {
+    const items: NeedsAttentionItem[] = [];
+    if (stats.pendingReports > 0) {
+      items.push({
+        id: "pending-reports",
+        label: `${stats.pendingReports} teacher report${stats.pendingReports !== 1 ? "s" : ""} awaiting approval`,
+        count: stats.pendingReports,
+        href: "/lms/school-admin/reports",
+        tone: "amber",
+      });
+    }
+    if (stats.pendingLeaves > 0) {
+      items.push({
+        id: "pending-leaves",
+        label: `${stats.pendingLeaves} leave request${stats.pendingLeaves !== 1 ? "s" : ""} awaiting review`,
+        count: stats.pendingLeaves,
+        href: "/lms/school-admin/teachers?tab=leaves",
+        tone: "red",
+      });
+    }
+    return items;
+  }, [stats.pendingReports, stats.pendingLeaves]);
 
   const isRefreshing =
     statsQuery.isFetching ||
@@ -293,8 +342,7 @@ export default function SchoolAdminDashboard() {
       reportsPreviewQuery.dataUpdatedAt || 0,
       coursesPreviewQuery.dataUpdatedAt || 0,
     );
-    // eslint-disable-next-line react-hooks/purity
-    return new Date(latest || Date.now());
+    return latest ? new Date(latest) : null;
   }, [
     coursesPreviewQuery.dataUpdatedAt,
     reportsPreviewQuery.dataUpdatedAt,
@@ -312,21 +360,22 @@ export default function SchoolAdminDashboard() {
     ]);
   }, [queryClient]);
 
-  useDashboardRealtime('school_admin', {
+  const { isConnected } = useDashboardRealtime("school_admin", {
     enabled: true,
-    debugLabel: 'school-admin-dashboard',
+    debugLabel: "school-admin-dashboard",
     customEventMap: {
-      'notification:new': [
+      "notification:new": [
         queryKeys.schoolAdmin.dashboardStats,
         queryKeys.schoolAdmin.quickPreviews,
         queryKeys.schoolAdmin.recentActivity,
         queryKeys.schoolAdmin.studentProgress,
       ],
-      'notification:read': [queryKeys.schoolAdmin.dashboardStats, queryKeys.schoolAdmin.notifications],
-      'dashboard:stats': [queryKeys.schoolAdmin.dashboardStats],
+      "notification:read": [queryKeys.schoolAdmin.dashboardStats, queryKeys.schoolAdmin.notifications],
+      "dashboard:stats": [queryKeys.schoolAdmin.dashboardStats],
     },
     onStats: (payload) => {
-      const current = queryClient.getQueryData<DashboardStats>(queryKeys.schoolAdmin.dashboardStats) ?? defaultStats;
+      const current =
+        queryClient.getQueryData<DashboardStats>(queryKeys.schoolAdmin.dashboardStats) ?? DEFAULT_STATS;
       queryClient.setQueryData(queryKeys.schoolAdmin.dashboardStats, {
         totalStudents: Number(payload.totalStudents ?? current.totalStudents),
         totalTeachers: Number(payload.totalTeachers ?? current.totalTeachers),
@@ -338,37 +387,12 @@ export default function SchoolAdminDashboard() {
     },
   });
 
-  // Use smart refresh for tab switching
   useSmartRefresh({
     customRefresh: refreshDashboard,
-    minRefreshInterval: 60000, // 1 minute minimum between refreshes
+    minRefreshInterval: 60000,
   });
 
-  const handleRefresh = async () => {
-    await refreshDashboard();
-  };
-
-  const handleQuickAction = (route: string) => {
-    router.push(route);
-  };
-
-  const makeSparklineData = (value: number, points = 6) => {
-    const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-    const baseline = Math.max(1, safeValue);
-
-    return Array.from({ length: points }, (_, index) => {
-      const progress = (index + 1) / points;
-      const wave = Math.sin(index * 1.15) * baseline * 0.08;
-
-      return {
-        label: `${index + 1}`,
-        value: Math.max(0, Math.round(baseline * (0.62 + progress * 0.38) + wave)),
-      };
-    });
-  };
-
-  const pendingActions = stats.pendingReports + stats.pendingLeaves;
-  const schoolAdminStatCards = [
+  const statCards = [
     {
       title: "Total Students",
       value: stats.totalStudents,
@@ -376,22 +400,18 @@ export default function SchoolAdminDashboard() {
       badge: "Active",
       icon: <User className="h-4 w-4" />,
       accentColor: "#2563eb",
-      sideMetric: `${stats.totalStudents}`,
-      sideLabel: "students",
       info: "Students actively enrolled in this school.",
-      numericValue: stats.totalStudents,
+      href: "/lms/school-admin/students",
     },
     {
       title: "Total Teachers",
       value: stats.totalTeachers,
-      description: stats.averageAttendance > 0 ? `${stats.averageAttendance}% attendance rate` : "Assigned teachers",
-      badge: stats.averageAttendance > 0 ? `${stats.averageAttendance}% avg` : "Teachers",
+      description: "Active teachers",
+      badge: "Assigned",
       icon: <Users className="h-4 w-4" />,
       accentColor: "#16a34a",
-      sideMetric: stats.averageAttendance > 0 ? `${stats.averageAttendance}%` : `${stats.totalTeachers}`,
-      sideLabel: stats.averageAttendance > 0 ? "attendance" : "teachers",
-      info: "Teachers assigned to this school, with attendance when available.",
-      numericValue: stats.totalTeachers,
+      info: "Active teacher accounts assigned to this school.",
+      href: "/lms/school-admin/teachers",
     },
     {
       title: "Active Courses",
@@ -400,333 +420,241 @@ export default function SchoolAdminDashboard() {
       badge: "Published",
       icon: <BookOpen className="h-4 w-4" />,
       accentColor: "#f97316",
-      sideMetric: `${stats.activeCourses}`,
-      sideLabel: "courses",
       info: "Published courses available to students in this school.",
-      numericValue: stats.activeCourses,
+      href: "/lms/school-admin/courses",
     },
     {
-      title: "Pending Actions",
-      value: pendingActions,
-      description: `${stats.pendingReports} reports, ${stats.pendingLeaves} leaves`,
-      badge: pendingActions > 0 ? "Action required" : "All clear",
-      icon: <AlertCircle className="h-4 w-4" />,
-      accentColor: pendingActions > 0 ? "#dc2626" : "#16a34a",
-      sideMetric: `${pendingActions}`,
-      sideLabel: "pending",
-      info: "Reports and leave requests waiting for school admin action.",
-      numericValue: pendingActions,
+      title: "Avg Attendance",
+      value: `${stats.averageAttendance}%`,
+      description: "Teacher attendance, last 30 days",
+      badge: stats.averageAttendance >= 90 ? "Healthy" : stats.averageAttendance > 0 ? "Watch" : "No data",
+      icon: <CalendarCheck className="h-4 w-4" />,
+      accentColor: "#0891b2",
+      info: "Average teacher attendance across the last 30 days.",
+      href: "/lms/school-admin/reports",
     },
   ];
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-              {displaySchoolInfo?.name ? `${displaySchoolInfo.name} Admin Panel` : 'School Admin Dashboard'}
+              {schoolInfo?.name ? `${schoolInfo.name} Admin Panel` : "School Admin Dashboard"}
             </h1>
-            <p className="text-gray-600 mt-2">
-              {`Welcome back, ${profileFullName ?? 'School Admin'}`}
-            </p>
+            <p className="text-gray-600 mt-2">{`Welcome back, ${profileFullName ?? "School Admin"}`}</p>
             <div className="flex items-center gap-2 mt-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <div
+                className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-300"}`}
+              />
               <span className="text-sm text-gray-500">
-                Last updated: {isMounted ? (() => {
-                  const hours = lastRefresh.getHours();
-                  const minutes = lastRefresh.getMinutes();
-                  const ampm = hours >= 12 ? 'PM' : 'AM';
-                  const displayHours = hours % 12 || 12;
-                  const displayMinutes = minutes.toString().padStart(2, '0');
-                  return `${displayHours}:${displayMinutes} ${ampm}`;
-                })() : ''}
+                {isConnected ? "Live" : "Reconnecting…"}
+                {isMounted && lastRefresh
+                  ? ` · updated ${lastRefresh.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                  : ""}
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              {isRefreshing ? 'Refreshing...' : 'Refresh'}
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            onClick={refreshDashboard}
+            disabled={isRefreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {schoolAdminStatCards.map((metric) => (
-          <AreaChartAnalyticsCard
-            key={metric.title}
-            title={metric.title}
-            value={metric.value}
-            description={metric.description}
-            badge={metric.badge}
-            icon={metric.icon}
-            accentColor={metric.accentColor}
-            sideMetric={metric.sideMetric}
-            sideLabel={metric.sideLabel}
-            info={metric.info}
-            data={makeSparklineData(metric.numericValue)}
-          />
-        ))}
+      {/* Needs attention — real, actionable counts only */}
+      <div className="mb-6">
+        <NeedsAttentionPanel items={needsAttention} />
       </div>
 
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="reports">Reports</TabsTrigger>
-        </TabsList>
+      {/* Stats Cards — skeletons while loading (a 0 is a claim, not a loading state) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {statsLoading
+          ? [...Array(4)].map((_, i) => <Skeleton key={i} className="h-[120px] w-full rounded-xl" />)
+          : statCards.map((metric) => (
+              <StatCard
+                key={metric.title}
+                title={metric.title}
+                value={metric.value}
+                description={metric.description}
+                badge={metric.badge}
+                icon={metric.icon}
+                accentColor={metric.accentColor}
+                info={metric.info}
+                href={metric.href}
+              />
+            ))}
+      </div>
 
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          <div className="space-y-6">
-            {/* Quick Actions */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader className="border-b bg-slate-50/80">
-                <CardTitle className="flex items-center gap-2">
-                  Quick Actions
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                </CardTitle>
-                <CardDescription>Common administrative tasks with real-time previews</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {quickActionPreviews.map((preview) => (
-                  <div
-                    key={preview.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm"
+      <div className="space-y-6">
+        {/* Quick Actions */}
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="border-b bg-slate-50/80">
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>Common administrative tasks — latest 3 of each</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {quickActionPreviews.map((preview) => (
+              <div
+                key={preview.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm"
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+                      {preview.icon}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{preview.title}</p>
+                      <p className="text-xs text-slate-500">
+                        {isMounted && preview.lastUpdated
+                          ? `Updated ${timeAgo(new Date(preview.lastUpdated).toISOString())}`
+                          : " "}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => router.push(preview.route)}
+                    disabled={preview.loading}
+                    className="h-8 rounded-md border-slate-200 px-2.5"
                   >
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-700">
-                          {preview.icon}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">{preview.title}</p>
-                          <p className="text-xs text-slate-500">
-                            Updated {new Date(preview.lastUpdated).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleQuickAction(preview.route)}
-                        className="h-8 rounded-md border-slate-200 px-2.5"
-                      >
-                        <ArrowRight className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <p className="mb-3 text-sm leading-relaxed text-slate-600">{preview.description}</p>
-                    <div className="space-y-2">
-                      {preview.data && preview.data.length > 0 ? (
-                        preview.data.slice(0, 2).map((item, index: number) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-2.5 py-2 text-xs"
-                          >
-                            <span className="truncate text-slate-600">
-                              {item.name || item.full_name || item.title || 'Unknown'}
-                            </span>
-                            <span className="shrink-0 text-slate-400">
-                              {new Date(item.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs italic text-slate-400">
-                          No recent data
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* School Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  School Status
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                </CardTitle>
-                <CardDescription>Current school metrics and health</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Pending Reports</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={stats.pendingReports > 0 ? "destructive" : "secondary"}>
-                        {stats.pendingReports}
-                      </Badge>
-                      {stats.pendingReports > 0 && (
-                        <AlertCircle className="h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Pending Leave Requests</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={stats.pendingLeaves > 0 ? "destructive" : "secondary"}>
-                        {stats.pendingLeaves}
-                      </Badge>
-                      {stats.pendingLeaves > 0 && (
-                        <AlertCircle className="h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Total Enrollment</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        {stats.totalStudents + stats.totalTeachers}
-                      </Badge>
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Active Courses</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="bg-purple-100 text-purple-800">
-                        {stats.activeCourses}
-                      </Badge>
-                      <CheckCircle className="h-4 w-4 text-purple-500" />
-                    </div>
-                  </div>
+                    {preview.loading ? (
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-3 w-3" />
+                    )}
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Recent Activity
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              </CardTitle>
-              <CardDescription>Latest system events and notifications</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {recentActivity.length > 0 ? (
-                  recentActivity.map((activity, index) => (
-                    <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className={`w-2 h-2 rounded-full ${
-                        activity.type === 'success' ? 'bg-green-500' :
-                        activity.type === 'warning' ? 'bg-yellow-500' :
-                        activity.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-                      } animate-pulse`}></div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{activity.title}</p>
-                        <p className="text-xs text-gray-500">{activity.message}</p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {new Date(activity.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-gray-400" />
-                        <span className="text-xs text-gray-400">
-                          {/* eslint-disable-next-line react-hooks/purity */}
-                          {Math.round((Date.now() - new Date(activity.created_at).getTime()) / (1000 * 60))}m ago
+                <p className="mb-3 text-sm leading-relaxed text-slate-600">{preview.description}</p>
+                <div className="space-y-2">
+                  {preview.data.length > 0 ? (
+                    preview.data.slice(0, 2).map((item, index: number) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-2.5 py-2 text-xs"
+                      >
+                        <span className="truncate text-slate-600">
+                          {item.name || item.full_name || item.title || "Unknown"}
+                        </span>
+                        <span className="shrink-0 text-slate-400">
+                          {new Date(item.created_at).toLocaleDateString()}
                         </span>
                       </div>
+                    ))
+                  ) : (
+                    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs italic text-slate-400">
+                      No recent data
                     </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <School className="h-8 w-8 mx-auto mb-2" />
-                    <p>No recent activity</p>
-                    <p className="text-sm">System events will appear here</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* School Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle>School Status</CardTitle>
+            <CardDescription>Current school metrics</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <button
+                onClick={() => router.push("/lms/school-admin/reports")}
+                className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
+              >
+                <span className="text-sm font-medium">Pending Reports</span>
+                <Badge variant={stats.pendingReports > 0 ? "destructive" : "secondary"}>
+                  {stats.pendingReports}
+                </Badge>
+              </button>
+              <button
+                onClick={() => router.push("/lms/school-admin/teachers?tab=leaves")}
+                className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
+              >
+                <span className="text-sm font-medium">Pending Leave Requests</span>
+                <Badge variant={stats.pendingLeaves > 0 ? "destructive" : "secondary"}>
+                  {stats.pendingLeaves}
+                </Badge>
+              </button>
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <span className="text-sm font-medium">Total People</span>
+                <Badge variant="outline">{stats.totalStudents + stats.totalTeachers}</Badge>
+              </div>
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <span className="text-sm font-medium">Active Courses</span>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-purple-100 text-purple-800">
+                    {stats.activeCourses}
+                  </Badge>
+                  <CheckCircle className="h-4 w-4 text-purple-500" />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity — real dated events only */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+            <CardDescription>Latest enrollments and teacher assignments</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {recentActivity.length > 0 ? (
+                recentActivity.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        activity.type === "success"
+                          ? "bg-green-500"
+                          : activity.type === "warning"
+                          ? "bg-yellow-500"
+                          : activity.type === "error"
+                          ? "bg-red-500"
+                          : "bg-blue-500"
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{activity.title}</p>
+                      <p className="text-xs text-gray-500">{activity.message}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {new Date(activity.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3 text-gray-400" />
+                      <span className="text-xs text-gray-400">
+                        {isMounted ? timeAgo(activity.created_at) : ""}
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Reports Tab */}
-        <TabsContent value="reports" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Teacher Reports & Leaves
-                <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-              </CardTitle>
-              <CardDescription>Review and approve teacher reports and leave requests</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/lms/school-admin/reports')}>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Pending Reports</CardTitle>
-                    <CardDescription>Teacher reports awaiting approval</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="text-3xl font-bold text-orange-600">{stats.pendingReports}</div>
-                      <p className="text-sm text-gray-600">
-                        {stats.pendingReports === 0 
-                          ? 'All reports have been reviewed'
-                          : `${stats.pendingReports} report(s) need your attention`}
-                      </p>
-                      <Button 
-                        className="w-full" 
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push('/lms/school-admin/reports');
-                        }}
-                      >
-                        <Eye className="mr-2 h-4 w-4" />
-                        View Reports
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => router.push('/lms/school-admin/teachers')}>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Pending Leaves</CardTitle>
-                    <CardDescription>Teacher leave requests awaiting approval</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="text-3xl font-bold text-red-600">{stats.pendingLeaves}</div>
-                      <p className="text-sm text-gray-600">
-                        {stats.pendingLeaves === 0 
-                          ? 'No pending leave requests'
-                          : `${stats.pendingLeaves} leave request(s) need your review`}
-                      </p>
-                      <Button 
-                        className="w-full" 
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push('/lms/school-admin/teachers?tab=leaves');
-                        }}
-                      >
-                        <Eye className="mr-2 h-4 w-4" />
-                        Review Leaves
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <School className="h-8 w-8 mx-auto mb-2" />
+                  <p>No recent activity</p>
+                  <p className="text-sm">New enrollments and assignments will appear here</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
-

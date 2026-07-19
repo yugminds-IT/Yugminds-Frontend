@@ -194,8 +194,20 @@ function ContinueHero({
   )
 }
 
+// ── Next-lesson line (shared by row + card) ─────────────────────────────────
+function NextLesson({ lv }: { lv?: LastViewedEntry | null }) {
+  const label = lv?.contentTitle || lv?.chapterTitle
+  if (!label) return null
+  return (
+    <p className="flex items-center gap-1 text-xs text-blue-600 mt-0.5 min-w-0">
+      <PlayCircle className="h-3 w-3 shrink-0" />
+      <span className="truncate">Next: {label}</span>
+    </p>
+  )
+}
+
 // ── List row ────────────────────────────────────────────────────────────────
-function CourseRow({ course, nowMs, onResume }: { course: CourseItem; nowMs: number | null; onResume: () => void }) {
+function CourseRow({ course, nowMs, lv, onResume }: { course: CourseItem; nowMs: number | null; lv?: LastViewedEntry | null; onResume: () => void }) {
   const isCompleted = course.progress_percentage >= 100 || course.status === 'completed'
   const isNotStarted = course.status === 'not_started' && course.progress_percentage === 0
 
@@ -224,6 +236,7 @@ function CourseRow({ course, nowMs, onResume }: { course: CourseItem; nowMs: num
           {Math.round(course.progress_percentage)}% complete
           {course.total_chapters > 0 && ` · ${course.completed_chapters} of ${course.total_chapters} chapters`}
         </p>
+        {!isCompleted && !isNotStarted && <NextLesson lv={lv} />}
         <MetaChips course={course} nowMs={nowMs} />
         <Progress
           value={course.progress_percentage}
@@ -252,7 +265,7 @@ function CourseRow({ course, nowMs, onResume }: { course: CourseItem; nowMs: num
 }
 
 // ── Grid card ────────────────────────────────────────────────────────────────
-function CourseCard({ course, nowMs, onResume }: { course: CourseItem; nowMs: number | null; onResume: () => void }) {
+function CourseCard({ course, nowMs, lv, onResume }: { course: CourseItem; nowMs: number | null; lv?: LastViewedEntry | null; onResume: () => void }) {
   const isCompleted = course.progress_percentage >= 100 || course.status === 'completed'
   const isNotStarted = course.status === 'not_started' && course.progress_percentage === 0
 
@@ -276,6 +289,7 @@ function CourseCard({ course, nowMs, onResume }: { course: CourseItem; nowMs: nu
         <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 group-hover:text-blue-700 transition-colors min-h-[2.5rem]">
           {course.title}
         </h3>
+        {!isCompleted && !isNotStarted && <NextLesson lv={lv} />}
         <div className="mt-2 mb-3"><MetaChips course={course} nowMs={nowMs} /></div>
         <div className="mt-auto">
           <Progress
@@ -319,6 +333,9 @@ export default function MyCoursesPage() {
     const t = setTimeout(() => {
       setMounted(true)
       setNowMs(Date.now())
+      // Deep-link support: /my-courses?tab=completed (e.g. from dashboard stat card)
+      const tab = new URLSearchParams(window.location.search).get('tab')
+      if (tab === 'completed' || tab === 'all' || tab === 'in_progress') setActiveTab(tab as Tab)
     }, 0)
     return () => clearTimeout(t)
   }, [])
@@ -613,13 +630,13 @@ export default function MyCoursesPage() {
               view === 'grid' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   {sorted.map(course => (
-                    <CourseCard key={course.id} course={course} nowMs={nowMs} onResume={() => goToCourse(course)} />
+                    <CourseCard key={course.id} course={course} nowMs={nowMs} lv={lastViewedMap[course.id]} onResume={() => goToCourse(course)} />
                   ))}
                 </div>
               ) : (
                 <div className="space-y-3">
                   {sorted.map(course => (
-                    <CourseRow key={course.id} course={course} nowMs={nowMs} onResume={() => goToCourse(course)} />
+                    <CourseRow key={course.id} course={course} nowMs={nowMs} lv={lastViewedMap[course.id]} onResume={() => goToCourse(course)} />
                   ))}
                 </div>
               )

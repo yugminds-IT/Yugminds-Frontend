@@ -4,8 +4,10 @@ export const queryKeys = {
   },
   admin: {
     dashboardStats: ['admin', 'dashboard', 'stats'] as const,
+    analytics: ['admin', 'dashboard', 'analytics'] as const,
     recentActivity: ['admin', 'dashboard', 'activity'] as const,
     quickPreviews: ['admin', 'dashboard', 'previews'] as const,
+    needsAttention: ['admin', 'dashboard', 'needs-attention'] as const,
     notifications: ['admin', 'notifications'] as const,
     studentProgress: ['admin', 'student-progress'] as const,
     schools: ['admin', 'schools'] as const,

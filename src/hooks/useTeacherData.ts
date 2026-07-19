@@ -97,6 +97,29 @@ export interface MonthlyDataItem {
   attendance_percentage?: number;
 }
 
+// ==================== Shared helpers ====================
+
+/**
+ * Format a "YYYY-MM" month key as a label, parsing in LOCAL time.
+ * `new Date("2026-07")` parses as UTC midnight and renders as the previous
+ * month in timezones behind UTC — appending a day + local time avoids that.
+ */
+export function formatMonthLabel(
+  month: string | Date | undefined,
+  options: Intl.DateTimeFormatOptions = { month: 'short' },
+): string {
+  if (!month) return '';
+  const d = typeof month === 'string' ? new Date(`${month.slice(0, 7)}-01T00:00:00`) : month;
+  if (isNaN(d.getTime())) return String(month);
+  return d.toLocaleDateString('en-US', options);
+}
+
+/** Current month as a "YYYY-MM" key (local time). */
+export function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 // ==================== Data Fetching Hooks ====================
 
 /**
@@ -346,8 +369,9 @@ export function useTodaysClasses(schoolId?: string) {
         return [];
       }
 
-      // Extract unique classes from schedules
-      // Use a Map to deduplicate by grade+subject combination
+      // One entry per scheduled period. Deduping by grade+subject collapsed
+      // distinct sections/periods (e.g. 7A and 7B, same subject) into one row,
+      // and reports are per-period on the backend anyway.
       interface ClassItem {
         id?: string;
         grade?: string;
@@ -355,50 +379,59 @@ export function useTodaysClasses(schoolId?: string) {
         class_name?: string;
         school_id?: string;
         schedule_id?: string;
+        period_id?: string;
         start_time?: string;
         end_time?: string;
         class?: { class_name?: string };
       }
-      
-      const uniqueClassesMap = new Map<string, ClassItem>();
-      
-      todaysSchedules.forEach((schedule) => {
-        // Create a unique key from grade and subject
-        const classKey = `${schedule.grade || ''}-${schedule.subject || ''}`;
-        
-        if (!uniqueClassesMap.has(classKey)) {
-          type ScheduleRow = { class_id?: string; id?: string; grade?: string; subject?: string; school_id?: string; class?: { class_name?: string } };
-          const scheduleTyped = schedule as ScheduleRow;
-          uniqueClassesMap.set(classKey, {
-            id: scheduleTyped.class_id || scheduleTyped.id || '',
-            grade: scheduleTyped.grade,
-            subject: scheduleTyped.subject,
-            class_name: scheduleTyped.grade || scheduleTyped.class?.class_name,
-            school_id: scheduleTyped.school_id,
-            // Include schedule info for display
-            schedule_id: schedule.id,
-            start_time: schedule.start_time,
-            end_time: schedule.end_time
-          });
-        }
+
+      type ScheduleRow = {
+        class_id?: string;
+        id?: string;
+        period_id?: string;
+        grade?: string;
+        subject?: string;
+        school_id?: string;
+        start_time?: string;
+        end_time?: string;
+        class?: { class_name?: string };
+      };
+      const todaysClasses: ClassItem[] = todaysSchedules.map((schedule) => {
+        const s = schedule as ScheduleRow;
+        return {
+          id: s.class_id || s.id || '',
+          grade: s.grade,
+          subject: s.subject,
+          class_name: s.grade || s.class?.class_name,
+          school_id: s.school_id,
+          schedule_id: s.id,
+          period_id: s.period_id,
+          start_time: s.start_time,
+          end_time: s.end_time,
+        };
       });
+      // Earliest period first — matches how the teaching day actually runs.
+      todaysClasses.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
 
-      const todaysClasses = Array.from(uniqueClassesMap.values());
-
-      // Get today's reports to check which classes have reports
+      // Get today's reports to check which periods have reports
       const { data: reportsData } = await teacherApi.reports.list({
         date: today,
         school_id: schoolId,
       });
       const todayReports = (reportsData as { reports?: TeacherReport[] })?.reports || [];
-      
-      // Create a set of reported grades (since reports use grade, not class_id)
+
+      // Reports are per-period; match on period_id and fall back to grade only
+      // for schedules that carry no period_id.
+      const reportedPeriodIds = new Set(
+        todayReports.map((r) => (r as { period_id?: string }).period_id).filter(Boolean),
+      );
       const reportedGrades = new Set(todayReports.map((r) => r.grade).filter(Boolean));
 
-      // Map classes and mark which ones have reports
       const result = todaysClasses.map((classItem: ClassItem) => ({
         ...classItem,
-        hasReport: reportedGrades.has(classItem.grade),
+        hasReport: classItem.period_id
+          ? reportedPeriodIds.has(classItem.period_id)
+          : reportedGrades.has(classItem.grade),
         assignment: classItem
       }));
 

@@ -129,12 +129,15 @@ function AssignmentTable({
   assignments,
   loading,
   type,
+  filter,
+  onFilterChange,
 }: {
   assignments: Assignment[];
   loading: boolean;
   type: "course" | "daily";
+  filter: StatusFilter;
+  onFilterChange: (f: StatusFilter) => void;
 }) {
-  const [filter, setFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
 
   const counts = useMemo(
@@ -200,7 +203,7 @@ function AssignmentTable({
           {(["all", "pending", "submitted", "graded", "overdue"] as StatusFilter[]).map((key) => (
             <button
               key={key}
-              onClick={() => setFilter(key)}
+              onClick={() => onFilterChange(key)}
               className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all border ${
                 filter === key
                   ? "bg-gray-900 text-white border-gray-900"
@@ -279,6 +282,11 @@ function AssignmentTable({
                   <p className="text-xs text-gray-400 mt-0.5 truncate ml-3.5">
                     {a.course_title || a.subject || (type === "daily" ? "Daily" : "Course")}
                   </p>
+                  {/* Due date is the key info on a phone — surface it under the title
+                      since the Due column is hidden below the sm breakpoint. */}
+                  <div className="sm:hidden mt-1 ml-3.5">
+                    <DueDateChip a={a} />
+                  </div>
                 </div>
 
                 <div className="hidden sm:block">
@@ -352,11 +360,20 @@ export default function StudentAssignmentsPage() {
   const [loadingDaily, setLoadingDaily] = useState(true);
   // Default to Daily — teacher-set homework is the most time-sensitive for school kids.
   const [activeTab, setActiveTab] = useState<"all" | "course" | "daily">("daily");
+  // Status filter is lifted here so the summary tiles + URL deep links can drive it.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   // Captured once on mount to avoid calling Date.now() during render (purity rule).
   const [nowMs, setNowMs] = useState<number | null>(null);
 
   useEffect(() => {
     setNowMs(Date.now());
+    // Deep-link support: /assignments?filter=pending (e.g. from dashboard stat cards).
+    // A linked filter should search everything, so switch to the All tab too.
+    const f = new URLSearchParams(window.location.search).get("filter");
+    if (f === "pending" || f === "submitted" || f === "graded" || f === "overdue") {
+      setStatusFilter(f);
+      setActiveTab("all");
+    }
   }, []);
 
   useEffect(() => {
@@ -488,27 +505,32 @@ export default function StudentAssignmentsPage() {
           <div className="flex-1 min-w-0 space-y-5">
             {/* Summary stat cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: "Total", value: summary.total, icon: FileText, color: "text-gray-700 bg-gray-100", ring: "" },
+              {([
+                { label: "Total", value: summary.total, icon: FileText, color: "text-gray-700 bg-gray-100", ring: "", filter: "all" as StatusFilter },
                 {
                   label: "Pending",
                   value: summary.pending,
                   icon: Clock,
                   color: "text-amber-700 bg-amber-100",
                   ring: summary.pending > 0 ? "ring-1 ring-amber-200" : "",
+                  filter: "pending" as StatusFilter,
                 },
-                { label: "Graded", value: summary.graded, icon: Award, color: "text-emerald-700 bg-emerald-100", ring: "" },
+                { label: "Graded", value: summary.graded, icon: Award, color: "text-emerald-700 bg-emerald-100", ring: "", filter: "graded" as StatusFilter },
                 {
                   label: "Overdue",
                   value: summary.overdue,
                   icon: AlertCircle,
                   color: "text-red-700 bg-red-100",
                   ring: summary.overdue > 0 ? "ring-1 ring-red-200" : "",
+                  filter: "overdue" as StatusFilter,
                 },
-              ].map(({ label, value, icon: Icon, color, ring }) => (
-                <div
+              ]).map(({ label, value, icon: Icon, color, ring, filter }) => (
+                <button
                   key={label}
-                  className={`bg-white border border-gray-200 rounded-xl p-3.5 flex items-center gap-3 shadow-sm ${ring}`}
+                  onClick={() => { setStatusFilter(filter); setActiveTab("all"); }}
+                  className={`bg-white border rounded-xl p-3.5 flex items-center gap-3 shadow-sm text-left transition-all hover:shadow-md hover:border-gray-300 ${
+                    statusFilter === filter && activeTab === "all" ? "border-blue-400 ring-1 ring-blue-200" : "border-gray-200"
+                  } ${ring}`}
                 >
                   <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${color}`}>
                     <Icon className="h-4 w-4" />
@@ -517,7 +539,7 @@ export default function StudentAssignmentsPage() {
                     <p className="text-xl font-bold text-gray-900 leading-none">{value}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{label}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 
@@ -560,6 +582,8 @@ export default function StudentAssignmentsPage() {
               assignments={visibleAssignments}
               loading={isLoading}
               type={activeTab === "daily" ? "daily" : "course"}
+              filter={statusFilter}
+              onFilterChange={setStatusFilter}
             />
           </div>
 

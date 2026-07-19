@@ -20,6 +20,7 @@ import {
   Upload,
   Flame,
   Trophy,
+  Target,
   ArrowRight
 } from "lucide-react";
 import Link from "next/link";
@@ -48,6 +49,11 @@ interface Assignment {
   status?: string;
   is_overdue?: boolean;
   days_until_due?: number;
+  submission?: {
+    grade?: number | string | null;
+    submitted_at?: string;
+    status?: string;
+  } | null;
 }
 
 interface Course {
@@ -147,18 +153,59 @@ export default function StudentDashboard() {
     minRefreshInterval: 60000, // 1 minute minimum between refreshes
   });
 
-  // Combined daily + course pending assignments (not yet started), due soonest first.
-  const pendingAssignments = useMemo(() => {
+  // Combined daily + course pending assignments (not yet started), grouped by
+  // urgency: Overdue → Due today → This week → Later. Answers "what do I have
+  // to do today?" at a glance.
+  const pendingGroups = useMemo(() => {
     const course = Array.isArray(assignments) ? (assignments as Assignment[]) : [];
     const daily = Array.isArray(dailyAssignments) ? (dailyAssignments as Assignment[]) : [];
-    return [...course, ...daily]
-      .filter((a) => a.status === 'not_started' || a.status === 'pending' || a.status == null)
+    const seen = new Set<string>();
+    const pending = [...course, ...daily]
+      .filter((a) => {
+        if (!a.id || seen.has(a.id)) return false;
+        seen.add(a.id);
+        return a.status === 'not_started' || a.status === 'pending' || a.status == null;
+      })
       .sort((a, b) => {
         const da = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER;
         const db = b.due_date ? new Date(b.due_date).getTime() : Number.MAX_SAFE_INTEGER;
         return da - db;
       })
-      .slice(0, 4);
+      .slice(0, 6);
+
+    const groups: Array<{ key: string; label: string; labelClass: string; items: Assignment[] }> = [
+      { key: 'overdue', label: 'Overdue', labelClass: 'text-red-600', items: [] },
+      { key: 'today', label: 'Due today', labelClass: 'text-orange-600', items: [] },
+      { key: 'week', label: 'This week', labelClass: 'text-gray-500', items: [] },
+      { key: 'later', label: 'Later', labelClass: 'text-gray-400', items: [] },
+    ];
+    pending.forEach((a) => {
+      const d = a.days_until_due;
+      if (a.is_overdue || (d != null && d < 0)) groups[0].items.push(a);
+      else if (d === 0) groups[1].items.push(a);
+      else if (d != null && d <= 7) groups[2].items.push(a);
+      else groups[3].items.push(a);
+    });
+    return { groups: groups.filter((g) => g.items.length > 0), total: pending.length };
+  }, [assignments, dailyAssignments]);
+
+  // Recently graded submissions — small feedback loop after work is marked.
+  const recentlyGraded = useMemo(() => {
+    const course = Array.isArray(assignments) ? (assignments as Assignment[]) : [];
+    const daily = Array.isArray(dailyAssignments) ? (dailyAssignments as Assignment[]) : [];
+    const seen = new Set<string>();
+    return [...course, ...daily]
+      .filter((a) => {
+        if (!a.id || seen.has(a.id)) return false;
+        seen.add(a.id);
+        return a.submission?.grade !== null && a.submission?.grade !== undefined;
+      })
+      .sort((a, b) => {
+        const ta = a.submission?.submitted_at ? new Date(a.submission.submitted_at).getTime() : 0;
+        const tb = b.submission?.submitted_at ? new Date(b.submission.submitted_at).getTime() : 0;
+        return tb - ta;
+      })
+      .slice(0, 3);
   }, [assignments, dailyAssignments]);
 
   // Recent unread notifications
@@ -192,6 +239,21 @@ export default function StudentDashboard() {
     return { avgProgress, avgGrade };
   }, [courseList]);
 
+  // Weekly goal: active days since Monday, out of a 5-day target.
+  const WEEKLY_GOAL_DAYS = 5;
+  const weeklyActiveDays = useMemo(() => {
+    if (!isMounted) return 0;
+    const days = activity?.activityDays ?? [];
+    const now = new Date();
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // getDay(): Sun=0 … Sat=6 → offset back to the most recent Monday
+    monday.setDate(monday.getDate() - ((now.getDay() + 6) % 7));
+    return days.filter((d) => {
+      const t = new Date(d.date);
+      return !isNaN(t.getTime()) && t >= monday && (d.hasLearning || d.hasAssignment);
+    }).length;
+  }, [activity, isMounted]);
+
   if (!isMounted) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -217,6 +279,7 @@ export default function StudentDashboard() {
       icon: <BookOpen className="h-4 w-4" />,
       accentColor: "#2563eb",
       info: "Courses you have started and not yet completed.",
+      href: "/lms/student/my-courses",
     },
     {
       title: "Pending Assignments",
@@ -226,6 +289,7 @@ export default function StudentDashboard() {
       icon: <FileText className="h-4 w-4" />,
       accentColor: "#f97316",
       info: "Daily homework + course assignments that still need your attention.",
+      href: "/lms/student/assignments?filter=pending",
     },
     {
       title: "Courses Completed",
@@ -235,6 +299,7 @@ export default function StudentDashboard() {
       icon: <CheckCircle className="h-4 w-4" />,
       accentColor: "#16a34a",
       info: "Courses you have completed.",
+      href: "/lms/student/my-courses?tab=completed",
     },
     {
       title: "Completed",
@@ -244,6 +309,7 @@ export default function StudentDashboard() {
       icon: <CheckCircle className="h-4 w-4" />,
       accentColor: "#7c3aed",
       info: "Assignments you have completed.",
+      href: "/lms/student/assignments?filter=graded",
     },
     {
       title: "Notifications",
@@ -253,6 +319,7 @@ export default function StudentDashboard() {
       icon: <Bell className="h-4 w-4" />,
       accentColor: "#0891b2",
       info: "Unread notifications for your account.",
+      href: "/lms/student/notifications",
     },
   ];
 
@@ -273,6 +340,15 @@ export default function StudentDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {(activity?.activeDaysLast28 ?? 0) > 0 && (
+            <div
+              className="flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-600 ring-1 ring-blue-100"
+              title={`Learn on ${WEEKLY_GOAL_DAYS} days each week to stay on track`}
+            >
+              <Target className="h-4 w-4" />
+              {Math.min(weeklyActiveDays, WEEKLY_GOAL_DAYS)}/{WEEKLY_GOAL_DAYS} days this week
+            </div>
+          )}
           {currentStreak > 0 && (
             <div className="flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-600 ring-1 ring-orange-100">
               <Flame className="h-4 w-4" />
@@ -337,6 +413,7 @@ export default function StudentDashboard() {
             icon={metric.icon}
             accentColor={metric.accentColor}
             info={metric.info}
+            href={metric.href}
           />
         ))}
       </div>
@@ -399,6 +476,14 @@ export default function StudentDashboard() {
                 <div className="text-center py-8 text-gray-500">
                   <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                   <p>No active courses yet</p>
+                  <p className="mt-1 text-sm text-gray-400">
+                    Courses your school assigns will show up here.
+                  </p>
+                  <Link href="/lms/student/my-courses">
+                    <Button variant="outline" size="sm" className="mt-3">
+                      Browse my courses
+                    </Button>
+                  </Link>
                 </div>
               )}
             </CardContent>
@@ -428,45 +513,58 @@ export default function StudentDashboard() {
                     </div>
                   ))}
                 </div>
-              ) : pendingAssignments.length > 0 ? (
-                <div className="space-y-4">
-                  {pendingAssignments.map((assignment: Assignment) => (
-                    <div key={assignment.id} className="border rounded-lg p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-900">{assignment.title}</h3>
-                            {assignment.assignment_type === 'DAILY' && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                                Daily
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">{assignment.course_title || assignment.subject}</p>
-                          <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                            {assignment.due_date && (
-                              <div className="flex items-center">
-                                <Calendar className="h-4 w-4 mr-1" />
-                                Due: {new Date(String(assignment.due_date)).toLocaleDateString()}
+              ) : pendingGroups.total > 0 ? (
+                <div className="space-y-5">
+                  {pendingGroups.groups.map((group) => (
+                    <div key={group.key}>
+                      <p className={`mb-2 text-xs font-semibold uppercase tracking-wide ${group.labelClass}`}>
+                        {group.label}
+                        <span className="ml-1.5 font-normal normal-case text-gray-400">({group.items.length})</span>
+                      </p>
+                      <div className="space-y-3">
+                        {group.items.map((assignment: Assignment) => (
+                          <div
+                            key={assignment.id}
+                            className={`border rounded-lg p-4 ${group.key === 'overdue' ? 'border-red-200 bg-red-50/40' : group.key === 'today' ? 'border-orange-200 bg-orange-50/40' : ''}`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-semibold text-gray-900">{assignment.title}</h3>
+                                  {assignment.assignment_type === 'DAILY' && (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                      Daily
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-600 mt-1">{assignment.course_title || assignment.subject}</p>
+                                <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                                  {assignment.due_date && (
+                                    <div className="flex items-center">
+                                      <Calendar className="h-4 w-4 mr-1" />
+                                      Due: {new Date(String(assignment.due_date)).toLocaleDateString()}
+                                    </div>
+                                  )}
+                                  <div className={`flex items-center ${group.key === 'overdue' ? 'text-red-600 font-medium' : group.key === 'today' ? 'text-orange-600 font-medium' : ''}`}>
+                                    <Clock className="h-4 w-4 mr-1" />
+                                    {(assignment.days_until_due ?? 0) > 0
+                                      ? `${assignment.days_until_due ?? 0} days left`
+                                      : (assignment.days_until_due ?? 0) === 0
+                                      ? 'Due today'
+                                      : 'Overdue'
+                                    }
+                                  </div>
+                                </div>
                               </div>
-                            )}
-                            <div className="flex items-center">
-                              <Clock className="h-4 w-4 mr-1" />
-                              {(assignment.days_until_due ?? 0) > 0
-                                ? `${assignment.days_until_due ?? 0} days left`
-                                : (assignment.days_until_due ?? 0) === 0
-                                ? 'Due today'
-                                : 'Overdue'
-                              }
+                              <Link href={`/lms/student/assignments/${assignment.id}`}>
+                                <Button size="sm" variant={(assignment.days_until_due ?? 0) <= 2 ? "default" : "outline"}>
+                                  <Upload className="h-4 w-4 mr-2" />
+                                  Start
+                                </Button>
+                              </Link>
                             </div>
                           </div>
-                        </div>
-                        <Link href={`/lms/student/assignments/${assignment.id}`}>
-                          <Button size="sm" variant={(assignment.days_until_due ?? 0) <= 2 ? "default" : "outline"}>
-                            <Upload className="h-4 w-4 mr-2" />
-                            Start
-                          </Button>
-                        </Link>
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -475,6 +573,11 @@ export default function StudentDashboard() {
                 <div className="text-center py-8 text-gray-500">
                   <CheckCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                   <p>All caught up! No pending assignments</p>
+                  <Link href="/lms/student/assignments">
+                    <Button variant="link" size="sm" className="mt-1 text-blue-600">
+                      View all assignments
+                    </Button>
+                  </Link>
                 </div>
               )}
             </CardContent>
@@ -505,6 +608,43 @@ export default function StudentDashboard() {
                 <p className="mt-1 text-sm text-gray-500">
                   Top {Math.max(1, Math.round(100 - sectionRank.percentile))}% of your class
                 </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recently graded — feedback loop after submitting work */}
+          {recentlyGraded.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Recently Graded</CardTitle>
+                  <Link href="/lms/student/assignments?filter=graded">
+                    <Button variant="ghost" size="sm">View All</Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {recentlyGraded.map((a) => {
+                  const grade = Number(a.submission?.grade);
+                  const gradeColor =
+                    grade >= 70 ? 'text-emerald-600' : grade >= 50 ? 'text-amber-600' : 'text-red-500';
+                  return (
+                    <Link
+                      key={a.id}
+                      href={`/lms/student/assignments/${a.id}/view`}
+                      className="flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-gray-50"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">{a.title}</p>
+                        <p className="truncate text-xs text-gray-500">{a.course_title || a.subject}</p>
+                      </div>
+                      <span className={`shrink-0 text-sm font-bold ${gradeColor}`}>
+                        {isNaN(grade) ? '—' : `${grade}%`}
+                        {grade >= 90 && ' 🎉'}
+                      </span>
+                    </Link>
+                  );
+                })}
               </CardContent>
             </Card>
           )}

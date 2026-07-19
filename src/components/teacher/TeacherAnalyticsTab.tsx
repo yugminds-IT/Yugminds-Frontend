@@ -13,7 +13,7 @@ import {
   CartesianGrid,
   Tooltip
 } from "recharts";
-import { useTeacherMonthlyAttendance } from "../../hooks/useTeacherData";
+import { useTeacherMonthlyAttendance, formatMonthLabel } from "../../hooks/useTeacherData";
 import { SkeletonChart } from "../ui/skeleton-chart";
 
 type TeacherMonthlyAttendanceRecord = {
@@ -43,7 +43,8 @@ export default function TeacherAnalyticsTab({ selectedSchoolId }: TeacherAnalyti
       leave_count?: number;
       unreported_count?: number;
     };
-    return (monthlyAttendance as MonthlyAttendanceData[] | undefined)?.map((m: MonthlyAttendanceData) => {
+    // API returns newest-first; reverse so the trend reads chronologically.
+    return (monthlyAttendance as MonthlyAttendanceData[] | undefined)?.slice().reverse().map((m: MonthlyAttendanceData) => {
       const present = m.present_count ?? m.present ?? 0;
       const fallbackTotal =
         (m.present_count ?? 0) +
@@ -54,10 +55,7 @@ export default function TeacherAnalyticsTab({ selectedSchoolId }: TeacherAnalyti
       const total = rawTotal > 0 ? rawTotal : 1;
 
       return {
-        month:
-          typeof m.month === 'string'
-            ? new Date(m.month).toLocaleDateString('en-US', { month: 'short' })
-            : m.month,
+        month: formatMonthLabel(m.month),
         attendance: Math.round((present / total) * 100),
       };
     }) ?? [];
@@ -69,10 +67,7 @@ export default function TeacherAnalyticsTab({ selectedSchoolId }: TeacherAnalyti
           (() => {
             const m = monthlyAttendance[0] as TeacherMonthlyAttendanceRecord;
             return {
-              name:
-                typeof m.month === 'string'
-                  ? new Date(m.month).toLocaleDateString('en-US', { month: 'long' })
-                  : m.month,
+              name: formatMonthLabel(m.month, { month: 'long' }),
               Present: m.present_count ?? m.present ?? 0,
               Absent: m.absent_count ?? 0,
               Leave: m.leave_count ?? 0,

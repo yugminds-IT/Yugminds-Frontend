@@ -2,6 +2,7 @@
 
 import { Star, Award } from "lucide-react";
 import { TestimonialSlider, type Testimonial } from "../ui/testimonial-slider";
+import { Reveal } from "./robo-motion";
 
 const testimonialsData: Testimonial[] = [
   {
@@ -57,6 +58,7 @@ export default function HomeTestimonials() {
       <div className="container mx-auto px-4 md:px-6 lg:px-8">
 
         {/* Label pill */}
+        <Reveal>
         <div className="flex justify-center mb-5">
           <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 text-sm font-semibold px-4 py-2 rounded-full border border-blue-100">
             <Star className="h-4 w-4 fill-blue-600" />
@@ -76,13 +78,16 @@ export default function HomeTestimonials() {
 
         {/* Blue accent divider */}
         <div className="w-16 h-1 bg-blue-600 rounded-full mx-auto mt-6 mb-12" />
+        </Reveal>
 
         {/* Slider */}
+        <Reveal delay={0.15}>
         <div className="w-full flex items-center justify-center">
           <div className="w-full max-w-5xl mx-auto">
             <TestimonialSlider testimonials={testimonialsData} />
           </div>
         </div>
+        </Reveal>
 
       </div>
     </section>

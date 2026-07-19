@@ -518,6 +518,7 @@ export default function SchoolsManagement() {
             <SchoolManagementTable<SchoolTableRow>
               rows={schoolTableRows}
               loading={isLoading}
+              onView={(row) => router.push(`/lms/admin/schools/${row.id}`)}
               onManageJoinCodes={(row) =>
                 setJoiningCodesDialog({
                   isOpen: true,

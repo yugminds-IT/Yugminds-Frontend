@@ -112,6 +112,17 @@ function TeachersContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [leaveStatusFilter, setLeaveStatusFilter] = useState("all");
+  // Controlled tab so ?tab=leaves (linked from the dashboard) actually lands on
+  // the Leaves tab — the previous uncontrolled Tabs ignored the query param.
+  const [activeTab, setActiveTab] = useState<"teachers" | "leaves">("teachers");
+
+  useEffect(() => {
+    // Read on mount rather than in a lazy initializer — `window` isn't available
+    // during SSR, and seeding from it would cause a hydration mismatch.
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (tab === "leaves") setActiveTab("leaves");
+  }, []);
 
   const loadTeachers = useCallback(async () => {
     try {
@@ -122,7 +133,9 @@ function TeachersContent() {
       // Parallel API calls for better performance
       const [teachersResponse, leavesResponse, pendingLeavesResponse] =
         await Promise.allSettled([
-          schoolAdminApi.teachers.list(),
+          // Explicit limit — backend defaults to 50, and this page derives its
+          // own counts/filters from the full roster.
+          schoolAdminApi.teachers.list({ limit: 500 }),
           schoolAdminApi.leaves.list(leaveStatusFilter === "all" ? {} : { status: leaveStatusFilter }),
           schoolAdminApi.leaves.list({ status: "Pending" }),
         ]);
@@ -400,7 +413,11 @@ function TeachersContent() {
         </Card>
       )}
 
-      <Tabs defaultValue="teachers" className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "teachers" | "leaves")}
+        className="space-y-6"
+      >
         <TabsList>
           <TabsTrigger value="teachers">Teachers</TabsTrigger>
           <TabsTrigger value="leaves">

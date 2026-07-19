@@ -4,10 +4,11 @@ import { useTeacherSchool } from "../context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useQueryClient } from "@tanstack/react-query";
-import { 
-  useTeacherMonthlyAttendance, 
+import {
+  useTeacherMonthlyAttendance,
   useTeacherReports,
-  useTeacherLeaves
+  useTeacherLeaves,
+  formatMonthLabel
 } from "@/hooks/useTeacherData";
 import { 
   XAxis, 
@@ -50,7 +51,9 @@ export default function AnalyticsPage() {
     selectedSchool?.id,
     12
   );
-  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchool?.id);
+  // Explicit limit — the backend defaults to 100, which silently truncated
+  // "All time" totals and the approval-rate math for prolific teachers.
+  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchool?.id, { limit: 500 });
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
 
   // Use smart refresh for tab switching
@@ -94,16 +97,18 @@ export default function AnalyticsPage() {
     leave_count?: number;
   };
   const attendanceTrend = (monthlyAttendance as MonthlyAttendanceData[] | undefined)?.slice().reverse().map((m: MonthlyAttendanceData) => ({
-    month: new Date(m.month).toLocaleDateString('en-US', { month: 'short' }),
+    month: formatMonthLabel(m.month),
     percentage: (m.total_days ?? 0) > 0 ? Math.round(((m.present_count ?? 0) / (m.total_days ?? 0)) * 100) : 0,
     present: m.present_count ?? 0,
     absent: m.absent_count ?? 0,
     leave: m.leave_count ?? 0
   })) || [];
 
+  // Last 6 months in CHRONOLOGICAL order — previously rendered newest-first,
+  // reading in the opposite direction from the trend chart beside it.
   const attendanceBarData =
-    (monthlyAttendance as MonthlyAttendanceRecord[] | undefined)?.slice(0, 6).map((m: MonthlyAttendanceRecord) => ({
-      month: new Date(m.month).toLocaleDateString('en-US', { month: 'short' }),
+    (monthlyAttendance as MonthlyAttendanceRecord[] | undefined)?.slice(0, 6).reverse().map((m: MonthlyAttendanceRecord) => ({
+      month: formatMonthLabel(m.month),
       Present: m.present_count ?? 0,
       Absent: m.absent_count ?? 0,
       Leave: m.leave_count ?? 0,
@@ -358,14 +363,21 @@ export default function AnalyticsPage() {
             ) : reports && reports.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={(() => {
-                  // Group reports by month
-                  const monthlyReports: { [key: string]: number } = {};
-                   
+                  // Group by sortable YYYY-MM key first so months render in
+                  // chronological order (label-keyed grouping followed report
+                  // arrival order, which is newest-first).
+                  const monthlyReports = new Map<string, number>();
                   reports.forEach((r) => {
-                    const month = new Date(r.date ?? '').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-                    monthlyReports[month] = (monthlyReports[month] || 0) + 1;
+                    const key = String(r.date ?? '').slice(0, 7); // YYYY-MM
+                    if (!key) return;
+                    monthlyReports.set(key, (monthlyReports.get(key) || 0) + 1);
                   });
-                  return Object.entries(monthlyReports).map(([month, count]) => ({ month, count }));
+                  return [...monthlyReports.entries()]
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([key, count]) => ({
+                      month: formatMonthLabel(key, { month: 'short', year: '2-digit' }),
+                      count,
+                    }));
                 })()}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />

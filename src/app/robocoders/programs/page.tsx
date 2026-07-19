@@ -4,6 +4,7 @@ import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
 import Book3DModal from "../../../components/Book3DModal";
+import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
 import { level1KidsTextBook, level1TextBook, level2TextBook } from "../../../data/books";
 import {
   Code,
@@ -77,43 +78,48 @@ export default function ProgramsPage() {
     <div className="min-h-screen bg-white">
       {/* Top Navigation */}
 
-      {/* 1. Programs Section — thin white strip for navbar, then full blue */}
+      {/* 1. Programs Section — thin white strip for navbar, then white heading + cards */}
       <section className="flex flex-col">
 
         {/* White strip — only tall enough for the fixed navbar */}
         <div className="bg-white h-20" />
 
-        {/* Blue: heading + cards */}
-        <div className="bg-blue-600 pt-16 pb-16 px-4">
+        {/* White: heading + cards */}
+        <div className="bg-white pt-16 pb-16 px-4">
           <div className="container">
 
             {/* Heading */}
-            <div className="text-center mb-10 md:mb-14">
-              <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto text-white">Our Programs</h1>
-              <p className="text-lg md:text-xl lg:text-2xl text-white/80 max-w-3xl mx-auto leading-relaxed">
-                Discover the perfect STEM learning journey for every student, from coding basics to advanced AI and robotics.
-              </p>
-            </div>
+            <Reveal>
+              <div className="text-center mb-10 md:mb-14">
+                <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto text-gray-900">
+                  Our <span className="text-blue-600">Programs</span>
+                </h1>
+                <p className="text-lg md:text-xl lg:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+                  Discover the perfect STEM learning journey for every student, from coding basics to advanced AI and robotics.
+                </p>
+              </div>
+            </Reveal>
 
             {/* Cards */}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-              {programs.map(({ icon: Icon, title, description, badges }) => (
-                <Card key={title} className="bg-white border-0 hover:transform hover:scale-105 transition-all duration-300 shadow-lg">
+              {programs.map(({ icon: Icon, title, description, badges }, idx) => (
+                <HoverLift key={title} delay={idx * 0.1}>
+                <Card className="bg-blue-600 border-0 shadow-lg rounded-3xl h-full group">
                   <CardContent className="p-6 md:p-8 flex flex-col">
                     <div className="flex items-start gap-4 md:gap-5 mb-4 md:mb-5">
-                      <div className="w-16 h-16 md:w-18 md:h-18 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                      <div className="w-16 h-16 md:w-18 md:h-18 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                         <Icon className="h-8 w-8 md:h-9 md:w-9 text-white" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold mb-2 md:mb-3 text-gray-900">{title}</h3>
+                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold mb-2 md:mb-3 text-white">{title}</h3>
                       </div>
                     </div>
-                    <p className="text-gray-600 text-sm md:text-base leading-relaxed mb-6 md:mb-8">{description}</p>
+                    <p className="text-blue-100 text-sm md:text-base leading-relaxed mb-6 md:mb-8">{description}</p>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {badges.map((badge, idx) => (
                         <span
                           key={idx}
-                          className="px-3 py-1.5 md:px-4 md:py-2 bg-blue-600 text-white rounded-full text-xs md:text-sm font-medium whitespace-nowrap"
+                          className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 text-white rounded-full text-xs md:text-sm font-medium whitespace-nowrap"
                         >
                           {badge}
                         </span>
@@ -121,6 +127,7 @@ export default function ProgramsPage() {
                     </div>
                   </CardContent>
                 </Card>
+                </HoverLift>
               ))}
             </div>
 
@@ -129,47 +136,49 @@ export default function ProgramsPage() {
 
       </section>
 
-      {/* 2. Offline Software — WHITE */}
-      <section className="py-24 bg-white px-4">
+      {/* 2. Offline Software — BLUE */}
+      <section className="py-24 bg-blue-600 px-4">
         <div className="container max-w-7xl mx-auto">
 
+          <Reveal>
           <div className="flex justify-center mb-6">
-            <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-sm font-semibold px-4 py-2 rounded-full border border-blue-200">
+            <span className="inline-flex items-center gap-2 bg-white/20 text-white text-sm font-semibold px-4 py-2 rounded-full border border-white/30">
               <WifiOff className="h-4 w-4" />
               New — Offline Learning Platform
             </span>
           </div>
 
           <div className="text-center mb-14">
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-5 max-w-4xl mx-auto leading-tight">
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-5 max-w-4xl mx-auto leading-tight">
               One Platform. Coding, AI &amp; Robotics.{" "}
-              <span className="text-blue-600">Completely Offline.</span>
+              <span className="text-amber-300">Completely Offline.</span>
             </h2>
-            <p className="text-lg md:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-lg md:text-xl text-blue-100 max-w-3xl mx-auto leading-relaxed">
               Our brand-new desktop software brings everything kids need to learn
               programming, artificial intelligence, and robotics — all in one place,
               with zero internet required. Built for young minds aged 8 and above.
             </p>
           </div>
+          </Reveal>
 
           <div className="grid lg:grid-cols-2 gap-12 items-center">
 
             {/* Image placeholder */}
-            <div className="relative rounded-3xl overflow-hidden border-2 border-dashed border-blue-200 bg-blue-50 flex flex-col items-center justify-center min-h-[380px] md:min-h-[460px]">
+            <RevealX x={-48} className="relative rounded-3xl overflow-hidden border-2 border-dashed border-white/30 bg-white/10 flex flex-col items-center justify-center min-h-[380px] md:min-h-[460px]">
               <div className="text-center px-8 py-12">
-                <div className="w-20 h-20 rounded-2xl bg-blue-100 flex items-center justify-center mx-auto mb-5">
-                  <ImageIcon className="h-9 w-9 text-blue-400" />
+                <div className="w-20 h-20 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-5">
+                  <ImageIcon className="h-9 w-9 text-white/70" />
                 </div>
-                <p className="text-blue-500 font-semibold text-lg">Software screenshot</p>
-                <p className="text-blue-300 text-sm mt-1">Image coming soon</p>
+                <p className="text-white font-semibold text-lg">Software screenshot</p>
+                <p className="text-blue-200 text-sm mt-1">Image coming soon</p>
               </div>
               {/* Replace the div above with an <Image> once ready:
                   <Image src="/offline-software.png" alt="Offline Software" fill className="object-cover rounded-3xl" />
               */}
-            </div>
+            </RevealX>
 
             {/* Feature list */}
-            <div className="flex flex-col gap-6">
+            <RevealX x={48} className="flex flex-col gap-6">
               {[
                 {
                   icon: Layers,
@@ -196,44 +205,46 @@ export default function ProgramsPage() {
                     "A carefully crafted experience that grows with the student — beginner-friendly enough to start, deep enough to keep them challenged for years.",
                 },
               ].map(({ icon: Icon, title, description }) => (
-                <div key={title} className="flex gap-4 items-start">
-                  <div className="flex-shrink-0 w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                <div key={title} className="group flex gap-4 items-start">
+                  <div className="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                     <Icon className="h-6 w-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
-                    <p className="text-gray-600 text-sm leading-relaxed">{description}</p>
+                    <h3 className="text-lg font-bold text-white mb-1">{title}</h3>
+                    <p className="text-blue-100 text-sm leading-relaxed">{description}</p>
                   </div>
                 </div>
               ))}
 
               <div className="mt-4 flex flex-col sm:flex-row gap-4">
                 <Link href="/robocoders/contact">
-                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white h-12 px-8 text-base font-bold w-full sm:w-auto">
+                  <Button size="lg" className="bg-white hover:bg-gray-100 text-blue-600 h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full transition-transform hover:scale-105">
                     Get Early Access
                   </Button>
                 </Link>
                 <Link href="/robocoders/contact">
-                  <Button size="lg" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50 h-12 px-8 text-base font-bold w-full sm:w-auto">
+                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10 h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full">
                     Learn More
                   </Button>
                 </Link>
               </div>
-            </div>
+            </RevealX>
           </div>
         </div>
       </section>
 
-      {/* 3. Latest Textbooks — BLUE */}
-      <section className="min-h-screen flex items-center justify-center bg-blue-600 py-20">
+      {/* 3. Latest Textbooks — WHITE */}
+      <section className="min-h-screen flex items-center justify-center bg-white py-20">
         <div className="container">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 text-white max-w-5xl mx-auto">Our Latest Textbooks</h2>
-          <p className="text-white/80 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
-            Comprehensive learning materials designed by experts.
-          </p>
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 text-gray-900 max-w-5xl mx-auto">Our Latest Textbooks</h2>
+            <p className="text-gray-600 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
+              Comprehensive learning materials designed by experts.
+            </p>
+          </Reveal>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 mb-8 md:mb-12">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-xl shadow-md aspect-[3/4] overflow-hidden hover:shadow-xl transition-shadow border-[5px] border-white/20 max-w-full relative group">
+              <HoverLift key={i} delay={(i - 1) * 0.1} className="bg-white rounded-xl shadow-md aspect-[3/4] overflow-hidden hover:shadow-2xl transition-shadow border-[5px] border-blue-100 max-w-full relative group">
                 {i === 1 ? (
                   <Book3DModal
                     book={level1KidsTextBook}
@@ -295,46 +306,48 @@ export default function ProgramsPage() {
                     }
                   />
                 )}
-              </div>
+              </HoverLift>
             ))}
           </div>
-          <p className="text-center text-white/80 max-w-3xl mx-auto text-base md:text-lg lg:text-xl">
+          <p className="text-center text-gray-600 max-w-3xl mx-auto text-base md:text-lg lg:text-xl">
             A complete beginner-friendly guide to Programming, AI, and Robotics concepts, featuring hands-on exercises and projects for all the books we offer.
           </p>
         </div>
       </section>
 
-      {/* 4. Robotics Kit — WHITE */}
-      <section className="min-h-screen flex items-center justify-center bg-white py-20 px-4 md:px-8 lg:px-12 xl:px-20 2xl:px-32">
+      {/* 4. Robotics Kit — BLUE */}
+      <section className="min-h-screen flex items-center justify-center bg-blue-600 py-20 px-4 md:px-8 lg:px-12 xl:px-20 2xl:px-32">
         <div className="container max-w-7xl mx-auto w-full">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-center mb-10 md:mb-16 max-w-5xl mx-auto text-gray-900">Our Robotics Kit</h2>
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-center mb-10 md:mb-16 max-w-5xl mx-auto text-white">Our Robotics Kit</h2>
+          </Reveal>
           <div className="grid lg:grid-cols-2 gap-6 md:gap-8 items-center">
-            <div className="order-2 lg:order-1 pl-0 lg:pl-8 xl:pl-12 2xl:pl-16 pr-0 lg:pr-4 xl:pr-8 2xl:pr-12">
-              <p className="text-lg text-gray-700 leading-relaxed mb-8">
+            <RevealX x={-48} className="order-2 lg:order-1 pl-0 lg:pl-8 xl:pl-12 2xl:pl-16 pr-0 lg:pr-4 xl:pr-8 2xl:pr-12">
+              <p className="text-lg text-blue-100 leading-relaxed mb-8">
                 Everything you need to start building and programming robots. Our comprehensive kit includes high-quality components and step-by-step tutorials.
               </p>
               <ul className="space-y-4 mb-8">
                 {kitContents.map((item, idx) => (
                   <li key={idx} className="flex items-start gap-3">
-                    <div className="mt-1 bg-green-100 rounded-full p-1">
-                      <Check className="h-4 w-4 text-green-600" />
+                    <div className="mt-1 bg-white/20 rounded-full p-1">
+                      <Check className="h-4 w-4 text-white" />
                     </div>
-                    <span className="text-gray-700 font-medium">{item}</span>
+                    <span className="text-white font-medium">{item}</span>
                   </li>
                 ))}
               </ul>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button size="lg" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white h-12 text-lg font-bold">
+                <Button size="lg" className="w-full sm:w-auto bg-white hover:bg-gray-100 text-blue-600 h-12 text-lg font-bold rounded-full transition-transform hover:scale-105">
                   Order Robotics Kit
                 </Button>
                 <Link href="/contact">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-blue-600 text-blue-600 hover:bg-blue-50 h-12 text-lg font-bold">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-white text-white hover:bg-white/10 h-12 text-lg font-bold rounded-full">
                     For More Information
                   </Button>
                 </Link>
               </div>
-            </div>
-            <div className="order-1 lg:order-2 bg-gray-100 rounded-3xl overflow-hidden w-full max-w-[408px] mx-auto lg:mx-auto pl-0 lg:pl-4 xl:pl-8 2xl:pl-12 pr-0 lg:pr-8 xl:pr-12 2xl:pr-16">
+            </RevealX>
+            <RevealX x={48} className="order-1 lg:order-2 bg-white/10 rounded-3xl overflow-hidden w-full max-w-[408px] mx-auto lg:mx-auto pl-0 lg:pl-4 xl:pl-8 2xl:pl-12 pr-0 lg:pr-8 xl:pr-12 2xl:pr-16 shadow-xl">
               <video
                 src="/instagram-reel.mp4"
                 autoPlay
@@ -345,51 +358,55 @@ export default function ProgramsPage() {
               >
                 Your browser does not support the video tag.
               </video>
-            </div>
+            </RevealX>
           </div>
         </div>
       </section>
 
       {/* Combined What's Included & CTA Section */}
       <section className="min-h-screen flex flex-col m-0 overflow-hidden">
-        {/* What's Included Section */}
-        <div className="flex-1 flex items-center justify-center bg-blue-600 min-h-0 py-8 md:py-12 overflow-y-auto">
+        {/* What's Included Section — WHITE */}
+        <div className="flex-1 flex items-center justify-center bg-white min-h-0 py-8 md:py-12 overflow-y-auto">
           <div className="container py-4 md:py-8">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold text-center mb-3 md:mb-4 lg:mb-6 text-white max-w-5xl mx-auto">What&apos;s Included</h2>
-            <p className="text-white/90 text-center mb-6 md:mb-8 lg:mb-12 max-w-2xl mx-auto text-sm md:text-base lg:text-lg xl:text-xl px-4">
-              Every program comes with comprehensive support.
-            </p>
+            <Reveal>
+              <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold text-center mb-3 md:mb-4 lg:mb-6 text-gray-900 max-w-5xl mx-auto">What&apos;s Included</h2>
+              <p className="text-gray-600 text-center mb-6 md:mb-8 lg:mb-12 max-w-2xl mx-auto text-sm md:text-base lg:text-lg xl:text-xl px-4">
+                Every program comes with comprehensive support.
+              </p>
+            </Reveal>
             <div className="grid md:grid-cols-3 gap-4 md:gap-6 lg:gap-8 px-4">
-              {whatsIncluded.map(({ icon: Icon, title, description }) => (
-                <Card key={title} className="border-none shadow-md hover:shadow-xl transition-shadow bg-white">
+              {whatsIncluded.map(({ icon: Icon, title, description }, idx) => (
+                <HoverLift key={title} delay={idx * 0.1}>
+                <Card className="border-2 border-blue-100 shadow-md hover:shadow-2xl transition-shadow bg-white rounded-3xl h-full group">
                   <CardContent className="p-6 md:p-8 text-center h-full flex flex-col items-center">
-                    <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-50 rounded-full flex items-center justify-center mb-4 md:mb-6">
+                    <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-50 rounded-full flex items-center justify-center mb-4 md:mb-6 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                       <Icon className="h-8 w-8 md:h-10 md:w-10 text-blue-600" />
                     </div>
                     <h3 className="text-lg md:text-xl font-bold mb-3 md:mb-4 text-gray-900">{title}</h3>
                     <p className="text-sm md:text-base text-gray-600 leading-relaxed">{description}</p>
                   </CardContent>
                 </Card>
+                </HoverLift>
               ))}
             </div>
           </div>
         </div>
 
-        {/* CTA Section */}
-        <div className="flex-1 flex items-center justify-center bg-white min-h-0 py-8 md:py-12 overflow-y-auto">
-          <div className="container text-center py-4 md:py-8 px-4">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-extrabold mb-3 md:mb-4 lg:mb-6 text-gray-900 max-w-5xl mx-auto">
+        {/* CTA Section — BLUE */}
+        <div className="flex-1 flex items-center justify-center bg-blue-600 min-h-0 py-8 md:py-12 overflow-y-auto">
+          <Reveal className="container text-center py-4 md:py-8 px-4">
+            <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-extrabold mb-3 md:mb-4 lg:mb-6 text-white max-w-5xl mx-auto">
               Ready to Start Your STEM Journey?
             </h2>
-            <p className="text-gray-600 mb-6 md:mb-8 lg:mb-10 max-w-2xl mx-auto text-sm md:text-base lg:text-lg xl:text-xl">
+            <p className="text-blue-100 mb-6 md:mb-8 lg:mb-10 max-w-2xl mx-auto text-sm md:text-base lg:text-lg xl:text-xl">
               Schedule a free consultation with our education counselors.
             </p>
             <Link href="/contact">
-              <Button size="lg" variant="secondary" className="bg-blue-600 text-white hover:bg-blue-700 px-8 md:px-10 py-5 md:py-6 text-base md:text-lg h-auto font-bold shadow-xl">
+              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 md:px-10 py-5 md:py-6 text-base md:text-lg h-auto font-bold shadow-xl rounded-full transition-transform hover:scale-105">
                 Book Free Consultation
               </Button>
             </Link>
-          </div>
+          </Reveal>
         </div>
       </section>
 

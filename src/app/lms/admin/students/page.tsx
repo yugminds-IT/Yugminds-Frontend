@@ -5,13 +5,13 @@ import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
+import ViewStudentDialog from "@/components/admin/ViewStudentDialog";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { 
+import {
   Dialog, 
   DialogContent, 
   DialogDescription, 
@@ -231,6 +231,13 @@ export default function StudentsManagement() {
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isBulkDeletingStudents, setIsBulkDeletingStudents] = useState(false);
   const [bulkSelectionResetKey, setBulkSelectionResetKey] = useState(0);
+  // Bulk move-to-section / bulk enroll (server-side bulk endpoint)
+  const [bulkMoveRows, setBulkMoveRows] = useState<StudentTableRow[] | null>(null);
+  const [bulkMoveSchoolId, setBulkMoveSchoolId] = useState("");
+  const [bulkMoveGrade, setBulkMoveGrade] = useState("");
+  const [bulkMoveSection, setBulkMoveSection] = useState("");
+  const [isBulkMoving, setIsBulkMoving] = useState(false);
+  const [isBulkEnrolling, setIsBulkEnrolling] = useState(false);
   const [isAddingStudent, setIsAddingStudent] = useState(false);
   const [isUpdatingStudent, setIsUpdatingStudent] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -374,12 +381,10 @@ export default function StudentsManagement() {
     setIsStudentsLoading(true);
     try {
       try {
-        const { data: responseData } = await adminApi.students.list({ limit: 5000 });
-        let loadedStudents: Student[] = [];
-        let apiTotal: number | null = null;
-        if (Array.isArray(responseData)) {
-          loadedStudents = responseData as Student[];
-        } else {
+        // Paged loading: pages are fetched in parallel and merged. Replaces the
+        // old single limit:5000 fetch that silently truncated larger datasets.
+        const PAGE_SIZE = 500;
+        const parsePage = (responseData: unknown) => {
           const root = responseData as Record<string, unknown> | undefined;
           const payload =
             root?.data != null &&
@@ -388,13 +393,33 @@ export default function StudentsManagement() {
               ? (root.data as Record<string, unknown>)
               : root;
           const list = payload?.students;
-          loadedStudents = Array.isArray(list) ? (list as Student[]) : [];
-          // Backend returns { students, total } — extract total directly
-          apiTotal = typeof payload?.total === 'number' ? (payload.total as number)
-            : typeof root?.total === 'number' ? (root.total as number)
-            : null;
-        }
+          return {
+            students: Array.isArray(list) ? (list as Student[]) : [],
+            total:
+              typeof payload?.total === 'number' ? (payload.total as number)
+              : typeof root?.total === 'number' ? (root.total as number)
+              : null,
+            totalPages:
+              typeof payload?.totalPages === 'number' ? (payload.totalPages as number) : 1,
+          };
+        };
+
+        const firstRes = await adminApi.students.list({ page: 1, limit: PAGE_SIZE });
+        const first = parsePage(firstRes.data);
+        let loadedStudents: Student[] = first.students;
+        const apiTotal: number | null = first.total;
         setTotalStudentsCount(apiTotal ?? loadedStudents.length);
+
+        // Fetch remaining pages (bounded) so exports/filters still see everything.
+        const remaining = Math.min(first.totalPages, 40) - 1;
+        if (remaining > 0) {
+          const pages = await Promise.all(
+            Array.from({ length: remaining }, (_, i) =>
+              adminApi.students.list({ page: i + 2, limit: PAGE_SIZE }).then((r) => parsePage(r.data).students).catch(() => [] as Student[]),
+            ),
+          );
+          loadedStudents = loadedStudents.concat(...pages);
+        }
 
         type ProgressRow = {
           student_id?: string;
@@ -704,6 +729,69 @@ export default function StudentsManagement() {
       setIsBulkDeletingStudents(false);
       setIsBulkDeleteDialogOpen(false);
       setBulkDeleteStudents(null);
+    }
+  };
+
+  const requestBulkMoveStudents = (rows: StudentTableRow[]) => {
+    if (rows.length === 0) return;
+    setBulkMoveRows(rows);
+    setBulkMoveSchoolId("");
+    setBulkMoveGrade("");
+    setBulkMoveSection("");
+  };
+
+  const confirmBulkMoveStudents = async () => {
+    if (!bulkMoveRows?.length || !bulkMoveSchoolId || !bulkMoveGrade || isBulkMoving) return;
+    setIsBulkMoving(true);
+    try {
+      const { data } = await adminApi.students.bulk({
+        action: "move",
+        student_ids: bulkMoveRows.map((r) => r.id),
+        school_id: bulkMoveSchoolId,
+        grade: bulkMoveGrade,
+        ...(bulkMoveSection ? { section: bulkMoveSection } : {}),
+      });
+      const updated = (data as { updated?: number })?.updated ?? 0;
+      toast.success(
+        `Moved ${updated} student${updated !== 1 ? "s" : ""} to ${bulkMoveGrade}${bulkMoveSection ? ` · Section ${bulkMoveSection}` : ""}.`,
+      );
+      if (updated < bulkMoveRows.length) {
+        toast.error(
+          `${bulkMoveRows.length - updated} selected student${bulkMoveRows.length - updated !== 1 ? "s are" : " is"} not enrolled in that school and ${bulkMoveRows.length - updated !== 1 ? "were" : "was"} skipped.`,
+        );
+      }
+      setBulkMoveRows(null);
+      setBulkSelectionResetKey((k) => k + 1);
+      await loadData();
+    } catch (error) {
+      console.error("Bulk move error:", error);
+      toast.error("Failed to move selected students.");
+    } finally {
+      setIsBulkMoving(false);
+    }
+  };
+
+  const handleBulkEnrollStudents = async (rows: StudentTableRow[]) => {
+    if (rows.length === 0 || isBulkEnrolling) return;
+    setIsBulkEnrolling(true);
+    try {
+      const { data } = await adminApi.students.bulk({
+        action: "enroll",
+        student_ids: rows.map((r) => r.id),
+      });
+      const res = data as { enrolled?: number; errors?: string[] };
+      toast.success(
+        `Synced course enrollments for ${res.enrolled ?? 0} student${(res.enrolled ?? 0) !== 1 ? "s" : ""}.`,
+      );
+      if (res.errors?.length) {
+        toast.error(`${res.errors.length} student${res.errors.length !== 1 ? "s" : ""} could not be enrolled.`);
+      }
+      setBulkSelectionResetKey((k) => k + 1);
+    } catch (error) {
+      console.error("Bulk enroll error:", error);
+      toast.error("Failed to enroll selected students.");
+    } finally {
+      setIsBulkEnrolling(false);
     }
   };
 
@@ -2013,6 +2101,18 @@ export default function StudentsManagement() {
                       onDelete={requestDeleteStudent}
                       onEnroll={handleEnrollStudent}
                       onBulkDeleteSelected={requestBulkDeleteStudents}
+                      bulkActions={[
+                        {
+                          id: "move",
+                          label: "Move to grade/section",
+                          onClick: requestBulkMoveStudents,
+                        },
+                        {
+                          id: "enroll",
+                          label: isBulkEnrolling ? "Enrolling…" : "Enroll in courses",
+                          onClick: handleBulkEnrollStudents,
+                        },
+                      ]}
                       resetSelectionKey={bulkSelectionResetKey}
                       searchPlaceholder="Search students by name, email, school, grade..."
                       itemsPerPage={25}
@@ -2036,7 +2136,7 @@ export default function StudentsManagement() {
                 <DialogHeader>
                   <DialogTitle>Delete student</DialogTitle>
                   <DialogDescription>
-                    This cannot be undone. Enrollments, course progress, and related records for this student may be removed or orphaned depending on server policy.
+                    The student is deactivated and moved to the admin Trash, where they can be restored or permanently deleted.
                   </DialogDescription>
                 </DialogHeader>
                 {deletingStudent && (
@@ -2091,7 +2191,7 @@ export default function StudentsManagement() {
                 <DialogHeader>
                   <DialogTitle>Delete selected students</DialogTitle>
                   <DialogDescription>
-                    This cannot be undone. Enrollments, course progress, and related records for these students may be removed or orphaned depending on server policy.
+                    Deleted students are deactivated and moved to the admin Trash, where they can be restored or permanently deleted.
                   </DialogDescription>
                 </DialogHeader>
                 {bulkDeleteStudents && bulkDeleteStudents.length > 0 && (
@@ -2151,149 +2251,108 @@ export default function StudentsManagement() {
               </DialogContent>
             </Dialog>
 
-            {/* View Student Dialog */}
-            <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
+            {/* Bulk move to grade/section */}
+            <Dialog
+              open={!!bulkMoveRows}
+              onOpenChange={(open) => {
+                if (!open) setBulkMoveRows(null);
+              }}
+            >
+              <DialogContent className="bg-white max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Student Details</DialogTitle>
+                  <DialogTitle>Move selected students</DialogTitle>
                   <DialogDescription>
-                    View detailed information about the student
+                    Updates the grade/section for {bulkMoveRows?.length ?? 0} selected student
+                    {(bulkMoveRows?.length ?? 0) !== 1 ? "s" : ""} within the chosen school.
+                    Students not enrolled in that school are skipped.
                   </DialogDescription>
                 </DialogHeader>
-                {viewingStudent && (
-                  <div className="space-y-6 py-4">
-                    {/* Basic Information */}
-                    <Card className="bg-white">
-                      <CardHeader>
-                        <CardTitle className="text-lg">Basic Information</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label className="text-sm font-medium text-gray-500">Full Name</Label>
-                            <p className="text-base font-medium">{viewingStudent.full_name}</p>
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-500">Email</Label>
-                            <p className="text-base">{viewingStudent.email}</p>
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-500">Student ID</Label>
-                            <p className="text-base font-mono text-sm">{viewingStudent.id}</p>
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-500">Role</Label>
-                            <Badge variant="outline">{viewingStudent.role}</Badge>
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-500">Created At</Label>
-                            <p className="text-base">{new Date(viewingStudent.created_at).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* School & Grade Information */}
-                    {viewingStudent.student_schools && viewingStudent.student_schools.length > 0 && (
-                      <Card className="bg-white">
-                        <CardHeader>
-                          <CardTitle className="text-lg">School & Grade</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            {viewingStudent.student_schools.map((assignment: StudentSchool, index: number) => (
-                              <div key={index} className="p-3 border rounded-lg">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="font-medium">
-                                      {assignment.school_name ||
-                                        assignment.schools?.name ||
-                                        'Unknown School'}
-                                    </p>
-                                    <div className="flex gap-2 mt-1">
-                                      <Badge variant="outline">
-                                        {assignment.grade?.toString().trim().toLowerCase().startsWith('grade') 
-                                          ? assignment.grade 
-                                          : `Grade ${assignment.grade}`}
-                                      </Badge>
-                                      {assignment.section && (
-                                        <Badge variant="outline">
-                                          Section {assignment.section}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <Badge variant={assignment.is_active ? "default" : "secondary"}>
-                                    {assignment.is_active ? "Active" : "Inactive"}
-                                  </Badge>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Courses Information */}
-                    {viewingStudent.student_courses && viewingStudent.student_courses.length > 0 && (
-                      <Card className="bg-white">
-                        <CardHeader>
-                          <CardTitle className="text-lg">Courses</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {viewingStudent.student_courses.map((course: StudentCourse, index: number) => (
-                              <div key={index} className="p-2 border rounded">
-                                <p className="font-medium">{course.courses?.course_name || 'Unknown Course'}</p>
-                                {course.progress_percentage !== undefined && (
-                                  <div className="mt-2">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-sm text-gray-600">Progress</span>
-                                      <span className="text-sm font-medium">{course.progress_percentage}%</span>
-                                    </div>
-                                    <div className="w-full bg-gray-200 rounded-full h-2">
-                                      <div 
-                                        className="bg-blue-600 h-2 rounded-full" 
-                                        style={{ width: `${course.progress_percentage}%` }}
-                                      ></div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Progress */}
-                    <Card className="bg-white">
-                      <CardHeader>
-                        <CardTitle className="text-lg">Overall Progress</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center space-x-4">
-                          <div className="flex-1">
-                            <div className="w-full bg-gray-200 rounded-full h-3">
-                              <div 
-                                className="bg-blue-600 h-3 rounded-full" 
-                                style={{ width: `${viewingStudent.progress || 0}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                          <span className="text-lg font-medium">{viewingStudent.progress || 0}%</span>
-                        </div>
-                      </CardContent>
-                    </Card>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label>School</Label>
+                    <Select value={bulkMoveSchoolId} onValueChange={(v) => { setBulkMoveSchoolId(v); setBulkMoveGrade(""); setBulkMoveSection(""); }}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select school" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {schools.map((s: School) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label>Grade</Label>
+                    <Select value={bulkMoveGrade} onValueChange={(v) => { setBulkMoveGrade(v); setBulkMoveSection(""); }} disabled={!bulkMoveSchoolId}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select grade" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(() => {
+                          const school = schools.find((s: School) => s.id === bulkMoveSchoolId);
+                          const names = (school?.grades ?? []).map((g) => g.name);
+                          return (names.length > 0 ? names : availableGrades).map((g) => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ));
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Section (optional)</Label>
+                    <Select value={bulkMoveSection} onValueChange={setBulkMoveSection} disabled={!bulkMoveGrade}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Keep current section" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(() => {
+                          const school = schools.find((s: School) => s.id === bulkMoveSchoolId);
+                          const gradeObj = (school?.grades ?? []).find((g) => g.name === bulkMoveGrade);
+                          const names = (gradeObj?.sections ?? []).map((s) => s.name);
+                          return (names.length > 0
+                            ? names
+                            : ["A", "B", "C", "D", "E", "F", "G", "H"]
+                          ).map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ));
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-                    Close
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setBulkMoveRows(null)}
+                    disabled={isBulkMoving}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={isBulkMoving || !bulkMoveSchoolId || !bulkMoveGrade}
+                    onClick={() => void confirmBulkMoveStudents()}
+                  >
+                    {isBulkMoving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Moving…
+                      </>
+                    ) : (
+                      <>Move {bulkMoveRows?.length ?? 0} student{(bulkMoveRows?.length ?? 0) !== 1 ? "s" : ""}</>
+                    )}
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
+            {/* View Student Dialog — extracted to components/admin/ViewStudentDialog.tsx */}
+            <ViewStudentDialog
+              open={isViewDialogOpen}
+              onOpenChange={setIsViewDialogOpen}
+              student={viewingStudent}
+            />
 
             {/* Edit Student Dialog */}
             <Dialog open={isEditDialogOpen} onOpenChange={(open) => {

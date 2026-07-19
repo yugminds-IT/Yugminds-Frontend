@@ -77,12 +77,22 @@ export type ManagementTableServerPagination = {
   pageSizeOptions?: number[];
 };
 
+export type ManagementTableBulkAction<T extends ManagementTableRow> = {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  destructive?: boolean;
+  onClick: (rows: T[]) => void;
+};
+
 export type ManagementTableProps<T extends ManagementTableRow> = {
   rows: T[];
   columns: ManagementTableColumn<T>[];
   rowActions?: ManagementTableRowAction<T>[];
   loading?: boolean;
   onBulkDeleteSelected?: (rows: T[]) => void;
+  /** Extra toolbar actions shown while rows are selected (besides delete). */
+  bulkActions?: ManagementTableBulkAction<T>[];
   resetSelectionKey?: number;
   actionLoadingId?: string | null;
   searchPlaceholder?: string;
@@ -142,6 +152,7 @@ export function ManagementTable<T extends ManagementTableRow>({
   rowActions = [],
   loading = false,
   onBulkDeleteSelected,
+  bulkActions = [],
   resetSelectionKey,
   actionLoadingId = null,
   searchPlaceholder = "Search…",
@@ -188,7 +199,7 @@ export function ManagementTable<T extends ManagementTableRow>({
 
   const isServerPaged = !!serverPagination;
   const showToolbar =
-    !hideToolbarSearch || !!toolbarExtra || !!onBulkDeleteSelected;
+    !hideToolbarSearch || !!toolbarExtra || !!onBulkDeleteSelected || bulkActions.length > 0;
 
   const filtered = useMemo(() => {
     let list = [...rows];
@@ -375,6 +386,20 @@ export function ManagementTable<T extends ManagementTableRow>({
           )}
         >
           {toolbarExtra}
+          {selected.length > 0 &&
+            bulkActions.map((action) => (
+              <Button
+                key={action.id}
+                type="button"
+                variant={action.destructive ? "destructive" : "outline"}
+                size="sm"
+                className="h-9 gap-1.5 self-end sm:self-auto"
+                onClick={() => action.onClick(selectedRowsForBulk)}
+              >
+                {action.icon}
+                {action.label}
+              </Button>
+            ))}
           {selected.length > 0 && onBulkDeleteSelected && (
             <Button
               type="button"

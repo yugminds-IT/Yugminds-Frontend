@@ -31,7 +31,10 @@ import {
   Award,
   MessageSquare,
   Key,
-  Cpu
+  Cpu,
+  ScrollText,
+  Trash2,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -82,6 +85,9 @@ const getNavigationItems = (role: string, assignmentCount?: number, notification
         { id: "analytics", name: "Performance Analytics", icon: TrendingUp, href: "/lms/admin/analytics" },
         { id: "assignment-analytics", name: "Assignment Analytics", icon: BarChart3, href: "/lms/admin/assignment-analytics" },
         { id: "monitoring", name: "System Monitoring", icon: Activity, href: "/lms/admin/monitoring" },
+        { id: "audit-log", name: "Audit Log", icon: ScrollText, href: "/lms/admin/audit-log" },
+        { id: "system-controls", name: "System Controls", icon: SlidersHorizontal, href: "/lms/admin/system-controls" },
+        { id: "trash", name: "Trash", icon: Trash2, href: "/lms/admin/trash" },
         { id: "contact-submissions", name: "Contact Submissions", icon: MessageSquare, href: "/lms/admin/contact-submissions" },
         { id: "settings", name: "Settings", icon: Settings, href: "/lms/admin/settings" },
       ];

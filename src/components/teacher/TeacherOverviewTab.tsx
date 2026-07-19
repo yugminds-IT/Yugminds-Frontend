@@ -17,15 +17,15 @@ import {
   Plus,
   RefreshCw
 } from "lucide-react";
-import { 
-  useTeacherReports, 
+import {
+  useTeacherReports,
   useTeacherLeaves,
   useTodaysClasses,
   useTeacherSchedules,
   type TeacherReport,
   type TeacherScheduleRow,
 } from "../../hooks/useTeacherData";
-import { SkeletonDashboard } from "../ui/skeleton-dashboard";
+import { Skeleton } from "../ui/skeleton";
 
 interface TeacherOverviewTabProps {
   selectedSchoolId?: string;
@@ -41,13 +41,36 @@ interface RecentActivity {
 
 interface ClassItem {
   id?: string;
+  schedule_id?: string;
   grade?: string;
   class_name?: string;
   subject?: string;
+  start_time?: string;
+  end_time?: string;
   hasReport?: boolean;
 }
 
 type Schedule = TeacherScheduleRow;
+
+function formatTime(time?: string) {
+  if (!time) return '';
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  if (isNaN(hour)) return time;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+}
+
+function CardSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-3">
+      {[...Array(rows)].map((_, i) => (
+        <Skeleton key={i} className="h-14 w-full rounded-lg" />
+      ))}
+    </div>
+  );
+}
 
 export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverviewTabProps) {
   const queryClient = useQueryClient();
@@ -60,32 +83,35 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
     if (!selectedSchoolId) return [];
 
     const activity: RecentActivity[] = [];
-    
-    // Recent reports
+
+    // Recent reports — only entries with a real timestamp
     const recentReports = reports?.slice(0, 3) || [];
     recentReports.forEach((report: TeacherReport) => {
       const classData = Array.isArray(report.classes) ? report.classes[0] : report.classes;
+      const when = report.created_at ?? report.date;
+      if (!when) return;
       activity.push({
         id: `report-${report.id}`,
         title: 'Report Submitted',
         message: `Submitted report for ${report.grade || classData?.grade || 'grade'} on ${report.date ? new Date(report.date).toLocaleDateString() : 'unknown date'}`,
-        created_at: report.created_at ?? new Date().toISOString(),
+        created_at: String(when),
         type: report.report_status === 'Approved' ? 'success' : 'info'
       });
     });
 
-    // Pending leaves
-    interface Leave {
-      status?: string;
-    }
-    
-    const pendingLeavesList = leaves?.filter((l: Leave) => l.status === 'Pending') || [];
+    // Pending leaves — timestamped by the newest pending request, not "now"
+    const pendingLeavesList = (leaves ?? []).filter((l) => l.status === 'Pending');
     if (pendingLeavesList.length > 0) {
+      const newest = pendingLeavesList
+        .map((l) => String((l as { created_at?: string }).created_at ?? ''))
+        .filter(Boolean)
+        .sort()
+        .pop();
       activity.push({
         id: 'pending-leaves',
         title: 'Pending Leave Requests',
         message: `${pendingLeavesList.length} leave request(s) awaiting approval`,
-        created_at: new Date().toISOString(),
+        created_at: newest ?? pendingLeavesList[0].start_date,
         type: 'warning'
       });
     }
@@ -94,10 +120,6 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
     activity.sort((a: RecentActivity, b: RecentActivity) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return activity.slice(0, 5);
   }, [selectedSchoolId, reports, leaves]);
-
-  if (todaysClassesLoading || reportsLoading || leavesLoading || schedulesLoading) {
-    return <SkeletonDashboard />;
-  }
 
   return (
     <div className="space-y-6">
@@ -118,16 +140,26 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
           </div>
         </CardHeader>
         <CardContent>
-          {todaysClasses && todaysClasses.length > 0 ? (
+          {todaysClassesLoading ? (
+            <CardSkeleton rows={3} />
+          ) : todaysClasses && todaysClasses.length > 0 ? (
             <div className="space-y-3">
-              {todaysClasses.slice(0, 5).map((classItem: ClassItem) => (
+              {todaysClasses.map((classItem: ClassItem) => (
                 <div
-                  key={classItem.id}
+                  key={classItem.schedule_id || classItem.id}
                   className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
                 >
                   <div>
                     <p className="font-medium">{classItem.grade || classItem.class_name || 'N/A'}</p>
-                    <p className="text-sm text-gray-600">{classItem.subject || 'General'}</p>
+                    <p className="text-sm text-gray-600">
+                      {classItem.subject || 'General'}
+                      {classItem.start_time && (
+                        <span className="text-gray-400">
+                          {' '}· {formatTime(classItem.start_time)}
+                          {classItem.end_time ? ` – ${formatTime(classItem.end_time)}` : ''}
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <Badge variant={classItem.hasReport ? "default" : "outline"}>
                     {classItem.hasReport ? "Reported" : "Pending"}
@@ -151,7 +183,9 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
           <CardDescription>Your latest activities and updates</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentActivity.length > 0 ? (
+          {reportsLoading || leavesLoading ? (
+            <CardSkeleton rows={3} />
+          ) : recentActivity.length > 0 ? (
             <div className="space-y-3">
               {recentActivity.map((activity) => (
                 <div
@@ -261,7 +295,9 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
           </Button>
         </CardHeader>
         <CardContent>
-          {schedulesError ? (
+          {schedulesLoading ? (
+            <CardSkeleton rows={4} />
+          ) : schedulesError ? (
             <div className="text-center py-8 text-red-500">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
               <p className="font-medium">Error loading schedule</p>
@@ -289,14 +325,6 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
                 </TableHeader>
                 <TableBody>
                   {schedules.map((schedule: Schedule) => {
-                    const formatTime = (time?: string) => {
-                      if (!time) return '';
-                      const [hours, minutes] = time.split(':');
-                      const hour = parseInt(hours);
-                      const ampm = hour >= 12 ? 'PM' : 'AM';
-                      const displayHour = hour % 12 || 12;
-                      return `${displayHour}:${minutes} ${ampm}`;
-                    };
                     const periodObj =
                       typeof schedule.period === 'object' && schedule.period !== null
                         ? schedule.period

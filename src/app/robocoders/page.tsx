@@ -13,9 +13,9 @@ export default function RobocodersPage() {
       <main>
         <HomeHero />             {/* white  */}
         <HomeFeatures />         {/* blue   */}
-        <CombinedSchoolsTestimonials /> {/* white — school logos */}
-        <HomeStats />            {/* blue   */}
-        <HomeTestimonials />     {/* white  */}
+        <CombinedSchoolsTestimonials /> {/* white — school logos (hidden when empty) */}
+        <HomeTestimonials />     {/* white — kept adjacent to Features/blue on either side */}
+        <HomeStats />            {/* blue — closes the page in blue before the dark footer */}
       </main>
       <Footer />
     </div>
