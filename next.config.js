@@ -43,6 +43,13 @@ const nextConfig = {
   // Optimize bundle splitting
   experimental: {
     optimizeCss: true, // Optimize CSS
+    // Cap the static-generation worker pool. Next.js defaults to one worker
+    // per CPU core, which is fine on a dedicated build machine but OOMs on a
+    // shared VPS that's also running Postgres/Redis/MinIO/the backend at the
+    // same time — each worker is a full Node process holding its own copy of
+    // the page tree in memory. 2 trades some build time for a much lower
+    // peak RSS during "Generating static pages".
+    cpus: 2,
   },
   turbopack: {
     root: path.join(__dirname),
