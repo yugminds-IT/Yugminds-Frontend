@@ -1,34 +1,40 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base';
 import path from 'path';
 
-test.use({ storageState: path.resolve(__dirname, '.auth/school-admin.json') });
 
 // The 12 school-admin tabs as registered in src/components/ui/modern-side-bar.tsx
-// (case 'school_admin' branch of getNavigationItems).
-const NAV_ITEMS: Array<{ name: string; href: string }> = [
-  { name: 'Overview', href: '/lms/school-admin' },
-  { name: 'Students Management', href: '/lms/school-admin/students' },
-  { name: 'Teachers Management', href: '/lms/school-admin/teachers' },
-  { name: 'Class Scheduling', href: '/lms/school-admin/schedules' },
-  { name: 'School Calendar', href: '/lms/school-admin/calendar' },
-  { name: 'Teacher Reports', href: '/lms/school-admin/reports' },
-  { name: 'Courses', href: '/lms/school-admin/courses' },
-  { name: 'Student Progress', href: '/lms/school-admin/student-progress' },
-  { name: 'Assignment Analytics', href: '/lms/school-admin/assignment-analytics' },
-  { name: 'Notifications', href: '/lms/school-admin/notifications' },
-  { name: 'Password Reset Requests', href: '/lms/school-admin/password-reset-requests' },
-  { name: 'Settings', href: '/lms/school-admin/settings' },
+// (case 'school_admin' branch of getNavigationItems). NOTE: each item renders
+// as a <button onClick={() => router.push(item.href)}> (~line 390), not an
+// <a href>, so there is no href attribute anywhere in the sidebar to select
+// on — matching by the button's accessible name instead. (Minor UX/a11y
+// observation, not a functional bug: primary nav via onClick-button means no
+// native ctrl/cmd-click "open in new tab", no visible href on hover, no
+// crawlable links — but navigation itself works correctly.)
+const NAV_ITEM_NAMES = [
+  'Overview',
+  'Students Management',
+  'Teachers Management',
+  'Class Scheduling',
+  'School Calendar',
+  'Teacher Reports',
+  'Courses',
+  'Student Progress',
+  'Assignment Analytics',
+  'Notifications',
+  'Password Reset Requests',
+  'Settings',
 ];
 
 test.describe('School Admin — Layout / Navigation', () => {
-  test('sidebar renders all 12 tabs with correct hrefs', async ({ page }) => {
+  test('sidebar renders all 12 tabs', async ({ page }) => {
     await page.goto('/lms/school-admin');
     await page.waitForSelector('nav');
 
-    for (const item of NAV_ITEMS) {
-      const link = page.locator(`nav a[href="${item.href}"]`);
-      await expect(link, `nav link for "${item.name}" (${item.href})`).toHaveCount(1);
-      await expect(link).toContainText(item.name);
+    for (const name of NAV_ITEM_NAMES) {
+      await expect(
+        page.locator('nav').getByRole('button', { name, exact: true }),
+        `nav button for "${name}"`,
+      ).toHaveCount(1);
     }
   });
 
@@ -41,13 +47,13 @@ test.describe('School Admin — Layout / Navigation', () => {
     const body = await res.json().catch(() => ({}));
     const count = Number((body as { count?: number })?.count ?? 0);
 
-    const notificationsLink = page.locator('nav a[href="/lms/school-admin/notifications"]');
+    const notificationsButton = page.locator('nav').getByRole('button', { name: 'Notifications', exact: true });
     if (count > 0) {
       const expectedBadgeText = count > 9 ? '9+' : String(count);
-      await expect(notificationsLink.getByText(expectedBadgeText, { exact: true })).toBeVisible();
+      await expect(notificationsButton.getByText(expectedBadgeText, { exact: true })).toBeVisible();
     } else {
       // No badge element rendered at all when unread count is 0.
-      await expect(notificationsLink.locator('span', { hasText: /^\d+\+?$/ })).toHaveCount(0);
+      await expect(notificationsButton.locator('span', { hasText: /^\d+\+?$/ })).toHaveCount(0);
     }
   });
 

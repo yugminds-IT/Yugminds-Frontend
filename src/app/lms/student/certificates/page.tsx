@@ -15,6 +15,7 @@ import {
   Star,
   Loader2,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { useStudentCertificates, useStudentCourses } from "@/hooks/useStudentData";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,17 +23,25 @@ import Link from "next/link";
 import { toast } from "@/components/ui/toast";
 import { studentApi } from "@/lib/api";
 
-function downloadCertificate(dataUrl: string, name: string) {
-  const mimeMatch = dataUrl.match(/^data:([^;]+)/);
-  const mime = mimeMatch?.[1] ?? "";
-  const ext = mime.includes("jpeg") || mime.includes("jpg") ? "jpg"
-    : mime.includes("png") ? "png"
-    : mime.includes("svg") ? "svg"
-    : "jpg";
+/**
+ * Downloads a certificate through the authenticated backend proxy.
+ * A plain `<a download>` is a no-op for cross-origin (S3/CDN) URLs, and a
+ * direct browser `fetch()` of the S3 URL fails unless the bucket has CORS
+ * configured for this origin — the backend already holds S3 credentials, so
+ * proxying through it sidesteps both problems.
+ */
+async function downloadCertificate(id: string, name: string) {
+  const res = await studentApi.certificates.download(id);
+  const blob = res.data as Blob;
+  const ext = blob.type.includes("png") ? "png" : blob.type.includes("svg") ? "svg" : "jpg";
+  const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = dataUrl;
+  a.href = objectUrl;
   a.download = `${name}.${ext}`;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export default function CertificatesPage() {
@@ -40,12 +49,20 @@ export default function CertificatesPage() {
   const { data: courses, isLoading: _coursesLoading } = useStudentCourses();
   const queryClient = useQueryClient();
   const [generatingCertId, setGeneratingCertId] = useState<string | null>(null);
-  const [previewCert, setPreviewCert] = useState<{ url: string; name: string } | null>(null);
+  const [previewCert, setPreviewCert] = useState<{ id: string; url: string; name: string } | null>(null);
+
+  const handleDownload = async (id: string, name: string) => {
+    try {
+      await downloadCertificate(id, name);
+    } catch {
+      toast.error("Failed to download certificate");
+    }
+  };
 
   // Filter courses eligible for certificates (80%+ completion)
   // Note: We check progress_percentage >= 80, regardless of status
   type StudentCourse = { id: string; name?: string; title?: string; progress_percentage: number; status?: string; average_grade?: number; grade?: string; subject?: string };
-  type Certificate = { id: string; course_id?: string; courses?: { id?: string; name?: string; title?: string; grade?: string; subject?: string }; certificate_name: string; certificate_url?: string; issued_at: string; profiles?: { full_name?: string } };
+  type Certificate = { id: string; short_id?: string; course_id?: string; courses?: { id?: string; name?: string; title?: string; grade?: string; subject?: string }; certificate_name: string; certificate_url?: string; issued_at: string; profiles?: { full_name?: string } };
 
   const coursesList = (courses as StudentCourse[] | undefined) || [];
 
@@ -211,7 +228,7 @@ export default function CertificatesPage() {
                               variant="outline"
                               size="sm"
                               className="flex-1"
-                              onClick={() => setPreviewCert({ url: cert.certificate_url!, name: cert.certificate_name || 'Certificate' })}
+                              onClick={() => setPreviewCert({ id: cert.id, url: cert.certificate_url!, name: cert.certificate_name || 'Certificate' })}
                             >
                               <Eye className="h-4 w-4 mr-2" />
                               View
@@ -219,12 +236,23 @@ export default function CertificatesPage() {
                             <Button
                               size="sm"
                               className="flex-1 bg-yellow-600 hover:bg-yellow-700"
-                              onClick={() => downloadCertificate(cert.certificate_url!, cert.certificate_name || 'certificate')}
+                              onClick={() => handleDownload(cert.id, cert.certificate_name || 'certificate')}
                             >
                               <Download className="h-4 w-4 mr-2" />
                               Download
                             </Button>
                           </div>
+                          {cert.short_id && (
+                            <a
+                              href={`/robocoders/lms/verify/${cert.short_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 flex items-center justify-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Verify certificate
+                            </a>
+                          )}
                         </>
                       ) : (
                         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -439,7 +467,7 @@ export default function CertificatesPage() {
                 <Button
                   size="sm"
                   className="bg-yellow-600 hover:bg-yellow-700 h-8 text-xs"
-                  onClick={() => downloadCertificate(previewCert.url, previewCert.name)}
+                  onClick={() => handleDownload(previewCert.id, previewCert.name)}
                 >
                   <Download className="h-3.5 w-3.5 mr-1.5" />
                   Download

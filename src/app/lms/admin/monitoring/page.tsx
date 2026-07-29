@@ -137,9 +137,13 @@ export default function MonitoringDashboard() {
   const successRate = metrics.totalRequests > 0
     ? (metrics.successfulRequests / metrics.totalRequests * 100).toFixed(2) : '100.00';
 
-  // Last 30 recent requests for the time-series chart
+  // Last 30 recent requests for the time-series chart.
+  // toLocaleTimeString() only has second-level resolution, so several
+  // requests landing within the same second get identical-looking X-axis
+  // labels even though their underlying (millisecond) timestamps differ —
+  // append the millisecond remainder to keep labels genuinely distinct.
   const timeSeriesData = recentMetrics.slice(-30).map((m) => ({
-    time: new Date(m.timestamp).toLocaleTimeString(),
+    time: `${new Date(m.timestamp).toLocaleTimeString()}.${String(m.timestamp % 1000).padStart(3, '0')}`,
     duration: m.duration,
     endpoint: m.endpoint.split('/').pop() || m.endpoint,
   }));
@@ -166,6 +170,9 @@ export default function MonitoringDashboard() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">System Monitoring</h1>
           <p className="text-gray-600 mt-1">Real-time API performance and system health metrics</p>
+          <p className="text-xs text-gray-400 mt-1">
+            In-memory metrics — collected since the backend process last started; they reset on every server restart/deploy.
+          </p>
           {lastUpdated && (
             <p className="text-xs text-gray-400 mt-1">Last updated: {lastUpdated.toLocaleTimeString()}</p>
           )}

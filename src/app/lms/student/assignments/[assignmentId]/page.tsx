@@ -5,9 +5,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, CheckCircle, Clock, AlertCircle, Globe, Loader2, RotateCcw, FileText } from "lucide-react";
 import Link from "next/link";
-import { useStudentAssignment, useSubmitAssignment } from "@/hooks/useStudentData";
+import { useStudentAssignment, useSubmitAssignment, useRequestRetake } from "@/hooks/useStudentData";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import MCQQuestion from "@/components/student/assignments/questions/MCQQuestion";
@@ -54,6 +55,7 @@ export default function AssignmentDetailPage(props: PageProps) {
 
   const { data, isLoading } = useStudentAssignment(assignmentId);
   const submitAssignment = useSubmitAssignment();
+  const requestRetake = useRequestRetake();
 
   const savedData =
     typeof window !== "undefined"
@@ -65,6 +67,9 @@ export default function AssignmentDetailPage(props: PageProps) {
   const [fileUpload, setFileUpload] = useState<File | null>(null);
   const [fileUploadName, setFileUploadName] = useState<string | null>(savedData?.fileName || null);
   const [submitting, setSubmitting] = useState(false);
+  const [showRetakeRequestForm, setShowRetakeRequestForm] = useState(false);
+  const [retakeReason, setRetakeReason] = useState("");
+  const [requestingRetake, setRequestingRetake] = useState(false);
 
   const assignment = (data as any)?.assignment as any;
   const submission = (data as any)?.submission as any;
@@ -72,10 +77,20 @@ export default function AssignmentDetailPage(props: PageProps) {
   const retake = (data as any)?.retake as {
     enabled?: boolean;
     allowed?: boolean;
+    window_open?: boolean;
+    granted?: boolean;
     max_attempts?: number | null;
     current_attempts?: number;
     scoring_rule?: string;
   } | undefined;
+  const retakeRequest = (data as any)?.retake_request as {
+    id: string;
+    status: "pending" | "approved" | "rejected";
+    reason?: string | null;
+    teacher_remarks?: string | null;
+    created_at: string;
+    decided_at?: string | null;
+  } | null | undefined;
   const questions: Question[] = useMemo(() => assignment?.questions ?? [], [assignment?.questions]);
 
   const effectiveType = useMemo(() => {
@@ -108,6 +123,30 @@ export default function AssignmentDetailPage(props: PageProps) {
   const hasGrade = submission?.grade !== null && submission?.grade !== undefined;
   const isSubmitted = !!(submission && (submission.status === "submitted" || submission.status === "graded" || hasGrade || submission.submitted_at));
   const canRetake = !!retake?.allowed;
+
+  // Explains why the Retake button is hidden, rather than leaving the
+  // student with "Unlimited" attempts shown and no way to act on it — that
+  // "Unlimited" reflects max_attempts being unset, not that retakes are
+  // actually enabled, so without this message the two states looked
+  // identical to a student.
+  const retakeUnavailableReason = useMemo(() => {
+    if (!isSubmitted || canRetake) return null;
+    if (!retake?.enabled) {
+      return "Retakes aren't enabled for this assignment. Ask your teacher if you'd like another attempt.";
+    }
+    const maxAttempts = retake.max_attempts != null ? Number(retake.max_attempts) + 1 : null;
+    if (maxAttempts != null && attempts.length >= maxAttempts) {
+      return `You've used all ${maxAttempts} allowed attempt${maxAttempts === 1 ? "" : "s"} for this assignment.`;
+    }
+    const accessScope = assignment?.retake_access_scope ?? "all";
+    if (accessScope === "selected" && !retake.granted) {
+      return "Your teacher hasn't granted you a retake for this assignment yet.";
+    }
+    if (!retake.window_open) {
+      return "Retakes aren't open right now. Ask your teacher to open a retake for you.";
+    }
+    return "Retakes aren't currently available for this assignment.";
+  }, [isSubmitted, canRetake, retake, attempts.length, assignment?.retake_access_scope]);
 
   const { clearSavedData, isSaving, lastSaved } = useAutoSaveForm({
     formId: `student-assignment-${assignmentId}`,
@@ -210,6 +249,21 @@ export default function AssignmentDetailPage(props: PageProps) {
       toast.error(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRequestRetake = async () => {
+    setRequestingRetake(true);
+    try {
+      await requestRetake.mutateAsync({ assignmentId, reason: retakeReason.trim() || undefined });
+      setShowRetakeRequestForm(false);
+      setRetakeReason("");
+      toast.success("Retake request sent to your teacher.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send retake request.";
+      toast.error(msg);
+    } finally {
+      setRequestingRetake(false);
     }
   };
 
@@ -494,7 +548,9 @@ export default function AssignmentDetailPage(props: PageProps) {
             <div>
               <p className="text-xs text-gray-500 mb-1">Attempts</p>
               <p className="text-sm font-semibold text-gray-900">
-                {retake?.max_attempts != null
+                {!retake?.enabled
+                  ? `${attempts.length} / 1`
+                  : retake.max_attempts != null
                   ? `${attempts.length} / ${Number(retake.max_attempts) + 1}`
                   : attempts.length > 0
                   ? `${attempts.length} used (Unlimited)`
@@ -563,6 +619,76 @@ export default function AssignmentDetailPage(props: PageProps) {
               </Link>
             )}
           </div>
+
+          {isSubmitted && !canRetake && (
+            <div className="mt-3 space-y-2">
+              {retakeRequest?.status === "pending" ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                  <Clock className="h-4 w-4 shrink-0" />
+                  <span>Retake requested — waiting for your teacher to review it.</span>
+                </div>
+              ) : (
+                <>
+                  {retakeUnavailableReason && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-600">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
+                      <span>{retakeUnavailableReason}</span>
+                    </div>
+                  )}
+
+                  {retakeRequest?.status === "rejected" && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>
+                        Your teacher declined your last request.
+                        {retakeRequest.teacher_remarks ? ` "${retakeRequest.teacher_remarks}"` : ""}
+                      </span>
+                    </div>
+                  )}
+
+                  {!showRetakeRequestForm ? (
+                    <button
+                      onClick={() => setShowRetakeRequestForm(true)}
+                      className="inline-flex items-center gap-2 bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 font-medium px-4 py-2 rounded-lg transition-colors text-sm"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {retakeRequest?.status === "rejected" ? "Request Again" : "Request Retake"}
+                    </button>
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg p-3 space-y-2 bg-white">
+                      <Label htmlFor="retake-reason" className="text-xs text-gray-500">
+                        Let your teacher know why (optional)
+                      </Label>
+                      <Textarea
+                        id="retake-reason"
+                        value={retakeReason}
+                        onChange={(e) => setRetakeReason(e.target.value)}
+                        placeholder="e.g. I misunderstood a question, or had a technical issue while submitting."
+                        rows={2}
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleRequestRetake}
+                          disabled={requestingRetake}
+                          className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm disabled:opacity-50"
+                        >
+                          {requestingRetake ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                          Send Request
+                        </button>
+                        <button
+                          onClick={() => { setShowRetakeRequestForm(false); setRetakeReason(""); }}
+                          disabled={requestingRetake}
+                          className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Your grade card */}

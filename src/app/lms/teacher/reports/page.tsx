@@ -48,7 +48,8 @@ export default function SubmitReportPage() {
     end_time: '',
     topics_taught: '',
     activities: '',
-    notes: ''
+    notes: '',
+    student_count: ''
   };
   
   // Load saved form data if available
@@ -279,12 +280,13 @@ export default function SubmitReportPage() {
         end_time: formData.end_time || undefined,
         topics_taught: formData.topics_taught || undefined,
         activities: formData.activities || undefined,
-        notes: formData.notes || undefined
+        notes: formData.notes || undefined,
+        student_count: formData.student_count.trim() ? Number(formData.student_count) : undefined
       });
 
       // Refetch reports to update the UI
       await Promise.all([refetchReports(), refetchRecentReports()]);
-      
+
       // Reset form
       setFormData({
         period_id: '',
@@ -294,7 +296,8 @@ export default function SubmitReportPage() {
         end_time: '',
         topics_taught: '',
         activities: '',
-        notes: ''
+        notes: '',
+        student_count: ''
       });
       
       // Clear saved form data
@@ -411,9 +414,9 @@ export default function SubmitReportPage() {
           <CardContent className="p-8">
             <div className="text-center py-8">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
-              <p className="text-lg font-medium">No school selected</p>
+              <p className="text-lg font-medium">Pick a specific school to submit a report</p>
               <p className="text-sm text-gray-600 mt-2">
-                Please select a school from the dropdown to submit reports.
+                A report applies to one school at a time — select it from the &quot;Active School&quot; dropdown above (not &quot;All Schools&quot;) to continue.
               </p>
             </div>
           </CardContent>
@@ -640,6 +643,19 @@ export default function SubmitReportPage() {
                     onChange={(e) => setFormData({ ...formData, topics_taught: e.target.value })}
                     rows={4}
                     required
+                  />
+                </div>
+
+                {/* Students Present */}
+                <div className="space-y-2">
+                  <Label htmlFor="student_count">Students Present</Label>
+                  <Input
+                    id="student_count"
+                    type="number"
+                    min={0}
+                    placeholder="Number of students present"
+                    value={formData.student_count}
+                    onChange={(e) => setFormData({ ...formData, student_count: e.target.value })}
                   />
                 </div>
 

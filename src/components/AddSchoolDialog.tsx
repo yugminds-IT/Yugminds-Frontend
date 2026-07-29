@@ -35,7 +35,11 @@ import {
   AlertCircle,
   Copy,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Layers,
+  Trash2
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -80,7 +84,7 @@ interface SchoolFormData {
   grades_offered: string[];
   total_students_estimate: number;
   total_teachers_estimate: number;
-  number_of_sections: number | null;
+  sections_per_grade: Record<string, number>;
   
   // Joining Codes
   code_generation_type: 'auto' | 'manual';
@@ -115,7 +119,8 @@ const schoolTypes = [
 
 export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoolDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [currentTab, setCurrentTab] = useState<'basic' | 'admin' | 'academic' | 'codes'>('basic');
+  const [currentTab, setCurrentTab] = useState<'basic' | 'admin' | 'academic' | 'sections' | 'codes'>('basic');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   
   // Load saved form data
   const _savedFormData = typeof window !== 'undefined' && isOpen
@@ -147,7 +152,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     grades_offered: [],
     total_students_estimate: 0,
     total_teachers_estimate: 0,
-    number_of_sections: null,
+    sections_per_grade: {},
     // Joining code options
     code_generation_type: 'auto',
     usage_type: 'multiple',
@@ -181,11 +186,14 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
       // Try to load saved data
       const saved = loadFormData<SchoolFormData & { currentTab?: string }>('add-school-dialog-form');
       if (saved) {
-        setFormData(saved);
+        // Merge over the current default shape (not a wholesale replace) so a
+        // draft saved before a field like `sections_per_grade` existed still
+        // gets a safe default instead of `undefined`.
+        setFormData({ ...initialFormData, ...saved, sections_per_grade: saved.sections_per_grade ?? {} });
         setErrors({});
         setGeneratedCodes(saved.generated_codes || {});
-        if (saved.currentTab && ['basic', 'admin', 'academic', 'codes'].includes(saved.currentTab)) {
-          setCurrentTab(saved.currentTab as 'basic' | 'admin' | 'academic' | 'codes');
+        if (saved.currentTab && ['basic', 'admin', 'academic', 'sections', 'codes'].includes(saved.currentTab)) {
+          setCurrentTab(saved.currentTab as 'basic' | 'admin' | 'academic' | 'sections' | 'codes');
         }
       } else {
         setFormData(initialFormData);
@@ -207,22 +215,38 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     }
   }, [isOpen]);
 
-  // Check if all required fields are filled
-  const isFormComplete = () => {
-    const pw = formData.school_admin_temp_password.trim();
-    const pwOk = pw.length > 0 && !validatePasswordClient(pw);
-    return (
+  // Which tabs still have missing/invalid required fields — drives both the
+  // "Please fill all required fields" jump-to-tab action and the tab-header
+  // indicators, since the wizard lets users navigate tabs freely without
+  // filling earlier ones first.
+  const getIncompleteTabs = (): Array<'basic' | 'admin' | 'academic'> => {
+    const incomplete: Array<'basic' | 'admin' | 'academic'> = [];
+
+    const basicOk =
       !!formData.name.trim() &&
       !!formData.contact_email.trim() &&
       !!formData.contact_phone.trim() &&
       !!formData.address.trim() &&
+      !!formData.principal_name.trim() &&
+      !!formData.principal_phone.trim();
+    if (!basicOk) incomplete.push('basic');
+
+    const pw = formData.school_admin_temp_password.trim();
+    const pwOk = pw.length > 0 && !validatePasswordClient(pw);
+    const adminOk =
       !!formData.school_admin_name.trim() &&
       !!formData.school_admin_email.trim() &&
       !!formData.school_admin_phone.trim() &&
-      !!pwOk &&
-      formData.grades_offered.length > 0
-    );
+      pwOk;
+    if (!adminOk) incomplete.push('admin');
+
+    if (formData.grades_offered.length === 0) incomplete.push('academic');
+
+    return incomplete;
   };
+
+  // Check if all required fields are filled
+  const isFormComplete = () => getIncompleteTabs().length === 0;
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -258,6 +282,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     
     // Academic Details validation
     if (formData.grades_offered.length === 0) newErrors.grades_offered = 'Please select at least one grade';
+    if (!formData.school_type.trim()) newErrors.school_type = 'Please select a school type';
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -280,19 +305,63 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   };
 
   const handleGradeToggle = (grade: string) => {
+    setFormData(prev => {
+      const isRemoving = prev.grades_offered.includes(grade);
+      const sections_per_grade = { ...prev.sections_per_grade };
+      if (isRemoving) {
+        delete sections_per_grade[grade];
+      } else if (!(grade in sections_per_grade)) {
+        // Seed with the most common existing count (if any grades are already
+        // configured) so newly added grades match what the admin's been using.
+        const existingCounts = Object.values(prev.sections_per_grade);
+        sections_per_grade[grade] = existingCounts.length > 0 ? existingCounts[0] : 1;
+      }
+      return {
+        ...prev,
+        grades_offered: isRemoving
+          ? prev.grades_offered.filter((g: string) => g !== grade)
+          : [...prev.grades_offered, grade],
+        sections_per_grade,
+      };
+    });
+  };
+
+  const updateSectionsForGrade = (grade: string, count: number) => {
+    const clamped = Math.min(26, Math.max(1, Math.floor(count) || 1));
     setFormData(prev => ({
       ...prev,
-      grades_offered: prev.grades_offered.includes(grade)
-        ? prev.grades_offered.filter((g: string) => g !== grade)
-        : [...prev.grades_offered, grade]
+      sections_per_grade: { ...prev.sections_per_grade, [grade]: clamped },
     }));
   };
 
-  /** Preview only: real codes are created on the server as YUG-XXXXXXXX (random). */
-  const sampleYugPreview = () => {
-    const raw = Math.random().toString(36).slice(2, 10).toUpperCase();
-    return `YUG-${raw}`;
+  const applySectionsToAllGrades = (count: number) => {
+    const clamped = Math.min(26, Math.max(1, Math.floor(count) || 1));
+    setFormData(prev => {
+      const sections_per_grade: Record<string, number> = {};
+      prev.grades_offered.forEach(g => { sections_per_grade[g] = clamped; });
+      return { ...prev, sections_per_grade };
+    });
   };
+
+  // Mirrors the backend's src/common/utils/join-code.util.ts derivation so the
+  // preview shows the same shape the server will actually generate. Preview
+  // only — the server's schoolCode may differ if it needed a collision suffix.
+  const previewSchoolAbbreviation = (name: string): string => {
+    const words = name.trim().split(/\s+/)
+      .map((w) => w.replace(/[^a-zA-Z0-9]/g, ''))
+      .filter((w) => w.length > 0);
+    const abbr = words.map((w) => w[0]).join('').toUpperCase().slice(0, 6);
+    return abbr || 'SCH';
+  };
+  const previewGradeAbbreviation = (gradeName: string): string => {
+    const trimmed = gradeName.trim();
+    const gradeMatch = /^grade\s*(\d+)$/i.exec(trimmed);
+    if (gradeMatch) return `G${gradeMatch[1]}`;
+    if (/^pre-?k$/i.test(trimmed)) return 'PK';
+    if (/^kindergarten$/i.test(trimmed)) return 'KG';
+    return trimmed.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4) || 'GR';
+  };
+  const previewSectionAbbreviation = (letter: string): string => letter;
 
   const generatePreviewCodes = () => {
     if (formData.grades_offered.length === 0) {
@@ -300,25 +369,21 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
       return {};
     }
 
+    const schoolAbbr = previewSchoolAbbreviation(formData.name || 'School');
     const codes: Record<string, string> = {};
-    const numSections = formData.number_of_sections;
 
-    if (numSections && numSections > 0) {
-      const sectionsCount = typeof numSections === "number" ? numSections : parseInt(String(numSections), 10);
-      const sections = Array.from({ length: Math.min(sectionsCount, 26) }, (_, i) =>
+    formData.grades_offered.forEach((grade) => {
+      const gradeAbbr = previewGradeAbbreviation(grade);
+      const sectionsCount = formData.sections_per_grade?.[grade] ?? 1;
+      const sections = Array.from({ length: Math.min(Math.max(sectionsCount, 1), 26) }, (_, i) =>
         String.fromCharCode(65 + i),
       );
-      formData.grades_offered.forEach((grade) => {
-        sections.forEach((section) => {
-          const key = `${grade} — Section ${section}`;
-          codes[key] = sampleYugPreview();
-        });
+      sections.forEach((section) => {
+        const key = `${grade} — Section ${section}`;
+        const sectionAbbr = previewSectionAbbreviation(section);
+        codes[key] = `YUG-${schoolAbbr}-${gradeAbbr}-${sectionAbbr}`;
       });
-    } else {
-      formData.grades_offered.forEach((grade) => {
-        codes[grade] = sampleYugPreview();
-      });
-    }
+    });
 
     setGeneratedCodes(codes);
     return codes;
@@ -331,7 +396,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
       generatePreviewCodes();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.grades_offered.length, formData.number_of_sections, currentTab, formData.name]);
+  }, [formData.grades_offered.length, formData.sections_per_grade, currentTab, formData.name]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -389,9 +454,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         grades_offered: formData.grades_offered,
         total_students_estimate: formData.total_students_estimate,
         total_teachers_estimate: formData.total_teachers_estimate,
-        number_of_sections: formData.number_of_sections && formData.number_of_sections > 0 
-          ? formData.number_of_sections 
-          : null,
+        sections_per_grade: formData.sections_per_grade,
         code_generation_type: formData.code_generation_type,
         usage_type: formData.usage_type,
         max_uses: formData.max_uses,
@@ -412,6 +475,8 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
 
       clearFormData("add-school-dialog-form");
       clearSavedData();
+      setFormData(initialFormData);
+      setCurrentTab('basic');
 
       toast.success("School created successfully.");
       onSuccess();
@@ -431,10 +496,11 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     }
   };
 
-  const tabs: Array<{ id: 'basic' | 'admin' | 'academic' | 'codes'; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  const tabs: Array<{ id: 'basic' | 'admin' | 'academic' | 'sections' | 'codes'; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'basic', label: 'Basic Information', icon: Building },
     { id: 'admin', label: 'School Admin', icon: Users },
     { id: 'academic', label: 'Academic Details', icon: GraduationCap },
+    { id: 'sections', label: 'Sections', icon: Layers },
     { id: 'codes', label: 'Joining Codes', icon: Key }
   ];
 
@@ -457,6 +523,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
           <div className="flex border-b border-gray-200 mb-6">
             {tabs.map((tab) => {
               const Icon = tab.icon;
+              const incomplete = (getIncompleteTabs() as string[]).includes(tab.id);
               return (
                 <button
                   key={tab.id}
@@ -469,6 +536,13 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                 >
                   <Icon className="h-4 w-4" />
                   {tab.label}
+                  {incomplete && (
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-orange-500"
+                      aria-label="Missing required fields"
+                      title="Missing required fields"
+                    />
+                  )}
                 </button>
               );
             })}
@@ -664,7 +738,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="school_type" className="text-sm font-medium">School Type</Label>
+                      <Label htmlFor="school_type" className="text-sm font-medium">School Type <span className="text-red-500">*</span></Label>
                       <Select value={formData.school_type} onValueChange={(value) => handleInputChange('school_type', value)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select school type" />
@@ -677,6 +751,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                           ))}
                         </SelectContent>
                       </Select>
+                      {errors.school_type && <p className="text-sm text-red-500">{errors.school_type}</p>}
                     </div>
                   </div>
                 </CardContent>
@@ -701,7 +776,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="school_admin_name" className="text-sm font-medium">
-                        Admin Name <span className="text-red-500">*</span>
+                        School Admin Name <span className="text-red-500">*</span>
                       </Label>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -709,7 +784,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                           id="school_admin_name"
                           value={formData.school_admin_name}
                           onChange={(e) => handleInputChange('school_admin_name', e.target.value)}
-                          placeholder="Enter admin name"
+                          placeholder="Enter school admin name"
                           className={`pl-10 ${errors.school_admin_name ? 'border-red-500' : ''}`}
                         />
                       </div>
@@ -718,7 +793,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
 
                     <div className="space-y-2">
                       <Label htmlFor="school_admin_email" className="text-sm font-medium">
-                        Admin Email <span className="text-red-500">*</span>
+                        School Admin Email <span className="text-red-500">*</span>
                       </Label>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -736,7 +811,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
 
                     <div className="space-y-2">
                       <Label htmlFor="school_admin_phone" className="text-sm font-medium">
-                        Admin Phone <span className="text-red-500">*</span>
+                        School Admin Phone <span className="text-red-500">*</span>
                       </Label>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -760,12 +835,20 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                         <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input
                           id="school_admin_temp_password"
-                          type="password"
+                          type={showAdminPassword ? "text" : "password"}
                           value={formData.school_admin_temp_password}
                           onChange={(e) => handleInputChange('school_admin_temp_password', e.target.value)}
                           placeholder="Enter password (min 8: uppercase, lowercase, number)"
-                          className={`pl-10 ${errors.school_admin_temp_password ? 'border-red-500' : ''}`}
+                          className={`pl-10 pr-10 ${errors.school_admin_temp_password ? 'border-red-500' : ''}`}
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminPassword(!showAdminPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showAdminPassword ? "Hide password" : "Show password"}
+                        >
+                          {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                       {errors.school_admin_temp_password && <p className="text-sm text-red-500">{errors.school_admin_temp_password}</p>}
                       <p className="text-xs text-gray-500">This will be the initial password for the school admin account</p>
@@ -809,43 +892,9 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                       ))}
                     </div>
                     {errors.grades_offered && <p className="text-sm text-red-500">{errors.grades_offered}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="number_of_sections" className="text-sm font-medium">
-                      Number of Sections per Grade
-                    </Label>
-                    <Input
-                      id="number_of_sections"
-                      type="number"
-                      value={formData.number_of_sections || ''}
-                      onChange={(e) => {
-                        const inputValue = e.target.value;
-                        if (inputValue === '') {
-                          handleInputChange('number_of_sections', null);
-                          // Clear preview when sections are removed
-                          setGeneratedCodes({});
-                        } else {
-                          const parsed = parseInt(inputValue);
-                          const value = isNaN(parsed) ? null : parsed;
-                          handleInputChange('number_of_sections', value);
-                          // Regenerate preview when sections change (if on codes tab)
-                          if (value && value > 0 && formData.grades_offered.length > 0 && formData.name) {
-                            // Use setTimeout to ensure state is updated first
-                            setTimeout(() => {
-                              generatePreviewCodes();
-                            }, 100);
-                          }
-                        }
-                      }}
-                      placeholder="e.g., 3 (for sections A, B, C)"
-                      min="1"
-                      max="26"
-                    />
                     <p className="text-xs text-gray-500">
-                      Set the number of sections for each grade (1-26). This applies to all grades and helps organize students into sections (A, B, C, etc.). Leave empty if sections are not used.
+                      Section counts for each grade are configured on the next step.
                     </p>
-                    {errors.number_of_sections && <p className="text-sm text-red-500">{errors.number_of_sections}</p>}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -877,6 +926,140 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                       />
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Sections Tab */}
+          {currentTab === 'sections' && (
+            <div className="space-y-6">
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-blue-600" />
+                    Grade Sections
+                  </CardTitle>
+                  <CardDescription>
+                    Set how many sections each grade has — schools often need different
+                    section counts per grade (e.g. 2 sections for Grade 4, 3 for Grade 7).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {formData.grades_offered.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      No grades selected yet. Go back to <strong>Academic Details</strong> to
+                      pick at least one grade first.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-end gap-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="apply_all_sections" className="text-xs font-medium text-gray-600">
+                            Apply to all grades
+                          </Label>
+                          <Input
+                            id="apply_all_sections"
+                            type="number"
+                            min="1"
+                            max="26"
+                            placeholder="e.g. 2"
+                            className="w-28"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const value = parseInt((e.target as HTMLInputElement).value, 10);
+                                if (!isNaN(value)) applySectionsToAllGrades(value);
+                              }
+                            }}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const input = document.getElementById('apply_all_sections') as HTMLInputElement | null;
+                            const value = input ? parseInt(input.value, 10) : NaN;
+                            if (!isNaN(value)) applySectionsToAllGrades(value);
+                          }}
+                        >
+                          Apply to all
+                        </Button>
+                        <p className="text-xs text-gray-500 flex-1 min-w-[200px]">
+                          Quick way to set the same count everywhere — you can still fine-tune
+                          individual grades below.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        {availableGrades
+                          .filter((grade) => formData.grades_offered.includes(grade))
+                          .map((grade) => {
+                            const count = formData.sections_per_grade?.[grade] ?? 1;
+                            const letters = Array.from({ length: Math.min(count, 26) }, (_, i) =>
+                              String.fromCharCode(65 + i),
+                            ).join(', ');
+                            return (
+                              <div
+                                key={grade}
+                                className="flex items-center gap-4 rounded-md border border-gray-200 p-3"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900">{grade}</p>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    Section{count !== 1 ? 's' : ''}: {letters}
+                                  </p>
+                                </div>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max="26"
+                                  value={count}
+                                  onChange={(e) => {
+                                    const value = parseInt(e.target.value, 10);
+                                    updateSectionsForGrade(grade, isNaN(value) ? 1 : value);
+                                  }}
+                                  className="w-20"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleGradeToggle(grade)}
+                                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  aria-label={`Remove ${grade}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                      </div>
+
+                      {availableGrades.some((g) => !formData.grades_offered.includes(g)) && (
+                        <div className="space-y-2 pt-2 border-t border-gray-100">
+                          <Label htmlFor="add_grade_select" className="text-sm font-medium">
+                            Add a missing grade
+                          </Label>
+                          <Select
+                            value=""
+                            onValueChange={(grade) => { if (grade) handleGradeToggle(grade); }}
+                          >
+                            <SelectTrigger id="add_grade_select" className="w-full md:w-64">
+                              <SelectValue placeholder="Select a grade to add" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableGrades
+                                .filter((g) => !formData.grades_offered.includes(g))
+                                .map((g) => (
+                                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -1047,16 +1230,27 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
               {formData.grades_offered.length > 0 && (
                 <span className="flex items-center gap-2">
                   <Key className="h-4 w-4" />
-                  {formData.number_of_sections && formData.number_of_sections > 0
-                    ? `${formData.grades_offered.length * formData.number_of_sections} joining code(s) will be generated (${formData.grades_offered.length} grades × ${formData.number_of_sections} sections)`
-                    : `${formData.grades_offered.length} joining code(s) will be generated`}
+                  {(() => {
+                    const totalCodes = formData.grades_offered.reduce(
+                      (sum, grade) => sum + Math.max(formData.sections_per_grade?.[grade] ?? 1, 1),
+                      0,
+                    );
+                    return `${totalCodes} joining code(s) will be generated across ${formData.grades_offered.length} grade${formData.grades_offered.length !== 1 ? 's' : ''}`;
+                  })()}
                 </span>
               )}
               {!isFormComplete() && (
-                <span className="flex items-center gap-2 text-orange-600">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const incomplete = getIncompleteTabs();
+                    if (incomplete.length > 0) setCurrentTab(incomplete[0]);
+                  }}
+                  className="flex items-center gap-2 text-orange-600 hover:underline"
+                >
                   <AlertCircle className="h-4 w-4" />
-                  Please fill all required fields
-                </span>
+                  Please fill all required fields — click to go there
+                </button>
               )}
             </div>
             <div className="flex gap-3">

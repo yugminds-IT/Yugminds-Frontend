@@ -166,6 +166,13 @@ export default function AdminDashboard() {
     return change ? `${change > 0 ? "+" : ""}${change}% from last month` : "No change this month";
   };
 
+  // The chart's own caption always talks about "this month" — the side box
+  // next to it must show that same month's real new-signup count, not an
+  // unrelated platform-wide metric (previously: attendance %/completion %
+  // reused here, or the card's own running total repeated verbatim).
+  const newThisMonth = (monthKey: "schools" | "teachers" | "students" | "courses") =>
+    monthlyGrowth[monthlyGrowth.length - 1]?.[monthKey] ?? 0;
+
   if (isLoading || !stats) {
     return <SkeletonDashboard />;
   }
@@ -178,8 +185,8 @@ export default function AdminDashboard() {
       badge: "Active",
       icon: <School className="h-4 w-4" />,
       accentColor: "#16a34a",
-      sideMetric: `${stats.totalSchools}`,
-      sideLabel: "schools",
+      sideMetric: `${newThisMonth("schools")}`,
+      sideLabel: "new this month",
       info: "Total active schools registered in the admin system.",
       href: "/lms/admin/schools",
       data: seriesFor(monthlyGrowth, "schools"),
@@ -191,8 +198,8 @@ export default function AdminDashboard() {
       badge: stats.avgAttendance > 0 ? `${stats.avgAttendance}% attendance` : "Teachers",
       icon: <Users className="h-4 w-4" />,
       accentColor: "#2563eb",
-      sideMetric: stats.avgAttendance > 0 ? `${stats.avgAttendance}%` : `${stats.totalTeachers}`,
-      sideLabel: stats.avgAttendance > 0 ? "attendance" : "teachers",
+      sideMetric: `${newThisMonth("teachers")}`,
+      sideLabel: "new this month",
       info: "Total active teachers, with attendance shown when available.",
       href: "/lms/admin/teachers",
       data: seriesFor(monthlyGrowth, "teachers"),
@@ -204,8 +211,8 @@ export default function AdminDashboard() {
       badge: stats.completionRate > 0 ? `${stats.completionRate}% completion` : "Students",
       icon: <User className="h-4 w-4" />,
       accentColor: "#9333ea",
-      sideMetric: stats.completionRate > 0 ? `${stats.completionRate}%` : `${stats.totalStudents}`,
-      sideLabel: stats.completionRate > 0 ? "complete" : "students",
+      sideMetric: `${newThisMonth("students")}`,
+      sideLabel: "new this month",
       info: "Total active students, with course completion shown when available.",
       href: "/lms/admin/students",
       data: seriesFor(monthlyGrowth, "students"),
@@ -217,8 +224,8 @@ export default function AdminDashboard() {
       badge: "Published",
       icon: <BookOpen className="h-4 w-4" />,
       accentColor: "#f97316",
-      sideMetric: `${stats.activeCourses}`,
-      sideLabel: "courses",
+      sideMetric: `${newThisMonth("courses")}`,
+      sideLabel: "new this month",
       info: "Published courses currently available on the platform.",
       href: "/lms/admin/courses",
       data: seriesFor(monthlyGrowth, "courses"),

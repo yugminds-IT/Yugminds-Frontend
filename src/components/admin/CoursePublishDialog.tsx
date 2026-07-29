@@ -1,21 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Badge } from "../ui/badge";
-import { 
-  AlertCircle, 
-  CheckCircle2, 
-  Loader2,
-  Eye,
-  EyeOff
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Eye, EyeOff } from "lucide-react";
 import { adminApi } from "../../lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
+import { CoursePublishTargets, type SchoolTarget } from "./CoursePublishTargets";
 
 interface CoursePublishDialogProps {
   open: boolean;
@@ -25,8 +20,8 @@ interface CoursePublishDialogProps {
     name: string;
     status: 'Draft' | 'Published' | 'Archived';
     is_published?: boolean;
-    school_ids?: string[];
-    grades?: string[];
+    /** Structured school → grade → section targeting from the course DTO. */
+    access?: SchoolTarget[];
   };
   onPublishChange: () => void;
 }
@@ -40,149 +35,128 @@ export function CoursePublishDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [changesSummary, setChangesSummary] = useState("");
-  const [confirmText, setConfirmText] = useState("");
+  const [targets, setTargets] = useState<SchoolTarget[]>([]);
 
   const isPublished = course.status === 'Published' || course.is_published === true;
-  const _action = isPublished ? "unpublish" : "publish";
-  const requiresConfirmation = isPublished; // Unpublishing requires confirmation
 
+  // Rehydrate the picker from the course's current targeting each time it opens.
+  useEffect(() => {
+    if (open) {
+      setTargets(
+        (course.access ?? []).map((t) => ({
+          school_id: t.school_id,
+          grades: (t.grades ?? []).map((g) => ({
+            grade: g.grade,
+            sections: g.sections ?? [],
+          })),
+        })),
+      );
+      setError(null);
+      setChangesSummary("");
+    }
+  }, [open, course.access]);
+
+  const totalSchools = targets.length;
+  const reset = () => {
+    setError(null);
+    setChangesSummary("");
+  };
+
+  // Save targeting (setAccess) then publish. Works for a first publish and for
+  // re-publishing an already-live course with edited targeting.
   const handlePublish = async () => {
-    if (requiresConfirmation && confirmText.toLowerCase() !== "unpublish") {
-      setError("Please type 'unpublish' to confirm");
+    if (targets.length === 0) {
+      setError("Select at least one school to publish to.");
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
+      await adminApi.courses.setAccess(course.id, {
+        access: targets.map((t) => ({
+          school_id: t.school_id,
+          grades: t.grades.map((g) => ({ grade: g.grade, sections: g.sections })),
+        })),
+      });
       await adminApi.courses.publish(course.id, {
-        course_id: course.id,
-        publish: !isPublished,
+        publish: true,
         changes_summary: changesSummary.trim() || undefined,
       });
-
       onPublishChange();
       onOpenChange(false);
-      setChangesSummary("");
-      setConfirmText("");
-      toast.success(`Course ${!isPublished ? 'published' : 'unpublished'} successfully.`);
+      reset();
+      toast.success(
+        isPublished ? "Course targeting updated & re-published." : "Course published.",
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update publish status");
+      setError(err instanceof Error ? err.message : "Failed to publish course");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await adminApi.courses.publish(course.id, { publish: false });
+      onPublishChange();
+      onOpenChange(false);
+      reset();
+      toast.success("Course unpublished — students can no longer see it.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unpublish course");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {isPublished ? (
-              <>
-                <EyeOff className="h-5 w-5 text-amber-600" />
-                Unpublish Course
-              </>
-            ) : (
-              <>
-                <Eye className="h-5 w-5 text-green-600" />
-                Publish Course
-              </>
-            )}
+            <Eye className="h-5 w-5 text-green-600" />
+            Publish to Schools, Grades &amp; Sections
           </DialogTitle>
           <DialogDescription>
-            {isPublished
-              ? "Unpublishing this course will make it unavailable to students. You can republish it later."
-              : "Publishing this course will make it immediately available to assigned schools and grades."}
+            Choose exactly which schools, grades and sections receive{" "}
+            <strong>{course.name}</strong>, then publish. Students matching your
+            selection are enrolled immediately.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Course Info */}
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-medium">{course.name}</h4>
-              <Badge variant={isPublished ? "default" : "secondary"}>
-                {course.status}
-              </Badge>
-            </div>
-            {course.school_ids && course.school_ids.length > 0 && (
-              <p className="text-sm text-gray-600">
-                Assigned to {course.school_ids.length} school{course.school_ids.length !== 1 ? "s" : ""}
-              </p>
-            )}
-            {course.grades && course.grades.length > 0 && (
-              <p className="text-sm text-gray-600">
-                Grades: {course.grades.join(", ")}
-              </p>
+          <div className="flex items-center justify-between">
+            <Badge variant={isPublished ? "default" : "secondary"}>{course.status}</Badge>
+            {isPublished && (
+              <span className="text-xs text-gray-500">
+                Editing targeting and re-publishing enrolls newly-matching students.
+              </span>
             )}
           </div>
 
-          {/* Changes Summary (only when publishing) */}
-          {!isPublished && (
-            <div>
-              <Label htmlFor="changes-summary">
-                Changes Summary (optional)
-              </Label>
-              <Textarea
-                id="changes-summary"
-                value={changesSummary}
-                onChange={(e) => setChangesSummary(e.target.value)}
-                placeholder="Describe what's new in this version..."
-                rows={3}
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                This summary will be saved with the version history
-              </p>
-            </div>
-          )}
+          <CoursePublishTargets value={targets} onChange={setTargets} />
 
-          {/* Confirmation for unpublishing */}
-          {isPublished && (
-            <div>
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  This action will make the course unavailable to students. Type{" "}
-                  <strong>unpublish</strong> to confirm.
-                </AlertDescription>
-              </Alert>
-              <div className="mt-4">
-                <Label htmlFor="confirm-text">Type &apos;unpublish&apos; to confirm</Label>
-                <input
-                  id="confirm-text"
-                  type="text"
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
-                  placeholder="unpublish"
-                  className="mt-1 w-full px-3 py-2 border rounded-md"
-                />
-              </div>
-            </div>
-          )}
+          <div>
+            <Label htmlFor="changes-summary">Changes summary (optional)</Label>
+            <Textarea
+              id="changes-summary"
+              value={changesSummary}
+              onChange={(e) => setChangesSummary(e.target.value)}
+              placeholder="Describe what's new in this version…"
+              rows={2}
+              className="mt-1"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Saved to version history alongside a snapshot of the content and targeting.
+            </p>
+          </div>
 
-          {/* Impact Preview */}
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <h5 className="font-medium text-sm mb-2">What will happen:</h5>
-            <ul className="text-sm text-gray-700 space-y-1">
-              {isPublished ? (
-                <>
-                  <li>• Course will be marked as Draft</li>
-                  <li>• Students will no longer see this course</li>
-                  <li>• Existing enrollments will remain but course will be hidden</li>
-                  <li>• You can republish at any time</li>
-                </>
-              ) : (
-                <>
-                  <li>• Course will be marked as Published</li>
-                  <li>• A new version will be created in version history</li>
-                  <li>• Course will be immediately visible to assigned students</li>
-                  <li>• Students matching school and grade will be auto-enrolled</li>
-                </>
-              )}
-            </ul>
+          <div className="p-3 bg-blue-50 rounded-lg text-sm text-gray-700">
+            Publishing to <strong>{totalSchools}</strong> school{totalSchools === 1 ? "" : "s"}.
+            A grade with no sections chosen reaches the whole grade; a school with no grades
+            chosen reaches every student in that school.
           </div>
 
           {error && (
@@ -193,44 +167,37 @@ export function CoursePublishDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
+          {isPublished && (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-amber-400 text-amber-700 hover:bg-amber-50 mr-auto"
+              onClick={handleUnpublish}
+              disabled={loading}
+            >
+              <EyeOff className="h-4 w-4 mr-2" />
+              Unpublish
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
-              onOpenChange(false);
-              setError(null);
-              setChangesSummary("");
-              setConfirmText("");
-            }}
+            onClick={() => { onOpenChange(false); reset(); }}
             disabled={loading}
           >
             Cancel
           </Button>
-          <Button
-            type="button"
-            onClick={handlePublish}
-            disabled={loading || (requiresConfirmation && confirmText.toLowerCase() !== "unpublish")}
-            variant={isPublished ? "destructive" : "default"}
-          >
+          <Button type="button" onClick={handlePublish} disabled={loading || targets.length === 0}>
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {isPublished ? "Unpublishing..." : "Publishing..."}
+                {isPublished ? "Updating…" : "Publishing…"}
               </>
             ) : (
               <>
-                {isPublished ? (
-                  <>
-                    <EyeOff className="h-4 w-4 mr-2" />
-                    Unpublish
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Publish Course
-                  </>
-                )}
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                {isPublished ? "Update & Re-publish" : "Publish Course"}
               </>
             )}
           </Button>
@@ -239,4 +206,3 @@ export function CoursePublishDialog({
     </Dialog>
   );
 }
-

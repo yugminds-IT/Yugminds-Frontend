@@ -33,13 +33,19 @@ type ClassRow = TeacherClassRow;
 export default function ClassesPage() {
   const { selectedSchool, schools } = useTeacherSchool();
   const queryClient = useQueryClient();
-  const { data: classes, isLoading: classesLoading, error: classesError, refetch: refetchClasses } = useTeacherClasses(selectedSchool?.id);
-  const { data: schedules, isLoading: schedulesLoading, error: schedulesError, refetch: refetchSchedules } = useTeacherSchedules(selectedSchool?.id);
+  // Always fetched across every assigned school (not just the top-bar
+  // selected one) — the in-page "School" filter below narrows the view
+  // client-side. Previously this fetched only selectedSchool.id, so picking
+  // a different school in the in-page filter silently returned nothing
+  // (the data for that school was never fetched).
+  const { data: classes, isLoading: classesLoading, error: classesError, refetch: refetchClasses } = useTeacherClasses();
+  const { data: schedules, isLoading: schedulesLoading, error: schedulesError, refetch: refetchSchedules } = useTeacherSchedules();
 
-  // Filter state
+  // Filter state — defaults to whichever school is active in the top bar,
+  // but can be changed independently since all schools' data is loaded.
   const [selectedDay, setSelectedDay] = useState<string>('all');
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
-  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>('all');
+  const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string>(selectedSchool?.id ?? 'all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Refresh function
@@ -48,8 +54,8 @@ export default function ClassesPage() {
     try {
       // Invalidate and refetch both queries
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool?.id] }),
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', undefined] }),
+        queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', undefined] }),
         refetchSchedules(),
         refetchClasses()
       ]);
@@ -63,8 +69,8 @@ export default function ClassesPage() {
   // Use smart refresh hook instead of manual event listeners
   useSmartRefresh({
     queryKeys: [
-      ['teacher', 'schedules', selectedSchool?.id],
-      ['teacher', 'classes', selectedSchool?.id]
+      ['teacher', 'schedules', undefined],
+      ['teacher', 'classes', undefined]
     ],
     minRefreshInterval: 60000, // 1 minute minimum between refreshes
   });
@@ -170,15 +176,15 @@ export default function ClassesPage() {
     setSelectedSchoolFilter('all');
   };
 
-  if (!selectedSchool) {
+  if (schools.length === 0) {
     return (
       <div className="space-y-6">
         <Card>
           <CardContent className="p-8">
             <div className="text-center py-8">
-              <p className="text-lg font-medium">No school selected</p>
+              <p className="text-lg font-medium">No school assigned</p>
               <p className="text-sm text-gray-600 mt-2">
-                Please select a school from the dropdown to view your classes.
+                You aren&apos;t assigned to any school yet. Please contact your admin.
               </p>
             </div>
           </CardContent>
@@ -187,6 +193,11 @@ export default function ClassesPage() {
     );
   }
 
+  const filterSchoolName =
+    selectedSchoolFilter === 'all'
+      ? 'all your schools'
+      : schools.find((s) => s.id === selectedSchoolFilter)?.name ?? 'your school';
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -194,7 +205,7 @@ export default function ClassesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">My Classes</h1>
           <p className="text-gray-600 mt-2">
-            All classes assigned to you at {selectedSchool.name}
+            All classes assigned to you at {filterSchoolName}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -352,7 +363,7 @@ export default function ClassesPage() {
                 <CardDescription>
                   {hasActiveFilters 
                     ? `Showing ${filteredSchedules.length} of ${schedules?.length || 0} schedules`
-                    : `Your weekly class schedule at ${selectedSchool.name}`
+                    : `Your weekly class schedule at ${filterSchoolName}`
                   }
                 </CardDescription>
               </div>

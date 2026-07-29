@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base';
 import fs from 'fs';
 import path from 'path';
 import type { QaFixture } from './fixture-client';
@@ -7,7 +7,6 @@ const fixture: QaFixture = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '.fixture.json'), 'utf8'),
 );
 
-test.use({ storageState: path.resolve(__dirname, '.auth/school-admin.json') });
 
 test.describe('School Admin — Dashboard', () => {
   test('renders real fixture stats, not zeros', async ({ page }) => {
@@ -22,17 +21,19 @@ test.describe('School Admin — Dashboard', () => {
     await expect(page.getByText('Welcome back, QA School Admin')).toBeVisible();
 
     // Stat cards: fixture has 3 students and 2 teachers — a real, non-zero claim.
-    const studentsCard = page.locator('text=Total Students').locator('..').locator('..');
-    await expect(studentsCard.getByText('3', { exact: true })).toBeVisible();
-
-    const teachersCard = page.locator('text=Total Teachers').locator('..').locator('..');
-    await expect(teachersCard.getByText('2', { exact: true })).toBeVisible();
+    // StatCard (src/components/student/StatCard.tsx) renders as a <Link> with
+    // aria-label={`${title}: ${displayValue}`} — asserting on that accessible
+    // name is exact and avoids guessing the DOM's nesting depth.
+    await expect(page.getByRole('link', { name: 'Total Students: 3' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Total Teachers: 2' })).toBeVisible();
   });
 
   test('quick actions preview shows recent students and teachers by name', async ({ page }) => {
     await page.goto('/lms/school-admin');
     // Recent Students / Recent Teachers preview cards render fixture names, not "No recent data".
-    await expect(page.getByText('QA Teacher 0').or(page.getByText('QA Teacher 1'))).toBeVisible({
+    // Both names legitimately appear twice (once in "Recent Teachers" preview,
+    // once in "Recent Activity" below) — .first() just confirms presence.
+    await expect(page.getByText('QA Teacher 0').or(page.getByText('QA Teacher 1')).first()).toBeVisible({
       timeout: 15000,
     });
   });

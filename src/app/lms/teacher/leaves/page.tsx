@@ -148,37 +148,34 @@ export default function LeavesPage() {
     return 0;
   };
 
-  if (!selectedSchool) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="p-8">
-            <div className="text-center py-8">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
-              <p className="text-lg font-medium">No school selected</p>
-              <p className="text-sm text-gray-600 mt-2">
-                Please select a school from the dropdown to apply for leave.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Leave Requests</h1>
         <p className="text-gray-600 mt-2">
-          Apply for leave or view your leave history for {selectedSchool.name}
+          {selectedSchool
+            ? `Apply for leave or view your leave history for ${selectedSchool.name}`
+            : 'Viewing leave history across all your schools'}
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Apply for Leave Form */}
         <div className="lg:col-span-2">
+          {!selectedSchool ? (
+            <Card>
+              <CardContent className="p-8">
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
+                  <p className="text-lg font-medium">Pick a specific school to apply</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    A leave request applies to one school at a time — select it from the &quot;Active School&quot; dropdown above (not &quot;All Schools&quot;) to open the form.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
           <Card>
             <CardHeader>
               <CardTitle>Apply for Leave</CardTitle>
@@ -269,6 +266,7 @@ export default function LeavesPage() {
               </form>
             </CardContent>
           </Card>
+          )}
         </div>
 
         {/* Leave History */}

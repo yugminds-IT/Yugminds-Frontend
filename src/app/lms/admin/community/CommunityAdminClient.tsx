@@ -20,6 +20,9 @@ import {
   Rss,
   Settings2,
   ChevronRight,
+  History as HistoryIcon,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +36,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { adminApi } from "@/lib/api/admin.api";
 import { useToast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -103,6 +114,12 @@ export default function CommunityAdminClient() {
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [heroFile, setHeroFile] = useState<File | null>(null);
   const [heroPreview, setHeroPreview] = useState<string | null>(null);
+
+  // Version history / revert
+  const [historyItem, setHistoryItem] = useState<CommunityItem | null>(null);
+  const [versions, setVersions] = useState<{ id: string; version_number: number; created_at: string }[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
 
   const loadConfig = useCallback(async () => {
     const { data } = await adminApi.community.getConfig();
@@ -190,9 +207,23 @@ export default function CommunityAdminClient() {
     setView("edit");
   };
 
+  const NEEDS_MEDIA_TYPES: CommunitySectionType[] = ["reel", "project", "learn_video", "blog"];
+
   const handleSaveItem = async (publish?: boolean) => {
     if (activeTab === "settings" || !form.title?.trim()) {
       toast.error("Title is required.");
+      return;
+    }
+    // Mirrors the server-side rule (media or external URL required for
+    // these types) so the error shows up here instead of a generic
+    // "Failed to save item" after a round trip.
+    if (
+      NEEDS_MEDIA_TYPES.includes(activeTab as CommunitySectionType) &&
+      !mediaFile &&
+      !form.media_url &&
+      !form.external_url?.trim()
+    ) {
+      toast.error("Upload media or provide an external URL for this item.");
       return;
     }
     setSaving(true);
@@ -244,6 +275,36 @@ export default function CommunityAdminClient() {
       await loadItems(activeTab as CommunitySectionType);
     } catch {
       toast.error("Failed to delete item.");
+    }
+  };
+
+  const openHistory = async (item: CommunityItem) => {
+    setHistoryItem(item);
+    setLoadingVersions(true);
+    try {
+      const { data } = await adminApi.community.getVersions(item.id);
+      setVersions((data as { versions?: typeof versions })?.versions ?? []);
+    } catch {
+      toast.error("Failed to load version history.");
+      setVersions([]);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  const handleRevert = async (versionId: string) => {
+    if (!historyItem) return;
+    setRevertingId(versionId);
+    try {
+      await adminApi.community.revert(historyItem.id, { version_id: versionId });
+      revalidateCommunity();
+      toast.success("Reverted to the selected version.");
+      setHistoryItem(null);
+      await loadItems(activeTab as CommunitySectionType);
+    } catch {
+      toast.error("Failed to revert. Please try again.");
+    } finally {
+      setRevertingId(null);
     }
   };
 
@@ -1021,6 +1082,13 @@ export default function CommunityAdminClient() {
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
+                            onClick={() => openHistory(item)}
+                            title="Version history"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                          >
+                            <HistoryIcon className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleDelete(item.id)}
                             title="Delete"
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
@@ -1037,6 +1105,58 @@ export default function CommunityAdminClient() {
           </div>
         )}
       </div>
+
+      {/* Version history / revert dialog */}
+      <Dialog open={!!historyItem} onOpenChange={(o) => { if (!o) setHistoryItem(null); }}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HistoryIcon className="h-5 w-5" /> Version History
+            </DialogTitle>
+            <DialogDescription>
+              {historyItem ? <>Previous saved versions of &quot;{historyItem.title}&quot;.</> : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto space-y-2 py-1">
+            {loadingVersions ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+              </div>
+            ) : versions.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No saved versions yet.</p>
+            ) : (
+              versions.map((v, i) => (
+                <div key={v.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      Version {v.version_number}{i === 0 ? " (latest)" : ""}
+                    </p>
+                    <p className="text-xs text-gray-400">{new Date(v.created_at).toLocaleString()}</p>
+                  </div>
+                  {i !== 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={revertingId === v.id}
+                      onClick={() => handleRevert(v.id)}
+                    >
+                      {revertingId === v.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <><RotateCcw className="h-3 w-3 mr-1" /> Revert</>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHistoryItem(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -23,7 +23,9 @@ export function CommunityPageContent({ data }: { data: CommunityPageData }) {
 
   return (
     <>
-      <CommunityHero config={config} sectionColor={color("hero")} />
+      {enabled.hero !== false && (
+        <CommunityHero config={config} sectionColor={color("hero")} />
+      )}
 
       {enabled.reels !== false && items.reels.length > 0 && (
         <ReelsRow

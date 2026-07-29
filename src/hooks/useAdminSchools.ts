@@ -35,6 +35,7 @@ export type ApiEnvelope<T> = {
 
 export type AdminSchoolsListResponse = {
   schools?: AdminSchoolItem[];
+  total?: number;
 };
 
 // Stable empty fallback — avoids new reference on every render which would
@@ -58,9 +59,11 @@ export function useAdminSchools(options?: { enabled?: boolean }) {
       }
       setAuthToken(session.access_token);
       const response = await adminApi.schools.list({ limit: 500, offset: 0 });
-      const body = response.data as ApiEnvelope<{ schools?: AdminSchoolItem[] }> & AdminSchoolsListResponse;
+      const body = response.data as ApiEnvelope<{ schools?: AdminSchoolItem[]; total?: number }> &
+        AdminSchoolsListResponse;
       const schools = body.data?.schools ?? body.schools ?? [];
-      return { schools };
+      const total = body.data?.total ?? body.total;
+      return { schools, total };
     },
     enabled,
     staleTime: 60 * 1000, // 1 minute - avoid refetch on every mount

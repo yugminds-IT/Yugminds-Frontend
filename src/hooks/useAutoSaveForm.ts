@@ -298,6 +298,12 @@ export function useAutoSaveForm<T extends object>(
 
   // Clear form data
   const clearSavedData = useCallback(() => {
+    // Cancel any pending debounced save — otherwise it fires after this clear
+    // and silently rewrites the stale (pre-clear) data back into storage.
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
     clearFormData(formId, useSession);
     useFormStore.getState().clearFormData(formId);
     useFormStore.getState().setDirty(formId, false);

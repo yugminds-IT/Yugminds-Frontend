@@ -177,8 +177,14 @@ export function useAdminQuickPreviews() {
       const previews: QuickPreviewGroup[] = [];
 
       if (schoolsRes.status === "fulfilled") {
-        const d = schoolsRes.value.data as { schools?: Record<string, unknown>[] } | Record<string, unknown>[];
-        const raw: Record<string, unknown>[] = Array.isArray(d) ? d : d?.schools ?? [];
+        // AdminSchoolsService.list() is the one admin list endpoint that
+        // wraps its payload in `{ data: { schools: [...] } }` (via ok()) —
+        // every other list endpoint here returns the array unwrapped, so
+        // this needs its own extra fallback level or it always reads [].
+        const d = schoolsRes.value.data as
+          | { data?: { schools?: Record<string, unknown>[] }; schools?: Record<string, unknown>[] }
+          | Record<string, unknown>[];
+        const raw: Record<string, unknown>[] = Array.isArray(d) ? d : d?.data?.schools ?? d?.schools ?? [];
         inactiveSchoolCount = raw.filter((s) => s.isActive === false).length;
         const recent = raw
           .slice()
@@ -276,9 +282,8 @@ export function useAdminNeedsAttention() {
             id: "leaves",
             label: `${pendingLeaves} pending leave request${pendingLeaves !== 1 ? "s" : ""}`,
             count: pendingLeaves,
-            // No admin-level leave review page exists yet — point at Schools so
-            // the admin can find the right school to follow up with.
-            href: "/lms/admin/schools",
+            // Leave review lives as a tab on Teachers Management, not its own route.
+            href: "/lms/admin/teachers?tab=leaves",
             tone: "amber",
           });
         }
@@ -312,8 +317,11 @@ export function useAdminNeedsAttention() {
       }
 
       if (schoolsRes.status === "fulfilled") {
-        const d = schoolsRes.value.data as { schools?: Record<string, unknown>[] } | Record<string, unknown>[];
-        const raw: Record<string, unknown>[] = Array.isArray(d) ? d : d?.schools ?? [];
+        // Same `{ data: { schools } }` envelope as useAdminQuickPreviews above.
+        const d = schoolsRes.value.data as
+          | { data?: { schools?: Record<string, unknown>[] }; schools?: Record<string, unknown>[] }
+          | Record<string, unknown>[];
+        const raw: Record<string, unknown>[] = Array.isArray(d) ? d : d?.data?.schools ?? d?.schools ?? [];
         const count = raw.filter((s) => s.isActive === false).length;
         if (count > 0) {
           items.push({

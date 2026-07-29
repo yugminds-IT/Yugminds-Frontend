@@ -154,21 +154,4 @@ export const schoolAdminApi = {
     import: (data: Record<string, unknown>) =>
       apiClient.post(`${SCHOOL_ADMIN}/data/import`, data),
   },
-
-  /** School Calendar (holidays, breaks, compensatory days) */
-  calendar: {
-    list: (params?: { year?: string; month?: string; academic_year?: string }) =>
-      apiClient.get(withParams(`${SCHOOL_ADMIN}/calendar`, params)),
-    create: (data: {
-      date: string;
-      end_date?: string;
-      name: string;
-      type: string;
-      academic_year?: string;
-      description?: string;
-    }) => apiClient.post(`${SCHOOL_ADMIN}/calendar`, data),
-    update: (id: string, data: Record<string, unknown>) =>
-      apiClient.patch(`${SCHOOL_ADMIN}/calendar/${id}`, data),
-    delete: (id: string) => apiClient.delete(`${SCHOOL_ADMIN}/calendar/${id}`),
-  },
 };

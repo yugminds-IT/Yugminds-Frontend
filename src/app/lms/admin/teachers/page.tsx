@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { frontendLogger, handleApiErrorResponse } from "@/lib/frontend-logger";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
@@ -32,6 +33,9 @@ import {
   Textarea 
 } from "@/components/ui/textarea";
 import AddTeacherDialog from "@/components/AddTeacherDialog";
+import WeekdayPicker from "@/components/WeekdayPicker";
+import WorkingDaysHistoryPanel from "@/components/admin/WorkingDaysHistoryPanel";
+import { formatWorkingDays } from "@/lib/weekday-utils";
 import TeacherProfileView from "@/components/TeacherProfileView";
 import { NotificationPanel, useNotifications } from "@/components/NotificationPanel";
 import { 
@@ -50,6 +54,9 @@ import {
   Briefcase,
   Trash2,
   Loader2,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
@@ -79,6 +86,8 @@ interface AssignedSchool {
   schoolName: string;
   gradesAssigned: GradeAssigned[];
   subjects?: string[];
+  /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
+  workingDays?: number[];
   sectionsAssignedToOtherTeachers?: SectionAssignedToOther[];
 }
 
@@ -114,6 +123,10 @@ interface TeacherSchool {
   gradesAssigned?: GradeAssigned[];
   subjects?: string[];
   working_days_per_week?: number;
+  /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
+  working_days?: number[];
+  /** When this working-days pattern takes effect (YYYY-MM-DD). */
+  effective_from?: string;
   max_students_per_session?: number;
   is_primary?: boolean;
   schoolName?: string;
@@ -170,11 +183,16 @@ interface AttendanceSummary {
   absentApprovedDays: number;
   absentUnapprovedDays: number;
   attendanceRate: number;
+  /** Real month-to-date average across active teachers (see AdminTeacherAttendanceService.list) — unlike attendanceRate (today's snapshot), this doesn't read 0% just because today hasn't been marked yet. */
+  averageAttendanceRate?: number;
   presentToday?: number;
   absentToday?: number;
   onLeaveToday?: number;
+  onHolidayToday?: number;
   totalTeachers?: number;
   teacherTodayStatus?: Record<string, { status: string; isOnLeave: boolean; leaveType?: string; attendanceRate?: number }>;
+  /** Only present for teachers scheduled at 2+ schools the same day — see getStatusBadge below. */
+  teacherTodaySchoolStatuses?: Record<string, Array<{ school_id: string; school_name: string; status: string }>>;
 }
 
 interface MonthlyAttendanceData {
@@ -197,6 +215,18 @@ interface MonthlyAttendanceData {
   attendance_percentage: number;
   profiles?: { full_name: string; email: string };
   schools?: { name: string; school_code: string };
+  /** Present only when unfiltered and the teacher works at >1 school. */
+  by_school?: Array<{
+    school_id: string;
+    school_name: string;
+    working_days?: number[];
+    present_days: number;
+    absent_days: number;
+    leave_days: number;
+    unreported_days: number;
+    total_working_days: number;
+    attendance_percentage: number;
+  }>;
 }
 
 /** Normalized school assignment row for table display (API may use old or new shape). */
@@ -255,6 +285,10 @@ function buildSchoolsSearchText(teacher: Teacher): string {
     }
   }
   return parts.join(" ").toLowerCase();
+}
+
+function todayStr(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 }
 
 function mapTeacherToTableRow(teacher: Teacher): TeacherTableRow {
@@ -377,6 +411,10 @@ export default function TeachersManagement() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const { schools, refetch: refetchSchools } = useAdminSchools();
   const [configuringGradesForSchoolId, setConfiguringGradesForSchoolId] = useState<string | null>(null);
+  // Collapsed by default — the grades/sections checklist can be long, and
+  // most edits only touch one assignment at a time. Keyed by assignment
+  // id/index so each school assignment card expands independently.
+  const [expandedGradesAssignments, setExpandedGradesAssignments] = useState<Set<string>>(new Set());
   const [assignmentsBySchoolId, setAssignmentsBySchoolId] = useState<Record<string, { sectionId: string; teacherName: string }[]>>({});
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [allLeaveRequests, setAllLeaveRequests] = useState<LeaveRequest[]>([]);
@@ -388,8 +426,25 @@ export default function TeachersManagement() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [monthlyLoading, setMonthlyLoading] = useState(false);
+  // "all" = combined across every school a teacher works at (default);
+  // a specific school_id scopes every figure to just that school — teachers
+  // who work 1-3 schools a week need both views (see attendance calendar plan).
+  const [attendanceSchoolFilter, setAttendanceSchoolFilter] = useState<string>('all');
+  const [expandedAttendanceRows, setExpandedAttendanceRows] = useState<Set<string>>(new Set());
   const [markingMissingAttendance, setMarkingMissingAttendance] = useState(false);
   const [activeTab, setActiveTab] = useState<'teachers' | 'attendance' | 'leaves'>('teachers');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Deep-link support: ?tab=leaves (used by the admin dashboard's "pending
+  // leave requests" alert) or ?tab=attendance opens that tab directly.
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'leaves' || tab === 'attendance' || tab === 'teachers') {
+      setActiveTab(tab);
+      router.replace('/lms/admin/teachers');
+    }
+  }, [searchParams, router]);
   const [bulkDeleteTeachers, setBulkDeleteTeachers] = useState<TeacherTableRow[] | null>(null);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isBulkDeletingTeachers, setIsBulkDeletingTeachers] = useState(false);
@@ -528,7 +583,7 @@ export default function TeachersManagement() {
       totalTeachers: teachersData.length,
       activeTeachers: active,
       pendingLeaves: pendingLeaves,
-      averageAttendance: attendanceData?.attendanceRate || 0
+      averageAttendance: attendanceData?.averageAttendanceRate ?? attendanceData?.attendanceRate ?? 0
     });
   }, [allLeaveRequests, attendanceSummary]);
 
@@ -722,11 +777,15 @@ export default function TeachersManagement() {
   };
 
   // Load monthly attendance data
-  const loadMonthlyAttendance = useCallback(async (month?: string) => {
+  const loadMonthlyAttendance = useCallback(async (month?: string, schoolIdOverride?: string) => {
     try {
       setMonthlyLoading(true);
       const monthToLoad = month || selectedMonth;
-      const { data } = await adminApi.teacherAttendance.monthly({ month: monthToLoad });
+      const schoolIdToLoad = schoolIdOverride ?? attendanceSchoolFilter;
+      const { data } = await adminApi.teacherAttendance.monthly({
+        month: monthToLoad,
+        school_id: schoolIdToLoad !== 'all' ? schoolIdToLoad : undefined,
+      });
       setMonthlyAttendance(data.monthlyData || data || []);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Failed to load monthly attendance';
@@ -735,7 +794,7 @@ export default function TeachersManagement() {
     } finally {
       setMonthlyLoading(false);
     }
-  }, [selectedMonth]);
+  }, [selectedMonth, attendanceSchoolFilter]);
 
   // Mark missing attendance
   const markMissingAttendance = useCallback(async () => {
@@ -794,6 +853,8 @@ export default function TeachersManagement() {
       const sum = (body.summary ?? {}) as AttendanceSummary;
       const teacherTodayStatus =
         (body.teacherTodayStatus ?? {}) as AttendanceSummary['teacherTodayStatus'];
+      const teacherTodaySchoolStatuses =
+        (body.teacherTodaySchoolStatuses ?? {}) as AttendanceSummary['teacherTodaySchoolStatuses'];
 
       setAttendanceSummary({
         totalDays: sum.totalDays ?? 0,
@@ -801,11 +862,13 @@ export default function TeachersManagement() {
         absentApprovedDays: sum.absentApprovedDays ?? 0,
         absentUnapprovedDays: sum.absentUnapprovedDays ?? 0,
         attendanceRate: sum.attendanceRate ?? 0,
+        averageAttendanceRate: sum.averageAttendanceRate ?? 0,
         presentToday: sum.presentToday ?? 0,
         absentToday: sum.absentToday ?? 0,
         onLeaveToday: sum.onLeaveToday ?? 0,
         totalTeachers: sum.totalTeachers ?? 0,
         teacherTodayStatus,
+        teacherTodaySchoolStatuses,
       });
     } catch (error) {
       const _errorInfo = handleApiErrorResponse(error, {
@@ -983,12 +1046,15 @@ export default function TeachersManagement() {
           grades_assigned: a.gradesAssigned?.map((g) => g.gradeName) ?? [],
           grade_sections_assigned: a.gradesAssigned?.map((g) => ({ grade: g.gradeName, sections: g.sectionsAssigned ?? [] })) ?? [],
           subjects: Array.isArray(a.subjects) ? a.subjects : [],
-          working_days_per_week: 5,
+          working_days: a.workingDays?.length ? a.workingDays : [1, 2, 3, 4, 5],
+          working_days_per_week: a.workingDays?.length ? a.workingDays.length : 5,
+          effective_from: todayStr(),
           max_students_per_session: 30,
           is_primary: i === 0,
         };
       }
       const t = assignment as TeacherSchool;
+      const workingDays = t.working_days?.length ? t.working_days : [1, 2, 3, 4, 5];
       return {
         id: t.id || `assignment-${Date.now()}-${i}`,
         teacher_id: t.teacher_id ?? String(teacher.id),
@@ -996,7 +1062,9 @@ export default function TeachersManagement() {
         grades_assigned: Array.isArray(t.grades_assigned) ? t.grades_assigned : [],
         grade_sections_assigned: Array.isArray(t.grade_sections_assigned) ? t.grade_sections_assigned : [],
         subjects: Array.isArray(t.subjects) ? t.subjects : [],
-        working_days_per_week: t.working_days_per_week ?? 5,
+        working_days: workingDays,
+        working_days_per_week: t.working_days_per_week ?? workingDays.length,
+        effective_from: todayStr(),
         max_students_per_session: t.max_students_per_session ?? 30,
         is_primary: t.is_primary ?? false,
       };
@@ -1328,6 +1396,26 @@ export default function TeachersManagement() {
     }
   };
 
+  // A teacher physically can't be in two schools on the same weekday, so
+  // flag it (as a warning, not a hard block — the admin may still have a
+  // legitimate reason, e.g. a half-day arrangement) whenever two
+  // assignments for different schools share a working day.
+  const getScheduleOverlapWarning = (index: number): string | null => {
+    const current = formData.school_assignments[index];
+    const currentDays = current?.working_days ?? [];
+    if (!current?.school_id || currentDays.length === 0) return null;
+    const conflicts: string[] = [];
+    formData.school_assignments.forEach((other, j) => {
+      if (j === index || !other.school_id || other.school_id === current.school_id) return;
+      const commonDays = currentDays.filter((d) => (other.working_days ?? []).includes(d));
+      if (commonDays.length > 0) {
+        const otherSchoolName = schools.find((s) => s.id === other.school_id)?.name ?? 'another school';
+        conflicts.push(`${formatWorkingDays(commonDays)} — also assigned at ${otherSchoolName}`);
+      }
+    });
+    return conflicts.length > 0 ? conflicts.join('; ') : null;
+  };
+
   // Copy password
   const _copyPassword = () => {
     navigator.clipboard.writeText(formData.temp_password);
@@ -1434,6 +1522,7 @@ export default function TeachersManagement() {
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg Attendance</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">{stats.averageAttendance}%</p>
+                <p className="text-xs text-gray-400 mt-1">Month to date</p>
               </div>
               <div className="h-12 w-12 rounded-xl bg-purple-50 flex items-center justify-center">
                 <Clock className="h-6 w-6 text-purple-600" />
@@ -1603,6 +1692,13 @@ export default function TeachersManagement() {
                     (counted separately from absent / not marked).
                   </p>
                 )}
+                {(attendanceSummary.onHolidayToday ?? 0) > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {attendanceSummary.onHolidayToday} teacher
+                    {attendanceSummary.onHolidayToday !== 1 ? 's are' : ' is'} at a school with a declared holiday
+                    today — excluded from &quot;Absent / Not marked&quot; and from the attendance rate.
+                  </p>
+                )}
 
                 {/* Today's Attendance Table */}
                 <div className="border rounded-lg overflow-hidden">
@@ -1645,22 +1741,45 @@ export default function TeachersManagement() {
                                 status: 'Not Marked',
                                 isOnLeave: false,
                               };
-                            const getStatusBadge = () => {
-                              switch (todayStatus.status) {
+                            const perSchoolToday = attendanceSummary.teacherTodaySchoolStatuses?.[tid];
+                            const statusBadge = (status: string, leaveType?: string) => {
+                              switch (status) {
                                 case 'Present':
                                   return <Badge className="bg-green-500 text-white">Present</Badge>;
                                 case 'On Leave':
                                 case 'Leave-Approved':
-                                  return <Badge className="bg-blue-500 text-white">On Leave {todayStatus.leaveType ? `(${todayStatus.leaveType})` : ''}</Badge>;
+                                  return <Badge className="bg-blue-500 text-white">On Leave {leaveType ? `(${leaveType})` : ''}</Badge>;
                                 case 'Absent':
                                   return <Badge className="bg-red-500 text-white">Absent</Badge>;
+                                case 'Holiday':
+                                  return <Badge className="bg-purple-500 text-white">Holiday</Badge>;
+                                case 'Off Today':
+                                  return <Badge variant="outline" className="border-indigo-200 text-indigo-600 bg-indigo-50">Off Today</Badge>;
                                 case 'Not Marked':
                                   return <Badge variant="outline" className="border-gray-300 text-gray-600">Not Marked</Badge>;
                                 default:
-                                  return <Badge variant="outline" className="border-gray-300 text-gray-600">{todayStatus.status}</Badge>;
+                                  return <Badge variant="outline" className="border-gray-300 text-gray-600">{status}</Badge>;
                               }
                             };
-                            
+                            // Scheduled at 2+ schools today (rare) — show each school's own
+                            // status instead of one merged badge, so covering one school but
+                            // missing another isn't hidden behind a single "Present".
+                            const getStatusBadge = () =>
+                              perSchoolToday && perSchoolToday.length > 1 ? (
+                                <div className="flex flex-col gap-1">
+                                  {perSchoolToday.map((s) => (
+                                    <div key={s.school_id} className="flex items-center gap-1.5">
+                                      <span className="text-[11px] text-gray-500 truncate max-w-[100px]" title={s.school_name}>
+                                        {s.school_name}:
+                                      </span>
+                                      {statusBadge(s.status)}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                statusBadge(todayStatus.status, todayStatus.leaveType)
+                              );
+
                             return (
                               <tr key={tid || teacher.email} className="hover:bg-gray-50">
                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -1697,6 +1816,23 @@ export default function TeachersManagement() {
                         Monthly Attendance
                       </h3>
                       <div className="flex items-center gap-2">
+                        <Select
+                          value={attendanceSchoolFilter}
+                          onValueChange={(v) => {
+                            setAttendanceSchoolFilter(v);
+                            loadMonthlyAttendance(undefined, v);
+                          }}
+                        >
+                          <SelectTrigger className="w-48" title="Filter working days to one school, or view combined totals across all schools a teacher works at">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white">
+                            <SelectItem value="all">All schools (combined)</SelectItem>
+                            {(schools ?? []).map((s: { id: string; name: string }) => (
+                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Input
                           type="month"
                           value={selectedMonth}
@@ -1766,8 +1902,12 @@ export default function TeachersManagement() {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {monthlyAttendance.map((monthly, monthlyIndex) => {
+                            const rowKey = monthly.id ?? `${monthly.teacher_id ?? monthly.teacherId ?? monthlyIndex}-${monthly.month ?? monthlyIndex}`;
+                            const hasBySchool = (monthly.by_school?.length ?? 0) > 0;
+                            const isExpanded = expandedAttendanceRows.has(rowKey);
                             return (
-                              <tr key={monthly.id ?? `${monthly.teacher_id ?? monthly.teacherId ?? monthlyIndex}-${monthly.month ?? monthlyIndex}`} className="hover:bg-gray-50">
+                              <Fragment key={rowKey}>
+                              <tr className="hover:bg-gray-50">
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="text-sm font-medium text-gray-900">
                                     {monthly.profiles?.full_name || 'N/A'}
@@ -1777,7 +1917,30 @@ export default function TeachersManagement() {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                  {monthly.schools?.name || 'N/A'}
+                                  {hasBySchool ? (
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
+                                      onClick={() =>
+                                        setExpandedAttendanceRows((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(rowKey)) next.delete(rowKey);
+                                          else next.add(rowKey);
+                                          return next;
+                                        })
+                                      }
+                                      title="This teacher works at multiple schools — click to see working days per school"
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <ChevronRight className="h-3.5 w-3.5" />
+                                      )}
+                                      {monthly.by_school!.length} schools
+                                    </button>
+                                  ) : (
+                                    monthly.schools?.name || 'N/A'
+                                  )}
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                                   {monthly.total_working_days ?? monthly.total_days ?? 0}
@@ -1845,6 +2008,49 @@ export default function TeachersManagement() {
                                   </Badge>
                                 </td>
                               </tr>
+                              {hasBySchool && isExpanded && monthly.by_school!.map((sb) => (
+                                <tr key={`${rowKey}-${sb.school_id}`} className="bg-indigo-50/40">
+                                  <td className="px-4 py-2 pl-8 text-xs text-gray-400 whitespace-nowrap">
+                                    working days
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-700">
+                                    <span className="inline-flex items-center gap-1">
+                                      <School className="h-3 w-3 text-indigo-500" />
+                                      {sb.school_name}
+                                    </span>
+                                    <div className="text-[10px] text-gray-400 pl-4">{formatWorkingDays(sb.working_days)}</div>
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-700">
+                                    {sb.total_working_days}
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-green-600">
+                                    {sb.present_days}
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-red-600">
+                                    {sb.absent_days}
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-blue-600">
+                                    {sb.leave_days}
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-orange-600">
+                                    {sb.unreported_days}
+                                  </td>
+                                  <td className="px-4 py-2 whitespace-nowrap">
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        sb.attendance_percentage >= 90 ? 'border-green-300 text-green-700' :
+                                        sb.attendance_percentage >= 75 ? 'border-yellow-300 text-yellow-700' :
+                                        sb.attendance_percentage >= 50 ? 'border-orange-300 text-orange-700' :
+                                        'border-red-300 text-red-700'
+                                      }
+                                    >
+                                      {sb.attendance_percentage.toFixed(1)}%
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              ))}
+                              </Fragment>
                             );
                           })}
                         </tbody>
@@ -2319,7 +2525,9 @@ export default function TeachersManagement() {
                       school_id: '',
                       grades_assigned: [],
                       subjects: [],
+                      working_days: [1, 2, 3, 4, 5],
                       working_days_per_week: 5,
+                      effective_from: todayStr(),
                       max_students_per_session: 30,
                       is_primary: formData.school_assignments.length === 0
                     };
@@ -2343,12 +2551,83 @@ export default function TeachersManagement() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {formData.school_assignments.map((assignment, index) => (
-                    <div key={assignment.id ?? `assignment-${assignment.school_id ?? index}-${index}`} className="border rounded-lg p-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium">Assignment {index + 1}</h4>
+                  {formData.school_assignments.map((assignment, index) => {
+                    const assignmentKey = assignment.id ?? `assignment-${assignment.school_id ?? index}-${index}`;
+                    const assignedSchool = schools.find((s) => s.id === assignment.school_id);
+                    const assignedSchoolName = assignedSchool?.name;
+                    const gradeCount = (assignment.grades_assigned ?? []).length;
+                    const scheduleWarning = getScheduleOverlapWarning(index);
+                    const isGradesExpanded = expandedGradesAssignments.has(assignmentKey);
+                    const toggleGradesExpanded = () => {
+                      setExpandedGradesAssignments((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(assignmentKey)) next.delete(assignmentKey);
+                        else next.add(assignmentKey);
+                        return next;
+                      });
+                    };
+                    const gradesWithSectionsForAssignment: Array<{ id: string; name: string; sections?: { id: string; name: string }[] }> =
+                      (assignedSchool?.grades && Array.isArray(assignedSchool.grades)) ? assignedSchool.grades : [];
+                    const sectionAssignmentsForAssignment = assignment.school_id ? (assignmentsBySchoolId[assignment.school_id] ?? []) : [];
+                    const assignedBySectionIdForAssignment = Object.fromEntries(
+                      sectionAssignmentsForAssignment.map((a) => [a.sectionId, a.teacherName]),
+                    );
+                    const currentTeacherNameForAssignment = editingTeacher?.name ?? editingTeacher?.full_name ?? '';
+                    const selectAllGrades = () => {
+                      const updatedAssignments = [...formData.school_assignments];
+                      updatedAssignments[index].grades_assigned = gradesWithSectionsForAssignment.map((g) => g.name);
+                      updatedAssignments[index].grade_sections_assigned = gradesWithSectionsForAssignment.map((g) => ({
+                        grade: g.name,
+                        sections: (g.sections ?? [])
+                          .filter((sec) => {
+                            const assignedName = assignedBySectionIdForAssignment[sec.id];
+                            return (
+                              !assignedName ||
+                              !currentTeacherNameForAssignment ||
+                              assignedName.trim().toLowerCase() === currentTeacherNameForAssignment.trim().toLowerCase()
+                            );
+                          })
+                          .map((sec) => sec.name),
+                      }));
+                      setFormData(prev => ({ ...prev, school_assignments: updatedAssignments }));
+                    };
+                    const clearAllGrades = () => {
+                      const updatedAssignments = [...formData.school_assignments];
+                      updatedAssignments[index].grades_assigned = [];
+                      updatedAssignments[index].grade_sections_assigned = [];
+                      setFormData(prev => ({ ...prev, school_assignments: updatedAssignments }));
+                    };
+                    return (
+                    <div
+                      key={assignmentKey}
+                      className={`border rounded-lg p-4 space-y-4 border-l-4 ${assignment.is_primary ? 'border-l-blue-500 bg-blue-50/30' : 'border-l-gray-300'}`}
+                    >
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2">
-                          <Label className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <School className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium leading-tight">
+                              {assignedSchoolName || `School ${index + 1}`}
+                            </h4>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {assignment.is_primary && (
+                                <Badge className="bg-blue-600 hover:bg-blue-600 text-[10px] h-4 px-1.5">Primary</Badge>
+                              )}
+                              {(assignment.working_days ?? []).length > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  {(assignment.working_days ?? []).length} day{(assignment.working_days ?? []).length === 1 ? '' : 's'}/week
+                                </span>
+                              )}
+                              {gradeCount > 0 && (
+                                <span className="text-xs text-muted-foreground">· {gradeCount} grade{gradeCount === 1 ? '' : 's'}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Label className="flex items-center gap-1.5 text-sm">
                             <input
                               type="checkbox"
                               checked={assignment.is_primary}
@@ -2385,59 +2664,133 @@ export default function TeachersManagement() {
                           </Button>
                         </div>
                       </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor={`school_${index}`}>School</Label>
-                          <Select
-                            value={assignment.school_id}
-                            onValueChange={(value) => {
-                              const updatedAssignments = [...formData.school_assignments];
-                              updatedAssignments[index].school_id = value;
-                              updatedAssignments[index].grades_assigned = []; // Reset grades when school changes
-                              setFormData(prev => ({
-                                ...prev,
-                                school_assignments: updatedAssignments
-                              }));
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a school" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {schools.map((school) => (
-                                <SelectItem key={school.id} value={school.id}>
-                                  {school.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor={`working_days_${index}`}>Working Days/Week</Label>
+
+                      <div>
+                        <Label htmlFor={`school_${index}`}>School</Label>
+                        <Select
+                          value={assignment.school_id}
+                          onValueChange={(value) => {
+                            const updatedAssignments = [...formData.school_assignments];
+                            updatedAssignments[index].school_id = value;
+                            updatedAssignments[index].grades_assigned = []; // Reset grades when school changes
+                            setFormData(prev => ({
+                              ...prev,
+                              school_assignments: updatedAssignments
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a school" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {schools.map((school) => (
+                              <SelectItem key={school.id} value={school.id}>
+                                {school.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="mt-4">
+                        <Label>Working Days at This School</Label>
+                        <WeekdayPicker
+                          idPrefix={`working_days_${index}`}
+                          value={assignment.working_days ?? [1, 2, 3, 4, 5]}
+                          onChange={(days) => {
+                            const updatedAssignments = [...formData.school_assignments];
+                            updatedAssignments[index].working_days = days;
+                            updatedAssignments[index].working_days_per_week = days.length;
+                            setFormData(prev => ({
+                              ...prev,
+                              school_assignments: updatedAssignments
+                            }));
+                          }}
+                        />
+                        {scheduleWarning && (
+                          <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                            <span>
+                              <span className="font-medium">Schedule conflict:</span> {scheduleWarning}.
+                              A teacher can&apos;t physically be at two schools on the same day — double-check this is intentional.
+                            </span>
+                          </div>
+                        )}
+                        <div className="mt-2 max-w-xs">
+                          <Label htmlFor={`effective_from_${index}`} className="text-xs text-gray-500">
+                            Effective from
+                          </Label>
                           <Input
-                            id={`working_days_${index}`}
-                            type="number"
-                            min="1"
-                            max="7"
-                            value={assignment.working_days_per_week}
+                            id={`effective_from_${index}`}
+                            type="date"
+                            value={assignment.effective_from ?? todayStr()}
                             onChange={(e) => {
                               const updatedAssignments = [...formData.school_assignments];
-                              updatedAssignments[index].working_days_per_week = parseInt(e.target.value) || 5;
+                              updatedAssignments[index].effective_from = e.target.value;
                               setFormData(prev => ({
                                 ...prev,
                                 school_assignments: updatedAssignments
                               }));
                             }}
                           />
+                          <p className="text-xs text-gray-400 mt-1">
+                            Changing the days above only applies from this date onward — earlier
+                            attendance keeps using whatever pattern was in effect before.
+                          </p>
                         </div>
+                        {assignment.school_id && editingTeacher && (
+                          <WorkingDaysHistoryPanel
+                            teacherId={String(editingTeacher.id)}
+                            schoolId={assignment.school_id}
+                          />
+                        )}
                       </div>
-                      
+
                       {assignment.school_id && (
                         <>
                           <div>
-                            <Label>Grades and Sections <span className="text-red-500">*</span></Label>
+                            <div className="flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={toggleGradesExpanded}
+                                className="flex items-center gap-1.5 text-left"
+                              >
+                                {isGradesExpanded ? (
+                                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-gray-500" />
+                                )}
+                                <Label className="cursor-pointer">
+                                  Grades and Sections <span className="text-red-500">*</span>
+                                </Label>
+                                <span className="text-xs text-muted-foreground">
+                                  {gradeCount > 0 ? `(${gradeCount} selected)` : '(none selected)'}
+                                </span>
+                              </button>
+                              {isGradesExpanded && gradesWithSectionsForAssignment.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700"
+                                    onClick={selectAllGrades}
+                                  >
+                                    Select All
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs text-gray-500 hover:text-gray-700"
+                                    onClick={clearAllGrades}
+                                  >
+                                    Clear All
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                            {isGradesExpanded && (
                             <div className="mt-2 space-y-3 max-h-96 overflow-y-auto border rounded-md p-3">
                               {(() => {
                                 const sid = assignment.school_id;
@@ -2566,8 +2919,9 @@ export default function TeachersManagement() {
                                 });
                               })()}
                             </div>
+                            )}
                           </div>
-                          
+
                           <div>
                             <Label>Subjects</Label>
                             <div className="flex flex-wrap gap-2 mt-2">
@@ -2670,7 +3024,8 @@ export default function TeachersManagement() {
                         </>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -554,19 +554,6 @@ export default function StudentsManagement() {
     }
   };
 
-  const _handleResetPassword = async (student: Student) => {
-    try {
-      console.log('🔐 Resetting password for student:', student.id);
-      const tempPassword = `TempPass${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-      await schoolAdminApi.students.changePassword(student.id, { password: tempPassword });
-      toast.success(`Password reset for ${displayStudentName(student)}.`);
-    } catch (error: unknown) {
-      console.error('Error resetting password:', error);
-      const msg = error instanceof Error ? error.message : 'Please try again.';
-      toast.error(`Error resetting password: ${msg}`);
-    }
-  };
-
   const filteredStudents = students;
 
   const findStudentById = (id: string) => students.find((s) => s.id === id);
@@ -954,7 +941,7 @@ export default function StudentsManagement() {
                       value={formData.grade || undefined}
                       onValueChange={(value) => setFormData({...formData, grade: value})}
                     >
-                      <SelectTrigger className="col-span-3">
+                      <SelectTrigger id="grade" className="col-span-3">
                         <SelectValue placeholder="Select grade" />
                       </SelectTrigger>
                       <SelectContent>
@@ -975,7 +962,7 @@ export default function StudentsManagement() {
                         value={formData.section || undefined}
                         onValueChange={(value) => setFormData({...formData, section: value})}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger id="section" className="w-full">
                           <SelectValue placeholder="Select section" />
                         </SelectTrigger>
                         <SelectContent>

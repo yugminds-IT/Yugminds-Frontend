@@ -24,7 +24,7 @@ interface CertInfo {
   course_title: string;
   certificate_name: string;
   issued_at: string;
-  status: "active" | "pending";
+  status: "active" | "pending" | "broken" | "revoked";
 }
 
 type VerifyState = "loading" | "valid" | "invalid" | "error";
@@ -133,12 +133,22 @@ export default function VerifyCertificatePage() {
               </div>
               <div>
                 <p className="text-white font-bold text-xl">
-                  {cert?.status === "pending" ? "Certificate Pending" : "Certificate Not Found"}
+                  {cert?.status === "pending"
+                    ? "Certificate Pending"
+                    : cert?.status === "revoked"
+                      ? "Certificate Revoked"
+                      : cert?.status === "broken"
+                        ? "Certificate Unavailable"
+                        : "Certificate Not Found"}
                 </p>
                 <p className="text-red-100 text-sm">
                   {cert?.status === "pending"
                     ? "This certificate is being generated"
-                    : "This certificate ID is not valid"}
+                    : cert?.status === "revoked"
+                      ? "This certificate has been revoked and is no longer valid"
+                      : cert?.status === "broken"
+                        ? "This certificate's file could not be retrieved"
+                        : "This certificate ID is not valid"}
                 </p>
               </div>
             </div>
@@ -150,6 +160,24 @@ export default function VerifyCertificatePage() {
                   <div>
                     <p className="font-semibold">Certificate is being processed</p>
                     <p className="text-yellow-700 text-xs mt-1">Please check back in a few moments. If this persists, contact support.</p>
+                  </div>
+                </div>
+              ) : cert?.status === "revoked" ? (
+                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800">
+                  <XCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">This certificate is no longer valid</p>
+                    <p className="text-red-700 text-xs mt-1">
+                      Certificate <code className="bg-white/60 px-1 rounded font-mono">{cert.short_id}</code> was revoked by the issuing school and should not be relied on as proof of achievement.
+                    </p>
+                  </div>
+                </div>
+              ) : cert?.status === "broken" ? (
+                <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-800">
+                  <Clock className="h-5 w-5 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Certificate file unavailable</p>
+                    <p className="text-orange-700 text-xs mt-1">The certificate record exists but its file could not be found. Please contact support.</p>
                   </div>
                 </div>
               ) : (

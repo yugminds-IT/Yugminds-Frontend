@@ -83,38 +83,77 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge className={`${cfg.cls} flex items-center w-fit`}>{cfg.icon}{cfg.label}</Badge>;
 }
 
+const PAGE_SIZE = 20;
+
 export default function PasswordResetRequestsPage() {
   const { toasts, show: toast, remove: removeToast } = useToast();
   const [requests, setRequests] = useState<PasswordResetRequest[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageOffset, setPageOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  // searchInput is what the box shows; searchQuery is the debounced value
+  // actually sent to the backend (avoids a request per keystroke).
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
   const [statusFilter, setStatusFilter] = useState<"all" | "approved" | "rejected" | "completed">("all");
+  const [pendingCount, setPendingCount] = useState(0);
   const [dialog, setDialog] = useState<{ open: boolean; type: "view" | "approve" | "reject" | "delete"; request: PasswordResetRequest | null }>({ open: false, type: "view", request: null });
   const [notes, setNotes] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showTempPassword, setShowTempPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Reset to page 1 whenever the tab, search, or status filter changes.
+  useEffect(() => {
+    setPageOffset(0);
+  }, [activeTab, searchQuery, statusFilter]);
+
   const loadRequests = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await adminApi.passwordResetRequests.list({ limit: 200 });
+      const status = activeTab === "pending" ? "pending" : statusFilter === "all" ? "resolved" : statusFilter;
+      const { data } = await adminApi.passwordResetRequests.list({
+        status,
+        limit: PAGE_SIZE,
+        offset: pageOffset,
+        search: searchQuery || undefined,
+      });
       let list: PasswordResetRequest[] = [];
+      let listTotal = 0;
       if (Array.isArray(data)) {
         list = data;
+        listTotal = data.length;
       } else if (data && Array.isArray((data as { requests?: PasswordResetRequest[] }).requests)) {
-        list = (data as { requests: PasswordResetRequest[] }).requests;
+        const payload = data as { requests: PasswordResetRequest[]; total?: number };
+        list = payload.requests;
+        listTotal = payload.total ?? list.length;
       }
       setRequests(list);
+      setTotal(listTotal);
     } catch (err) {
       toast(`Failed to load: ${err instanceof Error ? err.message : "Unknown error"}`, "error");
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, activeTab, statusFilter, pageOffset, searchQuery]);
+
+  const loadPendingCount = useCallback(async () => {
+    try {
+      const { data } = await adminApi.passwordResetRequests.pendingCount();
+      setPendingCount(Number((data as { count?: number })?.count ?? 0));
+    } catch {
+      // non-critical — badge just won't update
+    }
+  }, []);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
+  useEffect(() => { loadPendingCount(); }, [loadPendingCount]);
 
   const openDialog = (request: PasswordResetRequest, type: typeof dialog.type) => {
     setDialog({ open: true, type, request });
@@ -141,8 +180,8 @@ export default function PasswordResetRequestsPage() {
       if (type === "delete") {
         await adminApi.passwordResetRequests.delete(request.id);
         toast("Request deleted");
-        setRequests((prev) => prev.filter((r) => r.id !== request.id));
         closeDialog();
+        loadRequests();
         return;
       }
 
@@ -154,15 +193,18 @@ export default function PasswordResetRequestsPage() {
         ...(type === "approve" ? { temp_password: tempPassword.trim() } : {}),
       });
 
-      if (type === "approve") {
-        toast("Approved — temporary password set and user notified");
-        setRequests((prev) => prev.map((r) => r.id === request.id ? { ...r, status: "approved" } : r));
-      } else {
-        toast("Request rejected — user notified");
-        setRequests((prev) => prev.map((r) => r.id === request.id ? { ...r, status: "rejected" } : r));
-      }
+      toast(
+        type === "approve"
+          ? "Approved — temporary password set and user notified"
+          : "Request rejected — user notified",
+      );
+      // The request has moved out of "pending" — re-fetch rather than patch
+      // it in place, since the Pending tab is now scoped server-side and the
+      // resolved request should disappear from it immediately.
       window.dispatchEvent(new Event("password-reset-resolved"));
       closeDialog();
+      loadRequests();
+      loadPendingCount();
     } catch (err) {
       const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message ?? (err instanceof Error ? err.message : "Unknown error");
       toast(`Failed: ${msg}`, "error");
@@ -171,20 +213,9 @@ export default function PasswordResetRequestsPage() {
     }
   };
 
-  const allRequests = Array.isArray(requests) ? requests : [];
-  const pendingRequests = allRequests.filter((r) => r.status === "pending");
-  const historyRequests = allRequests.filter((r) => r.status !== "pending");
-
-  const tabSource = activeTab === "pending" ? pendingRequests : historyRequests;
-
-  const filtered = tabSource.filter((r) => {
-    if (activeTab === "history" && statusFilter !== "all" && r.status !== statusFilter) return false;
-    const q = searchQuery.toLowerCase();
-    return !q || r.email.toLowerCase().includes(q) || (r.profiles?.full_name ?? "").toLowerCase().includes(q) || r.user_role.toLowerCase().includes(q) || (r.schools?.name ?? "").toLowerCase().includes(q) || (r.approved_by_name ?? "").toLowerCase().includes(q);
-  });
-
-  const pendingCount = pendingRequests.length;
-  const historyCount = historyRequests.length;
+  // Search/status filtering now happens server-side (see loadRequests), so
+  // `requests` already reflects the current tab + filters.
+  const filtered = Array.isArray(requests) ? requests : [];
 
   return (
     <div className="p-8 bg-white">
@@ -218,7 +249,7 @@ export default function PasswordResetRequestsPage() {
           onClick={() => setActiveTab("history")}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === "history" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
         >
-          Password Reset History {historyCount > 0 && <span className="ml-1.5 text-xs bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">{historyCount}</span>}
+          Password Reset History {activeTab === "history" && total > 0 && <span className="ml-1.5 text-xs bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">{total}</span>}
         </button>
       </div>
 
@@ -226,7 +257,7 @@ export default function PasswordResetRequestsPage() {
       <div className="flex gap-3 mb-5">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input placeholder="Search by email, name, role, school, approver…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          <Input placeholder="Search by email, name, role, school, approver…" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="pl-10" />
         </div>
         {activeTab === "history" && (
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
@@ -248,8 +279,8 @@ export default function PasswordResetRequestsPage() {
             <h2 className="text-base font-semibold text-gray-900">{activeTab === "pending" ? "Pending Requests" : "Password Reset History"}</h2>
             <p className="text-xs text-gray-400 mt-0.5">
               {activeTab === "pending"
-                ? `${filtered.length} pending request${filtered.length !== 1 ? "s" : ""} awaiting review`
-                : `${filtered.length} resolved request${filtered.length !== 1 ? "s" : ""}`}
+                ? `${total} pending request${total !== 1 ? "s" : ""} awaiting review`
+                : `${total} resolved request${total !== 1 ? "s" : ""}`}
             </p>
           </div>
         </div>
@@ -336,6 +367,33 @@ export default function PasswordResetRequestsPage() {
               ))}
             </TableBody>
           </Table>
+        )}
+
+        {/* Pagination */}
+        {total > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-5 py-3 border-t text-sm text-gray-600">
+            <span>
+              {Math.min(pageOffset + 1, total)}–{Math.min(pageOffset + PAGE_SIZE, total)} of {total}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPageOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                disabled={pageOffset === 0}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPageOffset((o) => o + PAGE_SIZE)}
+                disabled={pageOffset + PAGE_SIZE >= total}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 

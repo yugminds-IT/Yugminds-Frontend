@@ -18,9 +18,7 @@ import {
   RefreshCw,
   Undo2,
   Loader2,
-  School,
   Users,
-  User,
   BookOpen,
   AlertTriangle,
 } from "lucide-react";
@@ -42,10 +40,13 @@ type TrashData = {
 
 const EMPTY: TrashData = { students: [], teachers: [], schools: [], courses: [] };
 
+// Students and schools are deleted immediately and permanently elsewhere in
+// the admin UI (AdminStudentsService.delete / AdminSchoolsService.delete
+// both intentionally hard-delete, never setting deletedAt) — they can NEVER
+// populate here, so showing them as recoverable tabs would be misleading.
+// Only teachers and courses are genuinely soft-deleted and restorable.
 const TABS: Array<{ key: keyof TrashData; label: string; icon: React.ReactNode }> = [
-  { key: "students", label: "Students", icon: <User className="h-4 w-4" /> },
   { key: "teachers", label: "Teachers", icon: <Users className="h-4 w-4" /> },
-  { key: "schools", label: "Schools", icon: <School className="h-4 w-4" /> },
   { key: "courses", label: "Courses", icon: <BookOpen className="h-4 w-4" /> },
 ];
 
@@ -119,8 +120,10 @@ export default function TrashPage() {
     }
   };
 
-  const totalCount =
-    data.students.length + data.teachers.length + data.schools.length + data.courses.length;
+  // Only teachers/courses can ever be non-empty (see TABS comment above) —
+  // students/schools are still fetched from the API for forward-compat but
+  // deliberately excluded from the displayed total and tabs.
+  const totalCount = data.teachers.length + data.courses.length;
 
   return (
     <div className="p-4 md:p-6 lg:p-8" style={{ minHeight: "100vh", backgroundColor: "#f9fafb" }}>
@@ -131,7 +134,8 @@ export default function TrashPage() {
             Trash
           </h1>
           <p className="text-gray-600 mt-2">
-            Deleted records are kept here and can be restored. Purging is permanent.
+            Deleted teachers and courses are kept here and can be restored — purging is permanent.
+            Students and schools are deleted immediately and cannot be recovered.
           </p>
         </div>
         <Button variant="outline" onClick={load} disabled={loading} className="flex items-center gap-2">
@@ -155,11 +159,11 @@ export default function TrashPage() {
           <CardContent className="py-16 text-center text-gray-500">
             <Trash2 className="h-12 w-12 mx-auto mb-4 text-gray-300" />
             <h3 className="text-lg font-medium text-gray-900 mb-1">Trash is empty</h3>
-            <p>Deleted students, teachers, schools, and courses will appear here.</p>
+            <p>Deleted teachers and courses will appear here. Students and schools are deleted immediately, not moved to trash.</p>
           </CardContent>
         </Card>
       ) : (
-        <Tabs defaultValue="students" className="space-y-4">
+        <Tabs defaultValue="teachers" className="space-y-4">
           <TabsList>
             {TABS.map((t) => (
               <TabsTrigger key={t.key} value={t.key} className="flex items-center gap-2">
@@ -178,11 +182,9 @@ export default function TrashPage() {
                 <CardHeader>
                   <CardTitle className="text-lg">Deleted {t.label.toLowerCase()}</CardTitle>
                   <CardDescription>
-                    {t.key === "schools"
-                      ? "Restoring a school also restores its trashed users."
-                      : t.key === "courses"
-                        ? "Courses are restored unpublished — re-publish when ready."
-                        : "Restoring reactivates the account immediately."}
+                    {t.key === "courses"
+                      ? "Courses are restored unpublished — re-publish when ready."
+                      : "Restoring reactivates the account immediately."}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">

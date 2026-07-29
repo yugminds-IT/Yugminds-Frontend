@@ -111,6 +111,7 @@ export default function SchoolAdminManagement() {
   const [formDataLoaded, setFormDataLoaded] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showTempPassword, setShowTempPassword] = useState(false);
 
   // Load saved form data in useEffect to avoid setState during render (which would update AdminLayout)
   useEffect(() => {
@@ -606,13 +607,24 @@ export default function SchoolAdminManagement() {
             </div>
             <div>
               <Label htmlFor="temp_password">Temporary Password</Label>
-              <Input
-                id="temp_password"
-                type="password"
-                value={formData.temp_password ?? ""}
-                onChange={(e) => handleInputChange('temp_password', e.target.value)}
-                placeholder="Enter temporary password"
-              />
+              <div className="relative">
+                <Input
+                  id="temp_password"
+                  type={showTempPassword ? "text" : "password"}
+                  value={formData.temp_password ?? ""}
+                  onChange={(e) => handleInputChange('temp_password', e.target.value)}
+                  placeholder="Enter temporary password"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowTempPassword(!showTempPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={showTempPassword ? "Hide password" : "Show password"}
+                >
+                  {showTempPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {formErrors.temp_password && <p className="text-sm text-red-600 mt-1">{formErrors.temp_password}</p>}
             </div>
           </div>

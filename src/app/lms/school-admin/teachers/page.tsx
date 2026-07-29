@@ -36,6 +36,7 @@ interface Teacher {
   created_at?: string;
   teacher_schools: {
     grades_assigned?: string[];
+    sections_assigned?: string[];
     grade_sections_assigned?: string | Array<{ grade: string; sections: string[] }>;
     subjects?: string[];
     working_days_per_week?: number;
@@ -53,6 +54,15 @@ function mapTeacherToTableRow(teacher: Teacher): SchoolAdminTeacherTableRow {
   const specializationDisplay = teacher.specialization?.trim() || "";
   const leavesCount = teacher.leaves_taken ?? 0;
   const statusLabel = teacher.status || "Active";
+  const school = teacher.teacher_schools?.[0];
+  const grades = school?.grades_assigned ?? [];
+  const sections = school?.sections_assigned ?? [];
+  const subjects = school?.subjects ?? [];
+  const classesDisplay =
+    grades.length || sections.length
+      ? `${grades.join(", ") || "—"}${sections.length ? ` (${sections.join(", ")})` : ""}`
+      : "—";
+  const subjectsDisplay = subjects.join(", ") || "—";
   return {
     id,
     nameDisplay,
@@ -62,7 +72,9 @@ function mapTeacherToTableRow(teacher: Teacher): SchoolAdminTeacherTableRow {
     leavesDisplay: `${leavesCount} day${leavesCount === 1 ? "" : "s"}`,
     leavesCount,
     statusLabel,
-    searchBlob: [nameDisplay, emailDisplay, qualificationDisplay, specializationDisplay, statusLabel]
+    classesDisplay,
+    subjectsDisplay,
+    searchBlob: [nameDisplay, emailDisplay, qualificationDisplay, specializationDisplay, statusLabel, classesDisplay, subjectsDisplay]
       .join(" ")
       .toLowerCase(),
   };

@@ -24,10 +24,10 @@ interface CertInfo {
   course_title: string;
   certificate_name: string;
   issued_at: string;
-  status: "active" | "pending";
+  status: "active" | "pending" | "revoked" | "broken";
 }
 
-type VerifyState = "idle" | "loading" | "valid" | "invalid";
+type VerifyState = "idle" | "loading" | "valid" | "invalid" | "error";
 
 export default function RobocodersVerifyPage() {
   const [input, setInput] = useState("");
@@ -50,12 +50,19 @@ export default function RobocodersVerifyPage() {
       setCert(d.certificate);
       setState(d.valid ? "valid" : "invalid");
     } catch (err: unknown) {
-      const msg =
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (err as any)?.response?.data?.message ||
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (err as any)?.message ||
-        "Certificate not found";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = err as any;
+      // No `response` means the request never got an answer from the server
+      // at all (network error, timeout, CORS) — that's NOT the same thing as
+      // the backend confirming the certificate doesn't exist, and must not
+      // be shown as "Not Found" (a genuine cert holder hitting a transient
+      // outage would otherwise see their real certificate reported as fake).
+      if (!e?.response) {
+        setErrorMsg(e?.message || "Could not reach the verification server.");
+        setState("error");
+        return;
+      }
+      const msg = e?.response?.data?.message || "Certificate not found";
       setErrorMsg(msg);
       setState("invalid");
     }
@@ -168,19 +175,39 @@ export default function RobocodersVerifyPage() {
           </div>
         )}
 
-        {/* Invalid / not found */}
+        {/* Invalid / not found / revoked / broken */}
         {state === "invalid" && (
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className={`px-6 py-5 flex items-center gap-4 ${cert?.status === "pending" ? "bg-gradient-to-r from-amber-500 to-orange-500" : "bg-gradient-to-r from-red-500 to-rose-500"}`}>
+            <div
+              className={`px-6 py-5 flex items-center gap-4 ${
+                cert?.status === "pending"
+                  ? "bg-gradient-to-r from-amber-500 to-orange-500"
+                  : cert?.status === "revoked"
+                    ? "bg-gradient-to-r from-gray-600 to-gray-700"
+                    : "bg-gradient-to-r from-red-500 to-rose-500"
+              }`}
+            >
               <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 {cert?.status === "pending" ? <Clock className="h-8 w-8 text-white" /> : <XCircle className="h-8 w-8 text-white" />}
               </div>
               <div>
                 <p className="text-white font-bold text-xl">
-                  {cert?.status === "pending" ? "Certificate Pending" : "Not Found"}
+                  {cert?.status === "pending"
+                    ? "Certificate Pending"
+                    : cert?.status === "revoked"
+                      ? "Certificate Revoked"
+                      : cert?.status === "broken"
+                        ? "Certificate Unavailable"
+                        : "Not Found"}
                 </p>
                 <p className="text-white/80 text-sm">
-                  {cert?.status === "pending" ? "This certificate is still being generated" : "No valid certificate found for this ID"}
+                  {cert?.status === "pending"
+                    ? "This certificate is still being generated"
+                    : cert?.status === "revoked"
+                      ? "This certificate has been revoked and is no longer valid"
+                      : cert?.status === "broken"
+                        ? "This certificate exists but could not be rendered"
+                        : "No valid certificate found for this ID"}
                 </p>
               </div>
             </div>
@@ -190,6 +217,19 @@ export default function RobocodersVerifyPage() {
                 <p className="text-sm text-gray-600">
                   The certificate has been issued but is still being processed. Please check back in a few moments.
                 </p>
+              ) : cert?.status === "revoked" ? (
+                <div className="space-y-2 text-sm text-gray-600">
+                  <p>
+                    Certificate <code className="bg-gray-100 px-1.5 py-0.5 rounded font-mono text-xs">{cert.short_id}</code>{" "}
+                    was issued to <strong>{cert.student_name}</strong> for <strong>{cert.course_title}</strong>, but has since
+                    been revoked by the issuer.
+                  </p>
+                </div>
+              ) : cert?.status === "broken" ? (
+                <p className="text-sm text-gray-600">
+                  This certificate ID exists in our records but its file could not be generated. Please contact the issuing
+                  school or Yugminds support.
+                </p>
               ) : (
                 <div className="space-y-2 text-sm text-gray-600">
                   <p>
@@ -198,12 +238,38 @@ export default function RobocodersVerifyPage() {
                   </p>
                   <ul className="text-xs text-gray-500 list-disc ml-4 space-y-1 mt-2">
                     <li>Check the ID is entered correctly (format: YM-XXXXXXXX)</li>
-                    <li>The certificate may have been revoked</li>
                     <li>The certificate was not issued by Robocoders</li>
                   </ul>
                   {errorMsg && <p className="text-xs text-red-500 mt-1">{errorMsg}</p>}
                 </div>
               )}
+              <div className="pt-2 border-t flex justify-end">
+                <button onClick={handleReset} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                  Try again <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Couldn't reach the server — distinct from a genuine "not found" */}
+        {state === "error" && (
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div className="px-6 py-5 flex items-center gap-4 bg-gradient-to-r from-gray-500 to-gray-600">
+              <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <XCircle className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <p className="text-white font-bold text-xl">Couldn&apos;t Verify Right Now</p>
+                <p className="text-white/80 text-sm">This doesn&apos;t mean your certificate is invalid</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                We couldn&apos;t reach the verification server just now. This is usually temporary —
+                please try again in a moment.
+              </p>
+              {errorMsg && <p className="text-xs text-gray-400">{errorMsg}</p>}
               <div className="pt-2 border-t flex justify-end">
                 <button onClick={handleReset} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
                   Try again <ArrowRight className="h-3.5 w-3.5" />

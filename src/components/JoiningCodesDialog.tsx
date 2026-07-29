@@ -22,7 +22,8 @@ import {
   Plus,
   Edit,
   Save,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react";
 import { Switch } from "./ui/switch";
 import { Checkbox } from "./ui/checkbox";
@@ -44,6 +45,7 @@ interface JoiningCode {
   code: string;
   school_id: string;
   grade: string;
+  section?: string | null;
   is_active: boolean;
   usage_type: 'single' | 'multiple';
   times_used: number;
@@ -77,6 +79,11 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
   // Add new code form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
+  // grade name -> selected section names. A grade absent here (or with an
+  // empty array) generates one whole-grade code, same as before; a grade
+  // with entries generates one code PER selected section instead.
+  const [selectedSections, setSelectedSections] = useState<Record<string, string[]>>({});
+  const [expandedGradeSections, setExpandedGradeSections] = useState<Set<string>>(new Set());
   const [newCodeUsageType, setNewCodeUsageType] = useState<'single' | 'multiple'>('multiple');
   const [newCodeMaxUses, setNewCodeMaxUses] = useState<number | null>(null);
   
@@ -84,6 +91,8 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [pendingBulkGrades, setPendingBulkGrades] = useState<string[] | null>(null);
   const [regenerateTarget, setRegenerateTarget] = useState<JoiningCode | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<JoiningCode | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const { schools } = useAdminSchools();
   const schoolGrades = useMemo(() => {
@@ -96,6 +105,44 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
       (item as { school?: { grades_offered?: string[] } })?.school?.grades_offered;
     return Array.isArray(grades) ? grades : [];
   }, [schoolId, schools]);
+
+  // grade name -> real Section rows for that grade (only grades actually
+  // configured for the school have these — a grade the school "isn't
+  // configured for" has no sections to pick from, and generating a code for
+  // it stays whole-grade-only, same as before).
+  const sectionsByGradeName = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; name: string }>>();
+    if (!schoolId || !schools?.length) return map;
+    const item = (schools as Array<Record<string, unknown>>).find((s) => s.id === schoolId);
+    const gradeObjs = item?.grades;
+    if (Array.isArray(gradeObjs)) {
+      for (const g of gradeObjs as Array<{ name?: string; sections?: Array<{ id: string; name: string }> }>) {
+        if (g?.name && Array.isArray(g.sections)) {
+          map.set(g.name, g.sections);
+        }
+      }
+    }
+    return map;
+  }, [schoolId, schools]);
+
+  const toggleGradeSectionsExpanded = (grade: string) => {
+    setExpandedGradeSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(grade)) next.delete(grade);
+      else next.add(grade);
+      return next;
+    });
+  };
+
+  const toggleSectionForGrade = (grade: string, sectionName: string) => {
+    setSelectedSections((prev) => {
+      const current = prev[grade] ?? [];
+      const next = current.includes(sectionName)
+        ? current.filter((s) => s !== sectionName)
+        : [...current, sectionName];
+      return { ...prev, [grade]: next };
+    });
+  };
 
   useEffect(() => {
     if (isOpen && schoolId) {
@@ -135,28 +182,50 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
         return [...prev, grade];
       }
     });
+    // Unchecking a grade drops any section picks made for it too.
+    setSelectedSections((prev) => {
+      if (!(grade in prev)) return prev;
+      const next = { ...prev };
+      delete next[grade];
+      return next;
+    });
+    setExpandedGradeSections((prev) => {
+      if (!prev.has(grade)) return prev;
+      const next = new Set(prev);
+      next.delete(grade);
+      return next;
+    });
   };
 
   const runBulkGenerate = async () => {
     setGenerating(true);
     try {
+      // Only pass sections for grades that actually have a selection — an
+      // empty/absent entry means "whole grade", same as before.
+      const sections = Object.fromEntries(
+        Object.entries(selectedSections).filter(([, names]) => names.length > 0),
+      );
       const { data } = await adminApi.joiningCodes.create({
         schoolId,
         grades: selectedGrades,
+        sections,
         usageType: newCodeUsageType,
         maxUses: newCodeMaxUses,
       });
       const payload = (data as Record<string, unknown>) ?? {};
-      const generatedCount = Object.keys(
-        (payload.codes as Record<string, unknown>) || {},
-      ).length;
+      const results = (payload.results as unknown[] | undefined) ?? [];
+      const generatedCount =
+        results.length ||
+        Object.keys((payload.codes as Record<string, unknown>) || {}).length;
       showNotification(
         "success",
         `Successfully generated ${generatedCount} joining code(s) for ${
-          generatedCount === 1 ? selectedGrades[0] : `${generatedCount} grades`
+          generatedCount === 1 ? selectedGrades[0] : `${selectedGrades.length} grade(s)`
         }!`,
       );
       setSelectedGrades([]);
+      setSelectedSections({});
+      setExpandedGradeSections(new Set());
       setNewCodeUsageType("multiple");
       setNewCodeMaxUses(null);
       setShowAddForm(false);
@@ -306,6 +375,21 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
     }
   };
 
+  const runDelete = async (code: JoiningCode) => {
+    setDeleting(code.id);
+    try {
+      await adminApi.joiningCodes.delete(code.id);
+      showNotification("success", "Code deleted permanently");
+      setDeleteTarget(null);
+      fetchCodes();
+    } catch (error) {
+      console.error("Error deleting code:", error);
+      showNotification("error", "Failed to delete code");
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   return (
     <>
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -423,6 +507,8 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
                         onClick={() => {
                           setShowAddForm(false);
                           setSelectedGrades([]);
+                          setSelectedSections({});
+                          setExpandedGradeSections(new Set());
                           setNewCodeUsageType('multiple');
                           setNewCodeMaxUses(null);
                         }}
@@ -498,6 +584,60 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
                       )}
                     </div>
 
+                    {/* Section targeting — only offered for selected grades that actually
+                        have real Section rows for this school; a grade with no sections
+                        picked still generates a single whole-grade code, same as before. */}
+                    {selectedGrades.some((g) => (sectionsByGradeName.get(g)?.length ?? 0) > 0) && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">
+                          Target Specific Sections <span className="text-gray-400 font-normal">(optional)</span>
+                        </Label>
+                        <p className="text-xs text-gray-500">
+                          Leave a grade&apos;s sections unchecked to generate one code for the whole grade. Pick
+                          specific sections to generate one code per section instead — students who use it are
+                          enrolled directly into that section.
+                        </p>
+                        <div className="space-y-2">
+                          {selectedGrades
+                            .filter((g) => (sectionsByGradeName.get(g)?.length ?? 0) > 0)
+                            .map((grade) => {
+                              const sections = sectionsByGradeName.get(grade) ?? [];
+                              const chosen = selectedSections[grade] ?? [];
+                              const isOpen = expandedGradeSections.has(grade);
+                              return (
+                                <div key={grade} className="rounded-lg border bg-gray-50">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleGradeSectionsExpanded(grade)}
+                                    className="flex w-full items-center justify-between px-3 py-2 text-left"
+                                  >
+                                    <span className="text-sm font-medium text-gray-800">{grade}</span>
+                                    <span className="text-xs text-gray-500">
+                                      {chosen.length === 0
+                                        ? "Whole grade"
+                                        : `${chosen.length} section${chosen.length === 1 ? "" : "s"} selected`}
+                                    </span>
+                                  </button>
+                                  {isOpen && (
+                                    <div className="flex flex-wrap gap-3 px-3 pb-3 border-t pt-2">
+                                      {sections.map((sec) => (
+                                        <label key={sec.id} className="flex items-center gap-1.5 cursor-pointer">
+                                          <Checkbox
+                                            checked={chosen.includes(sec.name)}
+                                            onCheckedChange={() => toggleSectionForGrade(grade, sec.name)}
+                                          />
+                                          <span className="text-xs text-gray-700">{sec.name}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Usage Type Configuration */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border rounded-lg bg-gray-50">
                       <div className="space-y-2">
@@ -541,6 +681,8 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
                         onClick={() => {
                           setShowAddForm(false);
                           setSelectedGrades([]);
+                          setSelectedSections({});
+                          setExpandedGradeSections(new Set());
                           setNewCodeUsageType('multiple');
                           setNewCodeMaxUses(null);
                         }}
@@ -612,6 +754,11 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
                                 <Badge variant="outline" className="font-medium">
                                   {code.grade}
                                 </Badge>
+                                {code.section && (
+                                  <Badge variant="secondary" className="ml-1 font-normal">
+                                    Sec {code.section}
+                                  </Badge>
+                                )}
                               </TableCell>
                               <TableCell>
                                 {editingCode === code.id ? (
@@ -734,6 +881,20 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
                                           <RefreshCw className="h-3 w-3" />
                                         )}
                                       </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setDeleteTarget(code)}
+                                        disabled={deleting === code.id}
+                                        title="Delete code permanently"
+                                        className="text-red-600 hover:bg-red-50"
+                                      >
+                                        {deleting === code.id ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-3 w-3" />
+                                        )}
+                                      </Button>
                                     </>
                                   )}
                                 </div>
@@ -846,6 +1007,36 @@ export default function JoiningCodesDialog({ isOpen, onClose, schoolId, schoolNa
             {regenerateTarget && regenerating === regenerateTarget.id
               ? "Working…"
               : "Regenerate"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
+      open={deleteTarget !== null}
+      onOpenChange={(open) => !open && setDeleteTarget(null)}
+    >
+      <DialogContent className="bg-white sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete joining code permanently?</DialogTitle>
+          <DialogDescription>
+            {deleteTarget
+              ? `This permanently removes the code "${deleteTarget.code}" for ${deleteTarget.grade}. This cannot be undone — if you just want to stop it from being used, toggle it inactive instead.`
+              : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={!deleteTarget || deleting === deleteTarget.id}
+            onClick={() => {
+              if (deleteTarget) void runDelete(deleteTarget);
+            }}
+          >
+            {deleteTarget && deleting === deleteTarget.id ? "Deleting…" : "Delete Permanently"}
           </Button>
         </DialogFooter>
       </DialogContent>

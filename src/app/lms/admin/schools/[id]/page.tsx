@@ -127,7 +127,7 @@ function useSchoolLicenses(schoolId: string) {
     queryFn: async (): Promise<Array<{ isActive?: boolean; is_active?: boolean }>> => {
       await ensureAccessToken();
       try {
-        const { data } = await adminApi.licenses.list(schoolId);
+        const { data } = await adminApi.licenses.list({ schoolId });
         return ((data as { licenses?: Array<{ isActive?: boolean; is_active?: boolean }> })?.licenses ?? []);
       } catch {
         return [];

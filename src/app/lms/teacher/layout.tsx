@@ -16,6 +16,9 @@ import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 
+/** Sentinel stored/selected in place of a real school id to mean "combine data across every assigned school" — every teacher hook already treats an omitted school id as "aggregate across all schools." */
+const ALL_SCHOOLS_VALUE = "__all__";
+
 /**
  * Teacher Dashboard Layout
  * 
@@ -36,6 +39,16 @@ export default function TeacherLayout({
   const [schools, setSchools] = useState<School[]>([]);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [loading, setLoading] = useState(true);
+  // Which of the teacher's schools they're actually on duty at today —
+  // resolved from TeacherWorkingDaysHistory + SchoolCalendar, fetched once
+  // across all assigned schools so the switcher can show "today's school"
+  // instead of just whatever was last selected (localStorage-based, with
+  // no relation to the actual weekly schedule).
+  const [todayWorkStatus, setTodayWorkStatus] = useState<{
+    working: string[];
+    holiday: string[];
+    off: string[];
+  } | null>(null);
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const router = useRouter();
   const { count: unreadNotificationCount } = useUnreadNotificationCount({ enabled: !loading, role: 'teacher' });
@@ -228,7 +241,7 @@ export default function TeacherLayout({
           
           // Restore saved school selection, otherwise use first school
           if (schoolsData.length > 0) {
-            let schoolToSelect = schoolsData[0];
+            let schoolToSelect: School | null = schoolsData[0];
 
             // localStorage survives new tabs; fall back to the old
             // sessionStorage key so existing sessions keep their selection.
@@ -237,7 +250,9 @@ export default function TeacherLayout({
                 const savedSchoolId =
                   localStorage.getItem('teacherSelectedSchoolId') ||
                   sessionStorage.getItem('selectedSchoolId');
-                if (savedSchoolId) {
+                if (savedSchoolId === ALL_SCHOOLS_VALUE && schoolsData.length > 1) {
+                  schoolToSelect = null;
+                } else if (savedSchoolId) {
                   const savedSchool = schoolsData.find((s: School) => s.id === savedSchoolId);
                   if (savedSchool) {
                     schoolToSelect = savedSchool;
@@ -251,8 +266,9 @@ export default function TeacherLayout({
             setSelectedSchool(schoolToSelect);
             if (typeof window !== 'undefined') {
               try {
-                localStorage.setItem('teacherSelectedSchoolId', schoolToSelect.id);
-                sessionStorage.setItem('selectedSchoolId', schoolToSelect.id);
+                const valueToStore = schoolToSelect?.id ?? ALL_SCHOOLS_VALUE;
+                localStorage.setItem('teacherSelectedSchoolId', valueToStore);
+                sessionStorage.setItem('selectedSchoolId', valueToStore);
               } catch (err) {
                 console.warn('Error persisting school selection:', err);
               }
@@ -261,6 +277,30 @@ export default function TeacherLayout({
           setLoading(false);
           isInitialMountRef.current = false; // Mark initial mount as complete
           userLoadedRef.current = true; // Mark user as loaded
+
+          if (schoolsData.length > 1) {
+            teacherApi.dashboard
+              .get()
+              .then(({ data }) => {
+                const meta = (data as {
+                  meta?: {
+                    working_school_ids_today?: string[];
+                    holiday_school_ids_today?: string[];
+                    off_schedule_school_ids_today?: string[];
+                  };
+                })?.meta;
+                if (meta && mounted) {
+                  setTodayWorkStatus({
+                    working: meta.working_school_ids_today ?? [],
+                    holiday: meta.holiday_school_ids_today ?? [],
+                    off: meta.off_schedule_school_ids_today ?? [],
+                  });
+                }
+              })
+              .catch(() => {
+                /* Non-critical — switcher just won't show today's status. */
+              });
+          }
         }
       } catch (error) {
         console.error('Error loading user data:', error);
@@ -358,6 +398,18 @@ export default function TeacherLayout({
   };
 
 
+  const handleSelectAllSchools = () => {
+    setSelectedSchool(null);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('teacherSelectedSchoolId', ALL_SCHOOLS_VALUE);
+        sessionStorage.setItem('selectedSchoolId', ALL_SCHOOLS_VALUE);
+      } catch (err) {
+        console.warn('Error persisting school selection:', err);
+      }
+    }
+  };
+
   const handleSchoolChange = (school: TeacherSchool | null) => {
     if (!school?.id) return;
     setSelectedSchool(school as School);
@@ -411,24 +463,69 @@ export default function TeacherLayout({
         {/* School Selector Topbar */}
         {schools.length > 1 && (
           <div className="bg-white border-b border-gray-200 px-6 py-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-4">
                 <span className="text-sm font-medium text-gray-700">Active School:</span>
                 <select
-                  value={selectedSchool?.id || ''}
+                  value={selectedSchool?.id || ALL_SCHOOLS_VALUE}
                   onChange={(e) => {
+                    if (e.target.value === ALL_SCHOOLS_VALUE) {
+                      handleSelectAllSchools();
+                      return;
+                    }
                     const school = schools.find((s: School) => s.id === e.target.value);
                     if (school) handleSchoolChange(school);
                   }}
                   className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  {schools.map((school) => (
-                    <option key={school.id} value={school.id}>
-                      {school.name} {school.school_code ? `(${school.school_code})` : ''}
-                    </option>
-                  ))}
+                  <option value={ALL_SCHOOLS_VALUE}>All Schools (combined)</option>
+                  {schools.map((school) => {
+                    const isSunday = new Date().getDay() === 0;
+                    const status = todayWorkStatus?.working.includes(school.id)
+                      ? ' — working today'
+                      : todayWorkStatus?.holiday.includes(school.id)
+                        ? ' — holiday today'
+                        : todayWorkStatus?.off.includes(school.id)
+                          ? isSunday
+                            ? ' — Sunday (weekly off)'
+                            : ' — off today'
+                          : '';
+                    return (
+                      <option key={school.id} value={school.id}>
+                        {school.name} {school.school_code ? `(${school.school_code})` : ''}
+                        {status}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
+              {!selectedSchool && (
+                <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1">
+                  Showing combined data across all {schools.length} of your schools.
+                </div>
+              )}
+              {todayWorkStatus &&
+                selectedSchool &&
+                !todayWorkStatus.working.includes(selectedSchool.id) &&
+                todayWorkStatus.working.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1">
+                    <span>
+                      You&apos;re not scheduled at {selectedSchool.name} today.
+                    </span>
+                    <button
+                      type="button"
+                      className="underline font-medium hover:text-amber-900"
+                      onClick={() => {
+                        const workingSchool = schools.find(
+                          (s) => s.id === todayWorkStatus.working[0],
+                        );
+                        if (workingSchool) handleSchoolChange(workingSchool);
+                      }}
+                    >
+                      Switch to {schools.find((s) => s.id === todayWorkStatus.working[0])?.name}
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         )}

@@ -247,13 +247,24 @@ export default function SchoolsManagement() {
     }
   }, [searchParams, router]);
 
-  const { schools: rawSchools, isLoading, error, refetch } = useAdminSchools();
+  const { schools: rawSchools, data: schoolsData, isLoading, error, refetch } = useAdminSchools();
   const invalidateSchools = useInvalidateAdminSchools();
 
   const schools = useMemo(
     () => (rawSchools ?? []).map((item) => mapApiSchoolToSchool(item as Record<string, unknown>)),
     [rawSchools],
   );
+
+  // The backend caps a single list response at 200 rows — warn rather than
+  // silently show "Schools (200)" with no indication more exist.
+  useEffect(() => {
+    const total = schoolsData?.total;
+    if (typeof total === "number" && total > rawSchools.length) {
+      toast.error(
+        `Showing ${rawSchools.length} of ${total} schools — the list is capped. Contact engineering to raise the limit.`,
+      );
+    }
+  }, [schoolsData?.total, rawSchools.length]);
   const schoolTableRows = useMemo(() => schools.map(mapSchoolToRow), [schools]);
   const connectionError = !!error;
 

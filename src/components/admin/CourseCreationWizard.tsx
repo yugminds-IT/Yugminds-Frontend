@@ -11,19 +11,17 @@ import { Badge } from "../ui/badge";
 import { Progress } from "../ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { 
-  ArrowLeft, 
-  ArrowRight, 
-  CheckCircle2, 
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
   Circle,
   BookOpen,
-  School,
   FileText,
   Eye,
   AlertCircle,
   Loader2
 } from "lucide-react";
-import { SchoolGradeSelector } from "./SchoolGradeSelector";
 import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
 import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
@@ -52,8 +50,6 @@ interface BasicInfo {
 interface WizardDraft {
   savedAt: number;
   basicInfo: BasicInfo;
-  selectedSchoolIds: string[];
-  selectedGrades: string[];
   chapters: Chapter[];
   chapterContents: Record<string, ChapterContent[]>;
   assignments: Record<string, Assignment>;
@@ -120,11 +116,12 @@ interface CourseCreationWizardProps {
   onCancel: () => void;
 }
 
+// The builder is content-only. School / grade / section targeting is done
+// separately in the Publish flow (setAccess), so there is no school step here.
 const STEPS = [
   { id: 1, title: "Basic Information", icon: BookOpen },
-  { id: 2, title: "School & Grade", icon: School },
-  { id: 3, title: "Chapters & Content", icon: FileText },
-  { id: 4, title: "Review & Publish", icon: Eye },
+  { id: 2, title: "Chapters & Content", icon: FileText },
+  { id: 3, title: "Review", icon: Eye },
 ];
 
 export function CourseCreationWizard({
@@ -155,14 +152,6 @@ export function CourseCreationWizard({
     },
   );
 
-  // Step 2: School & Grade
-  const [selectedSchoolIds, setSelectedSchoolIds] = useState<string[]>(
-    draft?.selectedSchoolIds ?? initialData?.school_ids ?? []
-  );
-  const [selectedGrades, setSelectedGrades] = useState<string[]>(
-    draft?.selectedGrades ?? initialData?.grades ?? []
-  );
-
   // Step 3: Chapters
   const [chapters, setChapters] = useState<Chapter[]>(
     draft?.chapters ?? initialData?.chapters ?? []
@@ -191,17 +180,13 @@ export function CourseCreationWizard({
     const hasContent =
       basicInfo.name.trim() !== "" ||
       basicInfo.description.trim() !== "" ||
-      chapters.length > 0 ||
-      selectedSchoolIds.length > 0 ||
-      selectedGrades.length > 0;
+      chapters.length > 0;
     if (!hasContent) {
       clearWizardDraft();
       return;
     }
     saveWizardDraft({
       basicInfo,
-      selectedSchoolIds,
-      selectedGrades,
       chapters,
       chapterContents,
       assignments,
@@ -210,8 +195,6 @@ export function CourseCreationWizard({
   }, [
     courseId,
     basicInfo,
-    selectedSchoolIds,
-    selectedGrades,
     chapters,
     chapterContents,
     assignments,
@@ -254,17 +237,6 @@ export function CourseCreationWizard({
         return true;
       
       case 2:
-        if (selectedSchoolIds.length === 0) {
-          setError("Please select at least one school");
-          return false;
-        }
-        if (selectedGrades.length === 0) {
-          setError("Please select at least one grade");
-          return false;
-        }
-        return true;
-      
-      case 3:
         if (chapters.length === 0) {
           setError("Please add at least one chapter");
           return false;
@@ -277,10 +249,10 @@ export function CourseCreationWizard({
           }
         }
         return true;
-      
-      case 4:
+
+      case 3:
         return true; // Review step is always valid
-      
+
       default:
         return true;
     }
@@ -329,8 +301,6 @@ export function CourseCreationWizard({
       thumbnail_url: "",
       difficulty_level: "Beginner",
     });
-    setSelectedSchoolIds([]);
-    setSelectedGrades([]);
     setChapters([]);
     setChapterContents({});
     setAssignments({});
@@ -407,8 +377,6 @@ export function CourseCreationWizard({
         prerequisites_text: basicInfo.prerequisites_text || undefined,
         thumbnail_url: basicInfo.thumbnail_url || undefined,
         difficulty_level: basicInfo.difficulty_level || "Beginner",
-        school_ids: selectedSchoolIds,
-        grades: selectedGrades,
         chapters: chapters.map((ch: Chapter) => ({
           ...ch,
           name: ch.name.trim(),
@@ -442,7 +410,7 @@ export function CourseCreationWizard({
   const progress = (currentStep / STEPS.length) * 100;
 
   return (
-    <Dialog open={true} onOpenChange={() => {}}>
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onCancel(); }}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
@@ -665,17 +633,6 @@ export function CourseCreationWizard({
           )}
 
           {currentStep === 2 && (
-            <SchoolGradeSelector
-              selectedSchoolIds={selectedSchoolIds}
-              selectedGrades={selectedGrades}
-              onSchoolChange={setSelectedSchoolIds}
-              onGradeChange={setSelectedGrades}
-              required
-              error={error || undefined}
-            />
-          )}
-
-          {currentStep === 3 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -798,10 +755,10 @@ export function CourseCreationWizard({
             </div>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 3 && (
             <div className="space-y-4">
               <h3 className="font-medium text-lg">Review Course Details</h3>
-              
+
               <Card>
                 <CardHeader>
                   <CardTitle>Basic Information</CardTitle>
@@ -851,29 +808,11 @@ export function CourseCreationWizard({
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>School & Grade Assignment</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div>
-                    <span className="font-medium">Schools:</span>{" "}
-                    {selectedSchoolIds.length} school{selectedSchoolIds.length !== 1 ? "s" : ""} selected
-                  </div>
-                  <div>
-                    <span className="font-medium">Grades:</span>{" "}
-                    {selectedGrades.length > 0
-                      ? selectedGrades.map((g) => {
-                          const match = g.match(/(\d+)/);
-                          if (match) return `Grade ${match[1]}`;
-                          if (g === "kindergarten") return "Kindergarten";
-                          if (g === "pre-k") return "Pre-K";
-                          return g;
-                        }).join(", ")
-                      : "None selected"}
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                This saves the course content as a <strong>Draft</strong>. Choose which
+                schools, grades and sections get it — and publish — from the course&apos;s
+                <strong> Publish</strong> action afterward.
+              </div>
 
               <Card>
                 <CardHeader>

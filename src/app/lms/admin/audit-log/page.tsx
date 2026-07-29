@@ -28,6 +28,7 @@ import {
   ChevronRight,
   Loader2,
   ShieldAlert,
+  Download,
 } from "lucide-react";
 import { adminApi } from "@/lib/api/admin.api";
 import SavedViewsBar from "@/components/admin/SavedViewsBar";
@@ -85,6 +86,7 @@ export default function AuditLogPage() {
   const [to, setTo] = useState("");
 
   const [detail, setDetail] = useState<AuditLogRow | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -121,6 +123,32 @@ export default function AuditLogPage() {
     fetchLogs();
   }, [fetchLogs]);
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data } = await adminApi.auditLogs.exportCsv({
+        search: debouncedSearch || undefined,
+        entityType: entityType !== "all" ? entityType : undefined,
+        method: method !== "all" ? method : undefined,
+        from: from ? new Date(from).toISOString() : undefined,
+        to: to ? new Date(`${to}T23:59:59`).toISOString() : undefined,
+      });
+      const blob = data as Blob;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Failed to export audit log.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     adminApi.auditLogs
       .entityTypes()
@@ -140,10 +168,16 @@ export default function AuditLogPage() {
             Every admin change — who did what, to which record, and when.
           </p>
         </div>
-        <Button variant="outline" onClick={fetchLogs} disabled={loading} className="flex items-center gap-2">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={exporting} className="flex items-center gap-2">
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={fetchLogs} disabled={loading} className="flex items-center gap-2">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

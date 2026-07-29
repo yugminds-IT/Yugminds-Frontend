@@ -44,9 +44,14 @@ import { validatePasswordClient } from "../lib/password-validation";
 import { useAutoSaveForm } from "../hooks/useAutoSaveForm";
 import { clearFormData } from "../lib/form-persistence";
 import { adminApi } from "../lib/api/admin.api";
+import WeekdayPicker from "./WeekdayPicker";
 import { useAdminSchools } from "../hooks/useAdminSchools";
 import { toast } from "./ui/toast";
 import { isAxiosError } from "axios";
+
+function todayStr(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
 
 interface AddTeacherDialogProps {
   isOpen: boolean;
@@ -75,6 +80,10 @@ interface SchoolAssignment {
   grade_sections_assigned?: GradeSectionAssignment[];
   subjects: string[];
   working_days_per_week: number;
+  /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
+  working_days: number[];
+  /** When this working-days pattern takes effect (YYYY-MM-DD). */
+  effective_from: string;
   max_students_per_session: number;
   is_primary: boolean;
 }
@@ -223,6 +232,8 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
         grade_sections_assigned: [],
         subjects: [],
         working_days_per_week: 5,
+        working_days: [1, 2, 3, 4, 5],
+        effective_from: todayStr(),
         max_students_per_session: 30,
         is_primary: formData.school_assignments.length === 0 // First school is primary
       };
@@ -313,6 +324,44 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     }));
   };
 
+  /** Selects every grade and every unassigned section for a school in one go (or clears the selection if everything is already selected). */
+  const handleSelectAllForSchool = (schoolId: string) => {
+    const school = schools.find((s: School) => s.id === schoolId);
+    if (!school) return;
+    const gradesWithSections = Array.isArray(school.grades) ? school.grades : [];
+    const sectionAssignments = assignmentsBySchoolId[schoolId] ?? [];
+    const assignedSectionIds = new Set(sectionAssignments.map((a) => a.sectionId));
+
+    const allSelectable: GradeSectionAssignment[] = gradesWithSections.map((gradeObj) => ({
+      grade: gradeObj.name,
+      sections: (gradeObj.sections ?? [])
+        .filter((sec) => !assignedSectionIds.has(sec.id))
+        .map((sec) => sec.name),
+    }));
+    const totalSelectableSections = allSelectable.reduce((sum, g) => sum + g.sections.length, 0);
+
+    setFormData(prev => ({
+      ...prev,
+      school_assignments: prev.school_assignments.map((assignment: SchoolAssignment) => {
+        if (assignment.school_id !== schoolId) return assignment;
+        const currentSelectedCount = (assignment.grade_sections_assigned ?? []).reduce(
+          (sum, gs) => sum + gs.sections.length, 0,
+        );
+        const isEverythingSelected =
+          currentSelectedCount === totalSelectableSections &&
+          assignment.grades_assigned.length === gradesWithSections.length;
+        if (isEverythingSelected) {
+          return { ...assignment, grades_assigned: [], grade_sections_assigned: [] };
+        }
+        return {
+          ...assignment,
+          grades_assigned: allSelectable.map((g) => g.grade),
+          grade_sections_assigned: allSelectable,
+        };
+      }),
+    }));
+  };
+
   const handleSubjectSelection = (schoolId: string, subject: string, checked: boolean) => {
     setFormData(prev => ({
       ...prev,
@@ -374,7 +423,7 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
   };
 
    
-  const handleAssignmentChange = (schoolId: string, field: keyof SchoolAssignment, value: string | number | string[] | GradeSectionAssignment[]) => {
+  const handleAssignmentChange = (schoolId: string, field: keyof SchoolAssignment, value: string | number | string[] | number[] | GradeSectionAssignment[]) => {
     setFormData(prev => ({
       ...prev,
       school_assignments: prev.school_assignments.map((assignment: SchoolAssignment) => {
@@ -426,6 +475,9 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     
     // Check if each selected school has at least one grade with sections
     formData.school_assignments.forEach(assignment => {
+      if (!assignment.working_days || assignment.working_days.length === 0) {
+        newErrors[`working_days_${assignment.school_id}`] = 'Select at least one working day for each school';
+      }
       if (assignment.grades_assigned.length === 0) {
         newErrors[`grades_${assignment.school_id}`] = 'At least one grade must be selected for each school';
       } else {
@@ -737,7 +789,36 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                   <CardContent className="space-y-4">
                     {/* Grade and Section Selection */}
               <div>
-                      <Label>Select Grades and Sections <span className="text-red-500">*</span></Label>
+                      <div className="flex items-center justify-between">
+                        <Label>Select Grades and Sections <span className="text-red-500">*</span></Label>
+                        {(() => {
+                          const school = schools.find((s: School) => s.id === assignment.school_id);
+                          const gradesWithSections = Array.isArray(school?.grades) ? school!.grades! : [];
+                          if (gradesWithSections.length === 0) return null;
+                          const sectionAssignments = assignmentsBySchoolId[assignment.school_id] ?? [];
+                          const assignedSectionIds = new Set(sectionAssignments.map((a) => a.sectionId));
+                          const totalSelectable = gradesWithSections.reduce(
+                            (sum, g) => sum + (g.sections ?? []).filter((sec) => !assignedSectionIds.has(sec.id)).length,
+                            0,
+                          );
+                          const currentSelected = (assignment.grade_sections_assigned ?? []).reduce(
+                            (sum, gs) => sum + gs.sections.length, 0,
+                          );
+                          const isEverythingSelected =
+                            currentSelected === totalSelectable &&
+                            assignment.grades_assigned.length === gradesWithSections.length;
+                          return (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSelectAllForSchool(assignment.school_id)}
+                            >
+                              {isEverythingSelected ? "Clear All" : "Select Entire School"}
+                            </Button>
+                          );
+                        })()}
+                      </div>
                       <div className="mt-2 space-y-4 max-h-96 overflow-y-auto border rounded-md p-3">
                         {(() => {
                           // Check if school is selected
@@ -913,30 +994,44 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
             </div>
 
                     {/* Working Details */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor={`working_days_${assignment.school_id}`}>Working Days per Week</Label>
+                    <div className="mb-4">
+                      <Label>Working Days at This School</Label>
+                      <WeekdayPicker
+                        idPrefix={`working_days_${assignment.school_id}`}
+                        value={assignment.working_days ?? [1, 2, 3, 4, 5]}
+                        onChange={(days) => {
+                          handleAssignmentChange(assignment.school_id, 'working_days', days);
+                          handleAssignmentChange(assignment.school_id, 'working_days_per_week', days.length);
+                        }}
+                      />
+                      {errors[`working_days_${assignment.school_id}`] && (
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors[`working_days_${assignment.school_id}`]}
+                        </p>
+                      )}
+                      <div className="mt-2 max-w-xs">
+                        <Label htmlFor={`effective_from_${assignment.school_id}`} className="text-xs text-gray-500">
+                          Effective from
+                        </Label>
                         <Input
-                          id={`working_days_${assignment.school_id}`}
-                          type="number"
-                          value={assignment.working_days_per_week}
-                          onChange={(e) => handleAssignmentChange(assignment.school_id, 'working_days_per_week', parseInt(e.target.value) || 5)}
-                          min="1"
-                          max="7"
+                          id={`effective_from_${assignment.school_id}`}
+                          type="date"
+                          value={assignment.effective_from ?? todayStr()}
+                          onChange={(e) => handleAssignmentChange(assignment.school_id, 'effective_from', e.target.value)}
                         />
-              </div>
-                <div>
-                        <Label htmlFor={`max_students_${assignment.school_id}`}>Max Students per Session</Label>
-                  <Input
-                          id={`max_students_${assignment.school_id}`}
-                          type="number"
-                          value={assignment.max_students_per_session}
-                          onChange={(e) => handleAssignmentChange(assignment.school_id, 'max_students_per_session', parseInt(e.target.value) || 30)}
-                          min="1"
-                  />
-                </div>
-                  </div>
-                </CardContent>
+                      </div>
+                    </div>
+                    <div className="max-w-xs">
+                      <Label htmlFor={`max_students_${assignment.school_id}`}>Max Students per Session</Label>
+                      <Input
+                        id={`max_students_${assignment.school_id}`}
+                        type="number"
+                        value={assignment.max_students_per_session}
+                        onChange={(e) => handleAssignmentChange(assignment.school_id, 'max_students_per_session', parseInt(e.target.value) || 30)}
+                        min="1"
+                      />
+                    </div>
+                  </CardContent>
               </Card>
               ))}
                 </CardContent>

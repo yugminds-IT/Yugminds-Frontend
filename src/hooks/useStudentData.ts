@@ -205,7 +205,7 @@ export function useStudentAssignment(assignmentId: string) {
     queryFn: async () => {
       await ensureAccessToken();
       const { data } = await studentApi.assignments.get(assignmentId);
-      // Pass ALL four top-level fields through — previous bug silently dropped
+      // Pass ALL top-level fields through — previous bug silently dropped
       // `attempts` and `retake`, causing the retake button to never appear.
       const d = data as Record<string, unknown>;
       return {
@@ -213,6 +213,7 @@ export function useStudentAssignment(assignmentId: string) {
         submission: (d?.submission as unknown | null) ?? null,
         attempts: (d?.attempts as unknown[]) ?? [],
         retake: (d?.retake as unknown) ?? null,
+        retake_request: (d?.retake_request as unknown) ?? null,
       };
     },
   });
@@ -254,10 +255,12 @@ export function useStudentNotifications() {
 
 export interface StudentCertificate {
   id: string;
+  short_id?: string;
   course_id?: string;
   courses?: { id?: string; name?: string; title?: string; grade?: string; subject?: string };
   certificate_name: string;
   certificate_url?: string;
+  status?: string;
   issued_at: string;
   profiles?: { full_name?: string };
 }
@@ -291,6 +294,23 @@ export function useSubmitAssignment() {
       queryClient.invalidateQueries({ queryKey: ["studentAssignment", variables.assignmentId] });
       // Refresh the combined pending count (sidebar badge + dashboard stat card).
       queryClient.invalidateQueries({ queryKey: ["studentDashboardStats"] });
+    },
+  });
+}
+
+export function useRequestRetake() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { assignmentId: string; reason?: string }) => {
+      await ensureAccessToken();
+      const { data } = await studentApi.assignments.requestRetake(payload.assignmentId, {
+        reason: payload.reason,
+      });
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["studentAssignment", variables.assignmentId] });
     },
   });
 }

@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/apply-migrations.cjs",
     "postinstall": "node scripts/patch-baseline-warning.cjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:admin": "playwright test --config=playwright.config.admin.ts",
+    "test:e2e:teacher": "playwright test --config=playwright.config.teacher.ts"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",

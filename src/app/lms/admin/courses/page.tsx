@@ -74,7 +74,7 @@ interface Course {
   created_by?: string;
   school_id?: string;
   grade?: string;
-  status: 'Draft' | 'Published' | 'Archived';
+  status: 'Draft' | 'Published';
   total_chapters: number;
   num_chapters?: number; // For backward compatibility
   total_videos: number;
@@ -91,6 +91,8 @@ interface Course {
   created_at: string;
   updated_at: string;
   course_access?: CourseAccess[];
+  /** Structured school → grade → section targeting for the Publish dialog. */
+  access?: Array<{ school_id: string; grades: Array<{ grade: string; sections: string[] }> }>;
   chapters?: Chapter[];
 }
 
@@ -239,7 +241,7 @@ export default function CoursesManagement() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
    
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Published' | 'Archived'>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Published'>('All');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
    
   const [_isChapterDialogOpen, _setIsChapterDialogOpen] = useState(false);
@@ -382,6 +384,11 @@ export default function CoursesManagement() {
         setCourses([]);
       } else {
         setCourses(Array.isArray(coursesData) ? coursesData : []);
+        if (payload?.truncated) {
+          toast.error(
+            'Course list exceeds the display cap — some courses are not shown. Contact engineering to raise the limit.',
+          );
+        }
       }
     } catch (error: unknown) {
       const status = (error as { response?: { status?: number } })?.response?.status;
@@ -571,7 +578,6 @@ export default function CoursesManagement() {
     switch (status) {
       case 'Published': return 'bg-green-100 text-green-800';
       case 'Draft': return 'bg-yellow-100 text-yellow-800';
-      case 'Archived': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -600,7 +606,7 @@ export default function CoursesManagement() {
             className="pl-10"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(value: 'All' | 'Draft' | 'Published' | 'Archived') => setStatusFilter(value)}>
+        <Select value={statusFilter} onValueChange={(value: 'All' | 'Draft' | 'Published') => setStatusFilter(value)}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -608,7 +614,6 @@ export default function CoursesManagement() {
             <SelectItem value="All">All Courses</SelectItem>
             <SelectItem value="Published">Published</SelectItem>
             <SelectItem value="Draft">Draft</SelectItem>
-            <SelectItem value="Archived">Archived</SelectItem>
           </SelectContent>
         </Select>
         <Button 
@@ -839,8 +844,8 @@ export default function CoursesManagement() {
                           setPublishCourse(course);
                           setIsPublishDialogOpen(true);
                         }}
-                        title={course.status === 'Published' ? 'Unpublish course' : 'Publish course'}
-                        className={course.status === 'Published' 
+                        title={course.status === 'Published' ? 'Manage publishing (schools / grades / sections)' : 'Publish to schools, grades & sections'}
+                        className={course.status === 'Published'
                           ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
                           : "text-green-600 hover:text-green-700 hover:bg-green-50"
                         }
@@ -1006,7 +1011,7 @@ export default function CoursesManagement() {
                             variant="ghost"
                             size="sm"
                             onClick={() => { setPublishCourse(course); setIsPublishDialogOpen(true); }}
-                            title={course.status === 'Published' ? 'Unpublish' : 'Publish'}
+                            title={course.status === 'Published' ? 'Manage publishing (schools / grades / sections)' : 'Publish to schools, grades & sections'}
                             className={course.status === 'Published' ? "text-yellow-600 hover:bg-yellow-50" : "text-green-600 hover:bg-green-50"}
                           >
                             {course.status === 'Published' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -1234,8 +1239,6 @@ export default function CoursesManagement() {
                 prerequisites_text: editingCourse.prerequisites_text || '',
                 thumbnail_url: editingCourse.thumbnail_url || '',
                 difficulty_level: editingCourse.difficulty_level || 'Beginner',
-                school_ids: editingCourse.course_access?.map((ca: CourseAccess) => ca.school_id).filter(Boolean) || [],
-                grades: editingCourse.course_access?.map((ca: CourseAccess) => ca.grade).filter(Boolean) || [],
                 status: editingCourse.status || 'Draft',
                 chapters: (editingCourse.chapters || []) as unknown as EditorChapter[],
                 assignments: (editingCourse.assignments || []) as unknown as EditorAssignmentFromAPI[],
@@ -1289,8 +1292,7 @@ export default function CoursesManagement() {
             name: publishCourse.name || publishCourse.course_name || '',
             status: publishCourse.status || 'Draft',
             is_published: (publishCourse as Course & { is_published?: boolean }).is_published || false,
-            school_ids: publishCourse.course_access?.map((ca: CourseAccess) => ca.school_id).filter(Boolean) || [],
-            grades: publishCourse.course_access?.map((ca: CourseAccess) => ca.grade).filter(Boolean) || [],
+            access: publishCourse.access ?? [],
           }}
           onPublishChange={() => {
             loadData();

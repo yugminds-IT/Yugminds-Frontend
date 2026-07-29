@@ -201,10 +201,12 @@ export type StudentManagementRow = {
   progress?: number;
 };
 
-function studentInitials(name: string) {
-  const parts = name.trim().split(/\s+/);
+function studentInitials(name: string | null | undefined) {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  return trimmed.slice(0, 2).toUpperCase();
 }
 
 const STUDENT_AVATAR_COLORS = [
@@ -286,7 +288,7 @@ export const STUDENT_MANAGEMENT_COLUMNS: ManagementTableColumn<StudentManagement
     filterable: true,
     filterValue: (r) => r.coursesDisplay,
     render: (r) => {
-      if (!r.coursesDisplay || r.coursesDisplay === "—") {
+      if (!r.coursesDisplay || r.coursesDisplay === "-" || r.coursesDisplay === "—") {
         return <span className="text-xs text-gray-400 italic">No courses</span>;
       }
       const courses = r.coursesDisplay.split(/,\s*/);
@@ -350,8 +352,10 @@ function teacherStatusDot(status: string) {
   return "bg-red-500";
 }
 
-function getInitials(name: string) {
-  return name
+function getInitials(name: string | null | undefined) {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "?";
+  return trimmed
     .split(" ")
     .map((w) => w[0])
     .filter(Boolean)
@@ -760,6 +764,8 @@ export type SchoolAdminTeacherTableRow = {
   leavesDisplay: string;
   leavesCount: number;
   statusLabel: string;
+  classesDisplay: string;
+  subjectsDisplay: string;
   searchBlob: string;
 };
 
@@ -808,6 +814,23 @@ export const SCHOOL_ADMIN_TEACHER_COLUMNS: ManagementTableColumn<SchoolAdminTeac
           <div className="text-sm">{r.qualificationDisplay}</div>
           {r.specializationDisplay ? (
             <div className="text-xs text-muted-foreground">{r.specializationDisplay}</div>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: "classes",
+      header: "Classes",
+      sortable: true,
+      sortValue: (r) => r.classesDisplay,
+      searchValue: (r) => `${r.classesDisplay} ${r.subjectsDisplay}`,
+      filterable: true,
+      filterValue: (r) => `${r.classesDisplay} ${r.subjectsDisplay}`,
+      render: (r) => (
+        <div>
+          <div className="text-sm">{r.classesDisplay}</div>
+          {r.subjectsDisplay !== "—" ? (
+            <div className="text-xs text-muted-foreground">{r.subjectsDisplay}</div>
           ) : null}
         </div>
       ),

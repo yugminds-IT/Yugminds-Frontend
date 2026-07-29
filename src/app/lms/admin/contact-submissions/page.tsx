@@ -24,6 +24,7 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  Undo2,
 } from "lucide-react";
 import { adminApi } from "@/lib/api/admin.api";
 
@@ -39,6 +40,7 @@ interface ContactSubmission {
   status: "new" | "read" | "replied" | "archived";
   admin_notes: string | null;
   source: string;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,6 +50,7 @@ interface StatusCounts {
   read: number;
   replied: number;
   archived: number;
+  deleted: number;
 }
 
 interface ToastMsg { id: number; text: string; kind: "success" | "error" }
@@ -129,6 +132,7 @@ const STATUS_TABS = [
   { key: "read",     label: "Read",     countKey: "read" },
   { key: "replied",  label: "Replied",  countKey: "replied" },
   { key: "archived", label: "Archived", countKey: "archived" },
+  { key: "deleted",  label: "Deleted",  countKey: "deleted" },
 ] as const;
 
 export default function ContactSubmissionsPage() {
@@ -136,7 +140,7 @@ export default function ContactSubmissionsPage() {
 
   const [submissions, setSubmissions] = useState<ContactSubmission[]>([]);
   const [total, setTotal] = useState(0);
-  const [statusCounts, setStatusCounts] = useState<StatusCounts>({ new: 0, read: 0, replied: 0, archived: 0 });
+  const [statusCounts, setStatusCounts] = useState<StatusCounts>({ new: 0, read: 0, replied: 0, archived: 0, deleted: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -147,11 +151,15 @@ export default function ContactSubmissionsPage() {
   const [viewOpen, setViewOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ContactSubmission | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<ContactSubmission | null>(null);
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const [adminNotes, setAdminNotes] = useState("");
   const [statusEdit, setStatusEdit] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [purging, setPurging] = useState(false);
 
   const load = useCallback(async (resetPage = false) => {
     setLoading(true);
@@ -226,15 +234,57 @@ export default function ContactSubmissionsPage() {
     setDeleting(true);
     try {
       await adminApi.contactSubmissions.delete(deleteTarget.id);
-      toast("Submission deleted");
+      toast("Submission moved to Deleted — restore it any time before purging");
       setSubmissions((prev) => prev.filter((s) => s.id !== deleteTarget.id));
       setTotal((t) => t - 1);
+      setStatusCounts((prev) => ({
+        ...prev,
+        [deleteTarget.status]: Math.max(0, prev[deleteTarget.status as keyof StatusCounts] - 1),
+        deleted: prev.deleted + 1,
+      }));
       setDeleteOpen(false);
       setDeleteTarget(null);
     } catch {
       toast("Failed to delete submission", "error");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleRestore = async (sub: ContactSubmission) => {
+    setRestoringId(sub.id);
+    try {
+      await adminApi.contactSubmissions.restore(sub.id);
+      toast("Submission restored");
+      setSubmissions((prev) => prev.filter((s) => s.id !== sub.id));
+      setTotal((t) => t - 1);
+      setStatusCounts((prev) => ({
+        ...prev,
+        [sub.status]: prev[sub.status as keyof StatusCounts] + 1,
+        deleted: Math.max(0, prev.deleted - 1),
+      }));
+    } catch {
+      toast("Failed to restore submission", "error");
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const confirmPurge = async () => {
+    if (!purgeTarget) return;
+    setPurging(true);
+    try {
+      await adminApi.contactSubmissions.purge(purgeTarget.id);
+      toast("Submission permanently deleted");
+      setSubmissions((prev) => prev.filter((s) => s.id !== purgeTarget.id));
+      setTotal((t) => t - 1);
+      setStatusCounts((prev) => ({ ...prev, deleted: Math.max(0, prev.deleted - 1) }));
+      setPurgeOpen(false);
+      setPurgeTarget(null);
+    } catch {
+      toast("Failed to permanently delete submission", "error");
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -263,7 +313,7 @@ export default function ContactSubmissionsPage() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {(["new", "read", "replied", "archived"] as const).map((k) => (
           <button
             key={k}
@@ -274,6 +324,13 @@ export default function ContactSubmissionsPage() {
             <p className="text-2xl font-bold text-slate-900 mt-1">{statusCounts[k]}</p>
           </button>
         ))}
+        <button
+          onClick={() => { setStatusFilter("deleted"); setPage(1); }}
+          className={`rounded-xl border px-4 py-3 text-left transition-all ${statusFilter === "deleted" ? "border-red-400 bg-red-50" : "border-slate-200 bg-white hover:border-slate-300"}`}
+        >
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Deleted</p>
+          <p className="text-2xl font-bold text-slate-900 mt-1">{statusCounts.deleted}</p>
+        </button>
       </div>
 
       {/* Filters */}
@@ -368,23 +425,52 @@ export default function ContactSubmissionsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2.5 gap-1.5"
-                          onClick={() => openView(sub)}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          View
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                          onClick={() => { setDeleteTarget(sub); setDeleteOpen(true); }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {statusFilter === "deleted" ? (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 gap-1.5 border-green-500 text-green-700 hover:bg-green-50"
+                              disabled={restoringId === sub.id}
+                              onClick={() => handleRestore(sub)}
+                            >
+                              {restoringId === sub.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Undo2 className="h-3.5 w-3.5" />
+                              )}
+                              Restore
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                              onClick={() => { setPurgeTarget(sub); setPurgeOpen(true); }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 gap-1.5"
+                              onClick={() => openView(sub)}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              View
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                              onClick={() => { setDeleteTarget(sub); setDeleteOpen(true); }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -523,7 +609,7 @@ export default function ContactSubmissionsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirm Dialog */}
+      {/* Delete Confirm Dialog (soft-delete — restorable from the Deleted tab) */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -532,8 +618,9 @@ export default function ContactSubmissionsPage() {
               Delete Submission
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to permanently delete this submission from{" "}
-              <strong>{deleteTarget?.first_name} {deleteTarget?.last_name}</strong>? This cannot be undone.
+              Move this submission from{" "}
+              <strong>{deleteTarget?.first_name} {deleteTarget?.last_name}</strong> to Deleted?
+              You can restore it from the Deleted tab any time before it's purged.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -546,6 +633,34 @@ export default function ContactSubmissionsPage() {
             >
               {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Purge Confirm Dialog (permanent, irreversible) */}
+      <Dialog open={purgeOpen} onOpenChange={setPurgeOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Delete Forever
+            </DialogTitle>
+            <DialogDescription>
+              Permanently delete the submission from{" "}
+              <strong>{purgeTarget?.first_name} {purgeTarget?.last_name}</strong>? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPurgeOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={confirmPurge}
+              disabled={purging}
+              className="gap-2"
+            >
+              {purging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete Forever
             </Button>
           </DialogFooter>
         </DialogContent>

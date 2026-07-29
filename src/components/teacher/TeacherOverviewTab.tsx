@@ -80,8 +80,6 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
   const { data: schedules, isLoading: schedulesLoading, error: schedulesError } = useTeacherSchedules(selectedSchoolId);
 
   const recentActivity = useMemo(() => {
-    if (!selectedSchoolId) return [];
-
     const activity: RecentActivity[] = [];
 
     // Recent reports — only entries with a real timestamp

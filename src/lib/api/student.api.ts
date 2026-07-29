@@ -31,6 +31,8 @@ export const studentApi = {
       apiClient.get(`${STUDENT}/assignments/${assignmentId}`),
     submit: (assignmentId: string, data: Record<string, unknown>) =>
       apiClient.post(`${STUDENT}/assignments/${assignmentId}/submit`, data),
+    requestRetake: (assignmentId: string, data: { reason?: string }) =>
+      apiClient.post(`${STUDENT}/assignments/${assignmentId}/retake-request`, data),
   },
 
   /** Progress */
@@ -70,6 +72,8 @@ export const studentApi = {
     list: () => apiClient.get(`${STUDENT}/certificates`),
     generate: (data?: Record<string, unknown>) =>
       apiClient.post(`${STUDENT}/certificates/generate`, data ?? {}),
+    download: (id: string) =>
+      apiClient.get(`${STUDENT}/certificates/${id}/download`, { responseType: "blob" }),
   },
 
   /** Notifications (send to teachers in school) */

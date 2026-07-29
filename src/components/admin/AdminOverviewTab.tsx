@@ -154,7 +154,7 @@ export default function AdminOverviewTab({
                 <p className="mb-3 text-sm leading-relaxed text-slate-600">{preview.description}</p>
                 <div className="space-y-2">
                   {preview.data && preview.data.length > 0 ? (
-                    preview.data.slice(0, 2).map((item, index: number) => (
+                    preview.data.slice(0, 3).map((item, index: number) => (
                       <div
                         key={index}
                         className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-2.5 py-2 text-xs"

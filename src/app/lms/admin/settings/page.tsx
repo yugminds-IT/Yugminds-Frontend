@@ -73,7 +73,7 @@ export default function AdminSettings() {
         return;
       }
 
-      const { data: profileDataResp } = await commonApi.profile.get({ userId: authUser.id });
+      const { data: profileDataResp } = await adminApi.profile.get(authUser.id);
       const profile =
         (profileDataResp as { profile?: unknown })?.profile ?? profileDataResp;
 
@@ -167,11 +167,12 @@ export default function AdminSettings() {
     setSaving(true);
     setMessage(null);
 
+    let nameSaved = false;
     try {
       await adminApi.profile.update({
-        user_id: user.id,
         full_name: profileData.full_name.trim(),
       });
+      nameSaved = true;
 
       if (profileData.new_password && currentPasswordStatus === 'valid') {
         await authApi.updatePassword({
@@ -197,7 +198,15 @@ export default function AdminSettings() {
       console.error('Error updating profile:', error);
       const errMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (error instanceof Error ? error.message : 'Unknown error');
-      setMessage({ type: 'error', text: `Error updating profile: ${errMsg}` });
+      // If the name update already succeeded, the password step is what failed —
+      // say so explicitly rather than implying nothing was saved.
+      setMessage({
+        type: 'error',
+        text: nameSaved
+          ? `Name saved, but the password change failed: ${errMsg}`
+          : `Error updating profile: ${errMsg}`,
+      });
+      if (nameSaved) await loadUserData();
     } finally {
       setSaving(false);
     }

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { adminApi } from "@/lib/api/admin.api";
+import { useAdminSchools } from "@/hooks/useAdminSchools";
 import {
   Award,
   Search,
@@ -29,9 +30,11 @@ import {
   Shield,
   Copy,
   ExternalLink,
+  ShieldCheck,
+  Ban,
 } from "lucide-react";
 
-type CertStatus = "active" | "pending";
+type CertStatus = "active" | "pending" | "broken" | "revoked";
 
 interface Cert {
   id: string;
@@ -39,6 +42,10 @@ interface Cert {
   student_id: number;
   student_name: string;
   student_email: string;
+  school_id?: string | null;
+  school_name?: string | null;
+  grade?: string | null;
+  section?: string | null;
   course_id: string;
   course_title: string;
   certificate_name: string;
@@ -46,6 +53,8 @@ interface Cert {
   status: CertStatus;
   issued_at: string;
   issued_by: string | null;
+  revoked_at?: string | null;
+  revoked_reason?: string | null;
 }
 
 interface CertListResponse {
@@ -55,13 +64,25 @@ interface CertListResponse {
   certificates: Cert[];
 }
 
-function certDownloadAttr(url: string, baseName: string): { href: string; download: string } {
-  const mime = url.match(/^data:([^;]+)/)?.[1] ?? "";
-  const ext = mime.includes("jpeg") || mime.includes("jpg") ? "jpg"
-    : mime.includes("png") ? "png"
-    : mime.includes("svg") ? "svg"
-    : "jpg";
-  return { href: url, download: `${baseName}.${ext}` };
+/**
+ * Downloads a certificate through the authenticated backend proxy.
+ * A plain `<a download>` is a no-op for cross-origin (S3/CDN) URLs, and a
+ * direct browser `fetch()` of the S3 URL fails unless the bucket has CORS
+ * configured for this origin — the backend already holds S3 credentials, so
+ * proxying through it sidesteps both problems.
+ */
+async function downloadCertificate(id: string, baseName: string) {
+  const res = await adminApi.certificates.download(id);
+  const blob = res.data as Blob;
+  const ext = blob.type.includes("png") ? "png" : blob.type.includes("svg") ? "svg" : "jpg";
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = `${baseName}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export default function AdminCertificatesPage() {
@@ -73,13 +94,25 @@ export default function AdminCertificatesPage() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [schoolFilter, setSchoolFilter] = useState<string>("");
+  const [gradeFilter, setGradeFilter] = useState<string>("");
+  const [sectionFilter, setSectionFilter] = useState<string>("");
   const LIMIT = 20;
+
+  const { schools } = useAdminSchools();
+  const selectedSchool = schools.find((s) => s.id === schoolFilter);
+  const gradeOptions = selectedSchool?.grades ?? [];
+  const selectedGrade = gradeOptions.find((g) => g.name === gradeFilter);
+  const sectionOptions = selectedGrade?.sections ?? [];
 
   // Action states
   const [revoking, setRevoking] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [bulkRevoking, setBulkRevoking] = useState(false);
   const [previewCert, setPreviewCert] = useState<Cert | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
 
   // Template state
   const [templateTab, setTemplateTab] = useState(false);
@@ -91,9 +124,17 @@ export default function AdminCertificatesPage() {
   // ─── Queries ───────────────────────────────────────────────────────────────
 
   const { data, isLoading } = useQuery<CertListResponse>({
-    queryKey: ["adminCertificates", page, search, statusFilter],
+    queryKey: ["adminCertificates", page, search, statusFilter, schoolFilter, gradeFilter, sectionFilter],
     queryFn: async () => {
-      const res = await adminApi.certificates.list({ page, limit: LIMIT, search: search || undefined, status: statusFilter || undefined });
+      const res = await adminApi.certificates.list({
+        page,
+        limit: LIMIT,
+        search: search || undefined,
+        status: statusFilter || undefined,
+        school_id: schoolFilter || undefined,
+        grade: gradeFilter || undefined,
+        section: sectionFilter || undefined,
+      });
       return res.data;
     },
   });
@@ -113,6 +154,11 @@ export default function AdminCertificatesPage() {
 
   const pendingCount = certs.filter((c) => c.status === "pending").length;
   const activeCount = certs.filter((c) => c.status === "active").length;
+  const brokenCount = certs.filter((c) => c.status === "broken").length;
+  const revokableIds = selected.filter((id) => {
+    const c = certs.find((x) => x.id === id);
+    return c && c.status !== "revoked";
+  });
 
   // ─── Actions ───────────────────────────────────────────────────────────────
 
@@ -121,22 +167,72 @@ export default function AdminCertificatesPage() {
     setPage(1);
   };
 
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = () => {
+    const selectableIds = certs.filter((c) => c.status !== "revoked").map((c) => c.id);
+    setSelected((prev) => (prev.length === selectableIds.length ? [] : selectableIds));
+  };
+
   const handleRevoke = async (cert: Cert) => {
     if (!(await confirmDialog({
       title: 'Revoke this certificate?',
-      description: `Revoke the certificate for ${cert.student_name} (${cert.course_title}). This cannot be undone.`,
+      description: `Revoke the certificate for ${cert.student_name} (${cert.course_title}). The student will be notified.`,
       confirmText: 'Revoke',
       variant: 'danger',
     }))) return;
+    const reason = window.prompt("Reason for revoking (optional, shown to the student):") ?? undefined;
     setRevoking(cert.id);
     try {
-      await adminApi.certificates.revoke(cert.id);
+      await adminApi.certificates.revoke(cert.id, reason || undefined);
       toast.success("Certificate revoked");
+      setSelected((prev) => prev.filter((id) => id !== cert.id));
       queryClient.invalidateQueries({ queryKey: ["adminCertificates"] });
     } catch {
       toast.error("Failed to revoke certificate");
     } finally {
       setRevoking(null);
+    }
+  };
+
+  const handleBulkRevoke = async () => {
+    if (revokableIds.length === 0) return;
+    if (!(await confirmDialog({
+      title: `Revoke ${revokableIds.length} certificate(s)?`,
+      description: "The affected students will be notified. This cannot be undone.",
+      confirmText: 'Revoke All',
+      variant: 'danger',
+    }))) return;
+    const reason = window.prompt("Reason for revoking (optional, shown to the students):") ?? undefined;
+    setBulkRevoking(true);
+    try {
+      const res = await adminApi.certificates.bulkRevoke(revokableIds, reason || undefined);
+      const d = res.data as { revoked?: number };
+      toast.success(`Revoked ${d.revoked ?? revokableIds.length} certificate(s)`);
+      setSelected([]);
+      queryClient.invalidateQueries({ queryKey: ["adminCertificates"] });
+    } catch {
+      toast.error("Bulk revoke failed");
+    } finally {
+      setBulkRevoking(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    if (certs.length === 0) return;
+    setVerifying(true);
+    try {
+      const res = await adminApi.certificates.verify(certs.map((c) => c.id));
+      const d = res.data as { results?: Array<{ id: string; status: string }> };
+      const brokenFound = (d.results ?? []).filter((r) => r.status === "broken").length;
+      toast.success(brokenFound > 0 ? `Verified — found ${brokenFound} broken certificate(s)` : "Verified — all certificates on this page are healthy");
+      queryClient.invalidateQueries({ queryKey: ["adminCertificates"] });
+    } catch {
+      toast.error("Verification failed");
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -179,9 +275,12 @@ export default function AdminCertificatesPage() {
     }))) return;
     setBatchLoading(true);
     try {
-      const res = await adminApi.certificates.batchGenerate({});
-      const d = res.data as { generated?: number; skipped?: number };
-      toast.success(`Generated ${d.generated ?? 0} new certificates, skipped ${d.skipped ?? 0} already existing`);
+      const res = await adminApi.certificates.generateAllEligible();
+      const d = res.data as { generated?: number; skipped?: number; warning?: string | null };
+      toast.success(`Generated ${d.generated ?? 0} new certificates, skipped ${d.skipped ?? 0}`);
+      if (d.warning) {
+        toast.error(d.warning);
+      }
       queryClient.invalidateQueries({ queryKey: ["adminCertificates"] });
     } catch {
       toast.error("Batch generation failed");
@@ -192,6 +291,14 @@ export default function AdminCertificatesPage() {
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text).then(() => toast.success("Copied!")).catch(() => {});
+  };
+
+  const handleDownload = async (cert: Cert) => {
+    try {
+      await downloadCertificate(cert.id, cert.short_id);
+    } catch {
+      toast.error("Failed to download certificate");
+    }
   };
 
   // ─── Template actions ───────────────────────────────────────────────────────
@@ -257,6 +364,10 @@ export default function AdminCertificatesPage() {
           <Button variant="outline" size="sm" onClick={() => { setTemplateTab(false); queryClient.invalidateQueries({ queryKey: ["adminCertificates"] }); }}>
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>
+          <Button variant="outline" size="sm" onClick={handleVerify} disabled={verifying || certs.length === 0}>
+            {verifying ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-1" />}
+            Verify
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setTemplateTab((v) => !v)}>
             <FileText className="h-4 w-4 mr-1" />
             {templateTab ? "View Certificates" : "Manage Template"}
@@ -280,7 +391,7 @@ export default function AdminCertificatesPage() {
         </Card>
         <Card className="p-4">
           <p className="text-xs text-gray-500">Broken/Pending (this page)</p>
-          <p className="text-2xl font-bold text-red-600">{pendingCount}</p>
+          <p className="text-2xl font-bold text-red-600">{pendingCount + brokenCount}</p>
         </Card>
         <Card className="p-4">
           <p className="text-xs text-gray-500">Page</p>
@@ -395,16 +506,58 @@ export default function AdminCertificatesPage() {
               <div className="flex gap-2 flex-wrap items-center">
                 {/* Status filter */}
                 <div className="flex rounded-lg border overflow-hidden text-xs">
-                  {(["", "active", "pending"] as const).map((s) => (
+                  {(["", "active", "broken", "pending", "revoked"] as const).map((s) => (
                     <button
                       key={s}
                       onClick={() => { setStatusFilter(s); setPage(1); }}
                       className={`px-3 py-1.5 ${statusFilter === s ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
                     >
-                      {s === "" ? "All" : s === "active" ? "Active" : "Broken"}
+                      {s === "" ? "All" : s === "active" ? "Active" : s === "broken" ? "Broken" : s === "revoked" ? "Revoked" : "Pending"}
                     </button>
                   ))}
                 </div>
+                {/* School / Grade / Section filters */}
+                <select
+                  className="h-8 text-sm border border-gray-300 rounded-md px-2 bg-white"
+                  value={schoolFilter}
+                  onChange={(e) => {
+                    setSchoolFilter(e.target.value);
+                    setGradeFilter("");
+                    setSectionFilter("");
+                    setPage(1);
+                  }}
+                >
+                  <option value="">All Schools</option>
+                  {schools.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <select
+                  className="h-8 text-sm border border-gray-300 rounded-md px-2 bg-white disabled:bg-gray-50 disabled:text-gray-400"
+                  value={gradeFilter}
+                  onChange={(e) => {
+                    setGradeFilter(e.target.value);
+                    setSectionFilter("");
+                    setPage(1);
+                  }}
+                  disabled={!schoolFilter || gradeOptions.length === 0}
+                >
+                  <option value="">All Grades</option>
+                  {gradeOptions.map((g) => (
+                    <option key={g.id} value={g.name}>{g.name}</option>
+                  ))}
+                </select>
+                <select
+                  className="h-8 text-sm border border-gray-300 rounded-md px-2 bg-white disabled:bg-gray-50 disabled:text-gray-400"
+                  value={sectionFilter}
+                  onChange={(e) => { setSectionFilter(e.target.value); setPage(1); }}
+                  disabled={!gradeFilter || sectionOptions.length === 0}
+                >
+                  <option value="">All Sections</option>
+                  {sectionOptions.map((sec) => (
+                    <option key={sec.id} value={sec.name}>{sec.name}</option>
+                  ))}
+                </select>
                 {/* Search */}
                 <div className="flex gap-1">
                   <Input
@@ -426,6 +579,25 @@ export default function AdminCertificatesPage() {
                 )}
               </div>
             </div>
+            {revokableIds.length > 0 && (
+              <div className="mt-3 flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <span className="text-sm text-red-800">{revokableIds.length} selected</span>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelected([])}>
+                    Clear
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white"
+                    onClick={handleBulkRevoke}
+                    disabled={bulkRevoking}
+                  >
+                    {bulkRevoking ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Ban className="h-3.5 w-3.5 mr-1" />}
+                    Revoke Selected ({revokableIds.length})
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -436,8 +608,21 @@ export default function AdminCertificatesPage() {
               <div className="text-center py-16 text-gray-500">
                 <Award className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                 <p className="font-medium">No certificates found</p>
-                {(search || statusFilter) && (
-                  <Button variant="ghost" size="sm" className="mt-2" onClick={() => { setSearch(""); setSearchInput(""); setStatusFilter(""); setPage(1); }}>
+                {(search || statusFilter || schoolFilter || gradeFilter || sectionFilter) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => {
+                      setSearch("");
+                      setSearchInput("");
+                      setStatusFilter("");
+                      setSchoolFilter("");
+                      setGradeFilter("");
+                      setSectionFilter("");
+                      setPage(1);
+                    }}
+                  >
                     Clear filters
                   </Button>
                 )}
@@ -448,7 +633,15 @@ export default function AdminCertificatesPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-xs text-gray-500 uppercase tracking-wider">
+                        <th className="text-left py-3 px-2 w-8">
+                          <input
+                            type="checkbox"
+                            checked={certs.filter((c) => c.status !== "revoked").length > 0 && selected.length === certs.filter((c) => c.status !== "revoked").length}
+                            onChange={toggleSelectAll}
+                          />
+                        </th>
                         <th className="text-left py-3 px-2">Student</th>
+                        <th className="text-left py-3 px-2">School / Grade</th>
                         <th className="text-left py-3 px-2">Course</th>
                         <th className="text-left py-3 px-2">Cert ID</th>
                         <th className="text-left py-3 px-2">Issued</th>
@@ -460,8 +653,22 @@ export default function AdminCertificatesPage() {
                       {certs.map((cert) => (
                         <tr key={cert.id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-3 px-2">
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(cert.id)}
+                              disabled={cert.status === "revoked"}
+                              onChange={() => toggleSelected(cert.id)}
+                            />
+                          </td>
+                          <td className="py-3 px-2">
                             <div className="font-medium text-gray-900 truncate max-w-[160px]">{cert.student_name}</div>
                             <div className="text-xs text-gray-400 truncate max-w-[160px]">{cert.student_email}</div>
+                          </td>
+                          <td className="py-3 px-2">
+                            <div className="truncate max-w-[160px] text-gray-700">{cert.school_name ?? "—"}</div>
+                            <div className="text-xs text-gray-400">
+                              {[cert.grade, cert.section].filter(Boolean).join(" - ") || "—"}
+                            </div>
                           </td>
                           <td className="py-3 px-2">
                             <div className="truncate max-w-[180px] text-gray-700">{cert.course_title}</div>
@@ -482,24 +689,26 @@ export default function AdminCertificatesPage() {
                               <Badge className="bg-green-100 text-green-800 text-xs gap-1">
                                 <CheckCircle className="h-3 w-3" /> Active
                               </Badge>
+                            ) : cert.status === "revoked" ? (
+                              <Badge className="bg-gray-200 text-gray-700 text-xs gap-1" title={cert.revoked_reason ?? undefined}>
+                                <Ban className="h-3 w-3" /> Revoked
+                              </Badge>
                             ) : (
                               <Badge className="bg-red-100 text-red-800 text-xs gap-1">
-                                <AlertCircle className="h-3 w-3" /> Broken
+                                <AlertCircle className="h-3 w-3" /> {cert.status === "broken" ? "Broken" : "Pending"}
                               </Badge>
                             )}
                           </td>
                           <td className="py-3 px-2">
                             <div className="flex gap-1 justify-end">
-                              {cert.status === "active" && (
+                              {cert.status !== "revoked" && cert.status !== "pending" && (
                                 <>
                                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Preview" onClick={() => setPreviewCert(cert)}>
                                     <Eye className="h-3.5 w-3.5" />
                                   </Button>
-                                  <a {...certDownloadAttr(cert.certificate_url, cert.short_id)} title="Download">
-                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                                      <Download className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </a>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Download" onClick={() => handleDownload(cert)}>
+                                    <Download className="h-3.5 w-3.5" />
+                                  </Button>
                                   <a href={`/robocoders/lms/verify/${cert.short_id}`} target="_blank" rel="noopener noreferrer" title="Public verify link">
                                     <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-blue-600">
                                       <ExternalLink className="h-3.5 w-3.5" />
@@ -507,22 +716,26 @@ export default function AdminCertificatesPage() {
                                   </a>
                                 </>
                               )}
-                              <Button
-                                variant="ghost" size="sm" className="h-7 w-7 p-0 text-orange-600"
-                                title="Regenerate"
-                                onClick={() => handleRegenerate(cert)}
-                                disabled={regenerating === cert.id}
-                              >
-                                {regenerating === cert.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                              </Button>
-                              <Button
-                                variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600"
-                                title="Revoke"
-                                onClick={() => handleRevoke(cert)}
-                                disabled={revoking === cert.id}
-                              >
-                                {revoking === cert.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                              </Button>
+                              {cert.status !== "revoked" && (
+                                <Button
+                                  variant="ghost" size="sm" className="h-7 w-7 p-0 text-orange-600"
+                                  title="Regenerate"
+                                  onClick={() => handleRegenerate(cert)}
+                                  disabled={regenerating === cert.id}
+                                >
+                                  {regenerating === cert.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                </Button>
+                              )}
+                              {cert.status !== "revoked" && (
+                                <Button
+                                  variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600"
+                                  title="Revoke"
+                                  onClick={() => handleRevoke(cert)}
+                                  disabled={revoking === cert.id}
+                                >
+                                  {revoking === cert.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -565,11 +778,13 @@ export default function AdminCertificatesPage() {
                     <ExternalLink className="h-4 w-4 mr-1" /> Verify Link
                   </Button>
                 </a>
-                <a {...certDownloadAttr(previewCert.certificate_url, previewCert.short_id)}>
-                  <Button size="sm" className="bg-yellow-600 hover:bg-yellow-700 text-white">
-                    <Download className="h-4 w-4 mr-1" /> Download
-                  </Button>
-                </a>
+                <Button
+                  size="sm"
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                  onClick={() => handleDownload(previewCert)}
+                >
+                  <Download className="h-4 w-4 mr-1" /> Download
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => setPreviewCert(null)}>
                   <X className="h-4 w-4" />
                 </Button>

@@ -67,9 +67,21 @@ export default function LogoManagementPage() {
   const [limit, setLimit] = useState(20);
   const [offset, setOffset] = useState(0);
   const [activeTab, setActiveTab] = useState("manage");
+  // searchInput is what the box shows; search is the debounced value
+  // actually sent to the backend (avoids a request per keystroke).
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
 
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const [schools, setSchools] = useState<SchoolOption[]>([]);
+  // Which schools already have a (non-deleted) logo — informational only, so
+  // the Upload/Edit school pickers can flag "already has a logo" instead of
+  // letting an admin accidentally create an orphaned duplicate.
+  const [schoolIdsWithLogo, setSchoolIdsWithLogo] = useState<Set<string>>(new Set());
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadSchoolId, setUploadSchoolId] = useState("");
@@ -90,16 +102,15 @@ export default function LogoManagementPage() {
   const totalPages = useMemo(() => Math.ceil(total / limit), [total, limit]);
   const currentPage = useMemo(() => Math.floor(offset / limit) + 1, [offset, limit]);
 
-  const filteredLogos = useMemo(() => {
-    if (!search.trim()) return logos;
-    const q = search.trim().toLowerCase();
-    return logos.filter((l) => l.school_name.toLowerCase().includes(q));
-  }, [logos, search]);
+  // Search now happens server-side (see fetchLogos), so `logos` already
+  // reflects the current search term — no client-side re-filtering needed,
+  // and none would work correctly anyway once it's scoped to one page.
+  const filteredLogos = logos;
 
   const fetchLogos = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await adminApi.logos.list({ limit, offset });
+      const { data } = await adminApi.logos.list({ limit, offset, search: search || undefined });
       const root = (data ?? {}) as Record<string, unknown>;
       const payload =
         root.data && typeof root.data === "object" && !Array.isArray(root.data)
@@ -112,11 +123,35 @@ export default function LogoManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [limit, offset, toast]);
+  }, [limit, offset, search, toast]);
+
+  // Reset to page 1 whenever the search term changes.
+  useEffect(() => {
+    setOffset(0);
+  }, [search]);
 
   useEffect(() => {
     fetchLogos();
   }, [fetchLogos]);
+
+  const refreshSchoolLogoSet = useCallback(async () => {
+    try {
+      const { data } = await adminApi.logos.list({ limit: 500 });
+      const root = (data ?? {}) as Record<string, unknown>;
+      const payload =
+        root.data && typeof root.data === "object" && !Array.isArray(root.data)
+          ? (root.data as Record<string, unknown>)
+          : root;
+      const all = asArray<LogoItem>(payload.logos ?? payload.data ?? payload.items ?? payload);
+      setSchoolIdsWithLogo(new Set(all.map((l) => l.school_id).filter((id): id is string => !!id)));
+    } catch {
+      /* non-critical — the "already has a logo" hint just won't show */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSchoolLogoSet();
+  }, [refreshSchoolLogoSet]);
 
   useEffect(() => {
     adminApi.schools.list().then(({ data }) => {
@@ -181,6 +216,7 @@ export default function LogoManagementPage() {
       // Switch to manage tab so user sees the new logo
       setActiveTab('manage');
       fetchLogos();
+      refreshSchoolLogoSet();
     } catch (e: unknown) {
       toast((e instanceof Error ? e.message : String(e)) || 'Upload failed', 'error');
     } finally {
@@ -221,6 +257,7 @@ export default function LogoManagementPage() {
       await adminApi.logos.delete(id, hard);
       toast(hard ? 'Logo permanently deleted' : 'Logo soft-deleted');
       fetchLogos();
+      refreshSchoolLogoSet();
     } catch (e: unknown) {
       toast((e instanceof Error ? e.message : String(e)) || 'Delete failed', 'error');
     } finally {
@@ -245,6 +282,7 @@ export default function LogoManagementPage() {
       toast('Logo updated');
       setEditDialog(null);
       fetchLogos();
+      refreshSchoolLogoSet();
     } catch (e: unknown) {
       toast((e instanceof Error ? e.message : String(e)) || 'Update failed', 'error');
     } finally {
@@ -287,9 +325,17 @@ export default function LogoManagementPage() {
                     >
                       <option value="">Select a school…</option>
                       {schools.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
+                        <option key={s.id} value={s.id}>
+                          {s.name}{schoolIdsWithLogo.has(s.id) ? " (already has a logo)" : ""}
+                        </option>
                       ))}
                     </select>
+                    {uploadSchoolId && schoolIdsWithLogo.has(uploadSchoolId) && (
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        This school already has a logo — use Replace or Edit on the existing one in Manage Logos instead.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2 mt-4">
                     <Label htmlFor="description">Description (optional)</Label>
@@ -336,8 +382,8 @@ export default function LogoManagementPage() {
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
                     <Input
                       placeholder="Filter by school name…"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
                       className="pl-8 h-9 text-sm"
                     />
                   </div>
@@ -455,6 +501,14 @@ export default function LogoManagementPage() {
             <DialogDescription>Update the school association or description for this logo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {editDialog?.logo.image_url && (
+              <div className="space-y-2">
+                <Label>Current image</Label>
+                <div className="aspect-[4/1] flex items-center justify-center bg-gray-50 border rounded-lg relative min-h-24">
+                  <Image src={editDialog.logo.image_url} alt={editDialog.logo.school_name} fill className="object-contain p-2" unoptimized />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>School</Label>
               <select
@@ -464,9 +518,20 @@ export default function LogoManagementPage() {
               >
                 <option value="">— no change —</option>
                 {schools.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {schoolIdsWithLogo.has(s.id) && s.id !== editDialog?.logo.school_id ? " (already has a logo)" : ""}
+                  </option>
                 ))}
               </select>
+              {editSchoolId &&
+                editSchoolId !== editDialog?.logo.school_id &&
+                schoolIdsWithLogo.has(editSchoolId) && (
+                  <p className="text-xs text-amber-600 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    That school already has its own logo — reassigning this one won&apos;t replace it.
+                  </p>
+                )}
             </div>
             <div className="space-y-2">
               <Label>Description</Label>

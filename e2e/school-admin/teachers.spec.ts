@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base';
 import fs from 'fs';
 import path from 'path';
 import type { QaFixture } from './fixture-client';
@@ -8,7 +8,6 @@ const fixture: QaFixture = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '.fixture.json'), 'utf8'),
 );
 
-test.use({ storageState: path.resolve(__dirname, '.auth/school-admin.json') });
 
 test.describe('School Admin — Teachers', () => {
   test('renders real teacher roster, not a zero-state', async ({ page }) => {

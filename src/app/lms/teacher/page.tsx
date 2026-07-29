@@ -42,7 +42,7 @@ const TeacherAnalyticsTab = lazy(() => import("@/components/teacher/TeacherAnaly
 
 export default function TeacherDashboard() {
   const queryClient = useQueryClient();
-  const { selectedSchool } = useTeacherSchool();
+  const { selectedSchool, schools } = useTeacherSchool();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isMounted, setIsMounted] = useState(false);
@@ -57,20 +57,22 @@ export default function TeacherDashboard() {
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
   const { data: todayStatus } = useTodayAttendanceStatus(selectedSchool?.id);
 
-  // Refresh function to reload all dashboard data
+  // Refresh function to reload all dashboard data. selectedSchool?.id is
+  // undefined in "All Schools" mode — react-query's partial key matching
+  // still finds and invalidates the aggregate-keyed queries (e.g.
+  // ['teacher','classes', undefined]) fetched by the hooks above, so this
+  // works the same way for one school or all of them.
   const loadDashboardData = async () => {
-    if (!selectedSchool?.id) return;
-
     setIsRefreshing(true);
     try {
       // Invalidate all teacher-related queries to force refetch (match actual query keys)
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchool.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'reports', selectedSchool.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'monthly-attendance', selectedSchool.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves', selectedSchool.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'today-attendance', selectedSchool.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchool?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'reports', selectedSchool?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'monthly-attendance', selectedSchool?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves', selectedSchool?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool?.id] });
+      await queryClient.invalidateQueries({ queryKey: ['teacher', 'today-attendance', selectedSchool?.id] });
       await queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress });
 
       setLastRefresh(new Date());
@@ -82,7 +84,7 @@ export default function TeacherDashboard() {
   };
 
   useDashboardRealtime('teacher', {
-    enabled: Boolean(selectedSchool?.id),
+    enabled: true,
     debugLabel: 'teacher-dashboard',
     customEventMap: {
       'notification:new': [queryKeys.teacher.dashboard, queryKeys.teacher.studentProgress, queryKeys.teacher.schedules],
@@ -90,15 +92,13 @@ export default function TeacherDashboard() {
       'dashboard:stats': [queryKeys.teacher.dashboard, queryKeys.teacher.schedules],
     },
     onStats: () => {
-      if (selectedSchool?.id) {
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool.id] });
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool.id] });
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchool.id] });
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'reports', selectedSchool.id] });
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'monthly-attendance', selectedSchool.id] });
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves', selectedSchool.id] });
-        queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress });
-      }
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool?.id] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool?.id] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchool?.id] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'reports', selectedSchool?.id] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'monthly-attendance', selectedSchool?.id] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves', selectedSchool?.id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress });
       setLastRefresh(new Date());
     },
     onEvent: ({ eventType }) => {
@@ -131,10 +131,11 @@ export default function TeacherDashboard() {
   }, [monthlyAttendance, isMounted]);
 
   const dashboardStats = useMemo(() => {
-    if (!selectedSchool) {
-      return { todaysClasses: 0, pendingReports: 0, totalClasses: 0, monthlyAttendance: 0, pendingLeaves: 0 };
-    }
-
+    // selectedSchool === null means "All Schools" — every hook above was
+    // already called with schoolId=undefined in that case, which the
+    // backend resolves as a combined view across every assigned school, so
+    // the same computation below works for both a single school and all of
+    // them; no special-casing needed here.
     const todaysClassesCount = Array.isArray(todaysClasses) ? todaysClasses.length : 0;
     const pendingReportsCount = Array.isArray(reports)
       ? (reports as Array<{ report_status?: string }>).filter((r) => r.report_status === 'Pending').length
@@ -224,16 +225,20 @@ export default function TeacherDashboard() {
     );
   }
 
-  if (!selectedSchool) {
+  // Only genuinely blocked when the teacher has no schools at all —
+  // selectedSchool === null with schools.length > 0 means "All Schools"
+  // is intentionally selected, and every stat/hook above already computes
+  // the combined view for that case.
+  if (schools.length === 0) {
     return (
       <div className="space-y-6">
         <Card>
           <CardContent className="p-8">
             <div className="text-center py-8">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
-              <p className="text-lg font-medium">No school selected</p>
+              <p className="text-lg font-medium">No school assigned</p>
               <p className="text-sm text-gray-600 mt-2">
-                Please select a school from the dropdown above to view your dashboard.
+                You aren&apos;t assigned to any school yet. Please contact your admin.
               </p>
             </div>
           </CardContent>
@@ -292,7 +297,8 @@ export default function TeacherDashboard() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
           <p className="text-gray-600 mt-2">
-            Welcome back! Here&apos;s an overview of your teaching activities at {selectedSchool.name}
+            Welcome back! Here&apos;s an overview of your teaching activities
+            {selectedSchool ? ` at ${selectedSchool.name}` : ' across all your schools'}
           </p>
           <p className="text-xs text-gray-400 mt-1">
             Last updated {lastRefresh.toLocaleTimeString()}

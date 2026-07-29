@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base';
 import fs from 'fs';
 import path from 'path';
 import type { QaFixture } from './fixture-client';
@@ -7,7 +7,6 @@ const fixture: QaFixture = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '.fixture.json'), 'utf8'),
 );
 
-test.use({ storageState: path.resolve(__dirname, '.auth/school-admin.json') });
 
 // Page: src/app/lms/school-admin/student-progress/page.tsx is a thin wrapper
 // around src/components/school-admin/StudentProgressTab.tsx, which calls
@@ -42,7 +41,7 @@ test.describe('School Admin — Student Progress', () => {
     await expect(page.getByText('3 students', { exact: true })).toBeVisible();
 
     // All 3 fixture students appear in the table by name.
-    await expect(page.getByRole('cell', { name: 'QA Student 0' }).or(page.getByText('QA Student 0'))).toBeVisible();
+    await expect(page.getByText('QA Student 0').first()).toBeVisible();
     await expect(page.getByText('QA Student 1')).toBeVisible();
     await expect(page.getByText('QA Student 2')).toBeVisible();
 
@@ -72,7 +71,7 @@ test.describe('School Admin — Student Progress', () => {
     // one actually renders rather than guessing.
     const noCourses = page.getByText('No courses found');
     const courseRow = page.locator('table').filter({ hasText: 'Grade' }).locator('tbody tr').first();
-    await expect(noCourses.or(courseRow)).toBeVisible();
+    await expect(noCourses.or(courseRow).first()).toBeVisible();
   });
 
   test('Grades tab shows Grade 1 with all 3 students at 0% average progress', async ({ page }) => {
@@ -84,6 +83,6 @@ test.describe('School Admin — Student Progress', () => {
     await page.getByRole('tab', { name: /Grades/i }).click();
     const gradeRow = page.locator('tr', { hasText: fixture.grade });
     await expect(gradeRow).toBeVisible();
-    await expect(gradeRow.getByText('3', { exact: true })).toBeVisible();
+    await expect(gradeRow.getByText('3', { exact: true }).first()).toBeVisible();
   });
 });

@@ -267,7 +267,9 @@ export function useTeacherMonthlyAttendanceLog(schoolId?: string, yearMonth?: st
         : monthlyData;
       return { monthlyData: forMonth, summary: {} as Record<string, unknown> };
     },
-    enabled: !!schoolId,
+    // schoolId omitted -> the backend combines every assigned school ("All
+    // Schools" mode), so this doesn't need to wait for one to be picked.
+    enabled: true,
   });
 }
 
@@ -341,8 +343,15 @@ export function useTeacherSchedules(schoolId?: string, day?: string) {
 }
 
 /**
- * Get today's classes for the teacher
- * Uses schedules to determine which classes are scheduled for today based on day of week
+ * Get today's classes for the teacher.
+ *
+ * Backed by /teacher/attendance/today (TeacherAttendanceService.getToday),
+ * which resolves "today" through TeacherWorkingDaysHistory + SchoolCalendar
+ * before falling back to ClassSchedule — not ClassSchedule.dayOfWeek alone.
+ * A prior version of this hook queried schedules.list() by day-of-week
+ * directly, so a school on a declared holiday, or a stale ClassSchedule row
+ * left over from a since-changed working-days pattern, would still show up
+ * as "today's classes."
  */
 export function useTodaysClasses(schoolId?: string) {
   return useQuery({
@@ -352,26 +361,6 @@ export function useTodaysClasses(schoolId?: string) {
       if (!session) throw new Error('Not authenticated');
       setAuthToken(session.access_token || null);
 
-      const today = new Date().toISOString().split('T')[0];
-      const todayDate = new Date(today + 'T00:00:00');
-      const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const todayDayOfWeek = daysOfWeek[todayDate.getDay()];
-
-      // Get schedules for today (filtered by day of week)
-      const { data: schedulesData } = await teacherApi.schedules.list({
-        school_id: schoolId,
-        day: todayDayOfWeek,
-      });
-      const todaysSchedules = (schedulesData as { schedules?: TeacherScheduleRow[] })?.schedules || [];
-
-      // If no schedules for today, return empty array
-      if (todaysSchedules.length === 0) {
-        return [];
-      }
-
-      // One entry per scheduled period. Deduping by grade+subject collapsed
-      // distinct sections/periods (e.g. 7A and 7B, same subject) into one row,
-      // and reports are per-period on the backend anyway.
       interface ClassItem {
         id?: string;
         grade?: string;
@@ -382,62 +371,47 @@ export function useTodaysClasses(schoolId?: string) {
         period_id?: string;
         start_time?: string;
         end_time?: string;
-        class?: { class_name?: string };
+        hasReport: boolean;
       }
 
-      type ScheduleRow = {
-        class_id?: string;
-        id?: string;
+      type TodayPeriod = {
         period_id?: string;
         grade?: string;
         subject?: string;
-        school_id?: string;
         start_time?: string;
         end_time?: string;
-        class?: { class_name?: string };
       };
-      const todaysClasses: ClassItem[] = todaysSchedules.map((schedule) => {
-        const s = schedule as ScheduleRow;
-        return {
-          id: s.class_id || s.id || '',
-          grade: s.grade,
-          subject: s.subject,
-          class_name: s.grade || s.class?.class_name,
-          school_id: s.school_id,
-          schedule_id: s.id,
-          period_id: s.period_id,
-          start_time: s.start_time,
-          end_time: s.end_time,
-        };
-      });
-      // Earliest period first — matches how the teaching day actually runs.
-      todaysClasses.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
 
-      // Get today's reports to check which periods have reports
-      const { data: reportsData } = await teacherApi.reports.list({
-        date: today,
+      const { data } = await teacherApi.attendance.today({ school_id: schoolId });
+      const today = data as {
+        submittedPeriods?: TodayPeriod[];
+        pendingPeriods?: TodayPeriod[];
+      };
+
+      const toClassItem = (p: TodayPeriod, hasReport: boolean): ClassItem => ({
+        id: p.period_id || '',
+        grade: p.grade,
+        subject: p.subject,
+        class_name: p.grade,
         school_id: schoolId,
+        schedule_id: p.period_id,
+        period_id: p.period_id,
+        start_time: p.start_time,
+        end_time: p.end_time,
+        hasReport,
       });
-      const todayReports = (reportsData as { reports?: TeacherReport[] })?.reports || [];
 
-      // Reports are per-period; match on period_id and fall back to grade only
-      // for schedules that carry no period_id.
-      const reportedPeriodIds = new Set(
-        todayReports.map((r) => (r as { period_id?: string }).period_id).filter(Boolean),
-      );
-      const reportedGrades = new Set(todayReports.map((r) => r.grade).filter(Boolean));
-
-      const result = todaysClasses.map((classItem: ClassItem) => ({
-        ...classItem,
-        hasReport: classItem.period_id
-          ? reportedPeriodIds.has(classItem.period_id)
-          : reportedGrades.has(classItem.grade),
-        assignment: classItem
-      }));
-
+      const result: ClassItem[] = [
+        ...(today.submittedPeriods ?? []).map((p) => toClassItem(p, true)),
+        ...(today.pendingPeriods ?? []).map((p) => toClassItem(p, false)),
+      ];
+      // Earliest period first — matches how the teaching day actually runs.
+      result.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
       return result;
     },
-    enabled: !!schoolId,
+    // schoolId omitted -> "All Schools" mode; the backend aggregates today's
+    // periods across every assigned school instead of requiring one pick.
+    enabled: true,
     // WebSocket updates trigger invalidation; keep no fixed polling.
     refetchInterval: false,
     refetchIntervalInBackground: false,
@@ -484,6 +458,7 @@ export function useSubmitReport() {
       topics_taught?: string;
       activities?: string;
       notes?: string;
+      student_count?: number;
     }) => {
       const { data: { session } } = await getSession();
       if (!session) throw new Error('Not authenticated');
@@ -500,6 +475,7 @@ export function useSubmitReport() {
           topics_taught: reportData.topics_taught,
           activities: reportData.activities,
           notes: reportData.notes,
+          student_count: reportData.student_count,
         });
         return (data as { report?: unknown })?.report ?? data;
       } catch (e: unknown) {

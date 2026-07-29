@@ -12,7 +12,7 @@ export const adminApi = {
   /** Dashboard & stats */
   dashboard: {
     stats: () => apiClient.get(`${ADMIN}/stats`),
-    analytics: (params?: { from?: string; to?: string }) =>
+    analytics: (params?: { from?: string; to?: string; force?: boolean }) =>
       apiClient.get(withParams(`${ADMIN}/analytics`, params)),
     assignmentAnalytics: () => apiClient.get(`${ADMIN}/assignment-analytics`),
     refreshViews: () => apiClient.post(`${ADMIN}/refresh-dashboard-views`),
@@ -46,6 +46,9 @@ export const adminApi = {
     delete: (id: string) => apiClient.delete(`${ADMIN}/teachers/${id}`),
     bulk: (data: { action: 'activate' | 'deactivate' | 'delete'; teacher_ids: Array<number | string> }) =>
       apiClient.post(`${ADMIN}/teachers/bulk`, data),
+    /** Dated working-days entries for one teacher+school, oldest first. */
+    workingDaysHistory: (id: string, schoolId: string) =>
+      apiClient.get(withParams(`${ADMIN}/teachers/${id}/working-days-history`, { school_id: schoolId })),
   },
 
   /** School admins */
@@ -93,12 +96,14 @@ export const adminApi = {
     enroll: (studentId: string) =>
       apiClient.post(`${ADMIN}/students/${studentId}/enroll`, {}),
     bulk: (data: {
-      action: 'move' | 'enroll' | 'delete';
+      action: 'move' | 'enroll' | 'delete' | 'reset_password';
       student_ids: Array<number | string>;
       school_id?: string;
       grade?: string;
       section?: string;
     }) => apiClient.post(`${ADMIN}/students/bulk`, data, { timeout: 120000 }),
+    bulkImport: (data: { school_id: string; students: Record<string, unknown>[]; dry_run?: boolean }) =>
+      apiClient.post(`${ADMIN}/students/bulk-import`, data, { timeout: 120000 }),
     syncEnrollments: (params?: { school_id?: string }) =>
       apiClient.post(withParams(`${ADMIN}/students/sync-enrollments`, params), {}, {
         // Bulk enrollment across thousands of students can exceed the default 30s.
@@ -115,10 +120,12 @@ export const adminApi = {
       apiClient.get(withParams(`${ADMIN}/reports`, params), { responseType: 'blob' }),
   },
   teacherReports: {
-    list: (params?: { school_id?: string; from?: string; to?: string; search?: string; limit?: number }) =>
+    list: (params?: { school_id?: string; teacher_id?: string; grade?: string; date?: string; from?: string; to?: string; search?: string; limit?: number }) =>
       apiClient.get(withParams(`${ADMIN}/teacher-reports`, params)),
     update: (body: { id: string; status?: string; admin_notes?: string }) =>
       apiClient.patch(`${ADMIN}/teacher-reports`, body),
+    cleanupOrphaned: () =>
+      apiClient.post(`${ADMIN}/teacher-reports/cleanup-orphaned`, {}),
   },
   teacherAttendance: {
     list: (params?: { school_id?: string; from?: string; to?: string; teacherId?: string }) =>
@@ -127,6 +134,39 @@ export const adminApi = {
       apiClient.get(withParams(`${ADMIN}/teacher-attendance/monthly`, params)),
     markMissing: (data: Record<string, unknown>) =>
       apiClient.post(`${ADMIN}/teacher-attendance/mark-missing`, data),
+  },
+
+  /** Platform calendar — holidays, breaks, half-days, compensatory work days (admin-only). */
+  calendar: {
+    list: (params?: { school_id?: string; year?: string; month?: string; academic_year?: string; type?: string }) =>
+      apiClient.get(withParams(`${ADMIN}/calendar`, params)),
+    create: (data: {
+      school_id?: string;
+      apply_to_all_schools?: boolean;
+      date: string;
+      end_date?: string;
+      name: string;
+      type: string;
+      academic_year?: string;
+      description?: string;
+    }) => apiClient.post(`${ADMIN}/calendar`, data),
+    markToday: (data: {
+      school_id?: string;
+      apply_to_all_schools?: boolean;
+      name: string;
+      type?: string;
+      description?: string;
+    }) => apiClient.post(`${ADMIN}/calendar/mark-today`, data),
+    update: (id: string, data: Record<string, unknown>) =>
+      apiClient.patch(`${ADMIN}/calendar/${id}`, data),
+    delete: (id: string) => apiClient.delete(`${ADMIN}/calendar/${id}`),
+    deleteBatch: (batchId: string) => apiClient.delete(`${ADMIN}/calendar/batch/${batchId}`),
+    /** Per school: which weekdays (0=Sun..6=Sat) at least one teacher works there. */
+    activeWeekdays: (params?: { date?: string }) =>
+      apiClient.get(withParams(`${ADMIN}/calendar/active-weekdays`, params)),
+    /** Per school: exact working-day dates in a given month (day-by-day, history-resolved). */
+    activeDates: (params: { year: string; month: string }) =>
+      apiClient.get(withParams(`${ADMIN}/calendar/active-dates`, params)),
   },
 
   /** Student progress */
@@ -179,7 +219,7 @@ export const adminApi = {
 
   /** Notifications */
   notifications: {
-    list: (params?: { limit?: number; mode?: string }) =>
+    list: (params?: { limit?: number; offset?: number; mode?: string; search?: string; status?: string }) =>
       apiClient.get(withParams(`${ADMIN}/notifications`, params)),
     create: (data: Record<string, unknown>) =>
       apiClient.post(`${ADMIN}/notifications`, data),
@@ -189,7 +229,7 @@ export const adminApi = {
   /** Password reset requests */
   passwordResetRequests: {
     pendingCount: () => apiClient.get(`${ADMIN}/password-reset-requests/pending-count`),
-    list: (params?: { status?: string; limit?: number }) =>
+    list: (params?: { status?: string; limit?: number; offset?: number; search?: string }) =>
       apiClient.get(withParams(`${ADMIN}/password-reset-requests`, params)),
     get: (id: string) => apiClient.get(withParams(`${ADMIN}/password-reset-requests`, { id })),
     update: (data: Record<string, unknown>) =>
@@ -199,12 +239,26 @@ export const adminApi = {
 
   /** Certificates */
   certificates: {
-    list: (params?: { page?: number; limit?: number; search?: string; status?: string }) =>
+    list: (params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+      school_id?: string;
+      grade?: string;
+      section?: string;
+    }) =>
       apiClient.get(withParams(`${ADMIN}/certificates`, params as Record<string, string | number | undefined>)),
     regenerate: (id: string) =>
       apiClient.post(`${ADMIN}/certificates/${id}/regenerate`, {}),
-    revoke: (id: string) =>
-      apiClient.delete(`${ADMIN}/certificates/${id}`),
+    download: (id: string) =>
+      apiClient.get(`${ADMIN}/certificates/${id}/download`, { responseType: "blob" }),
+    revoke: (id: string, reason?: string) =>
+      apiClient.delete(withParams(`${ADMIN}/certificates/${id}`, { reason })),
+    bulkRevoke: (ids: string[], reason?: string) =>
+      apiClient.post(`${ADMIN}/certificates/bulk-revoke`, { ids, reason }),
+    verify: (ids: string[]) =>
+      apiClient.post(`${ADMIN}/certificates/verify`, { ids }),
     generateAllEligible: () =>
       apiClient.post(`${ADMIN}/certificates/generate-all-eligible`),
     batchGenerate: (data: { course_ids?: string[]; student_ids?: number[]; dry_run?: boolean } | Record<string, unknown>) =>
@@ -260,12 +314,14 @@ export const adminApi = {
       apiClient.post(`${ADMIN}/joining-codes`, data),
     update: (data: Record<string, unknown>) =>
       apiClient.patch(`${ADMIN}/joining-codes`, data),
+    delete: (id: string) =>
+      apiClient.delete(`${ADMIN}/joining-codes/${id}`),
   },
 
   /** RoboCoders Studio offline activation licenses (per school, per system) */
   licenses: {
-    list: (schoolId: string) =>
-      apiClient.get(withParams(`${ADMIN}/licenses`, { schoolId })),
+    list: (params?: { schoolId?: string; status?: string; search?: string }) =>
+      apiClient.get(withParams(`${ADMIN}/licenses`, params)),
     generate: (data: Record<string, unknown>) =>
       apiClient.post(`${ADMIN}/licenses`, data),
     import: (data: Record<string, unknown>) =>
@@ -313,6 +369,18 @@ export const adminApi = {
     }) =>
       apiClient.get(withParams(`${ADMIN}/audit-logs`, params as Record<string, string | number | undefined>)),
     entityTypes: () => apiClient.get(`${ADMIN}/audit-logs/entity-types`),
+    exportCsv: (params?: {
+      actorEmail?: string;
+      entityType?: string;
+      method?: string;
+      search?: string;
+      from?: string;
+      to?: string;
+    }) =>
+      apiClient.get(
+        withParams(`${ADMIN}/audit-logs/export`, params as Record<string, string | number | undefined>),
+        { responseType: 'blob' },
+      ),
   },
 
   /** Global entity search (command palette) */
@@ -361,5 +429,9 @@ export const adminApi = {
       apiClient.patch(`${ADMIN}/contact-submissions/${id}`, data),
     delete: (id: string) =>
       apiClient.delete(`${ADMIN}/contact-submissions/${id}`),
+    restore: (id: string) =>
+      apiClient.post(`${ADMIN}/contact-submissions/${id}/restore`),
+    purge: (id: string) =>
+      apiClient.delete(`${ADMIN}/contact-submissions/${id}/purge`),
   },
 };

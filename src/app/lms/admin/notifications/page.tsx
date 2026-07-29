@@ -17,7 +17,7 @@ import {
 import {
   Bell, Send, Search, CheckCircle, Clock, AlertCircle, Info,
   RefreshCw, Reply, MessageSquare, Users, School, User,
-  Megaphone, ChevronDown, ChevronUp, Loader2,
+  Megaphone, ChevronDown, ChevronUp, Loader2, Trash2,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription,
@@ -27,6 +27,7 @@ import { adminApi } from "@/lib/api/admin.api";
 import { commonApi } from "@/lib/api/common.api";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { toast } from "@/components/ui/toast";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ReplyItem {
@@ -42,6 +43,7 @@ interface ReplyItem {
 interface NotificationItem {
   id: string;
   user_id: number;
+  broadcast_id?: string | null;
   title: string;
   message: string;
   type: string;
@@ -250,11 +252,13 @@ function NotifRow({
   mode,
   onMarkRead,
   onReply,
+  onDelete,
 }: {
   notif: NotificationItem;
   mode: "received" | "sent";
   onMarkRead: (id: string) => void;
   onReply: (n: NotificationItem) => void;
+  onDelete?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const cfg = getTypeConfig(notif.type);
@@ -333,10 +337,33 @@ function NotifRow({
                 <CheckCircle className="h-3 w-3 mr-1" />Mark Read
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => onReply(notif)}>
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" title="View and send replies" onClick={() => onReply(notif)}>
               <Reply className="h-3 w-3 mr-1" />Replies
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 px-1.5" onClick={() => setExpanded((p) => !p)}>
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-1.5 text-gray-400 hover:text-red-600"
+                title="Dismiss notification"
+                onClick={async () => {
+                  if (await confirmDialog({
+                    title: "Dismiss this notification?",
+                    description: "It will be removed from your inbox.",
+                    confirmText: "Dismiss",
+                  })) onDelete(notif.id);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-1.5"
+              title={expanded ? "Hide full message" : "Show full message"}
+              onClick={() => setExpanded((p) => !p)}
+            >
               {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </Button>
           </div>
@@ -356,9 +383,13 @@ function NotifRow({
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 20;
+
 export default function NotificationsManagement() {
   const [activeTab, setActiveTab] = useState<"send" | "sent" | "received">("received");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageOffset, setPageOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -384,9 +415,21 @@ export default function NotificationsManagement() {
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [userSearch, setUserSearch] = useState("");
 
-  // Filters
+  // Filters — searchInput is what the box shows; searchQuery is the
+  // debounced value actually sent to the backend (avoids a request per keystroke).
+  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "read" | "unread">("all");
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Reset to page 1 whenever the tab, search, or status filter changes.
+  useEffect(() => {
+    setPageOffset(0);
+  }, [activeTab, searchQuery, filterStatus]);
 
   // Reply dialog
   const [replyTarget, setReplyTarget] = useState<NotificationItem | null>(null);
@@ -412,20 +455,29 @@ export default function NotificationsManagement() {
     setLoading(true);
     try {
       const mode = activeTab === "sent" ? "sent" : "received";
-      const { data: responseBody } = await adminApi.notifications.list({ limit: 100, mode });
-      const payload = unwrapApiPayload<{ notifications?: NotificationItem[] }>(
+      const { data: responseBody } = await adminApi.notifications.list({
+        limit: PAGE_SIZE,
+        offset: pageOffset,
+        mode,
+        search: searchQuery || undefined,
+        status: filterStatus !== "all" ? filterStatus : undefined,
+      });
+      const payload = unwrapApiPayload<{ notifications?: NotificationItem[]; total?: number }>(
         responseBody as Record<string, unknown>,
       );
       const raw: NotificationItem[] = Array.isArray(payload.notifications)
         ? payload.notifications
         : [];
+      setTotal(payload.total ?? raw.length);
 
-      // For sent mode: group by title+message+timestamp to collapse broadcasts
+      // For sent mode: group by broadcast_id (falls back to the row's own id
+      // for legacy single-recipient sends, i.e. no merge) to collapse a
+      // broadcast's recipient fan-out into one row.
       let result: NotificationItem[];
       if (mode === "sent") {
         const map = new Map<string, NotificationItem & { recipient_count: number }>();
         for (const n of raw) {
-          const key = `${n.title}|${n.message}|${(n.created_at ?? "").slice(0, 16)}`;
+          const key = n.broadcast_id ?? n.id;
           const ex = map.get(key);
           if (ex) {
             ex.recipient_count += 1;
@@ -441,17 +493,13 @@ export default function NotificationsManagement() {
 
       // Attach reply counts from already-loaded data if available, else default 0
       setNotifications(result.map((n) => ({ ...n, reply_count: n.reply_count ?? 0 })));
-      // Keep unread badge in sync
-      if (mode === "received") {
-        setUnreadCount(result.filter((n) => !n.is_read).length);
-      }
     } catch (err) {
       toast.error(`Failed to load notifications: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setLoading(false);
       inFlightRef.current = false;
     }
-  }, [activeTab]);
+  }, [activeTab, pageOffset, searchQuery, filterStatus]);
 
   const loadRecipients = useCallback(async () => {
     setLoadingRecipients(true);
@@ -523,6 +571,22 @@ export default function NotificationsManagement() {
     }
   }, []);
 
+  // ── Delete / dismiss ────────────────────────────────────────────────────────
+  const handleDelete = useCallback(async (notifId: string) => {
+    const removed = notifications.find((n) => n.id === notifId);
+    setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+    setTotal((t) => Math.max(0, t - 1));
+    if (removed && !removed.is_read) setUnreadCount((c) => Math.max(0, c - 1));
+    try {
+      await commonApi.notifications.user.update({ notification_id: notifId, deleted: true });
+      toast.success("Notification dismissed");
+    } catch (err) {
+      loadNotifications(true);
+      loadUnreadCount();
+      toast.error(`Failed to dismiss: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  }, [notifications, loadNotifications, loadUnreadCount]);
+
   const handleMarkAllRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     setUnreadCount(0);
@@ -579,20 +643,9 @@ export default function NotificationsManagement() {
     );
   }, []);
 
-  // ── Filtered list ───────────────────────────────────────────────────────────
-  const filtered = notifications.filter((n) => {
-    const q = searchQuery.toLowerCase();
-    const matchSearch = !q ||
-      n.title.toLowerCase().includes(q) ||
-      n.message.toLowerCase().includes(q) ||
-      (n.profiles?.full_name ?? "").toLowerCase().includes(q) ||
-      (n.profiles?.email ?? "").toLowerCase().includes(q);
-    const matchStatus =
-      filterStatus === "all" ||
-      (filterStatus === "read" && n.is_read) ||
-      (filterStatus === "unread" && !n.is_read);
-    return matchSearch && matchStatus;
-  });
+  // Search/status filtering now happens server-side (see loadNotifications),
+  // so `notifications` already reflects the current filters — no client-side
+  // re-filtering needed, and none would work correctly anyway once paginated.
 
   // ── Recipient toggle helper ─────────────────────────────────────────────────
   const toggleRecipient = (id: string) =>
@@ -793,8 +846,8 @@ export default function NotificationsManagement() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search notifications…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-10"
               />
             </div>
@@ -820,7 +873,7 @@ export default function NotificationsManagement() {
                 <h2 className="text-base font-semibold text-gray-900">
                   {activeTab === "received" ? "Received Notifications" : "Sent Notifications"}
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">{filtered.length} notification{filtered.length !== 1 ? "s" : ""} found</p>
+                <p className="text-xs text-gray-400 mt-0.5">{total} notification{total !== 1 ? "s" : ""} found</p>
               </div>
             </div>
 
@@ -828,7 +881,7 @@ export default function NotificationsManagement() {
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
               </div>
-            ) : filtered.length === 0 ? (
+            ) : notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <Bell className="h-10 w-10 mb-3 opacity-30" />
                 <p className="text-sm">No notifications found</p>
@@ -847,17 +900,45 @@ export default function NotificationsManagement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((notif) => (
+                  {notifications.map((notif) => (
                     <NotifRow
                       key={notif.id}
                       notif={notif}
                       mode={activeTab}
                       onMarkRead={handleMarkRead}
                       onReply={setReplyTarget}
+                      onDelete={activeTab === "received" ? handleDelete : undefined}
                     />
                   ))}
                 </TableBody>
               </Table>
+            )}
+
+            {/* Pagination */}
+            {total > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-5 py-3 border-t text-sm text-gray-600">
+                <span>
+                  {Math.min(pageOffset + 1, total)}–{Math.min(pageOffset + PAGE_SIZE, total)} of {total}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPageOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                    disabled={pageOffset === 0}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPageOffset((o) => o + PAGE_SIZE)}
+                    disabled={pageOffset + PAGE_SIZE >= total}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         </div>

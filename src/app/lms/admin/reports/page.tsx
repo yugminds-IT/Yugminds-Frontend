@@ -82,6 +82,8 @@ interface TeacherReport {
   teacher_email?: string;
   school_name?: string;
   class_name?: string;
+  teacher_deleted?: boolean;
+  school_deleted?: boolean;
 }
 
 interface TeacherPerformance {
@@ -138,6 +140,8 @@ export default function TeacherReports() {
   const [reviewStatus, setReviewStatus] = useState("");
   const [reviewNotes, setReviewNotes] = useState("");
   const [isReviewSaving, setIsReviewSaving] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [avgAttendanceRate, setAvgAttendanceRate] = useState<number | null>(null);
 
   const handleUpdateReportStatus = async () => {
     if (!reviewingReport || !reviewStatus) return;
@@ -302,14 +306,18 @@ export default function TeacherReports() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = {};
+      // Loaded in full (up to the backend's cap) rather than the default
+      // 100 — this page already aggregates stats/performance/analytics and
+      // drives CSV export from this same list, so under-fetching silently
+      // truncated all of those, not just the visible table.
+      const params: Record<string, string> = { limit: '500' };
       if (dateFilter) params.date = dateFilter;
       if (schoolFilter) params.school_id = schoolFilter;
       if (gradeFilter) params.grade = gradeFilter;
       if (teacherFilter) params.teacher_id = teacherFilter;
       if (searchTerm) params.search = searchTerm;
 
-      const { data: result } = await adminApi.teacherReports.list(params as { school_id?: string; from?: string; to?: string });
+      const { data: result } = await adminApi.teacherReports.list(params);
       const reportsData = result?.reports || result || [];
       setReports(reportsData);
       
@@ -362,6 +370,36 @@ export default function TeacherReports() {
     }
   }, []);
 
+  const loadAttendance = useCallback(async () => {
+    try {
+      const { data } = await adminApi.teacherAttendance.list({ school_id: schoolFilter || undefined });
+      const summary = (data as { summary?: { attendanceRate?: number } })?.summary;
+      setAvgAttendanceRate(typeof summary?.attendanceRate === 'number' ? summary.attendanceRate : null);
+    } catch (error) {
+      console.error('Error loading attendance summary:', error);
+      setAvgAttendanceRate(null);
+    }
+  }, [schoolFilter]);
+
+  const handleCleanupOrphaned = async () => {
+    setCleaningUp(true);
+    try {
+      const { data } = await adminApi.teacherReports.cleanupOrphaned();
+      const deleted = (data as { deleted?: number })?.deleted ?? 0;
+      if (deleted > 0) {
+        toast.success(`Removed ${deleted} orphaned report${deleted !== 1 ? 's' : ''} (deleted teacher/school)`);
+        loadData();
+      } else {
+        toast.success('No orphaned reports found');
+      }
+    } catch (error) {
+      console.error('Error cleaning up orphaned reports:', error);
+      toast.error('Failed to clean up orphaned reports');
+    } finally {
+      setCleaningUp(false);
+    }
+  };
+
   useEffect(() => {
     loadTeachers();
   }, [loadTeachers]);
@@ -369,6 +407,10 @@ export default function TeacherReports() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    loadAttendance();
+  }, [loadAttendance]);
 
   // Use smart refresh for tab switching
   useSmartRefresh({
@@ -380,6 +422,17 @@ export default function TeacherReports() {
 
   // Reports are already filtered by API, no need to filter again
   const filteredReports = reports;
+
+  // Genuinely scoped to the current calendar month — `reports.length` alone
+  // isn't (the query has no default month filter), so the "This month"
+  // caption below was previously just wrong for any non-empty date range.
+  const reportsThisMonth = reports.filter((r) => {
+    const d = new Date(r.date);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+
+  const orphanedCount = reports.filter((r) => r.teacher_deleted || r.school_deleted).length;
 
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
@@ -454,8 +507,8 @@ export default function TeacherReports() {
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{reports.length}</div>
-                <p className="text-xs text-muted-foreground">This month</p>
+                <div className="text-2xl font-bold">{reportsThisMonth}</div>
+                <p className="text-xs text-muted-foreground">This month ({reports.length} loaded)</p>
               </CardContent>
             </Card>
 
@@ -466,7 +519,7 @@ export default function TeacherReports() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{teachers.length}</div>
-                <p className="text-xs text-muted-foreground">Total teachers ({performance.length} with reports)</p>
+                <p className="text-xs text-muted-foreground">{performance.length} submitted a report in this view</p>
               </CardContent>
             </Card>
 
@@ -477,10 +530,9 @@ export default function TeacherReports() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {performance.length > 0 ? 
-                    Math.round(performance.reduce((sum: number, p: TeacherPerformance) => sum + p.attendance_rate, 0) / performance.length) : 0}%
+                  {avgAttendanceRate != null ? `${avgAttendanceRate}%` : '—'}
                 </div>
-                <p className="text-xs text-muted-foreground">Teacher attendance</p>
+                <p className="text-xs text-muted-foreground">Today&apos;s teacher attendance</p>
               </CardContent>
             </Card>
 
@@ -608,8 +660,8 @@ export default function TeacherReports() {
                     </div>
                     <div className="space-y-2">
                       <Label>Actions</Label>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={exportToCSV}
                         className="w-full"
                         disabled={loading || filteredReports.length === 0}
@@ -628,6 +680,22 @@ export default function TeacherReports() {
                       </Button>
                     </div>
                   </div>
+                  {orphanedCount > 0 && (
+                    <div className="mt-4 flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                      <p className="text-sm text-amber-800">
+                        {orphanedCount} report{orphanedCount !== 1 ? 's' : ''} reference a teacher or school that no longer exists (hard-deleted).
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCleanupOrphaned}
+                        disabled={cleaningUp}
+                        className="border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
+                      >
+                        {cleaningUp ? 'Cleaning up…' : 'Clean up orphaned reports'}
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -672,9 +740,19 @@ export default function TeacherReports() {
                         filteredReports.map((report) => (
                           <TableRow key={report.id}>
                             <TableCell className="font-medium">
-                              {report.profiles?.full_name || report.teacher_name || 'Unknown'}
+                              {report.teacher_deleted ? (
+                                <Badge variant="destructive" className="font-normal">Deleted teacher</Badge>
+                              ) : (
+                                report.profiles?.full_name || report.teacher_name || 'Unknown'
+                              )}
                             </TableCell>
-                            <TableCell>{report.schools?.name || report.school_name || 'Unknown'}</TableCell>
+                            <TableCell>
+                              {report.school_deleted ? (
+                                <Badge variant="destructive" className="font-normal">Deleted school</Badge>
+                              ) : (
+                                report.schools?.name || report.school_name || 'Unknown'
+                              )}
+                            </TableCell>
                             <TableCell>
                               {new Date(report.date).toLocaleDateString()}
                             </TableCell>
@@ -754,7 +832,7 @@ export default function TeacherReports() {
                         <TableHead>Reports</TableHead>
                         <TableHead>Total Hours</TableHead>
                         <TableHead>Avg Students</TableHead>
-                        <TableHead>Attendance</TableHead>
+                        <TableHead title="Share of the last ~20 working days with a report filed — a reporting-consistency proxy, not the real attendance record.">Reporting Rate</TableHead>
                         <TableHead>Last Report</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>

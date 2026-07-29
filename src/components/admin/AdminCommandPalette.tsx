@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Dialog, DialogContent } from "../ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import {
   School,
@@ -176,6 +176,7 @@ export default function AdminCommandPalette() {
 
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent className="max-w-lg overflow-hidden p-0 gap-0 top-[20%] translate-y-0">
+          <DialogTitle className="sr-only">Search pages, schools, teachers, students, courses</DialogTitle>
           <div className="flex items-center gap-2 border-b border-gray-100 pl-4 pr-10 py-3">
             {isFetching ? (
               <Loader2 className="h-4 w-4 text-gray-400 shrink-0 animate-spin" />

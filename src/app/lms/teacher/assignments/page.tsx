@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select";
 import { AssignmentBuilder, type Assignment as BuilderAssignment } from "@/components/admin/AssignmentBuilder";
 import AssignmentAnalyticsPanel, { type AssignmentAnalyticsData } from "@/components/teacher/AssignmentAnalyticsPanel";
+import TeacherRetakeRequestsPanel from "@/components/teacher/TeacherRetakeRequestsPanel";
+import { AssignmentAudiencePicker, type TeacherClass } from "@/components/teacher/AssignmentAudiencePicker";
 import {
   BookOpen,
   ClipboardList,
@@ -28,7 +30,6 @@ import {
   AlertCircle,
   BarChart2,
   Globe,
-  GraduationCap,
   Eye,
   EyeOff,
   Trash2,
@@ -90,8 +91,6 @@ type StudentRow = {
   latest: Submission;        // most recent attempt
 };
 
-type GradeInfo = { id: string; name: string };
-
 // Analytics payload types live with the extracted panel component.
 type AnalyticsData = AssignmentAnalyticsData;
 
@@ -130,9 +129,10 @@ export default function TeacherAssignmentsPage() {
   // analytics, and new-assignment defaults all stay scoped to one school.
   const { selectedSchool } = useTeacherSchool();
   const activeSchoolId = selectedSchool?.id;
-  const [tab, setTab] = useState<"daily" | "course" | "analytics">("daily");
+  const [tab, setTab] = useState<"daily" | "course" | "requests" | "analytics">("daily");
   const [dailyAssignments, setDailyAssignments] = useState<TeacherAssignment[]>([]);
   const [courseAssignments, setCourseAssignments] = useState<TeacherAssignment[]>([]);
+  const [pendingRetakeRequestCount, setPendingRetakeRequestCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string>("");
   const [detailTab, setDetailTab] = useState<"submissions" | "retake">("submissions");
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -146,7 +146,7 @@ export default function TeacherAssignmentsPage() {
   const [builderAssignment, setBuilderAssignment] = useState<BuilderAssignment | null>(null);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [grades, setGrades] = useState<GradeInfo[]>([]);
+  const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [subSearch, setSubSearch] = useState("");
   const [subFilter, setSubFilter] = useState<"all" | "graded" | "pending">("all");
@@ -158,7 +158,8 @@ export default function TeacherAssignmentsPage() {
     isPublished: false,
     academicYear: "2024-25",
     publishScope: "grade",
-    gradeId: "",
+    gradeIds: [] as string[],
+    sectionIds: [] as string[],
   });
 
   const assignments = tab === "daily" ? dailyAssignments : courseAssignments;
@@ -268,18 +269,24 @@ export default function TeacherAssignmentsPage() {
     setSubmissions((data as { submissions?: Submission[] }).submissions ?? []);
   }, []);
 
-  const loadGrades = useCallback(async (schoolId: string) => {
+  const loadClasses = useCallback(async (schoolId: string) => {
     if (!schoolId) return;
     try {
       const { data } = await teacherApi.classes.list(schoolId);
-      const sections = (data as { sections?: Array<{ grade?: { id: string; name: string } }> }).sections ?? [];
-      const seen = new Map<string, string>();
-      sections.forEach((s) => { if (s.grade?.id && !seen.has(s.grade.id)) seen.set(s.grade.id, s.grade.name); });
-      setGrades([...seen.entries()].map(([id, name]) => ({ id, name })));
-    } catch { setGrades([]); }
+      setTeacherClasses((data as { classes?: TeacherClass[] }).classes ?? []);
+    } catch { setTeacherClasses([]); }
   }, []);
 
   useEffect(() => { void loadAssignments("DAILY"); void loadAssignments("COURSE"); }, [loadAssignments]);
+
+  // Pending-request badge on the tab itself — fetched independently of which
+  // tab is active so it's visible before the teacher ever opens the tab.
+  useEffect(() => {
+    teacherApi.retakeRequests
+      .list({ status: "pending" })
+      .then(({ data }) => setPendingRetakeRequestCount(((data as { requests?: unknown[] })?.requests ?? []).length))
+      .catch(() => setPendingRetakeRequestCount(0));
+  }, [tab]);
 
   useEffect(() => {
     if (tab === "analytics" && !analyticsData) {
@@ -305,10 +312,22 @@ export default function TeacherAssignmentsPage() {
 
   useEffect(() => {
     const sid = createPayload.schoolId || activeSchoolId || (Array.isArray(schools) && schools.length > 0 ? String((schools[0] as { id?: string }).id ?? "") : "");
-    if (sid) void loadGrades(sid);
-  }, [createPayload.schoolId, activeSchoolId, schools, loadGrades]);
+    if (sid) void loadClasses(sid);
+  }, [createPayload.schoolId, activeSchoolId, schools, loadClasses]);
 
   /* ─── actions ─── */
+  // The modal's own "School" field is independent of the header's "Active
+  // School" switcher — left unseeded, a teacher who doesn't explicitly
+  // re-pick a school can end up creating the assignment under whatever
+  // school happened to be selected last (or the first in the list), not the
+  // one they're actually looking at, and it then silently doesn't show up
+  // in the (activeSchoolId-filtered) list. Seed it from the active school
+  // every time the modal opens so the two stay in sync by default.
+  const openCreateModal = () => {
+    setCreatePayload((p) => ({ ...p, schoolId: activeSchoolId || p.schoolId }));
+    setShowCreateModal(true);
+  };
+
   const handleCreate = async () => {
     setLoading(true);
     try {
@@ -332,10 +351,16 @@ export default function TeacherAssignmentsPage() {
         assignmentType: "DAILY",
         academicYear: createPayload.academicYear,
         publishScope: createPayload.publishScope,
-        gradeId: createPayload.gradeId || undefined,
-        publishedGradeIds: createPayload.gradeId && createPayload.publishScope === "grade" ? [createPayload.gradeId] : [],
+        // Legacy singular field, kept in sync for backward-compatible
+        // grade-name display when exactly one grade is targeted.
+        gradeId:
+          createPayload.publishScope === "grade" && createPayload.gradeIds.length === 1
+            ? createPayload.gradeIds[0]
+            : undefined,
+        publishedGradeIds: createPayload.publishScope === "grade" ? createPayload.gradeIds : [],
+        publishedSectionIds: createPayload.publishScope === "section" ? createPayload.sectionIds : [],
       });
-      setCreatePayload({ dueDate: "", schoolId: "", subject: "", isPublished: false, academicYear: "2024-25", publishScope: "grade", gradeId: "" });
+      setCreatePayload({ dueDate: "", schoolId: "", subject: "", isPublished: false, academicYear: "2024-25", publishScope: "grade", gradeIds: [], sectionIds: [] });
       setBuilderAssignment(null);
       setShowCreateModal(false);
       await loadAssignments("DAILY");
@@ -424,11 +449,12 @@ export default function TeacherAssignmentsPage() {
 
           {/* Tab switcher */}
           <div className="flex items-center bg-gray-100 rounded-lg p-0.5 ml-2">
-            {(["daily", "course", "analytics"] as const).map((t) => {
-              const icons = { daily: ClipboardList, course: BookOpen, analytics: BarChart2 };
+            {(["daily", "course", "requests", "analytics"] as const).map((t) => {
+              const icons = { daily: ClipboardList, course: BookOpen, requests: RotateCcw, analytics: BarChart2 };
               const labels = {
                 daily: `Daily${dailyAssignments.length ? ` (${dailyAssignments.length})` : ""}`,
                 course: `Course${courseAssignments.length ? ` (${courseAssignments.length})` : ""}`,
+                requests: `Retake Requests${pendingRetakeRequestCount ? ` (${pendingRetakeRequestCount})` : ""}`,
                 analytics: "Analytics",
               };
               const Icon = icons[t];
@@ -449,7 +475,7 @@ export default function TeacherAssignmentsPage() {
 
           <div className="ml-auto flex items-center gap-4">
             {/* Stats chips */}
-            {tab !== "analytics" && (
+            {tab !== "analytics" && tab !== "requests" && (
               <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
@@ -467,7 +493,7 @@ export default function TeacherAssignmentsPage() {
             {/* New assignment button */}
             {tab === "daily" && (
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={openCreateModal}
                 className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors shadow-sm"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -494,8 +520,15 @@ export default function TeacherAssignmentsPage() {
         </div>
       )}
 
+      {/* ══ RETAKE REQUESTS TAB ══ */}
+      {tab === "requests" && (
+        <div className="px-6 py-5 max-w-4xl mx-auto">
+          <TeacherRetakeRequestsPanel />
+        </div>
+      )}
+
       {/* ══ DAILY / COURSE TABS ══ */}
-      {tab !== "analytics" && (
+      {tab !== "analytics" && tab !== "requests" && (
         <div className="flex h-[calc(100vh-56px)]">
 
           {/* ── Left sidebar: Assignment list ── */}
@@ -531,7 +564,7 @@ export default function TeacherAssignmentsPage() {
                   </p>
                   {!searchQuery && tab === "daily" && (
                     <button
-                      onClick={() => setShowCreateModal(true)}
+                      onClick={openCreateModal}
                       className="mt-4 flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
                     >
                       <Plus className="h-3.5 w-3.5" /> New Assignment
@@ -626,7 +659,7 @@ export default function TeacherAssignmentsPage() {
                 </p>
                 {tab === "daily" && (
                   <button
-                    onClick={() => setShowCreateModal(true)}
+                    onClick={openCreateModal}
                     className="mt-6 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
                   >
                     <Plus className="h-4 w-4" />
@@ -1222,39 +1255,37 @@ export default function TeacherAssignmentsPage() {
                   <Target className="h-4 w-4 text-blue-500" />
                   <h3 className="text-xs font-semibold text-gray-700">Audience Targeting</h3>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium text-gray-600">Publish Scope</Label>
-                    <Select value={createPayload.publishScope} onValueChange={(v) => setCreatePayload((p) => ({ ...p, publishScope: v, gradeId: "" }))}>
-                      <SelectTrigger className="h-9 text-sm bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="grade">
-                          <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" /> All School / By Grade</span>
-                        </SelectItem>
-                        <SelectItem value="section">
-                          <span className="flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /> By Section</span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium text-gray-600">Target Grade</Label>
-                    <Select value={createPayload.gradeId} onValueChange={(v) => setCreatePayload((p) => ({ ...p, gradeId: v }))}>
-                      <SelectTrigger className="h-9 text-sm bg-white">
-                        <SelectValue placeholder="All grades" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">All grades</SelectItem>
-                        {grades.map((g) => (
-                          <SelectItem key={g.id} value={g.id}>
-                            <span className="flex items-center gap-1.5"><GraduationCap className="h-3.5 w-3.5" /> Grade {g.name}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-1 mb-3">
+                  <Label className="text-xs font-medium text-gray-600">Publish Scope</Label>
+                  <Select
+                    value={createPayload.publishScope}
+                    onValueChange={(v) => setCreatePayload((p) => ({ ...p, publishScope: v, gradeIds: [], sectionIds: [] }))}
+                  >
+                    <SelectTrigger className="h-9 text-sm bg-white w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="grade">
+                        <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" /> All School / By Grade</span>
+                      </SelectItem>
+                      <SelectItem value="section">
+                        <span className="flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /> By Section</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-gray-600">
+                    {createPayload.publishScope === "section" ? "Target Sections" : "Target Grades"}
+                  </Label>
+                  <AssignmentAudiencePicker
+                    classes={teacherClasses}
+                    scope={createPayload.publishScope === "section" ? "section" : "grade"}
+                    gradeIds={createPayload.gradeIds}
+                    sectionIds={createPayload.sectionIds}
+                    onChangeGradeIds={(ids) => setCreatePayload((p) => ({ ...p, gradeIds: ids }))}
+                    onChangeSectionIds={(ids) => setCreatePayload((p) => ({ ...p, sectionIds: ids }))}
+                  />
                 </div>
               </div>
 

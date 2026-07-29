@@ -107,17 +107,6 @@ export default function StudentProgressTab({ selectedSchoolId }: StudentProgress
     : status === "in_progress" ? <PlayCircle className="h-3.5 w-3.5 text-blue-500" />
     : <Clock className="h-3.5 w-3.5 text-gray-400" />;
 
-  if (!selectedSchoolId) {
-    return (
-      <div className="flex items-center justify-center h-40 rounded-xl border border-dashed border-gray-200 bg-gray-50">
-        <div className="text-center">
-          <AlertCircle className="h-8 w-8 mx-auto mb-2 text-amber-400" />
-          <p className="text-sm font-medium text-gray-600">Select a school to view student progress</p>
-        </div>
-      </div>
-    );
-  }
-
   if (isLoading) {
     return (
       <div className="space-y-4 animate-pulse">

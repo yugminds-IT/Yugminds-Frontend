@@ -17,12 +17,10 @@ import {
   AlertCircle,
   CheckCircle2,
   BookOpen,
-  School,
   FileText,
   ChevronUp,
   ChevronDown,
 } from "lucide-react";
-import { SchoolGradeSelector } from "./SchoolGradeSelector";
 import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
 import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
@@ -107,8 +105,6 @@ interface CourseData {
   prerequisites_text?: string;
   thumbnail_url?: string;
   difficulty_level?: string;
-  school_ids: string[];
-  grades: string[];
   chapters: Chapter[];
   assignments?: AssignmentFromAPI[];
   videos?: Array<{ chapter_id: string; title: string; video_url: string; duration?: number }>;
@@ -171,9 +167,6 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
     thumbnail_url: course.thumbnail_url || "",
     difficulty_level: course.difficulty_level || "Beginner",
   });
-
-  const [selectedSchoolIds, setSelectedSchoolIds] = useState<string[]>(course.school_ids || []);
-  const [selectedGrades, setSelectedGrades] = useState<string[]>(course.grades || []);
 
   const [allCourses, setAllCourses] = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
@@ -339,16 +332,6 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
       setActiveTab("basic");
       return;
     }
-    if (selectedSchoolIds.length === 0) {
-      setError("Please select at least one school");
-      setActiveTab("schools");
-      return;
-    }
-    if (selectedGrades.length === 0) {
-      setError("Please select at least one grade");
-      setActiveTab("schools");
-      return;
-    }
 
     // Validate assignments
     for (const [chapterId, a] of Object.entries(assignments)) {
@@ -395,8 +378,6 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
         prerequisites_text: basicInfo.prerequisites_text || undefined,
         thumbnail_url: basicInfo.thumbnail_url || undefined,
         difficulty_level: basicInfo.difficulty_level || "Beginner",
-        school_ids: selectedSchoolIds,
-        grades: selectedGrades,
         chapters: chapters.map((ch) => ({ ...ch, name: ch.name.trim() })),
         chapter_contents: Object.entries(chapterContents).flatMap(
           ([chapterId, contents]) =>
@@ -444,14 +425,10 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="basic">
             <BookOpen className="h-4 w-4 mr-2" />
             Basic Info
-          </TabsTrigger>
-          <TabsTrigger value="schools">
-            <School className="h-4 w-4 mr-2" />
-            Schools & Grades
           </TabsTrigger>
           <TabsTrigger value="chapters">
             <FileText className="h-4 w-4 mr-2" />
@@ -613,25 +590,6 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Schools & Grades */}
-        <TabsContent value="schools" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>School & Grade Assignment</CardTitle>
-              <CardDescription>Assign this course to schools and grades</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SchoolGradeSelector
-                selectedSchoolIds={selectedSchoolIds}
-                selectedGrades={selectedGrades}
-                onSchoolChange={setSelectedSchoolIds}
-                onGradeChange={setSelectedGrades}
-                required
-              />
             </CardContent>
           </Card>
         </TabsContent>

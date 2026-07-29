@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
@@ -59,7 +59,6 @@ import {
   FileSpreadsheet,
   X,
   Loader2,
-  CheckCircle,
   RefreshCw,
   Copy,
   Shield
@@ -100,6 +99,8 @@ interface Student {
   created_at: string;
   parent_name?: string;
   parent_phone?: string;
+  /** Plaintext initial password — present only until the student changes it. */
+  initial_password?: string | null;
   student_schools?: Array<StudentSchool & {
     schools?: {
       name?: string;
@@ -215,10 +216,10 @@ export default function StudentsManagement() {
     students_completed: number;
   }>({ average_system_progress: 0, students_completed: 0 });
   const [isStudentsLoading, setIsStudentsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('students');
   const [isSyncingEnrollments, setIsSyncingEnrollments] = useState(false);
   const [isEnrollingStudent, setIsEnrollingStudent] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isBulkImportDialogOpen, setIsBulkImportDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -246,6 +247,7 @@ export default function StudentsManagement() {
   const [exportSelectedSchools, setExportSelectedSchools] = useState<string[]>([]);
   const [exportSelectedGrades, setExportSelectedGrades] = useState<string[]>([]);
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('csv');
+  const [resetPasswordsOnExport, setResetPasswordsOnExport] = useState(false);
   
   // Load saved form data (excluding password for security)
   const savedFormData = typeof window !== 'undefined'
@@ -310,11 +312,11 @@ export default function StudentsManagement() {
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [bulkImportError, setBulkImportError] = useState<string | null>(null);
   const [bulkImportResults, setBulkImportResults] = useState<{ success: number; failed: number; errors: string[] } | null>(null);
-  const [defaultPassword, setDefaultPassword] = useState<string>('TempPass123!');
-  const [showDefaultPassword, setShowDefaultPassword] = useState(false);
+  const [bulkImportCredentials, setBulkImportCredentials] = useState<Array<{ name: string; email: string; password: string; grade: string; section: string; school: string }> | null>(null);
+  const [credentialsGradeFilter, setCredentialsGradeFilter] = useState<string>('all');
+  const [credentialsSectionFilter, setCredentialsSectionFilter] = useState<string>('all');
   const [showStudentPasswords, setShowStudentPasswords] = useState<Record<string, boolean>>({});
   const [selectedSchoolForImport, setSelectedSchoolForImport] = useState<string>('');
-  const [emailDomain, setEmailDomain] = useState<string>(''); // Email domain like @rosebuds.edu
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -337,6 +339,89 @@ export default function StudentsManagement() {
     }
     return availableGrades;
   }, [selectedSchoolGrades]);
+
+  // Group Step-3 review rows by grade, then by section within each grade,
+  // for easier scanning; rows missing a required field or carrying a grade
+  // the school doesn't recognize are pulled into a "Needs Review" bucket
+  // pinned at the end regardless of their grade/section, so problems can't
+  // hide inside a grade or section group. Section filter dropdown (below)
+  // narrows the grade groups down to a single section across all grades.
+  const REVIEW_GROUP_KEY = "__needs_review__";
+  type BulkRow = { student: BulkImportData; index: number };
+  const [bulkSectionFilter, setBulkSectionFilter] = useState<string>("all");
+
+  // Every distinct, non-empty section value present in the parsed data —
+  // drives the filter dropdown regardless of what the school's own section
+  // list looks like (imported data may use section names outside it).
+  const availableBulkSections = useMemo(() => {
+    const set = new Set<string>();
+    bulkData.forEach((s) => {
+      const v = s.section?.trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [bulkData]);
+
+  const groupedBulkRows = useMemo(() => {
+    const groups = new Map<string, BulkRow[]>();
+    bulkData.forEach((student, index) => {
+      const trimmedGrade = student.grade?.trim() ?? "";
+      const trimmedSection = student.section?.trim() ?? "";
+      const missingRequired =
+        !student.student_name?.trim() ||
+        !trimmedGrade ||
+        !trimmedSection ||
+        !student.email?.trim();
+      const gradeUnknown = !!trimmedGrade && !availableGradesForSchool.includes(trimmedGrade);
+      const key = missingRequired || gradeUnknown ? REVIEW_GROUP_KEY : trimmedGrade;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push({ student, index });
+    });
+
+    const bySectionFilter = (rows: BulkRow[]) =>
+      bulkSectionFilter === "all"
+        ? rows
+        : rows.filter((r) => r.student.section?.trim() === bulkSectionFilter);
+
+    const ordered: {
+      key: string;
+      label: string;
+      rows: BulkRow[];
+      subgroups?: { section: string; rows: BulkRow[] }[];
+    }[] = [];
+
+    availableGradesForSchool.forEach((grade) => {
+      const rows = bySectionFilter(groups.get(grade) ?? []);
+      if (!rows.length) return;
+
+      const bySection = new Map<string, BulkRow[]>();
+      rows.forEach((row) => {
+        const section = row.student.section!.trim();
+        if (!bySection.has(section)) bySection.set(section, []);
+        bySection.get(section)!.push(row);
+      });
+      const subgroups = Array.from(bySection.entries())
+        .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+        .map(([section, sectionRows]) => ({ section, rows: sectionRows }));
+
+      ordered.push({ key: grade, label: grade, rows, subgroups });
+    });
+
+    // Any grade value present in the data but not in the school's list
+    // never accumulates here since it's routed into REVIEW_GROUP_KEY above —
+    // this loop only covers grades the school actually recognizes. The
+    // review bucket stays flat (no section filter applied) so nothing with
+    // missing data can be hidden by the section filter.
+    const reviewRows = groups.get(REVIEW_GROUP_KEY);
+    if (reviewRows?.length) {
+      ordered.push({
+        key: REVIEW_GROUP_KEY,
+        label: "Needs Review — Missing or Unrecognized Data",
+        rows: reviewRows,
+      });
+    }
+    return ordered;
+  }, [bulkData, availableGradesForSchool, bulkSectionFilter]);
 
   // Sections to show in dropdown: grade-specific list, or A-L as fallback
   const availableSectionsForGrade = useMemo(() => {
@@ -526,7 +611,7 @@ export default function StudentsManagement() {
     hasUnsavedData: () => {
       // Check if any dialog is open (indicating unsaved changes)
       // Also check if form has unsaved data via Zustand store
-      return isDialogOpen || isBulkImportDialogOpen || isEditDialogOpen || isFormDirty;
+      return isDialogOpen || isEditDialogOpen || isFormDirty;
     },
   });
 
@@ -711,6 +796,7 @@ export default function StudentsManagement() {
       });
       if (succeededIds.length > 0) {
         setStudents((prev) => prev.filter((s) => !succeededIds.includes(s.id)));
+        setTotalStudentsCount((prev) => Math.max(0, prev - succeededIds.length));
         toast.success(
           `Deleted ${succeededIds.length} student${succeededIds.length !== 1 ? "s" : ""}.`,
         );
@@ -802,6 +888,7 @@ export default function StudentsManagement() {
     try {
       await adminApi.students.delete(student.id);
       setStudents((prev) => prev.filter((s: Student) => s.id !== student.id));
+      setTotalStudentsCount((prev) => Math.max(0, prev - 1));
       setIsDeleteStudentDialogOpen(false);
       setDeletingStudent(null);
       toast.success(`Student "${student.full_name}" deleted successfully.`);
@@ -965,32 +1052,51 @@ export default function StudentsManagement() {
       return;
     }
 
-    // Validate all required fields
-    const invalidRows = bulkData.filter((item: BulkImportData) => {
-      const hasName = item.student_name && item.student_name.trim() !== '';
-      const hasGrade = item.grade && item.grade.trim() !== '';
-      const hasSection = item.section && item.section.trim() !== '';
-      const hasEmail = item.email && item.email.trim() !== '';
-      const hasPassword = item.password && item.password.trim() !== '';
-      const hasSchool = selectedSchoolForImport || item.school_id;
-      
-      return !hasName || !hasGrade || !hasSection || !hasEmail || !hasPassword || !hasSchool;
-    });
+    // Validate required fields. Password is intentionally not required here —
+    // the backend auto-generates one per student when left blank.
+    const invalidRows = bulkData
+      .map((item: BulkImportData, index: number) => ({ item, index }))
+      .filter(({ item }) => {
+        const hasName = item.student_name && item.student_name.trim() !== '';
+        const hasGrade = item.grade && item.grade.trim() !== '';
+        const hasSection = item.section && item.section.trim() !== '';
+        const hasEmail = item.email && item.email.trim() !== '';
+        return !hasName || !hasGrade || !hasSection || !hasEmail;
+      });
 
     if (invalidRows.length > 0) {
-      const missingFields = invalidRows.map((item: BulkImportData, idx: number) => {
+      const missingFields = invalidRows.map(({ item, index }) => {
         const missing: string[] = [];
         if (!item.student_name?.trim()) missing.push('Name');
         if (!item.grade?.trim()) missing.push('Grade');
         if (!item.section?.trim()) missing.push('Section');
         if (!item.email?.trim()) missing.push('Email');
-        if (!item.password?.trim()) missing.push('Password');
-        if (!selectedSchoolForImport && !item.school_id) missing.push('School');
-        return `Row ${idx + 1}: ${missing.join(', ')}`;
+        return `Row ${index + 1}: ${missing.join(', ')}`;
       }).slice(0, 5); // Show first 5 errors
-      
+
       setBulkImportError(
         `${invalidRows.length} row(s) are missing required fields:\n${missingFields.join('\n')}${invalidRows.length > 5 ? `\n... and ${invalidRows.length - 5} more` : ''}`
+      );
+      return;
+    }
+
+    // Catch in-file duplicate emails (e.g. two students sharing a last name
+    // whose emails were never de-duped, or a manual typo) before any
+    // network request — the server's dry-run can't be trusted to catch
+    // these on its own since it never writes rows to compare against.
+    const emailCounts = new Map<string, number[]>();
+    bulkData.forEach((item, index) => {
+      const email = item.email?.trim().toLowerCase();
+      if (!email) return;
+      emailCounts.set(email, [...(emailCounts.get(email) ?? []), index]);
+    });
+    const duplicateGroups = [...emailCounts.entries()].filter(([, indexes]) => indexes.length > 1);
+    if (duplicateGroups.length > 0) {
+      const lines = duplicateGroups.slice(0, 5).map(
+        ([email, indexes]) => `${email}: rows ${indexes.map((i) => i + 1).join(', ')}`
+      );
+      setBulkImportError(
+        `${duplicateGroups.length} email(s) are used by more than one row:\n${lines.join('\n')}${duplicateGroups.length > 5 ? `\n... and ${duplicateGroups.length - 5} more` : ''}`
       );
       return;
     }
@@ -998,53 +1104,111 @@ export default function StudentsManagement() {
     setIsBulkImporting(true);
     setBulkImportError(null);
     setBulkImportResults(null);
+    setBulkImportCredentials(null);
 
-    const results = {
-      success: 0,
-      failed: 0,
-      errors: [] as string[]
-    };
+    // The backend caps bulk-import requests at 500 rows, so a large file is
+    // split into sequential chunks — this is what makes "large data" work
+    // without needing a background job or file-upload infra.
+    const CHUNK_SIZE = 500;
+    const chunks: BulkImportData[][] = [];
+    for (let i = 0; i < bulkData.length; i += CHUNK_SIZE) {
+      chunks.push(bulkData.slice(i, i + CHUNK_SIZE));
+    }
+
+    const toRow = (student: BulkImportData) => ({
+      full_name: student.student_name.trim(),
+      email: student.email?.trim() || '',
+      password: student.password?.trim() || undefined,
+      grade: student.grade.trim(),
+      section: student.section.trim().toUpperCase(),
+      parent_name: student.father_name?.trim() || null,
+      parent_phone: student.phone_number?.trim() || null,
+    });
+
+    type RowResult = { index: number; email: string | null; success: boolean; error?: string; generated_password?: string };
 
     try {
-      // Process students in batches to avoid overwhelming the API
-      const batchSize = 5;
-      for (let i = 0; i < bulkData.length; i += batchSize) {
-        const batch = bulkData.slice(i, i + batchSize);
-        
-        await Promise.allSettled(
-          batch.map(async (student) => {
-            try {
-              await adminApi.students.create({
-                full_name: student.student_name.trim(),
-                email: student.email?.trim() || '',
-                password: student.password,
-                school_id: selectedSchoolForImport || student.school_id,
+      // Dry-run pass: validate every row (duplicate emails, weak supplied
+      // passwords, etc.) against the server without writing anything, so a
+      // large import can be checked end-to-end before committing.
+      const dryRunErrors: string[] = [];
+      for (const chunk of chunks) {
+        const res = await adminApi.students.bulkImport({
+          school_id: selectedSchoolForImport,
+          students: chunk.map(toRow),
+          dry_run: true,
+        });
+        const rowResults = (res.data as { results: RowResult[] }).results;
+        rowResults.forEach((r, i) => {
+          if (!r.success) {
+            dryRunErrors.push(`${chunk[i].student_name} (${r.email ?? 'no email'}): ${r.error}`);
+          }
+        });
+      }
+
+      if (dryRunErrors.length > 0) {
+        setBulkImportError(
+          `${dryRunErrors.length} row(s) failed validation — nothing was imported yet. Fix these and try again:\n${dryRunErrors.slice(0, 10).join('\n')}${dryRunErrors.length > 10 ? `\n... and ${dryRunErrors.length - 10} more` : ''}`
+        );
+        return;
+      }
+
+      // Commit pass: everything validated clean, so create for real.
+      const results = { success: 0, failed: 0, errors: [] as string[] };
+      const credentials: Array<{ name: string; email: string; password: string; grade: string; section: string; school: string }> = [];
+      const importSchoolName = schools.find((s: School) => s.id === selectedSchoolForImport)?.name ?? '';
+
+      for (const chunk of chunks) {
+        const res = await adminApi.students.bulkImport({
+          school_id: selectedSchoolForImport,
+          students: chunk.map(toRow),
+          dry_run: false,
+        });
+        const rowResults = (res.data as { results: RowResult[] }).results;
+        rowResults.forEach((r, i) => {
+          const student = chunk[i];
+          if (r.success) {
+            results.success++;
+            if (r.generated_password) {
+              credentials.push({
+                name: student.student_name,
+                email: r.email ?? student.email ?? '',
+                password: r.generated_password,
                 grade: student.grade.trim(),
                 section: student.section.trim().toUpperCase(),
-                phone: student.phone_number?.trim() || null,
-                parent_name: student.father_name?.trim() || null,
+                school: importSchoolName,
               });
-              results.success++;
-             
-            } catch (error: unknown) {
-              results.failed++;
-              const errMsg = error instanceof Error ? error.message : 'Unknown error';
-              results.errors.push(`${student.student_name}: ${errMsg}`);
-              console.error(`Error importing ${student.student_name}:`, error);
             }
-          })
-        );
+          } else {
+            results.failed++;
+            results.errors.push(`${student.student_name}: ${r.error}`);
+          }
+        });
       }
+
+      // Sort by grade — using the school's own configured grade order (same
+      // as the Step 3 review table's grouping) rather than a generic numeric
+      // guess, so e.g. "Kindergarten" before "Grade 1" sorts the same way
+      // here as it does on screen — then by section, so the credentials
+      // read like a class roster: 1A, 1B, 2A, 2B, ...
+      const gradeSortKey = (grade: string) => {
+        const i = availableGradesForSchool.indexOf(grade);
+        return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+      };
+      credentials.sort((a, b) => {
+        const gradeDiff = gradeSortKey(a.grade) - gradeSortKey(b.grade);
+        if (gradeDiff !== 0) return gradeDiff;
+        if (a.grade !== b.grade) return a.grade.localeCompare(b.grade);
+        return a.section.localeCompare(b.section, undefined, { numeric: true });
+      });
 
       setBulkImportResults(results);
+      setBulkImportCredentials(credentials.length > 0 ? credentials : null);
+      setCredentialsGradeFilter('all');
+      setCredentialsSectionFilter('all');
 
-      // Reload data after successful import
       if (results.success > 0) {
         await loadData();
-      }
-
-      // Show results
-      if (results.success > 0) {
         toast.success(
           `Imported ${results.success} student(s).${results.failed > 0 ? ` ${results.failed} failed.` : ''}`,
         );
@@ -1056,13 +1220,257 @@ export default function StudentsManagement() {
           `Failed to import students.${results.errors.length > 0 ? ` ${results.errors.slice(0, 3).join(' · ')}` : ''}`,
         );
       }
-     
     } catch (error: unknown) {
       console.error('Error bulk importing students:', error);
       setBulkImportError(`Bulk import error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsBulkImporting(false);
     }
+  };
+
+  /** Builds a CSV from `rows` (first row treated as header) and triggers a browser download. */
+  const downloadCsv = (filename: string, rows: (string | number)[][]) => {
+    const csvContent = rows
+      .map((row) => row.map((cell) => {
+        const cellStr = String(cell ?? '');
+        return cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')
+          ? `"${cellStr.replace(/"/g, '""')}"`
+          : cellStr;
+      }).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const todayStamp = () => new Date().toISOString().slice(0, 10);
+
+  /** Renders `htmlContent` in a hidden iframe and triggers the browser's print-to-PDF dialog. */
+  const printHtmlAsPdf = (htmlContent: string) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (iframeDoc) {
+      iframeDoc.open();
+      iframeDoc.write(htmlContent);
+      iframeDoc.close();
+
+      // Wait for content to load, then print/save as PDF
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1000);
+      }, 500);
+    }
+  };
+
+  /** Applies the grade/section filter dropdowns to the just-imported credentials list. */
+  const getFilteredBulkImportCredentials = () => {
+    if (!bulkImportCredentials) return [];
+    return bulkImportCredentials.filter((c) => {
+      if (credentialsGradeFilter !== 'all' && c.grade !== credentialsGradeFilter) return false;
+      if (credentialsSectionFilter !== 'all' && c.section !== credentialsSectionFilter) return false;
+      return true;
+    });
+  };
+
+  const downloadBulkImportCredentials = (format: 'csv' | 'pdf') => {
+    const filtered = getFilteredBulkImportCredentials();
+    if (filtered.length === 0) return;
+
+    if (format === 'csv') {
+      downloadCsv('student_import_credentials.csv', [
+        ['Name', 'Email', 'Password', 'School', 'Grade', 'Section'],
+        ...filtered.map((c) => [c.name, c.email, c.password, c.school, c.grade, c.section]),
+      ]);
+      return;
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h1 { color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background-color: #2563eb; color: white; padding: 12px; text-align: left; border: 1px solid #1e40af; }
+          td { padding: 10px; border: 1px solid #e5e7eb; }
+          tr:nth-child(even) { background-color: #f9fafb; }
+          .summary { margin-top: 20px; padding: 15px; background-color: #eff6ff; border-left: 4px solid #2563eb; }
+        </style>
+      </head>
+      <body>
+        <h1>Student Import Credentials</h1>
+        <div class="summary">
+          <p><strong>Total Students:</strong> ${filtered.length}</p>
+          <p><strong>Grade:</strong> ${credentialsGradeFilter === 'all' ? 'All grades' : credentialsGradeFilter}</p>
+          <p><strong>Section:</strong> ${credentialsSectionFilter === 'all' ? 'All sections' : credentialsSectionFilter}</p>
+          <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
+          <p><strong>Note:</strong> These are newly generated passwords from this import — save this file securely.</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Password</th>
+              <th>School</th>
+              <th>Grade</th>
+              <th>Section</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map((c, index) => `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${c.name}</td>
+                <td>${c.email}</td>
+                <td>${c.password}</td>
+                <td>${c.school}</td>
+                <td>${c.grade}</td>
+                <td>${c.section}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+    printHtmlAsPdf(htmlContent);
+  };
+
+  /** Flattens a student's (possibly multi-school) enrollments into comma-joined display strings. */
+  const flattenStudentSchools = (student: Student) => {
+    const schools = student.student_schools ?? [];
+    if (schools.length === 0) return { schoolNames: '-', grades: '-', sections: '-' };
+    return {
+      schoolNames: schools.map((a) => a.school_name || a.schools?.name || '-').join(', '),
+      grades: schools.map((a) => a.grade || '-').join(', '),
+      sections: schools.map((a) => a.section || '-').join(', '),
+    };
+  };
+
+  const downloadEnrollmentReport = () => {
+    if (students.length === 0) {
+      toast.error('No student data to export.');
+      return;
+    }
+    const rows: (string | number)[][] = [
+      ['Student Name', 'Email', 'School', 'Grade', 'Section', 'Status', 'Parent Name', 'Parent Phone', 'Enrolled On'],
+    ];
+    students.forEach((student) => {
+      const schools = student.student_schools ?? [];
+      const enrolledOn = student.created_at ? new Date(student.created_at).toLocaleDateString() : '-';
+      if (schools.length === 0) {
+        rows.push([student.full_name, student.email, '-', '-', '-', '-', student.parent_name || '-', student.parent_phone || '-', enrolledOn]);
+      } else {
+        schools.forEach((a) => {
+          rows.push([
+            student.full_name,
+            student.email,
+            a.school_name || a.schools?.name || '-',
+            a.grade || '-',
+            a.section || '-',
+            a.is_active === false ? 'Inactive' : 'Active',
+            student.parent_name || '-',
+            student.parent_phone || '-',
+            enrolledOn,
+          ]);
+        });
+      }
+    });
+    downloadCsv(`enrollment_report_${todayStamp()}.csv`, rows);
+  };
+
+  const downloadProgressReport = () => {
+    if (students.length === 0) {
+      toast.error('No student data to export.');
+      return;
+    }
+    const rows: (string | number)[][] = [
+      ['Student Name', 'Email', 'School(s)', 'Grade(s)', 'Section(s)', 'Courses Enrolled', 'Average Progress %', 'Completed Courses'],
+    ];
+    students.forEach((student) => {
+      const { schoolNames, grades, sections } = flattenStudentSchools(student);
+      const courses = student.student_courses ?? [];
+      const completed = courses.filter((c) => (c.progress_percentage ?? 0) >= 100).length;
+      rows.push([
+        student.full_name,
+        student.email,
+        schoolNames,
+        grades,
+        sections,
+        courses.length,
+        Math.round(student.progress ?? 0),
+        completed,
+      ]);
+    });
+    downloadCsv(`progress_report_${todayStamp()}.csv`, rows);
+  };
+
+  const downloadGradeWiseReport = () => {
+    if (students.length === 0) {
+      toast.error('No student data to export.');
+      return;
+    }
+    const buckets = new Map<string, { total: number; active: number; progressSum: number }>();
+    students.forEach((student) => {
+      const schools = student.student_schools ?? [];
+      schools.forEach((a) => {
+        const grade = a.grade || 'Unspecified';
+        const bucket = buckets.get(grade) ?? { total: 0, active: 0, progressSum: 0 };
+        bucket.total += 1;
+        if (a.is_active !== false) bucket.active += 1;
+        bucket.progressSum += student.progress ?? 0;
+        buckets.set(grade, bucket);
+      });
+    });
+    const rows: (string | number)[][] = [['Grade', 'Total Students', 'Active Students', 'Average Progress %']];
+    [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([grade, b]) => {
+        rows.push([grade, b.total, b.active, b.total > 0 ? Math.round(b.progressSum / b.total) : 0]);
+      });
+    downloadCsv(`grade_wise_report_${todayStamp()}.csv`, rows);
+  };
+
+  const downloadSchoolWiseReport = () => {
+    if (students.length === 0) {
+      toast.error('No student data to export.');
+      return;
+    }
+    const buckets = new Map<string, { total: number; active: number; progressSum: number; grades: Set<string> }>();
+    students.forEach((student) => {
+      const schools = student.student_schools ?? [];
+      schools.forEach((a) => {
+        const school = a.school_name || a.schools?.name || 'Unspecified';
+        const bucket = buckets.get(school) ?? { total: 0, active: 0, progressSum: 0, grades: new Set<string>() };
+        bucket.total += 1;
+        if (a.is_active !== false) bucket.active += 1;
+        bucket.progressSum += student.progress ?? 0;
+        if (a.grade) bucket.grades.add(a.grade);
+        buckets.set(school, bucket);
+      });
+    });
+    const rows: (string | number)[][] = [['School', 'Total Students', 'Grades Offered', 'Active Students', 'Average Progress %']];
+    [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([school, b]) => {
+        rows.push([school, b.total, b.grades.size, b.active, b.total > 0 ? Math.round(b.progressSum / b.total) : 0]);
+      });
+    downloadCsv(`school_wise_report_${todayStamp()}.csv`, rows);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1198,6 +1606,7 @@ export default function StudentsManagement() {
               } else {
                 setBulkData(validData);
                 setBulkImportError(null);
+                if (selectedSchoolForImport) autoFillEmails(selectedSchoolForImport);
               }
             } finally {
               setIsParsingFile(false);
@@ -1351,6 +1760,7 @@ export default function StudentsManagement() {
             console.log(`Successfully parsed ${validData.length} student(s) from ${parsedData.length} row(s)`);
             setBulkData(validData);
             setBulkImportError(null); // Clear any previous errors
+            if (selectedSchoolForImport) autoFillEmails(selectedSchoolForImport);
             setIsParsingFile(false);
            
           } catch (error: unknown) {
@@ -1394,41 +1804,42 @@ export default function StudentsManagement() {
     setBulkData(prevData => prevData.filter((item: BulkImportData) => item.id !== id));
   };
 
-  const assignEmailsAndPasswords = () => {
-    // Get the email domain (ensure it starts with @ if provided, or use school name)
-    let domain = emailDomain.trim();
-    if (domain && !domain.startsWith('@')) {
-      domain = `@${domain}`;
-    }
-    
-    // If no domain provided, use school name as fallback
-    if (!domain && selectedSchoolForImport) {
-      const schoolName = schools.find((s: School) => s.id === selectedSchoolForImport)?.name?.toLowerCase().replace(/\s+/g, '') || 'school';
-      domain = `@${schoolName}.edu`;
-    } else if (!domain) {
-      domain = '@school.edu';
-    }
+  /**
+   * Fills any blank `email` fields as `{last_name}@{school-domain}.edu`,
+   * derived from the given school's name. Never overwrites an email the
+   * admin already typed/edited. Students sharing a last name (e.g. two
+   * "Smith"s) would otherwise collide on the same email, so a numeric
+   * suffix (smith2@, smith3@, ...) is appended whenever the base email is
+   * already taken — by an existing row's email or one just generated in
+   * this same pass. Passwords are intentionally left untouched here — they
+   * stay blank so the backend auto-generates a unique one per student
+   * (surfaced afterward via bulkImportCredentials).
+   */
+  const autoFillEmails = (schoolId: string) => {
+    const schoolName = schools.find((s: School) => s.id === schoolId)?.name?.toLowerCase().replace(/\s+/g, '') || 'school';
+    const domain = `@${schoolName}.edu`;
 
-    const updatedData = bulkData.map((item, _index) => {
-      let email = item.email;
-      let password = item.password || defaultPassword;
+    setBulkData(prev => {
+      const taken = new Set(
+        prev.filter((item) => item.email).map((item) => item.email!.trim().toLowerCase())
+      );
 
-      // Generate email using student name + domain (individual assignment mode)
-      if (!email) {
-        // Create email from student name: "John Smith" -> "smith" (last name only)
+      return prev.map((item) => {
+        if (item.email) return item;
         const nameParts = item.student_name.trim().toLowerCase().split(/\s+/);
-        // Use last name only (more common for school emails)
         const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : nameParts[0];
-        email = `${lastName}${domain}`;
-      }
-      if (!password) {
-        password = defaultPassword;
-      }
 
-      return { ...item, email, password };
+        let email = `${lastName}${domain}`;
+        let suffix = 2;
+        while (taken.has(email)) {
+          email = `${lastName}${suffix}${domain}`;
+          suffix++;
+        }
+        taken.add(email);
+
+        return { ...item, email };
+      });
     });
-
-    setBulkData(updatedData);
   };
 
   const downloadSampleCSV = () => {
@@ -1453,28 +1864,7 @@ export default function StudentsManagement() {
       ['Karan Malhotra', 'Deepak Malhotra', '+919876543224', 'Grade 10', 'A'],
     ];
 
-    // Convert to CSV format
-    const csvContent = sampleData.map((row: string[]) => {
-      // Escape quotes and wrap in quotes if contains comma
-      return row.map((cell: string | number) => {
-        const cellStr = String(cell || '');
-        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-          return `"${cellStr.replace(/"/g, '""')}"`;
-        }
-        return cellStr;
-      }).join(',');
-    }).join('\n');
-
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'student_import_sample.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    downloadCsv('student_import_sample.csv', sampleData);
   };
 
 
@@ -1498,13 +1888,45 @@ export default function StudentsManagement() {
         return matchesSchool && matchesGrade;
       });
 
-      // Generate credentials with school and grade info
+      if (filteredStudentsForExport.length === 0) {
+        toast.warning('No students found matching the selected criteria.');
+        setIsExportDialogOpen(false);
+        setIsExporting(false);
+        return;
+      }
+
+      // Only when explicitly opted in: issue every matched student a brand
+      // new password (invalidating their old one) so this export can
+      // include a real, working Password column. Chunked at 1000 ids/request
+      // to match the backend's cap on the bulk endpoint.
+      const passwordMap = new Map<string, string>();
+      if (resetPasswordsOnExport) {
+        const ids = filteredStudentsForExport.map((s) => s.id);
+        const CHUNK_SIZE = 1000;
+        for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+          const chunk = ids.slice(i, i + CHUNK_SIZE);
+          const res = await adminApi.students.bulk({ action: 'reset_password', student_ids: chunk });
+          const results = (res.data as { results: Array<{ id: number; new_password: string }> }).results;
+          results.forEach((r) => passwordMap.set(String(r.id), r.new_password));
+        }
+      }
+
+      // Generate student info with school and grade info. Passwords are
+      // only ever included when resetPasswordsOnExport was checked — real
+      // passwords are bcrypt-hashed and can't otherwise be retrieved.
+      // A real password shows up whenever we just reset it, OR the student
+      // already has a stored initial password (hasn't changed it yet) —
+      // whichever applies, per row. No password shows for students who've
+      // already changed theirs and weren't part of a reset.
       const credentials = filteredStudentsForExport.map((student: StudentWithSchools) => {
         const schoolAssignment = student.student_schools?.[0];
+        const password = resetPasswordsOnExport
+          ? (passwordMap.get(String(student.id)) ?? '')
+          : (student.initial_password ?? '');
         return {
           name: student.full_name,
           email: student.email,
-          password: 'temp123', // Default password - in production, you'd need to retrieve actual passwords
+          password: password || undefined,
           school:
             schoolAssignment?.school_name ||
             schoolAssignment?.schools?.name ||
@@ -1513,16 +1935,10 @@ export default function StudentsManagement() {
           section: schoolAssignment?.section || 'N/A'
         };
       });
-
-      if (credentials.length === 0) {
-        toast.warning('No students found matching the selected criteria.');
-        setIsExportDialogOpen(false);
-        setIsExporting(false);
-        return;
-      }
+      const showPasswordColumn = resetPasswordsOnExport || credentials.some((c) => c.password);
 
       // Generate filename based on filters
-      let filename = 'student_credentials';
+      let filename = resetPasswordsOnExport ? 'student_info_with_new_passwords' : 'student_info';
       if (exportSelectedSchools.length > 0) {
         const schoolNames = exportSelectedSchools
           .map((id: string) => schools.find((s: School) => s.id === id)?.name || id)
@@ -1537,8 +1953,10 @@ export default function StudentsManagement() {
         // Create CSV content
         type ExportCredential = { name?: string; email?: string; password?: string; school?: string; grade?: string; section?: string };
         const csvContent = [
-          'Name,Email,Password,School,Grade,Section',
-          ...(credentials as ExportCredential[]).map((c) => `"${c.name ?? ''}","${c.email ?? ''}","${c.password ?? ''}","${c.school ?? ''}","${c.grade ?? ''}","${c.section ?? ''}"`)
+          showPasswordColumn ? 'Name,Email,Password,School,Grade,Section' : 'Name,Email,School,Grade,Section',
+          ...(credentials as ExportCredential[]).map((c) => showPasswordColumn
+            ? `"${c.name ?? ''}","${c.email ?? ''}","${c.password ?? ''}","${c.school ?? ''}","${c.grade ?? ''}","${c.section ?? ''}"`
+            : `"${c.name ?? ''}","${c.email ?? ''}","${c.school ?? ''}","${c.grade ?? ''}","${c.section ?? ''}"`)
         ].join('\n');
 
         // Download CSV
@@ -1550,7 +1968,6 @@ export default function StudentsManagement() {
         a.click();
         window.URL.revokeObjectURL(url);
       } else if (exportFormat === 'pdf') {
-        // Create PDF using HTML to PDF conversion
         const htmlContent = `
           <!DOCTYPE html>
           <html>
@@ -1594,12 +2011,17 @@ export default function StudentsManagement() {
             </style>
           </head>
           <body>
-            <h1>Student Credentials Export</h1>
+            <h1>Student Info Export</h1>
             <div class="summary">
               <p><strong>Total Students:</strong> ${credentials.length}</p>
               <p><strong>Schools:</strong> ${exportSelectedSchools.length === 0 ? 'All Schools' : exportSelectedSchools.map((id: string) => schools.find((s: School) => s.id === id)?.name).filter(Boolean).join(', ')}</p>
               <p><strong>Grades:</strong> ${exportSelectedGrades.length === 0 ? 'All Grades' : exportSelectedGrades.join(', ')}</p>
               <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
+              ${resetPasswordsOnExport
+                ? '<p><strong>Note:</strong> Every password below is brand new, generated for this export. Previous passwords no longer work.</p>'
+                : showPasswordColumn
+                  ? '<p><strong>Note:</strong> Passwords shown are the original ones issued at account creation, for students who haven\'t changed them yet. Blank means they\'ve already set their own.</p>'
+                  : '<p><strong>Note:</strong> Passwords are not included — they cannot be retrieved once set. Use "Reset Password" on a student\'s profile to issue a new one.</p>'}
             </div>
             <table>
               <thead>
@@ -1607,7 +2029,7 @@ export default function StudentsManagement() {
                   <th>#</th>
                   <th>Name</th>
                   <th>Email</th>
-                  <th>Password</th>
+                  ${showPasswordColumn ? '<th>Password</th>' : ''}
                   <th>School</th>
                   <th>Grade</th>
                   <th>Section</th>
@@ -1619,7 +2041,7 @@ export default function StudentsManagement() {
                     <td>${index + 1}</td>
                     <td>${c.name}</td>
                     <td>${c.email}</td>
-                    <td>${c.password}</td>
+                    ${showPasswordColumn ? `<td>${c.password ?? ''}</td>` : ''}
                     <td>${c.school}</td>
                     <td>${c.grade}</td>
                     <td>${c.section}</td>
@@ -1631,26 +2053,7 @@ export default function StudentsManagement() {
           </html>
         `;
 
-        // Create a hidden iframe to generate PDF
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (iframeDoc) {
-          iframeDoc.open();
-          iframeDoc.write(htmlContent);
-          iframeDoc.close();
-          
-          // Wait for content to load, then print/save as PDF
-          setTimeout(() => {
-            iframe.contentWindow?.print();
-            // Clean up after a delay
-            setTimeout(() => {
-              document.body.removeChild(iframe);
-            }, 1000);
-          }, 500);
-        }
+        printHtmlAsPdf(htmlContent);
       }
 
       // Close dialog and reset filters
@@ -1658,9 +2061,14 @@ export default function StudentsManagement() {
       setExportSelectedSchools([]);
       setExportSelectedGrades([]);
       setExportFormat('csv');
-      
+      setResetPasswordsOnExport(false);
+
       toast.success(
-        `Exported ${credentials.length} student credential row(s) as ${exportFormat.toUpperCase()}. Password column uses placeholder values only.`,
+        resetPasswordsOnExport
+          ? `Exported ${credentials.length} student(s) as ${exportFormat.toUpperCase()} with newly reset passwords. Their previous passwords no longer work.`
+          : showPasswordColumn
+            ? `Exported ${credentials.length} student(s) as ${exportFormat.toUpperCase()} with their original passwords (only shown for students who haven't changed them yet).`
+            : `Exported ${credentials.length} student row(s) as ${exportFormat.toUpperCase()}. Passwords aren't included — use Reset Password for a working one.`,
       );
     } catch (error) {
       console.error('Error generating credentials:', error);
@@ -1819,7 +2227,7 @@ export default function StudentsManagement() {
           </div>
 
           {/* Main Content */}
-          <Tabs defaultValue="students" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="students">Students</TabsTrigger>
               <TabsTrigger value="import">Bulk Import</TabsTrigger>
@@ -2045,7 +2453,7 @@ export default function StudentsManagement() {
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     <Download className="mr-2 h-4 w-4" />
-                    Export Credentials
+                    Export Student Info
                   </Button>
 
                   <Button
@@ -2136,7 +2544,7 @@ export default function StudentsManagement() {
                 <DialogHeader>
                   <DialogTitle>Delete student</DialogTitle>
                   <DialogDescription>
-                    The student is deactivated and moved to the admin Trash, where they can be restored or permanently deleted.
+                    This cannot be undone. The student's account, enrollment, and progress will be permanently removed, and their email will be free to reuse.
                   </DialogDescription>
                 </DialogHeader>
                 {deletingStudent && (
@@ -2191,7 +2599,7 @@ export default function StudentsManagement() {
                 <DialogHeader>
                   <DialogTitle>Delete selected students</DialogTitle>
                   <DialogDescription>
-                    Deleted students are deactivated and moved to the admin Trash, where they can be restored or permanently deleted.
+                    This cannot be undone. Their accounts, enrollment, and progress will be permanently removed, and their emails will be free to reuse.
                   </DialogDescription>
                 </DialogHeader>
                 {bulkDeleteStudents && bulkDeleteStudents.length > 0 && (
@@ -2617,9 +3025,11 @@ export default function StudentsManagement() {
             <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
                 <DialogHeader>
-                  <DialogTitle>Export Student Credentials</DialogTitle>
+                  <DialogTitle>Export Student Info</DialogTitle>
                   <DialogDescription>
-                    Select schools and/or grades to export credentials for specific students. Leave all unchecked to export all students.
+                    Select schools and/or grades to export student details for specific students. Leave all unchecked to export all students.
+                    Passwords can&apos;t be included here — they&apos;re hashed and unrecoverable once set. To get a real working password for a
+                    student, use &quot;Reset Password&quot; on their profile, or download credentials right after a Bulk Import (those are real, freshly generated ones).
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-6 py-4">
@@ -2729,7 +3139,7 @@ export default function StudentsManagement() {
                     <CardHeader>
                       <CardTitle className="text-lg">Export Format</CardTitle>
                       <CardDescription>
-                        Choose the file format for the exported credentials
+                        Choose the file format for the exported student info
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -2772,6 +3182,35 @@ export default function StudentsManagement() {
                     </CardContent>
                   </Card>
 
+                  {/* Password Reset Option */}
+                  <Card className="bg-white">
+                    <CardHeader>
+                      <CardTitle className="text-lg">Passwords</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-start space-x-2">
+                        <input
+                          type="checkbox"
+                          id="reset-passwords-on-export"
+                          checked={resetPasswordsOnExport}
+                          onChange={(e) => setResetPasswordsOnExport(e.target.checked)}
+                          className="h-4 w-4 mt-0.5 text-blue-600 focus:ring-blue-500"
+                        />
+                        <Label htmlFor="reset-passwords-on-export" className="cursor-pointer font-medium">
+                          Reset passwords and include them in this export
+                        </Label>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Students who haven&apos;t changed their password yet already show it automatically, no need to check this. Check it to also force a fresh password for students who&apos;ve already changed theirs (or to reissue everyone&apos;s regardless).
+                      </p>
+                      {resetPasswordsOnExport && (
+                        <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                          ⚠ Every selected student&apos;s current password will stop working immediately. This file will contain their only copy of the new one — save it securely.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
                   {/* Export Summary */}
                   <Card className="bg-white">
                     <CardHeader>
@@ -2789,7 +3228,7 @@ export default function StudentsManagement() {
                           <strong>File Format:</strong> {exportFormat.toUpperCase()}
                         </p>
                         <p className="text-sm text-gray-600">
-                          <strong>Columns:</strong> Name, Email, Password, School, Grade, Section
+                          <strong>Columns:</strong> {resetPasswordsOnExport ? 'Name, Email, Password, School, Grade, Section' : 'Name, Email, School, Grade, Section (+ Password, for students who still have their original one)'}
                         </p>
                       </div>
                     </CardContent>
@@ -2803,6 +3242,7 @@ export default function StudentsManagement() {
                       setExportSelectedSchools([]);
                       setExportSelectedGrades([]);
                       setExportFormat('csv');
+                      setResetPasswordsOnExport(false);
                     }}
                     disabled={isExporting}
                   >
@@ -2821,7 +3261,7 @@ export default function StudentsManagement() {
                     ) : (
                       <>
                         <Download className="mr-2 h-4 w-4" />
-                        Export Credentials
+                        Export Student Info
                       </>
                     )}
                   </Button>
@@ -2829,92 +3269,111 @@ export default function StudentsManagement() {
               </DialogContent>
             </Dialog>
 
-            {/* Bulk Import Dialog */}
-            <Dialog open={isBulkImportDialogOpen} onOpenChange={setIsBulkImportDialogOpen}>
-              <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto bg-white">
-                <DialogHeader>
-                  <DialogTitle>Bulk Import Students</DialogTitle>
-                  <DialogDescription>
-                    Upload a file (CSV or Excel) to import multiple students at once. All students will be assigned to the selected school.
-                  </DialogDescription>
-                </DialogHeader>
-                
-                <div className="space-y-6 py-4">
-                  {/* Step 1: File Upload */}
-                  <Card className="bg-white">
-                    <CardHeader>
-                      <CardTitle className="text-lg">Step 1: Upload File</CardTitle>
-                      <CardDescription>
-                        Supported formats: CSV, Excel (.xlsx, .xls). Required columns: Student Name, Father Name, Phone Number, Grade, Section. 
-                        Download the sample CSV file below to see the exact format needed.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                        <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                        <h3 className="text-lg font-medium mb-2">Upload File</h3>
-                        <p className="text-gray-600 mb-4 text-sm">
-                          Upload a CSV or Excel file with columns: Student Name, Father Name, Phone Number, Grade, Section
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-3 items-center justify-center">
-                          <input
-                            type="file"
-                            accept=".csv,.xlsx,.xls"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            id="bulk-file-upload-dialog"
-                          />
-                          <label
-                            htmlFor="bulk-file-upload-dialog"
-                            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
-                          >
-                            <Upload className="mr-2 h-4 w-4" />
-                            Choose File
-                          </label>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={downloadSampleCSV}
-                            className="inline-flex items-center px-4 py-2 border border-blue-300 rounded-md shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100"
-                          >
-                            <Download className="mr-2 h-4 w-4" />
-                            Download Sample CSV
-                          </Button>
-                        </div>
-                        <p className="mt-3 text-xs text-gray-500">
-                          Click &quot;Download Sample CSV&quot; to get a template file with the correct format and sample rows
-                        </p>
-                        {uploadFile && (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-sm text-blue-600 font-medium">
-                              ✓ Selected: {uploadFile.name}
-                            </p>
-                            {isParsingFile && (
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span>Parsing file...</span>
-                              </div>
-                            )}
-                            {!isParsingFile && bulkData.length > 0 && (
-                              <p className="text-sm text-green-600 font-medium">
-                                ✓ Successfully parsed {bulkData.length} student(s)
-                              </p>
-                            )}
-                          </div>
-                        )}
+            {/* Bulk Import Tab */}
+            <TabsContent value="import" className="space-y-6">
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle>Bulk Import Students</CardTitle>
+                  <CardDescription>Select a school, then upload a filled-in template to create students in bulk.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Step 1: Select School */}
+                  <div>
+                    <Label className="font-medium">Step 1: Select School <span className="text-red-500">*</span></Label>
+                    <p className="text-sm text-gray-500 mb-2">All students in this import will be assigned to the selected school.</p>
+                    {schools.length === 0 ? (
+                      <div className="w-full max-w-md p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 text-sm flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading schools...
                       </div>
-                    </CardContent>
-                  </Card>
+                    ) : (
+                      <Select
+                        value={selectedSchoolForImport}
+                        onValueChange={(value) => {
+                          const selectedSchool = schools.find((s: School) => s.id === value);
+                          setSelectedSchoolGrades(selectedSchool?.grades ?? []);
+                          setSelectedSchoolForImport(value);
+                        }}
+                      >
+                        <SelectTrigger className="w-full max-w-md">
+                          <SelectValue placeholder="Select school for all students" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white">
+                          {schools.map((school) => (
+                            <SelectItem key={school.id} value={school.id}>
+                              {school.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  {/* Step 2: Upload */}
+                  <div>
+                    <Label className="font-medium">Step 2: Upload File</Label>
+                    <p className="text-sm text-gray-500 mb-2">
+                      CSV or Excel (.xlsx, .xls). Columns: Student Name, Father Name, Phone Number, Grade, Section.
+                    </p>
+                    <div className={`border-2 border-dashed rounded-lg p-6 text-center ${!selectedSchoolForImport ? 'border-gray-200' : 'border-gray-300'}`}>
+                      <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <h3 className="text-lg font-medium mb-2">Upload File</h3>
+                      <p className="text-gray-600 mb-4 text-sm">
+                        {selectedSchoolForImport
+                          ? 'Upload a CSV or Excel file with your students.'
+                          : 'Select a school above first.'}
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3 items-center justify-center">
+                        <input
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          id="bulk-file-upload-tab"
+                          disabled={!selectedSchoolForImport}
+                        />
+                        <label
+                          htmlFor="bulk-file-upload-tab"
+                          className={`inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium bg-white ${
+                            selectedSchoolForImport ? 'text-gray-700 hover:bg-gray-50 cursor-pointer' : 'text-gray-400 cursor-not-allowed pointer-events-none'
+                          }`}
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Choose File
+                        </label>
+                        <Button type="button" variant="outline" onClick={downloadSampleCSV}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Template
+                        </Button>
+                      </div>
+                      {uploadFile && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-sm text-blue-600 font-medium">
+                            ✓ Selected: {uploadFile.name}
+                          </p>
+                          {isParsingFile && (
+                            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>Parsing file...</span>
+                            </div>
+                          )}
+                          {!isParsingFile && bulkData.length > 0 && (
+                            <p className="text-sm text-green-600 font-medium">
+                              ✓ Successfully parsed {bulkData.length} student(s) — emails auto-filled from the school name
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {bulkImportError && (
                     <div className="p-4 bg-red-50 border-2 border-red-300 rounded-lg">
                       <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0">
-                          <X className="h-5 w-5 text-red-600 mt-0.5" />
-                        </div>
+                        <X className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-red-800 mb-1">File Upload Error</p>
-                          <p className="text-sm text-red-600">{bulkImportError}</p>
+                          <p className="text-sm font-medium text-red-800 mb-1">Import Error</p>
+                          <p className="text-sm text-red-600 whitespace-pre-line">{bulkImportError}</p>
                         </div>
                       </div>
                     </div>
@@ -2922,281 +3381,230 @@ export default function StudentsManagement() {
 
                   {bulkData.length > 0 && (
                     <>
-                      {/* Step 2: School Selection */}
-                      <Card className="bg-white">
-                        <CardHeader>
-                          <CardTitle className="text-lg">Step 2: Select School</CardTitle>
-                          <CardDescription>
-                            All students in this import will be assigned to the selected school
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          {schools.length === 0 ? (
-                            <div className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 text-sm flex items-center gap-2">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Loading schools...
-                            </div>
-                          ) : (
-                            <Select
-                              value={selectedSchoolForImport}
-                              onValueChange={setSelectedSchoolForImport}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select school for all students" />
+                      {/* Step 3: Review & Edit */}
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <div>
+                            <Label className="font-medium">Step 3: Review & Edit ({bulkData.length} students)</Label>
+                            <p className="text-sm text-gray-500">
+                              Emails are auto-filled from the school name. Passwords are left blank so each student gets a unique auto-generated one — type one only to override.
+                            </p>
+                          </div>
+                          <Button
+                            onClick={handleBulkImport}
+                            disabled={isBulkImporting || !selectedSchoolForImport || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 shrink-0"
+                          >
+                            {isBulkImporting ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Importing Students...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="mr-2 h-4 w-4" />
+                                Import {bulkData.length} Student{bulkData.length !== 1 ? 's' : ''}
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        {(() => {
+                          const missingPhone = bulkData.filter((s) => !s.phone_number?.trim()).length;
+                          const missingFather = bulkData.filter((s) => !s.father_name?.trim()).length;
+                          const unknownGrade = bulkData.filter(
+                            (s) => s.grade?.trim() && !availableGradesForSchool.includes(s.grade.trim())
+                          ).length;
+                          const notes: string[] = [];
+                          if (missingPhone > 0) notes.push(`${missingPhone} missing phone number`);
+                          if (missingFather > 0) notes.push(`${missingFather} missing father's name`);
+                          if (unknownGrade > 0) notes.push(`${unknownGrade} grade not in this school's list`);
+                          if (notes.length === 0) return null;
+                          return (
+                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 mb-2">
+                              ⚠ {notes.join(' · ')} — these won't block the import, just double-check them below.
+                            </p>
+                          );
+                        })()}
+                        {availableBulkSections.length > 1 && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <Label className="text-xs text-gray-500 font-normal">Filter by section:</Label>
+                            <Select value={bulkSectionFilter} onValueChange={setBulkSectionFilter}>
+                              <SelectTrigger className="h-8 text-sm w-40">
+                                <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-white">
-                                {schools.map((school) => (
-                                  <SelectItem key={school.id} value={school.id}>
-                                    {school.name}
+                                <SelectItem value="all">All sections</SelectItem>
+                                {availableBulkSections.map((section) => (
+                                  <SelectItem key={section} value={section}>
+                                    Section {section}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
-                          )}
-                        </CardContent>
-                      </Card>
-
-                      {/* Step 3: Email & Password Assignment */}
-                      <Card className="bg-white">
-                        <CardHeader>
-                          <CardTitle className="text-lg">Step 3: Assign Emails & Passwords</CardTitle>
-                          <CardDescription>
-                            Assign emails and passwords to students before import. Each student will get a unique email generated from their last name.
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <p className="text-sm text-blue-800">
-                              <strong>Individual Assignment Mode:</strong> Each student will get a unique email generated from their last name and the email domain you specify below.
-                            </p>
-                          </div>
-
-                          {/* Email Domain Field */}
-                          <div className="space-y-2 p-4 border rounded-lg bg-blue-50">
-                            <Label className="font-medium">Email Domain <span className="text-red-500">*</span></Label>
-                            <Input
-                              type="text"
-                              value={emailDomain}
-                              onChange={(e) => setEmailDomain(e.target.value)}
-                              placeholder="@rosebuds.edu or rosebuds.edu"
-                              className="w-full bg-white"
-                            />
-                            <div className="space-y-1">
-                              <p className="text-xs text-gray-600">
-                                Enter the email domain (e.g., &quot;@rosebuds.edu&quot; or &quot;rosebuds.edu&quot;). 
-                              </p>
-                              <p className="text-xs text-gray-600 font-medium">
-                                Email format: {"{student_last_name}"}{emailDomain ? (emailDomain.startsWith('@') ? emailDomain : `@${emailDomain}`) : "@domain.edu"}
-                              </p>
-                              {selectedSchoolForImport && !emailDomain && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    const schoolName = schools.find((s: School) => s.id === selectedSchoolForImport)?.name?.toLowerCase().replace(/\s+/g, '') || '';
-                                    setEmailDomain(`@${schoolName}.edu`);
-                                  }}
-                                  className="text-xs mt-2 bg-white"
-                                >
-                                  <School className="mr-1 h-3 w-3" />
-                                  Use School Name: {schools.find((s: School) => s.id === selectedSchoolForImport)?.name?.toLowerCase().replace(/\s+/g, '')}.edu
-                                </Button>
-                              )}
-                              {emailDomain && (
-                                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
-                                  <strong>Example:</strong> For student &quot;John Smith&quot;, email will be: <code className="bg-white px-1 rounded">smith{emailDomain.startsWith('@') ? emailDomain : `@${emailDomain}`}</code>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Default Password Field */}
-                          <div className="space-y-2">
-                            <Label>Default Password (for all students):</Label>
-                            <div className="relative">
-                              <Input
-                                type={showDefaultPassword ? "text" : "password"}
-                                value={defaultPassword}
-                                onChange={(e) => setDefaultPassword(e.target.value)}
-                                placeholder="Enter default password"
-                                className="pr-10"
-                              />
+                            {bulkSectionFilter !== "all" && (
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                onClick={() => setShowDefaultPassword(!showDefaultPassword)}
-                                title={showDefaultPassword ? "Hide password" : "Show password"}
+                                className="h-8 text-xs text-gray-500"
+                                onClick={() => setBulkSectionFilter("all")}
                               >
-                                {showDefaultPassword ? (
-                                  <EyeOff className="h-4 w-4 text-gray-500" />
-                                ) : (
-                                  <Eye className="h-4 w-4 text-gray-400" />
-                                )}
+                                Clear
                               </Button>
-                            </div>
-                            <p className="text-xs text-gray-500">
-                              This password will be used if no specific password is assigned
-                            </p>
+                            )}
                           </div>
-
-                          <Button
-                            type="button"
-                            onClick={assignEmailsAndPasswords}
-                            variant="outline"
-                            className="w-full"
-                            disabled={!emailDomain && !selectedSchoolForImport}
-                          >
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Assign Emails & Passwords to All Students
-                          </Button>
-                          {!emailDomain && !selectedSchoolForImport && (
-                            <p className="text-xs text-red-500 text-center">
-                              Please select a school or enter an email domain to generate emails
-                            </p>
-                          )}
-                        </CardContent>
-                      </Card>
-
-                      {/* Step 4: Data Preview Table */}
-                      <Card className="bg-white">
-                        <CardHeader>
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <CardTitle className="text-lg">Step 4: Review & Edit ({bulkData.length} students)</CardTitle>
-                              <CardDescription>
-                                Review and edit student information before importing. Click on any field to edit.
-                              </CardDescription>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="max-h-96 overflow-y-auto border rounded-lg">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead className="w-12">#</TableHead>
-                                  <TableHead>Student Name</TableHead>
-                                  <TableHead>Father Name</TableHead>
-                                  <TableHead>Phone</TableHead>
-                                  <TableHead>Grade</TableHead>
-                                  <TableHead>Section</TableHead>
-                                  <TableHead>Email</TableHead>
-                                  <TableHead>Password</TableHead>
-                                  <TableHead className="w-16">Actions</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {bulkData.map((student, index) => (
-                                  <TableRow key={student.id || index}>
-                                    <TableCell className="font-medium">{index + 1}</TableCell>
-                                    <TableCell>
+                        )}
+                        <div className="max-h-96 overflow-y-auto border rounded-lg">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-12">#</TableHead>
+                                <TableHead>Student Name</TableHead>
+                                <TableHead>Father Name</TableHead>
+                                <TableHead>Phone</TableHead>
+                                <TableHead>Grade</TableHead>
+                                <TableHead>Section</TableHead>
+                                <TableHead>Email</TableHead>
+                                <TableHead>Password</TableHead>
+                                <TableHead className="w-16">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            {groupedBulkRows.map((group) => (
+                            <TableBody key={group.key}>
+                              <TableRow className={group.key === REVIEW_GROUP_KEY ? "bg-amber-50 hover:bg-amber-50" : "bg-gray-50 hover:bg-gray-50"}>
+                                <TableCell colSpan={9} className="py-2">
+                                  <span className={`text-xs font-semibold uppercase tracking-wide ${group.key === REVIEW_GROUP_KEY ? "text-amber-700" : "text-gray-500"}`}>
+                                    {group.label} · {group.rows.length} student{group.rows.length !== 1 ? "s" : ""}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                              {(group.subgroups ?? [{ section: null, rows: group.rows }]).map((subgroup, sgIdx) => (
+                                <Fragment key={subgroup.section ?? `${group.key}-flat-${sgIdx}`}>
+                                  {subgroup.section && (group.subgroups?.length ?? 0) > 1 && (
+                                    <TableRow className="bg-gray-50/60 hover:bg-gray-50/60">
+                                      <TableCell colSpan={9} className="py-1.5 pl-8">
+                                        <span className="text-[11px] font-medium text-gray-400">
+                                          Section {subgroup.section} · {subgroup.rows.length} student{subgroup.rows.length !== 1 ? "s" : ""}
+                                        </span>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                  {subgroup.rows.map(({ student, index }) => {
+                                const gradeUnknown = !!student.grade?.trim() && !availableGradesForSchool.includes(student.grade.trim());
+                                return (
+                                <TableRow key={student.id || index}>
+                                  <TableCell className="font-medium">{index + 1}</TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.student_name}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'student_name', e.target.value)}
+                                      className={`h-8 text-sm ${!student.student_name?.trim() ? 'border-red-300' : ''}`}
+                                      placeholder="Required"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.father_name || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'father_name', e.target.value)}
+                                      className={`h-8 text-sm ${!student.father_name?.trim() ? 'border-amber-300' : ''}`}
+                                      placeholder="Optional"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.phone_number || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'phone_number', e.target.value)}
+                                      className={`h-8 text-sm ${!student.phone_number?.trim() ? 'border-amber-300' : ''}`}
+                                      placeholder="Optional"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Select
+                                      value={student.grade || ''}
+                                      onValueChange={(value) => handleEditBulkData(student.id || `temp-${index}`, 'grade', value)}
+                                    >
+                                      <SelectTrigger className={`h-8 text-sm w-full ${!student.grade?.trim() ? 'border-red-300' : gradeUnknown ? 'border-amber-300' : ''}`}>
+                                        <SelectValue placeholder="Select Grade" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-white max-h-60">
+                                        {availableGradesForSchool.map((grade) => (
+                                          <SelectItem key={grade} value={grade}>
+                                            {grade}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {gradeUnknown && (
+                                      <p className="text-xs text-amber-600 mt-1">Not in this school's grade list — will still be saved as entered</p>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.section || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'section', e.target.value)}
+                                      className={`h-8 text-sm ${!student.section?.trim() ? 'border-red-300' : ''}`}
+                                      placeholder="Required (e.g., A, B, C)"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="email"
+                                      value={student.email || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'email', e.target.value)}
+                                      className={`h-8 text-sm ${!student.email?.trim() ? 'border-red-300' : ''}`}
+                                      placeholder="Required"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="relative">
                                       <Input
-                                        value={student.student_name}
-                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'student_name', e.target.value)}
-                                        className="h-8 text-sm"
-                                        placeholder="Required"
+                                        type={showStudentPasswords[student.id || `temp-${index}`] ? "text" : "password"}
+                                        value={student.password || ''}
+                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'password', e.target.value)}
+                                        className="h-8 text-sm pr-10"
+                                        placeholder="Optional — auto-generated if blank"
                                       />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        value={student.father_name || ''}
-                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'father_name', e.target.value)}
-                                        className="h-8 text-sm"
-                                        placeholder="Optional"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        value={student.phone_number || ''}
-                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'phone_number', e.target.value)}
-                                        className="h-8 text-sm"
-                                        placeholder="Optional"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Select
-                                        value={student.grade || ''}
-                                        onValueChange={(value) => handleEditBulkData(student.id || `temp-${index}`, 'grade', value)}
-                                      >
-                                        <SelectTrigger className="h-8 text-sm w-full">
-                                          <SelectValue placeholder="Select Grade" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-white max-h-60">
-                                          {availableGrades.map((grade) => (
-                                            <SelectItem key={grade} value={grade}>
-                                              {grade}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        value={student.section || ''}
-                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'section', e.target.value)}
-                                        className="h-8 text-sm"
-                                        placeholder="Required (e.g., A, B, C)"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <Input
-                                        type="email"
-                                        value={student.email || ''}
-                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'email', e.target.value)}
-                                        className="h-8 text-sm"
-                                        placeholder="Required"
-                                      />
-                                    </TableCell>
-                                    <TableCell>
-                                      <div className="relative">
-                                        <Input
-                                          type={showStudentPasswords[student.id || `temp-${index}`] ? "text" : "password"}
-                                          value={student.password || ''}
-                                          onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'password', e.target.value)}
-                                          className="h-8 text-sm pr-10"
-                                          placeholder="Required"
-                                        />
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          className="absolute right-0 top-0 h-full px-2 py-1 hover:bg-transparent"
-                                          onClick={() => {
-                                            const studentId = student.id || `temp-${index}`;
-                                            setShowStudentPasswords({ ...showStudentPasswords, [studentId]: !showStudentPasswords[studentId] });
-                                          }}
-                                          title={showStudentPasswords[student.id || `temp-${index}`] ? "Hide password" : "Show password"}
-                                        >
-                                          {showStudentPasswords[student.id || `temp-${index}`] ? (
-                                            <EyeOff className="h-3 w-3 text-gray-500" />
-                                          ) : (
-                                            <Eye className="h-3 w-3 text-gray-400" />
-                                          )}
-                                        </Button>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>
                                       <Button
                                         type="button"
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => handleDeleteBulkDataRow(student.id || `temp-${index}`)}
-                                        className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
-                                        title="Remove student"
+                                        className="absolute right-0 top-0 h-full px-2 py-1 hover:bg-transparent"
+                                        onClick={() => {
+                                          const studentId = student.id || `temp-${index}`;
+                                          setShowStudentPasswords({ ...showStudentPasswords, [studentId]: !showStudentPasswords[studentId] });
+                                        }}
+                                        title={showStudentPasswords[student.id || `temp-${index}`] ? "Hide password" : "Show password"}
                                       >
-                                        <Trash2 className="h-4 w-4" />
+                                        {showStudentPasswords[student.id || `temp-${index}`] ? (
+                                          <EyeOff className="h-3 w-3 text-gray-500" />
+                                        ) : (
+                                          <Eye className="h-3 w-3 text-gray-400" />
+                                        )}
                                       </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </CardContent>
-                      </Card>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteBulkDataRow(student.id || `temp-${index}`)}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
+                                      title="Remove student"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                                );
+                                  })}
+                                </Fragment>
+                              ))}
+                            </TableBody>
+                            ))}
+                          </Table>
+                        </div>
+                      </div>
 
                       {/* Import Results */}
                       {bulkImportResults && (
@@ -3226,122 +3634,75 @@ export default function StudentsManagement() {
                                   </ul>
                                 </div>
                               )}
+                              {bulkImportCredentials && bulkImportCredentials.length > 0 && (() => {
+                                const gradesPresent = Array.from(new Set(bulkImportCredentials.map((c) => c.grade)))
+                                  .sort((a, b) => {
+                                    const ai = availableGradesForSchool.indexOf(a);
+                                    const bi = availableGradesForSchool.indexOf(b);
+                                    return (ai === -1 ? Number.MAX_SAFE_INTEGER : ai) - (bi === -1 ? Number.MAX_SAFE_INTEGER : bi);
+                                  });
+                                const sectionsPresent = Array.from(new Set(
+                                  bulkImportCredentials
+                                    .filter((c) => credentialsGradeFilter === 'all' || c.grade === credentialsGradeFilter)
+                                    .map((c) => c.section)
+                                )).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                                const filteredCount = getFilteredBulkImportCredentials().length;
+                                return (
+                                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                                  <p className="text-sm text-blue-800">
+                                    {bulkImportCredentials.length} student{bulkImportCredentials.length !== 1 ? 's' : ''} got an auto-generated password — download these to share with the school.
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Label className="text-xs text-blue-800 font-normal">Grade:</Label>
+                                    <Select
+                                      value={credentialsGradeFilter}
+                                      onValueChange={(value) => {
+                                        setCredentialsGradeFilter(value);
+                                        setCredentialsSectionFilter('all');
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-sm w-36 bg-white">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-white">
+                                        <SelectItem value="all">All grades</SelectItem>
+                                        {gradesPresent.map((grade) => (
+                                          <SelectItem key={grade} value={grade}>{grade}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Label className="text-xs text-blue-800 font-normal">Section:</Label>
+                                    <Select value={credentialsSectionFilter} onValueChange={setCredentialsSectionFilter}>
+                                      <SelectTrigger className="h-8 text-sm w-36 bg-white">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-white">
+                                        <SelectItem value="all">All sections</SelectItem>
+                                        {sectionsPresent.map((section) => (
+                                          <SelectItem key={section} value={section}>Section {section}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <span className="text-xs text-blue-700">{filteredCount} student{filteredCount !== 1 ? 's' : ''} match</span>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button type="button" size="sm" variant="outline" className="bg-white" disabled={filteredCount === 0} onClick={() => downloadBulkImportCredentials('csv')}>
+                                      <Download className="mr-2 h-4 w-4" />
+                                      CSV
+                                    </Button>
+                                    <Button type="button" size="sm" variant="outline" className="bg-white" disabled={filteredCount === 0} onClick={() => downloadBulkImportCredentials('pdf')}>
+                                      <Download className="mr-2 h-4 w-4" />
+                                      PDF
+                                    </Button>
+                                  </div>
+                                </div>
+                                );
+                              })()}
                             </div>
                           </CardContent>
                         </Card>
                       )}
                     </>
-                  )}
-                </div>
-
-                <DialogFooter>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      setIsBulkImportDialogOpen(false);
-                      setBulkData([]);
-                      setUploadFile(null);
-                      setBulkImportError(null);
-                      setBulkImportResults(null);
-                      setSelectedSchoolForImport('');
-                      setDefaultPassword('TempPass123!');
-                      setEmailDomain('');
-                    }}
-                    disabled={isBulkImporting}
-                  >
-                    {bulkData.length > 0 ? 'Cancel' : 'Close'}
-                  </Button>
-                  {bulkData.length > 0 && (
-                    <Button 
-                      onClick={handleBulkImport}
-                      disabled={isBulkImporting || !selectedSchoolForImport || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email || !item.password)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                    >
-                      {isBulkImporting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Importing Students...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="mr-2 h-4 w-4" />
-                          Import {bulkData.length} Student{bulkData.length !== 1 ? 's' : ''}
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            {/* Bulk Import Tab */}
-            <TabsContent value="import" className="space-y-6">
-              <Card className="bg-white">
-                <CardHeader>
-                  <CardTitle>Bulk Import Students</CardTitle>
-                  <CardDescription>Import multiple students from CSV file</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                    <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                    <h3 className="text-lg font-medium mb-2">Upload CSV File</h3>
-                    <p className="text-gray-600 mb-4">
-                      Upload a CSV file with columns: Name, Email, Grade, School
-                    </p>
-                    <input
-                      type="file"
-                      accept=".csv"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                      id="csv-upload"
-                    />
-                    <label
-                      htmlFor="csv-upload"
-                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
-                    >
-                      <Upload className="mr-2 h-4 w-4" />
-                      Choose CSV File
-                    </label>
-                  </div>
-
-                  {bulkData.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h4 className="text-lg font-medium">Preview Data ({bulkData.length} students)</h4>
-                        <Button 
-                          onClick={handleBulkImport}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          Import Students
-                        </Button>
-                      </div>
-                      <div className="max-h-64 overflow-y-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Name</TableHead>
-                              <TableHead>Email</TableHead>
-                              <TableHead>Grade</TableHead>
-                              <TableHead>School</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {bulkData.map((student, index) => (
-                              <TableRow key={index}>
-                                <TableCell>{student.student_name}</TableCell>
-                                <TableCell>{student.email || 'Not assigned'}</TableCell>
-                                <TableCell>{student.grade}</TableCell>
-                                <TableCell>
-                                  {student.school_name ||
-                                    schools.find((s: School) => s.id === selectedSchoolForImport)?.name ||
-                                    'Not assigned'}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -3356,19 +3717,19 @@ export default function StudentsManagement() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Button variant="outline" className="h-20 flex flex-col">
+                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadEnrollmentReport}>
                       <Download className="h-6 w-6 mb-2" />
                       <span>Enrollment Report</span>
                     </Button>
-                    <Button variant="outline" className="h-20 flex flex-col">
+                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadProgressReport}>
                       <Download className="h-6 w-6 mb-2" />
                       <span>Progress Report</span>
                     </Button>
-                    <Button variant="outline" className="h-20 flex flex-col">
+                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadGradeWiseReport}>
                       <Download className="h-6 w-6 mb-2" />
                       <span>Grade-wise Report</span>
                     </Button>
-                    <Button variant="outline" className="h-20 flex flex-col">
+                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadSchoolWiseReport}>
                       <Download className="h-6 w-6 mb-2" />
                       <span>School-wise Report</span>
                     </Button>

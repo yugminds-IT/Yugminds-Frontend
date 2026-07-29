@@ -22,10 +22,17 @@ interface MCQQuestionProps {
 function getCorrectIndex(correct_answer: number | string | undefined, options: string[]): number | undefined {
   if (correct_answer === undefined || correct_answer === null) return undefined
   if (typeof correct_answer === 'number') return correct_answer
+  // The question builder stores the correct answer as the option's TEXT, not
+  // its index — prefer an exact text match first. Only fall back to reading
+  // `correct_answer` as a raw index for legacy rows with no text match at
+  // all, otherwise a numeric-looking option (e.g. options ["1","2","3","4"]
+  // with "1" marked correct) gets misread as index 1 ("2") instead of index
+  // 0 ("1"), highlighting the wrong option as correct.
+  const textIdx = options.findIndex(o => o.toLowerCase().trim() === String(correct_answer).toLowerCase().trim())
+  if (textIdx >= 0) return textIdx
   const parsed = parseInt(String(correct_answer))
   if (!isNaN(parsed) && parsed >= 0 && parsed < options.length) return parsed
-  const idx = options.findIndex(o => o.toLowerCase().trim() === String(correct_answer).toLowerCase().trim())
-  return idx >= 0 ? idx : undefined
+  return undefined
 }
 
 export default function MCQQuestion({

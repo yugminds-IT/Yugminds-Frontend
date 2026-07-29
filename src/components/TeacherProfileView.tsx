@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { adminApi } from "../lib/api";
 import ImpersonateUserButton from "./admin/ImpersonateUserButton";
+import { formatWorkingDays } from "@/lib/weekday-utils";
 
 interface GradeAssigned {
   gradeName: string;
@@ -61,6 +62,7 @@ interface TeacherSchool {
   gradesAssigned?: GradeAssigned[];
   subjects?: string[];
   working_days_per_week?: number;
+  working_days?: number[];
   max_students_per_session?: number;
   is_primary?: boolean;
   schoolName?: string;
@@ -467,8 +469,12 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
                                     <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
                                       {(schoolAssignment as TeacherSchool).working_days_per_week != null && (
                                         <div>
-                                          <p className="text-muted-foreground">Working Days/Week:</p>
-                                          <p className="font-medium">{(schoolAssignment as TeacherSchool).working_days_per_week} days</p>
+                                          <p className="text-muted-foreground">Working Days:</p>
+                                          <p className="font-medium">
+                                            {(schoolAssignment as TeacherSchool).working_days?.length
+                                              ? formatWorkingDays((schoolAssignment as TeacherSchool).working_days)
+                                              : `${(schoolAssignment as TeacherSchool).working_days_per_week} days`}
+                                          </p>
                                         </div>
                                       )}
                                       {(schoolAssignment as TeacherSchool).max_students_per_session != null && (

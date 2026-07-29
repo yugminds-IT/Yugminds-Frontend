@@ -37,6 +37,19 @@ import {
   Cell
 } from "recharts";
 
+/** Renders the "+X% from last month" line, or "New this month" when there's
+ * no prior-month baseline to compare against (0 -> N is not a meaningful %). */
+function TrendLabel({ change }: { change: number | null }) {
+  if (change === null) {
+    return <p className="text-xs text-blue-600">New this month</p>;
+  }
+  return (
+    <p className={`text-xs ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+      {change >= 0 ? '+' : ''}{change}% from last month
+    </p>
+  );
+}
+
 export default function AnalyticsDashboard() {
   const [analytics, setAnalytics] = useState({
     totalSchools: 0,
@@ -47,12 +60,18 @@ export default function AnalyticsDashboard() {
     avgAttendance: 0,
     completionRate: 0
   });
-  const [trends, setTrends] = useState({
+  const [trends, setTrends] = useState<{
+    schoolsChange: number | null;
+    teachersChange: number | null;
+    studentsChange: number | null;
+    coursesChange: number | null;
+  }>({
     schoolsChange: 0,
     teachersChange: 0,
     studentsChange: 0,
     coursesChange: 0
   });
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [monthlyGrowth, setMonthlyGrowth] = useState<Array<{name: string; schools: number; teachers: number; students: number; courses: number}>>([]);
   const [topSchools, setTopSchools] = useState<Array<{name: string; engagement: number}>>([]);
   const [popularCourses, setPopularCourses] = useState<Array<{name: string; students: number}>>([]);
@@ -62,15 +81,16 @@ export default function AnalyticsDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadAnalytics = useCallback(async () => {
+  const loadAnalytics = useCallback(async (force = false) => {
     setIsLoading(true);
     try {
-      const { data: result } = await adminApi.dashboard.analytics();
+      const { data: result } = await adminApi.dashboard.analytics(force ? { force: true } : undefined);
 
       if (result?.analytics) {
         setAnalytics(result.analytics);
       }
-      
+      setGeneratedAt(result?.generatedAt ?? null);
+
       if (result?.trends) {
         setTrends(result.trends);
       }
@@ -203,22 +223,31 @@ export default function AnalyticsDashboard() {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Performance Analytics</h1>
                 <p className="text-gray-600 mt-2">Comprehensive system analytics and insights</p>
+                {generatedAt && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Last updated: {new Date(generatedAt).toLocaleString()}
+                  </p>
+                )}
               </div>
               <div className="flex space-x-2">
                 <Button variant="outline" onClick={() => (window.location.href = '/lms/admin/assignment-analytics')}>
                   Assignment Analytics
                 </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => loadAnalytics()}
+                <Button
+                  variant="outline"
+                  onClick={() => loadAnalytics(true)}
                   disabled={isLoading}
                 >
                   <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                   {isLoading ? 'Loading...' : 'Refresh'}
                 </Button>
-                <Button variant="outline" onClick={() => exportAnalytics('full')}>
+                <Button variant="outline" onClick={() => exportAnalytics('json')}>
                   <Download className="mr-2 h-4 w-4" />
-                  Export
+                  Export JSON
+                </Button>
+                <Button variant="outline" onClick={() => exportAnalytics('csv')}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSV
                 </Button>
               </div>
             </div>
@@ -240,9 +269,7 @@ export default function AnalyticsDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{isLoading ? '...' : analytics.totalSchools}</div>
-                <p className={`text-xs ${trends.schoolsChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {trends.schoolsChange >= 0 ? '+' : ''}{trends.schoolsChange}% from last month
-                </p>
+                <TrendLabel change={trends.schoolsChange} />
               </CardContent>
             </Card>
 
@@ -253,9 +280,7 @@ export default function AnalyticsDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{isLoading ? '...' : analytics.totalTeachers}</div>
-                <p className={`text-xs ${trends.teachersChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {trends.teachersChange >= 0 ? '+' : ''}{trends.teachersChange}% from last month
-                </p>
+                <TrendLabel change={trends.teachersChange} />
               </CardContent>
             </Card>
 
@@ -266,20 +291,20 @@ export default function AnalyticsDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{isLoading ? '...' : analytics.totalStudents}</div>
-                <p className={`text-xs ${trends.studentsChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {trends.studentsChange >= 0 ? '+' : ''}{trends.studentsChange}% from last month
-                </p>
+                <TrendLabel change={trends.studentsChange} />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">System Health</CardTitle>
+                <CardTitle className="text-sm font-medium">Request Success Rate</CardTitle>
                 <Activity className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">{analytics.systemHealth}%</div>
-                <p className="text-xs text-muted-foreground">Uptime this month</p>
+                <p className="text-xs text-muted-foreground" title="Share of recent API requests that completed without a server error — not a real uptime/availability measurement, and resets whenever the server restarts.">
+                  Recent API success rate
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -510,7 +535,7 @@ export default function AnalyticsDashboard() {
                   <CardContent>
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium">System Uptime</span>
+                        <span className="text-sm font-medium">Request Success Rate</span>
                         <Badge variant="default" className="bg-green-100 text-green-800">
                           {analytics.systemHealth}%
                         </Badge>

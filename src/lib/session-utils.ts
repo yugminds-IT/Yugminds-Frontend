@@ -166,7 +166,13 @@ export function getStoredUserId(): string | null {
   if (!_inMemoryToken) return null;
   const payload = decodeJwtPayload(_inMemoryToken);
   const sub = payload?.sub;
-  return typeof sub === 'string' && sub ? sub : null;
+  // Backend JWTs encode `sub` as a number, not a string — without this,
+  // every fresh context that hasn't already written sessionStorage (a
+  // returning user after their browser was fully closed, not just reloaded)
+  // silently fails this fallback and gets bounced to login as "wrong_role".
+  if (typeof sub === 'string' && sub) return sub;
+  if (typeof sub === 'number') return String(sub);
+  return null;
 }
 
 // --- Private sessionStorage helpers for non-sensitive metadata only ---

@@ -1,11 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { chromium, type FullConfig } from '@playwright/test';
+import type { FullConfig } from '@playwright/test';
 import { createQaFixture } from './fixture-client';
 
 const FIXTURE_PATH = path.resolve(__dirname, '.fixture.json');
-const AUTH_DIR = path.resolve(__dirname, '.auth');
-const STORAGE_STATE_PATH = path.resolve(AUTH_DIR, 'school-admin.json');
 
 /** Reads ADMIN_SEED_EMAIL/PASSWORD out of the backend's .env without ever logging them. */
 function loadAdminSeedCreds(): void {
@@ -24,7 +22,16 @@ function loadAdminSeedCreds(): void {
   }
 }
 
-export default async function globalSetup(config: FullConfig): Promise<void> {
+// NOTE: this used to also launch a browser here, log in once as the fixture
+// school-admin, and save a storageState.json for every spec file to share.
+// Dropped that: the backend rotates the refresh_token cookie on every
+// /api/auth/refresh call (auth.controller.ts refresh()), and this app's
+// session model forces a refresh on every full page load (session-utils.ts
+// keeps the access token in-memory only). A single on-disk storageState
+// snapshot is invalidated the moment ANY test consumes it, so only the first
+// spec in a run could ever pass. Each spec now logs in for real through the
+// UI itself (see e2e/school-admin/base.ts's `page` fixture) instead.
+export default async function globalSetup(_config: FullConfig): Promise<void> {
   loadAdminSeedCreds();
 
   const fixture = await createQaFixture();
@@ -33,30 +40,4 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   console.log(
     `[global-setup] Created QA fixture school ${fixture.schoolId} (run ${fixture.runId}) with ${fixture.teachers.length} teachers, ${fixture.students.length} students, 1 course.`,
   );
-
-  const baseURL = config.projects[0]?.use?.baseURL || 'http://localhost:3000';
-
-  fs.mkdirSync(AUTH_DIR, { recursive: true });
-
-  const browser = await chromium.launch();
-  const context = await browser.newContext();
-  const page = await context.newPage();
-
-  await page.goto(`${baseURL}/lms/login`);
-  await page.locator('#email').fill(fixture.schoolAdmin.email);
-  await page.locator('#password').fill(fixture.schoolAdmin.password);
-  await Promise.all([
-    page.waitForURL(/\/lms\/school-admin/, { timeout: 30_000 }),
-    page.locator('button[type="submit"]').click(),
-  ]);
-
-  // Let the dashboard's initial bootstrap calls (profile/school) settle so the
-  // saved storage state reflects a fully-authenticated, loaded session.
-  await page.waitForSelector('text=Admin Panel, text=School Admin Dashboard', { timeout: 15_000 }).catch(() => {});
-  await page.waitForTimeout(1000);
-
-  await context.storageState({ path: STORAGE_STATE_PATH });
-  await browser.close();
-
-  console.log(`[global-setup] Logged in as fixture school-admin, saved storage state to ${STORAGE_STATE_PATH}`);
 }

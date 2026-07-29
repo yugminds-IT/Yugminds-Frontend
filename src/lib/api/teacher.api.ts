@@ -51,6 +51,12 @@ export const teacherApi = {
       apiClient.post(`${TEACHER}/leaves`, data),
   },
 
+  /** Calendar — read-only holidays/breaks/comp-work for the teacher's own assigned schools */
+  calendar: {
+    list: (params?: { year?: string; month?: string }) =>
+      apiClient.get(withParams(`${TEACHER}/calendar`, params)),
+  },
+
   /** Schedules */
   schedules: {
     list: (params?: { school_id?: string; day?: string }) =>
@@ -125,5 +131,13 @@ export const teacherApi = {
       apiClient.get(`${TEACHER}/assignments/${assignmentId}/progress-dashboard`),
     analytics: (params?: Record<string, string | number | undefined>) =>
       apiClient.get(withParams(`${TEACHER}/assignment-analytics`, params)),
+  },
+
+  /** Student-initiated retake requests, routed to the teacher(s) mapped to that student's grade/section */
+  retakeRequests: {
+    list: (params?: { status?: string }) =>
+      apiClient.get(withParams(`${TEACHER}/retake-requests`, params)),
+    decide: (requestId: string, data: { action: "approve" | "reject"; remarks?: string }) =>
+      apiClient.patch(`${TEACHER}/retake-requests/${requestId}`, data),
   },
 };

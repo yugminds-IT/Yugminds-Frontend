@@ -143,14 +143,26 @@ export default function LicensesPage() {
   const toast = useToast();
   const { schools, isLoading: schoolsLoading } = useAdminSchools();
 
-  // All licenses across all schools
+  // Licenses matching the current filters (server-side filtered/searched)
   const [allLicenses, setAllLicenses] = useState<LicenseItem[]>([]);
   const [loadingAll, setLoadingAll] = useState(false);
 
-  // Filter state for the table
+  // Filter state for the table. searchInput is what the box shows;
+  // filterSearch is the debounced value actually sent to the backend.
   const [filterSchoolId, setFilterSchoolId] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [searchInput, setSearchInput] = useState<string>("");
   const [filterSearch, setFilterSearch] = useState<string>("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setFilterSearch(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Existing-license count for the school selected in the Generate tab —
+  // fetched unfiltered (independent of the License Keys tab's filters) so
+  // draft "System N" numbering is always based on the real total.
+  const [existingForGenerateSchool, setExistingForGenerateSchool] = useState(0);
 
   // Generate tab: selected school
   const [generateSchoolId, setGenerateSchoolId] = useState<string>("");
@@ -184,72 +196,57 @@ export default function LicensesPage() {
 
   const generateSchool = (schools ?? []).find((s) => s.id === generateSchoolId);
 
-  // Load all licenses from all schools in parallel
+  // Single server-side query across all schools, honoring the active filters.
   const loadAllLicenses = useCallback(async () => {
-    if (!schools || schools.length === 0) return;
     setLoadingAll(true);
     try {
-      const results = await Promise.allSettled(
-        schools.map((school) =>
-          adminApi.licenses.list(school.id).then(({ data }) => {
-            const root = (data ?? {}) as Record<string, unknown>;
-            const payload =
-              root.data && typeof root.data === "object" && !Array.isArray(root.data)
-                ? (root.data as Record<string, unknown>)
-                : root;
-            return (payload.licenses as LicenseItem[]) ?? [];
-          }),
-        ),
-      );
-      const merged: LicenseItem[] = [];
-      let failedCount = 0;
-      results.forEach((r) => {
-        if (r.status === "fulfilled") merged.push(...r.value);
-        else failedCount++;
+      const { data } = await adminApi.licenses.list({
+        schoolId: filterSchoolId !== "all" ? filterSchoolId : undefined,
+        status: filterStatus !== "all" ? filterStatus : undefined,
+        search: filterSearch || undefined,
       });
-      setAllLicenses(merged);
-      if (failedCount > 0)
-        toast.error(`Failed to load licenses for ${failedCount} school${failedCount > 1 ? "s" : ""}. Data may be incomplete.`);
+      const root = (data ?? {}) as Record<string, unknown>;
+      const payload =
+        root.data && typeof root.data === "object" && !Array.isArray(root.data)
+          ? (root.data as Record<string, unknown>)
+          : root;
+      setAllLicenses((payload.licenses as LicenseItem[]) ?? []);
     } catch (e: unknown) {
       toast.error((e instanceof Error ? e.message : String(e)) || "Failed to load licenses");
     } finally {
       setLoadingAll(false);
     }
-  }, [schools, toast]);
+  }, [filterSchoolId, filterStatus, filterSearch, toast]);
 
   useEffect(() => {
-    if (schools && schools.length > 0) loadAllLicenses();
-  }, [schools, loadAllLicenses]);
+    loadAllLicenses();
+  }, [loadAllLicenses]);
 
-  // Filtered view of the table
-  const filteredLicenses = useMemo(() => {
-    return allLicenses.filter((lic) => {
-      if (filterSchoolId !== "all" && lic.school_id !== filterSchoolId) return false;
-      if (filterStatus === "active" && (!lic.is_active || lic.is_expired || lic.not_yet_active))
-        return false;
-      if (filterStatus === "expired" && !lic.is_expired) return false;
-      if (filterStatus === "pending" && !lic.not_yet_active) return false;
-      if (filterStatus === "inactive" && lic.is_active) return false;
-      if (filterSearch) {
-        const q = filterSearch.toLowerCase();
-        if (
-          !lic.system_label.toLowerCase().includes(q) &&
-          !lic.machine_id.toLowerCase().includes(q) &&
-          !lic.activation_key.toLowerCase().includes(q)
-        )
-          return false;
-      }
-      return true;
-    });
-  }, [allLicenses, filterSchoolId, filterStatus, filterSearch]);
+  useEffect(() => {
+    if (!generateSchoolId) {
+      setExistingForGenerateSchool(0);
+      return;
+    }
+    adminApi.licenses
+      .list({ schoolId: generateSchoolId })
+      .then(({ data }) => {
+        const root = (data ?? {}) as Record<string, unknown>;
+        const payload =
+          root.data && typeof root.data === "object" && !Array.isArray(root.data)
+            ? (root.data as Record<string, unknown>)
+            : root;
+        setExistingForGenerateSchool(((payload.licenses as LicenseItem[]) ?? []).length);
+      })
+      .catch(() => setExistingForGenerateSchool(0));
+  }, [generateSchoolId]);
 
   const stats = useMemo(() => {
-    const active = filteredLicenses.filter(
+    const active = allLicenses.filter(
       (l) => l.is_active && !l.is_expired && !l.not_yet_active,
     ).length;
-    const expired = filteredLicenses.filter((l) => l.is_expired).length;
-    return { total: filteredLicenses.length, active, expired };
-  }, [filteredLicenses]);
+    const expired = allLicenses.filter((l) => l.is_expired).length;
+    return { total: allLicenses.length, active, expired };
+  }, [allLicenses]);
 
   // Generate tab helpers
   const createDraftRows = () => {
@@ -258,8 +255,7 @@ export default function LicensesPage() {
       toast.error("Enter a system count between 1 and 100");
       return;
     }
-    const existing = allLicenses.filter((l) => l.school_id === generateSchoolId).length;
-    const base = existing + drafts.length;
+    const base = existingForGenerateSchool + drafts.length;
     const rows: DraftRow[] = Array.from({ length: n }, (_, i) => ({
       uid: makeUid(),
       label: `System ${base + i + 1}`,
@@ -527,7 +523,7 @@ export default function LicensesPage() {
                   <CardDescription className="mt-1">
                     {loadingAll || schoolsLoading
                       ? "Loading…"
-                      : `${filteredLicenses.length} of ${allLicenses.length} licenses`}
+                      : `${allLicenses.length} license${allLicenses.length !== 1 ? "s" : ""}`}
                   </CardDescription>
                 </div>
                 <Button
@@ -581,8 +577,8 @@ export default function LicensesPage() {
                 <div className="relative flex-1 min-w-[180px]">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                   <Input
-                    value={filterSearch}
-                    onChange={(e) => setFilterSearch(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     placeholder="Search system, machine ID or key…"
                     className="h-8 pl-8 text-sm"
                   />
@@ -595,9 +591,9 @@ export default function LicensesPage() {
                   <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
                   <p className="text-sm">Loading licenses from all schools…</p>
                 </div>
-              ) : filteredLicenses.length === 0 ? (
+              ) : allLicenses.length === 0 ? (
                 <p className="py-10 text-center text-sm text-gray-400">
-                  {allLicenses.length === 0
+                  {filterSchoolId === "all" && filterStatus === "all" && !filterSearch
                     ? "No licenses have been generated yet."
                     : "No licenses match the current filters."}
                 </p>
@@ -619,7 +615,7 @@ export default function LicensesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredLicenses.map((lic) => (
+                      {allLicenses.map((lic) => (
                         <TableRow key={lic.id}>
                           <TableCell className="text-sm text-gray-600 whitespace-nowrap">
                             {schoolName(lic.school_id)}
@@ -1049,7 +1045,9 @@ export default function LicensesPage() {
                 <div>
                   <Label className="cursor-pointer">Active</Label>
                   <p className="text-xs text-gray-500">
-                    Deactivated licenses stay stored but are marked inactive.
+                    Only affects this record in the admin table (filters, stats). The activation is
+                    entirely offline — deactivating here has no effect on a machine the key was
+                    already entered into; it keeps working until it expires.
                   </p>
                 </div>
                 <Switch
@@ -1060,8 +1058,9 @@ export default function LicensesPage() {
 
               <div className="rounded-md border p-3 space-y-3">
                 <p className="text-xs font-medium text-gray-500">
-                  Changing any of these re-issues the activation key — the old key stops working on
-                  the machine.
+                  Changing any of these re-issues the activation key here, but the old key isn&apos;t
+                  revoked — it keeps working on any machine it was already entered into until it
+                  naturally expires. Give the new key to the machine to actually replace it.
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>

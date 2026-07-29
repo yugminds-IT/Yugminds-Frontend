@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base';
 import fs from 'fs';
 import path from 'path';
 import type { QaFixture } from './fixture-client';
@@ -7,7 +7,6 @@ const fixture: QaFixture = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '.fixture.json'), 'utf8'),
 );
 
-test.use({ storageState: path.resolve(__dirname, '.auth/school-admin.json') });
 
 test.describe('School Admin — Students', () => {
   test('renders real student roster, not a zero-state', async ({ page }) => {
@@ -34,26 +33,41 @@ test.describe('School Admin — Students', () => {
     const newName = `QA E2E New Student ${Date.now()}`;
     const newEmail = `qa_e2e_new_${Date.now()}@example.test`;
 
-    await page.getByRole('button', { name: /Add Student/i }).click();
-    await page.getByLabel(/Full Name/).fill(newName);
-    await page.getByLabel(/^Email/).fill(newEmail);
+    // Only the toolbar trigger exists before the dialog opens, so this click is
+    // unambiguous. Once the dialog is open, both it and the dialog's own submit
+    // button are named "Add Student" — scope everything else to the dialog to
+    // avoid a strict-mode (multiple-match) locator error.
+    await page.getByRole('button', { name: /^Add Student$/ }).click();
+    const addDialog = page.getByRole('dialog', { name: /Add New Student/i });
+    await expect(addDialog).toBeVisible();
 
-    // Grade select (Radix Select — click trigger, then pick the option by text).
-    await page.locator('#grade').click();
+    await addDialog.getByLabel(/Full Name/).fill(newName);
+    await addDialog.getByLabel(/^Email/).fill(newEmail);
+
+    // Grade/Section are Radix Selects. NOTE: the <Label htmlFor="grade">/
+    // <Label htmlFor="section"> in students/page.tsx (~line 950, ~970) point at
+    // ids that are never actually set on the <Select>/<SelectTrigger> — so
+    // getByLabel() can't reach these controls; click the trigger by its visible
+    // placeholder text instead.
+    await addDialog.getByText('Select grade', { exact: true }).click();
     await page.getByRole('option', { name: fixture.grade, exact: true }).click();
 
-    // Section select.
-    await page.locator('#section').click();
-    await page.getByRole('option', { name: fixture.section.replace('Section ', ''), exact: true }).click();
+    // NOTE: the section SelectItem renders the raw value verbatim (students/
+    // page.tsx ~line 970 `<SelectItem value={section}>{section}</SelectItem>`),
+    // and that value comes straight from the school's `sections_offered`
+    // (school.service.ts), which stores full names like "Section A" — not the
+    // bare letter — so the option text is "Section A", matching fixture.section.
+    await addDialog.getByText('Select section', { exact: true }).click();
+    await page.getByRole('option', { name: fixture.section, exact: true }).click();
 
-    await page.getByLabel(/Password/).fill('QaTest123!');
-    await page.getByLabel(/Parent Name/).fill('QA E2E Parent');
-    await page.getByLabel(/Parent Number/).fill('9999999999');
+    await addDialog.getByLabel(/Password/).fill('QaTest123!');
+    await addDialog.getByLabel(/Parent Name/).fill('QA E2E Parent');
+    await addDialog.getByLabel(/Parent Number/).fill('9999999999');
 
     const createResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/students') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: /^Add Student$/ }).click();
+    await addDialog.getByRole('button', { name: /^Add Student$/ }).click();
     const createRes = await createResponse;
     expect(createRes.ok(), await createRes.text()).toBeTruthy();
 

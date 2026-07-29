@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base';
 import fs from 'fs';
 import path from 'path';
 import type { QaFixture } from './fixture-client';
@@ -7,7 +7,6 @@ const fixture: QaFixture = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '.fixture.json'), 'utf8'),
 );
 
-test.use({ storageState: path.resolve(__dirname, '.auth/school-admin.json') });
 
 // NOTE on scope: fixture.courseId is a bare Draft course with no chapters,
 // assignments, or submissions (createQaFixture only POSTs /admin/courses).
@@ -46,17 +45,25 @@ test.describe('School Admin — Assignment Analytics', () => {
     await expect(page.getByRole('heading', { name: 'Assignment Analytics' })).toBeVisible();
 
     // Summary cards: 3 real students, 0 assignments published, 0.0% avg score.
-    const studentsCard = page.locator('text=Students').locator('..').locator('..');
+    // NOTE: "text=Assignments" alone also matches the "Assignments" tab button
+    // below the cards, and `.locator('..').locator('..')` from that match
+    // walks up into the shared stat-card-row container (catching every other
+    // card's "0"). Scoping to `<p>` avoids matching the tab button, and the
+    // value/label paragraphs are siblings one level up (not two) per the
+    // actual StatCard-style markup this page uses.
+    const studentsCard = page.locator('p', { hasText: /^Students$/ }).locator('..');
     await expect(studentsCard.getByText('3', { exact: true })).toBeVisible();
 
-    const assignmentsCard = page.locator('text=Assignments').locator('..').locator('..');
+    const assignmentsCard = page.locator('p', { hasText: /^Assignments$/ }).locator('..');
     await expect(assignmentsCard.getByText('0', { exact: true })).toBeVisible();
 
     await expect(page.getByText('0.0%', { exact: true })).toBeVisible();
 
     // Leaderboard tab (default) is NOT empty — all 3 fixture students appear,
     // each at 0% overall score, per the getGlobalRanking behavior above.
-    await expect(page.getByRole('heading', { name: 'Student Rankings' })).toBeVisible();
+    // NOTE: CardTitle (src/components/ui/card.tsx) renders a plain <div>, not
+    // a semantic heading — getByRole('heading', ...) never matches it.
+    await expect(page.getByText('Student Rankings', { exact: true })).toBeVisible();
     await expect(page.getByText('QA Student 0')).toBeVisible();
     await expect(page.getByText('QA Student 1')).toBeVisible();
     await expect(page.getByText('QA Student 2')).toBeVisible();
@@ -75,12 +82,13 @@ test.describe('School Admin — Assignment Analytics', () => {
       (res) => res.url().includes('/school-admin/leaderboard') && res.request().method() === 'GET',
     );
 
+    // NOTE: these tab-panel titles are CardTitle <div>s too, not headings.
     await page.getByRole('button', { name: 'By Grade' }).click();
-    await expect(page.getByRole('heading', { name: 'Grade-wise Performance' })).toBeVisible();
+    await expect(page.getByText('Grade-wise Performance', { exact: true })).toBeVisible();
     await expect(page.getByText('No data yet')).toBeVisible();
 
     await page.getByRole('button', { name: 'By Subject' }).click();
-    await expect(page.getByRole('heading', { name: 'Subject-wise Performance' })).toBeVisible();
+    await expect(page.getByText('Subject-wise Performance', { exact: true })).toBeVisible();
     await expect(page.getByText('No data yet')).toBeVisible();
   });
 
@@ -93,7 +101,7 @@ test.describe('School Admin — Assignment Analytics', () => {
     );
 
     await page.getByRole('button', { name: 'Assignments' }).click();
-    await expect(page.getByRole('heading', { name: 'Assignment Performance' })).toBeVisible();
+    await expect(page.getByText('Assignment Performance', { exact: true })).toBeVisible();
     await expect(page.getByText('No assignments published yet')).toBeVisible();
   });
 });
