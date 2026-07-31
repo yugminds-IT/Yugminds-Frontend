@@ -13,6 +13,7 @@ import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { setAuthToken } from "@/lib/api";
 import { clearStoredSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
+import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
@@ -43,6 +44,7 @@ export default function SchoolAdminLayout({
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const router = useRouter();
   const { count: unreadNotificationCount } = useUnreadNotificationCount({ enabled: !loading, role: 'school_admin' });
+  const pendingPasswordResetCount = usePendingPasswordResetCount({ enabled: !loading, role: 'school_admin' });
   
   // Get sidebar state from store
   const sidebarCollapsed = useAppStore((state: AppState) => state.sidebarCollapsed);
@@ -330,8 +332,9 @@ export default function SchoolAdminLayout({
           userEmail={user?.email || "admin@school.com"}
           onLogout={handleLogout}
           notificationBadgeCount={unreadNotificationCount}
+          passwordResetBadgeCount={pendingPasswordResetCount}
         />
-        
+
         <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
           {children}
         </div>

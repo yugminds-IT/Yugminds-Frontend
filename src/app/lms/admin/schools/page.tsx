@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { DEFAULT_OPERATING_DAYS } from "@/lib/weekday-utils";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import AddSchoolDialog from "@/components/AddSchoolDialog";
 import JoiningCodesDialog from "@/components/JoiningCodesDialog";
+import WeekdayPicker from "@/components/WeekdayPicker";
 import { adminApi, setAuthToken } from "@/lib/api";
 import { getSession } from "@/lib/session-utils";
 import { useAdminSchools, useInvalidateAdminSchools } from "@/hooks/useAdminSchools";
@@ -74,6 +76,8 @@ interface School {
   grades_offered?: string[];
   total_students_estimate?: number;
   total_teachers_estimate?: number;
+  /** Which weekdays the school holds classes — 0=Sun..6=Sat. */
+  operating_days?: number[];
   status?: string;
   /** Join codes from backend school.joinCodes; preserved for UI */
   joining_codes?: JoinCodeItem[] | null;
@@ -142,6 +146,7 @@ function mapApiSchoolToSchool(item: Record<string, unknown>): School {
     grades_offered: (v("gradesOffered") ?? v("grades_offered")) as string[] | undefined,
     total_students_estimate: (v("totalStudentsEstimate") ?? v("total_students_estimate")) as number | undefined,
     total_teachers_estimate: (v("totalTeachersEstimate") ?? v("total_teachers_estimate")) as number | undefined,
+    operating_days: (v("operatingDays") ?? v("operating_days")) as number[] | undefined,
     status: v("status") as string | undefined,
     joining_codes: joinList,
     join_code_count,
@@ -370,6 +375,7 @@ export default function SchoolsManagement() {
       total_students_estimate: school.total_students_estimate || 0,
       total_teachers_estimate: school.total_teachers_estimate || 0,
       grades_offered: school.grades_offered || [],
+      operating_days: school.operating_days && school.operating_days.length > 0 ? school.operating_days : DEFAULT_OPERATING_DAYS,
       school_admin_name: school.school_admin_name || "",
       school_admin_email: school.school_admin_email || "",
       school_admin_new_password: "",
@@ -397,6 +403,7 @@ export default function SchoolsManagement() {
         total_students_estimate: editFormData.total_students_estimate,
         total_teachers_estimate: editFormData.total_teachers_estimate,
         grades_offered: editFormData.grades_offered,
+        operating_days: editFormData.operating_days,
       };
       const adminEmail = editFormData.school_admin_email?.trim();
       const adminName = editFormData.school_admin_name?.trim();
@@ -725,7 +732,19 @@ export default function SchoolsManagement() {
                   />
                 </div>
             </div>
-              
+
+            <div className="space-y-2">
+              <Label>Operating Days</Label>
+              <WeekdayPicker
+                idPrefix="edit_school_operating_days"
+                value={editFormData.operating_days ?? DEFAULT_OPERATING_DAYS}
+                onChange={(days) => setEditFormData({ ...editFormData, operating_days: days })}
+              />
+              <p className="text-xs text-gray-400">
+                Which days this school holds classes — constrains teacher working days and Class Scheduling.
+              </p>
+            </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                 <Label htmlFor="edit-affiliation">Affiliation Type</Label>

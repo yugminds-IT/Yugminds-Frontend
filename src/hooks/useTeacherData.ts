@@ -20,12 +20,12 @@ export interface TeacherSchool {
 export interface TeacherClassRow {
   id?: string;
   grade?: string;
+  section?: string;
   subject?: string;
   class_name?: string;
   school_id?: string;
-  academic_year?: string;
+  school_name?: string;
   is_active?: boolean;
-  max_students?: number;
   [key: string]: unknown;
 }
 
@@ -180,6 +180,35 @@ export function useTeacherReports(schoolId?: string, filters?: { date?: string; 
         limit: filters?.limit,
       });
       return (data as { reports?: TeacherReport[] })?.reports || [];
+    },
+  });
+}
+
+export interface TeacherReportsStats {
+  total: number;
+  pending: number;
+  reviewed: number;
+  approved: number;
+  rejected: number;
+}
+
+/**
+ * Real report-status counts (DB `COUNT(*)`, not derived from the
+ * `limit`-capped list `useTeacherReports` fetches) — the Analytics page's
+ * "Total Reports (All time)" and "Approval Rate" cards need accurate totals
+ * regardless of how many reports exist beyond any single page's cap.
+ */
+export function useTeacherReportsStats(schoolId?: string) {
+  return useQuery<TeacherReportsStats>({
+    queryKey: ['teacher', 'reports-stats', schoolId],
+    queryFn: async () => {
+      const { data: { session } } = await getSession();
+      if (!session) throw new Error('Not authenticated');
+      setAuthToken(session.access_token || null);
+
+      const { data } = await teacherApi.reports.list({ school_id: schoolId, limit: 1 });
+      const stats = (data as { stats?: TeacherReportsStats })?.stats;
+      return stats ?? { total: 0, pending: 0, reviewed: 0, approved: 0, rejected: 0 };
     },
   });
 }
@@ -477,7 +506,8 @@ export function useSubmitReport() {
           notes: reportData.notes,
           student_count: reportData.student_count,
         });
-        return (data as { report?: unknown })?.report ?? data;
+        const body = data as { report?: unknown; attendance_marked_present?: boolean };
+        return { ...(typeof body?.report === 'object' && body.report ? body.report : {}), attendance_marked_present: body?.attendance_marked_present };
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Failed to submit report';
         throw new Error(msg);

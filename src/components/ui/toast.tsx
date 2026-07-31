@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const addToast = useCallback((message: string, type: ToastType = 'info', duration = 4000) => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const id = crypto.randomUUID()
     const newToast: Toast = { id, message, type, duration }
     
     setToasts((prev) => [...prev.slice(-4), newToast]) // Keep max 5 toasts

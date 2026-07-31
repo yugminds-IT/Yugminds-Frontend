@@ -302,7 +302,7 @@ export default function StudentDashboard() {
       href: "/lms/student/my-courses?tab=completed",
     },
     {
-      title: "Completed",
+      title: "Assignments Completed",
       value: studentStats?.completedAssignments || 0,
       description: "Assignments done",
       badge: "Done",
@@ -335,9 +335,23 @@ export default function StudentDashboard() {
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             {greeting}, {(profile as { full_name?: string } | null)?.full_name?.split(' ')[0] || 'Student'}! 👋
           </h1>
-          <p className="text-gray-600 mt-2">
-            {(profile as { students?: Array<{ schools?: Array<{ name?: string }>; grade?: string; section?: string }> } | null)?.students?.[0]?.schools?.[0]?.name} • {(profile as { students?: Array<{ grade?: string; section?: string }> } | null)?.students?.[0]?.grade}{(profile as { students?: Array<{ section?: string }> } | null)?.students?.[0]?.section ? ` - Section ${(profile as { students?: Array<{ section?: string }> } | null)?.students?.[0]?.section}` : ''}
-          </p>
+          {(() => {
+            const studentInfo = (
+              profile as {
+                students?: Array<{
+                  schools?: Array<{ name?: string }>;
+                  grade?: string;
+                  section?: string;
+                }>;
+              } | null
+            )?.students?.[0];
+            const schoolName = studentInfo?.schools?.[0]?.name;
+            const gradeSection = studentInfo?.grade
+              ? `${studentInfo.grade}${studentInfo.section ? ` - Section ${studentInfo.section}` : ''}`
+              : '';
+            const subtitle = [schoolName, gradeSection].filter(Boolean).join(' • ');
+            return subtitle ? <p className="text-gray-600 mt-2">{subtitle}</p> : null;
+          })()}
         </div>
         <div className="flex items-center gap-3">
           {(activity?.activeDaysLast28 ?? 0) > 0 && (

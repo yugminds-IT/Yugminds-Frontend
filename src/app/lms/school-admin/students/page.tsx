@@ -56,6 +56,13 @@ function enrollmentMissingClassOrCode(student: Pick<Student, "grade" | "section"
   return gradeEmpty && sectionEmpty && codeEmpty;
 }
 
+/** Grade is stored as the full configured name (e.g. "Grade 5") — prefixing "Grade " again would double it up. */
+function formatGradeBadge(grade: string | undefined | null): string {
+  const g = String(grade ?? "").trim();
+  if (!g) return "";
+  return /^grade\b/i.test(g) ? g : `Grade ${g}`;
+}
+
 /** Preferred display name when full_name was cleared server-side — falls back from email local part. */
 function displayStudentName(student: Student): string {
   const trimmed = student?.profile?.full_name?.trim();
@@ -135,6 +142,21 @@ export default function StudentsManagement() {
   const [schoolId, setSchoolId] = useState<string>("");
   const [schoolGrades, setSchoolGrades] = useState<string[]>([]);
   const [schoolSections, setSchoolSections] = useState<string[]>([]);
+  const [schoolGradesDetailed, setSchoolGradesDetailed] = useState<
+    Array<{ id: string; name: string; sections: Array<{ id: string; name: string }> }>
+  >([]);
+
+  /** Sections that actually exist for a given grade — falls back to the full school-wide list when the grade isn't selected/known yet, matching the previous (unscoped) behavior instead of showing nothing. */
+  const sectionsForGrade = useCallback(
+    (grade: string) => {
+      if (!grade) return predefinedSections;
+      const g = schoolGradesDetailed.find((x) => x.name === grade);
+      if (!g || g.sections.length === 0) return predefinedSections;
+      return selectChoicesFrom(g.sections.map((s) => s.name), false);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schoolGradesDetailed, schoolSections],
+  );
 
   const predefinedSections = useMemo(
     () => selectChoicesFrom(schoolSections, false),
@@ -175,6 +197,20 @@ export default function StudentsManagement() {
     parent_phone: ""
   });
 
+  // The Edit form's Select only renders options scoped to the selected
+  // grade, so a student's real section that isn't in that grade's *current*
+  // configured list (renamed/removed since assignment, grade mismatch, or
+  // the config fetch racing the edit click) would render as blank even
+  // though formData.section correctly holds it — include it explicitly so
+  // the dropdown can actually show it.
+  const editSectionOptions = useMemo(() => {
+    const options = sectionsForGrade(formData.grade);
+    const current = formData.section?.trim();
+    if (!current || options.includes(current)) return options;
+    return [...options, current];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.grade, formData.section, schoolGradesDetailed, schoolSections]);
+
   const getEmptyStudentForm = () => ({
     full_name: "",
     email: "",
@@ -194,7 +230,15 @@ export default function StudentsManagement() {
       try {
         const schoolRes = await schoolAdminApi.school.get();
         const schoolData = schoolRes.data ?? {};
-        const school = (schoolData as { school?: { id?: string; number_of_sections?: number; grades_offered?: string[]; sections_offered?: string[] } }).school;
+        const school = (schoolData as {
+          school?: {
+            id?: string;
+            number_of_sections?: number;
+            grades_offered?: string[];
+            sections_offered?: string[];
+            grades?: Array<{ id: string; name: string; sections: Array<{ id: string; name: string }> }>;
+          };
+        }).school;
         if (school) {
           setSchoolId(school.id ?? '');
           if (school.sections_offered && school.sections_offered.length > 0) {
@@ -203,15 +247,18 @@ export default function StudentsManagement() {
           setSchoolGrades(
             Array.isArray(school.grades_offered) ? selectChoicesFrom(school.grades_offered, true) : [],
           );
+          setSchoolGradesDetailed(Array.isArray(school.grades) ? school.grades : []);
         } else {
           console.warn('School not found in API response');
           setSchoolGrades([]);
           setSchoolSections([]);
+          setSchoolGradesDetailed([]);
         }
       } catch (err) {
         console.log('Error fetching school info:', err);
         setSchoolGrades([]);
         setSchoolSections([]);
+        setSchoolGradesDetailed([]);
       }
 
       // Load students for this school using centralized schoolAdminApi (server-side filter + paging)
@@ -388,12 +435,17 @@ export default function StudentsManagement() {
 
   const handleEditStudentClick = (student: Student) => {
     setSelectedStudent(student);
-    const sectionValue = student.section || "";
     setFormData({
       full_name: student?.profile?.full_name || "",
       email: student?.profile?.email || "",
       grade: student.grade || "",
-      section: predefinedSections.includes(sectionValue) ? sectionValue : "",
+      // Preserve the student's real, persisted section unconditionally —
+      // same as grade above. Filtering this against predefinedSections
+      // (the school's *current* configured list) used to silently blank
+      // out a correct value whenever that list hadn't loaded yet (async
+      // race) or had drifted since the student was assigned, forcing the
+      // admin to re-guess a section on every affected edit.
+      section: student.section || "",
       joining_code: student.joining_code || "",
       password: "",
       parent_name: student?.profile?.parent_name || "",
@@ -591,19 +643,73 @@ export default function StudentsManagement() {
     }
   };
 
-  const getAllSections = () => selectChoicesFrom(schoolSections, true);
-
   const getGradeOptions = () => selectChoicesFrom(schoolGrades, true);
 
-  const handleExportStudents = () => {
-    if (filteredStudents.length === 0) {
+  const handleExportStudents = async () => {
+    if (total === 0) {
+      toast.warning('No students to export.');
+      return;
+    }
+
+    // `students`/`filteredStudents` only ever holds the current server-paged
+    // slice (pageSize, default 50) — exporting that directly would silently
+    // drop every student past the first page with no indication. Page
+    // through the same filtered query (search/grade/section/status) to
+    // export everything that matches, not just what's currently on screen.
+    setActionLoading('export');
+    let allStudents: Student[];
+    try {
+      const exportPageSize = 200; // backend's max per-request limit
+      const first = await schoolAdminApi.students.list({
+        limit: exportPageSize,
+        page: 1,
+        q: searchTerm || undefined,
+        grade: gradeFilter !== 'all' ? gradeFilter : undefined,
+        section: sectionFilter !== 'all' ? sectionFilter : undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+      });
+      const extractPage = (res: typeof first) => {
+        const raw = res.data ?? {};
+        const root = raw as Record<string, unknown>;
+        const data =
+          root?.data != null && typeof root.data === 'object'
+            ? (root.data as Record<string, unknown>)
+            : root;
+        return {
+          students: (data.students as Student[]) ?? [],
+          total: (data.total as number) ?? 0,
+        };
+      };
+      const firstPage = extractPage(first);
+      allStudents = [...firstPage.students];
+      const totalPages = Math.min(Math.ceil(firstPage.total / exportPageSize), 25); // cap at 5000 students
+      for (let p = 2; p <= totalPages; p++) {
+        const res = await schoolAdminApi.students.list({
+          limit: exportPageSize,
+          page: p,
+          q: searchTerm || undefined,
+          grade: gradeFilter !== 'all' ? gradeFilter : undefined,
+          section: sectionFilter !== 'all' ? sectionFilter : undefined,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+        });
+        allStudents.push(...extractPage(res).students);
+      }
+    } catch (error) {
+      console.error('Error fetching students for export:', error);
+      toast.error('Failed to export students. Please try again.');
+      setActionLoading(null);
+      return;
+    }
+    setActionLoading(null);
+
+    if (allStudents.length === 0) {
       toast.warning('No students to export.');
       return;
     }
 
     // Prepare CSV data
     const headers = ['Name', 'Email', 'Grade', 'Section', 'Joining Code', 'Status', 'Enrolled Date'];
-    const rows = filteredStudents.map((student: Student) => [
+    const rows = allStudents.map((student: Student) => [
       student?.profile?.full_name?.trim() || displayStudentName(student),
       student?.profile?.email || '',
       student.grade || '',
@@ -634,7 +740,7 @@ export default function StudentsManagement() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    console.log(`✅ Exported ${filteredStudents.length} student(s) to CSV`);
+    toast.success(`Exported ${allStudents.length} student(s) to CSV.`);
   };
 
   const downloadImportTemplate = () => {
@@ -774,7 +880,7 @@ export default function StudentsManagement() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Sections</SelectItem>
-              {getAllSections().map((section: string) => (
+              {sectionsForGrade(gradeFilter !== 'all' ? gradeFilter : '').map((section: string) => (
                 <SelectItem key={section} value={section}>Section {section}</SelectItem>
               ))}
             </SelectContent>
@@ -796,12 +902,17 @@ export default function StudentsManagement() {
             Showing {filteredStudents.length} of {total} student(s)
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={handleExportStudents}
+              disabled={actionLoading === 'export'}
             >
-              <Download className="mr-2 h-4 w-4" />
+              {actionLoading === 'export' ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
               Export
             </Button>
             <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
@@ -966,7 +1077,7 @@ export default function StudentsManagement() {
                           <SelectValue placeholder="Select section" />
                         </SelectTrigger>
                         <SelectContent>
-                          {predefinedSections.map((section) => (
+                          {sectionsForGrade(formData.grade).map((section) => (
                             <SelectItem key={section} value={section}>
                               {section}
                             </SelectItem>
@@ -1127,7 +1238,7 @@ export default function StudentsManagement() {
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Grade</Label>
-                  <Badge variant="outline">Grade {viewingStudent.grade}</Badge>
+                  <Badge variant="outline">{formatGradeBadge(viewingStudent.grade)}</Badge>
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Section</Label>
@@ -1355,7 +1466,7 @@ export default function StudentsManagement() {
                     <SelectValue placeholder="Select section" />
                   </SelectTrigger>
                   <SelectContent>
-                    {predefinedSections.map((section) => (
+                    {editSectionOptions.map((section) => (
                       <SelectItem key={section} value={section}>
                         {section}
                       </SelectItem>

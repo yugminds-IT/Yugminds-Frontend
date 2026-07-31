@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   User,
   AlertTriangle,
@@ -19,6 +20,7 @@ import {
   Loader2,
   Lock,
   School,
+  Bell,
 } from "lucide-react";
 import { commonApi, authApi, setAuthToken } from "@/lib/api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
@@ -33,6 +35,12 @@ export default function TeacherSettings() {
 
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [profileData, setProfileData] = useState({ full_name: "", email: "" });
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    email_notifications: true,
+    assignment_reminders: true,
+    grade_notifications: true,
+    course_updates: true,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -60,6 +68,18 @@ export default function TeacherSettings() {
       setProfileData({
         full_name: (profile as { full_name?: string })?.full_name || "",
         email: authUser.email || "",
+      });
+      const p = profile as {
+        email_notifications?: boolean;
+        assignment_reminders?: boolean;
+        grade_notifications?: boolean;
+        course_updates?: boolean;
+      };
+      setNotificationPrefs({
+        email_notifications: p?.email_notifications ?? true,
+        assignment_reminders: p?.assignment_reminders ?? true,
+        grade_notifications: p?.grade_notifications ?? true,
+        course_updates: p?.course_updates ?? true,
       });
 
       setPasswordFields({ current_password: "", new_password: "", confirm_password: "" });
@@ -110,10 +130,19 @@ export default function TeacherSettings() {
     setMessage(null);
 
     try {
-      await commonApi.profile.update({ full_name: profileData.full_name.trim() });
+      await commonApi.profile.update({
+        full_name: profileData.full_name.trim(),
+        ...notificationPrefs,
+      });
 
       if (passwordFields.new_password && currentPasswordStatus === "valid") {
-        await authApi.updatePassword({ current_password: passwordFields.current_password, new_password: passwordFields.new_password });
+        const res = await authApi.updatePassword({ current_password: passwordFields.current_password, new_password: passwordFields.new_password });
+        // Changing password bumps tokenVersion server-side (invalidates the
+        // token this very request was authenticated with) — swap in the
+        // freshly-issued access token so subsequent calls on this page
+        // (loadUserData() below) don't 401 immediately after a successful save.
+        const newAccessToken = (res.data as { tokens?: { accessToken?: string } })?.tokens?.accessToken;
+        if (newAccessToken) setAuthToken(newAccessToken);
       }
 
       setMessage({ type: "success", text: "Profile updated successfully!" });
@@ -295,6 +324,40 @@ export default function TeacherSettings() {
                 </div>
               </div>
 
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-medium flex items-center gap-2">
+                    <Bell className="h-4 w-4" />
+                    Notification Preferences
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-0.5">Choose what you get notified about</p>
+                </div>
+                <div className="space-y-3">
+                  {(
+                    [
+                      { key: "email_notifications" as const, label: "Email Notifications", description: "Receive notifications by email" },
+                      { key: "assignment_reminders" as const, label: "Assignment Reminders", description: "Reminders about upcoming assignment deadlines" },
+                      { key: "grade_notifications" as const, label: "Grade Notifications", description: "Updates when grades are posted or changed" },
+                      { key: "course_updates" as const, label: "Course Updates", description: "Announcements about course content changes" },
+                    ]
+                  ).map((item) => (
+                    <div key={item.key} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                      <div className="space-y-0.5">
+                        <Label htmlFor={item.key}>{item.label}</Label>
+                        <p className="text-xs text-muted-foreground">{item.description}</p>
+                      </div>
+                      <Switch
+                        id={item.key}
+                        checked={notificationPrefs[item.key]}
+                        onCheckedChange={(checked) =>
+                          setNotificationPrefs((prev) => ({ ...prev, [item.key]: checked }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex justify-end">
                 <Button onClick={handleSave} disabled={saving}>
                   {saving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -323,7 +386,16 @@ export default function TeacherSettings() {
                       className={`p-3 border rounded-lg ${selectedSchool?.id === school.id ? "bg-blue-50 border-blue-200" : ""}`}
                     >
                       <p className="font-medium text-sm">{school.name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{school.city}, {school.state}</p>
+                      {(school.city || school.state) && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {[school.city, school.state].filter(Boolean).join(", ")}
+                        </p>
+                      )}
+                      {Array.isArray(school.assignment?.subjects) && school.assignment.subjects.length > 0 && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {(school.assignment.subjects as string[]).join(", ")}
+                        </p>
+                      )}
                       {selectedSchool?.id === school.id && (
                         <Badge className="mt-2" variant="default">Active</Badge>
                       )}

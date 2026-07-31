@@ -2,14 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminApi } from "../lib/api/admin.api";
+import { schoolAdminApi } from "../lib/api/school-admin.api";
 import { realtimeSocketClient } from "../lib/realtime/socket-client";
 
 /**
- * Returns the number of pending password reset requests for the admin sidebar badge.
- * Listens for `password_reset_request:new` WebSocket events and polls every 5 minutes.
+ * Returns the number of pending password reset requests for the sidebar
+ * badge — shared by the admin (platform-wide) and school-admin
+ * (school-scoped) sidebars, which hit their own respective endpoints.
+ * Listens for `password_reset_request:new` WebSocket events (the backend
+ * routes this to the right school's admins, or platform admins, on submit)
+ * and polls every 5 minutes as a fallback.
  */
-export function usePendingPasswordResetCount(options?: { enabled?: boolean }): number {
+export function usePendingPasswordResetCount(options?: {
+  enabled?: boolean;
+  role?: "admin" | "school_admin";
+}): number {
   const enabled = options?.enabled !== false;
+  const role = options?.role ?? "admin";
   const [count, setCount] = useState(0);
   const lastFetchRef = useRef(0);
 
@@ -17,12 +26,15 @@ export function usePendingPasswordResetCount(options?: { enabled?: boolean }): n
     if (!enabled) return;
     lastFetchRef.current = Date.now();
     try {
-      const { data } = await adminApi.passwordResetRequests.pendingCount();
+      const { data } =
+        role === "school_admin"
+          ? await schoolAdminApi.passwordResetRequests.pendingCount()
+          : await adminApi.passwordResetRequests.pendingCount();
       setCount(Number((data as { count?: number })?.count ?? 0));
     } catch {
       // non-critical
     }
-  }, [enabled]);
+  }, [enabled, role]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchCount(); }, [fetchCount]);

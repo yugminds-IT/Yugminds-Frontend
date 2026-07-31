@@ -120,7 +120,7 @@ export const adminApi = {
       apiClient.get(withParams(`${ADMIN}/reports`, params), { responseType: 'blob' }),
   },
   teacherReports: {
-    list: (params?: { school_id?: string; teacher_id?: string; grade?: string; date?: string; from?: string; to?: string; search?: string; limit?: number }) =>
+    list: (params?: { school_id?: string; teacher_id?: string; grade?: string; date?: string; from?: string; to?: string; search?: string; limit?: number; status?: string }) =>
       apiClient.get(withParams(`${ADMIN}/teacher-reports`, params)),
     update: (body: { id: string; status?: string; admin_notes?: string }) =>
       apiClient.patch(`${ADMIN}/teacher-reports`, body),

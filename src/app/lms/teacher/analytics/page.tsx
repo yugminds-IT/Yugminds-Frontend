@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useTeacherMonthlyAttendance,
   useTeacherReports,
+  useTeacherReportsStats,
   useTeacherLeaves,
   formatMonthLabel
 } from "@/hooks/useTeacherData";
@@ -51,9 +52,12 @@ export default function AnalyticsPage() {
     selectedSchool?.id,
     12
   );
-  // Explicit limit — the backend defaults to 100, which silently truncated
-  // "All time" totals and the approval-rate math for prolific teachers.
+  // The reports list itself is only used to drive the charts below (month
+  // groupings, etc.) — it's still capped at 500. "Total Reports" and
+  // "Approval Rate" instead use useTeacherReportsStats, a real DB count
+  // that's accurate no matter how many reports exist beyond this cap.
   const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchool?.id, { limit: 500 });
+  const { data: reportStats } = useTeacherReportsStats(selectedSchool?.id);
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
 
   // Use smart refresh for tab switching
@@ -61,18 +65,26 @@ export default function AnalyticsPage() {
     queryKeys: [
       ['teacher', 'monthly-attendance', selectedSchool?.id, 12],
       ['teacher', 'reports', selectedSchool?.id],
+      ['teacher', 'reports-stats', selectedSchool?.id],
       ['teacher', 'leaves', selectedSchool?.id]
     ],
     minRefreshInterval: 60000, // 1 minute minimum between refreshes
   });
 
-  // Calculate statistics
-  const totalReports = reports?.length || 0;
-   
-  const approvedReports = reports?.filter((r) => r.report_status === 'Approved').length || 0;
-   
-  const pendingReports = reports?.filter((r) => r.report_status === 'Pending').length || 0;
-   
+  // Calculate statistics — from the real, uncapped server-side counts, not
+  // the capped `reports` list (which only backs the charts further down).
+  const totalReports = reportStats?.total ?? 0;
+  const pendingReports = reportStats?.pending ?? 0;
+  const reviewedReports = reportStats?.reviewed ?? 0;
+  const approvedReports = reportStats?.approved ?? 0;
+  const rejectedReports = reportStats?.rejected ?? 0;
+  // Approval rate among DECIDED reports only (approved+rejected) — using
+  // totalReports as the denominator diluted the percentage with reports
+  // still awaiting review, e.g. 10 approved out of 50 total (40 still
+  // pending) read as "20% approval rate" when really 100% of the reports
+  // actually reviewed so far were approved.
+  const decidedReports = approvedReports + rejectedReports;
+
   const approvedLeaves = leaves?.filter((l) => l.status === 'Approved').length || 0;
    
   const pendingLeaves = leaves?.filter((l) => l.status === 'Pending').length || 0;
@@ -114,13 +126,17 @@ export default function AnalyticsPage() {
       Leave: m.leave_count ?? 0,
     })) ?? [];
 
-  // Report status distribution
+  // Report status distribution — matches the real 4-state vocabulary
+  // (Pending/Reviewed/Approved/Rejected) shared with the school-admin/admin
+  // review dashboards. 'Flagged' was never a real status; using it here
+  // meant every Rejected (and any Reviewed) report silently vanished from
+  // this chart instead of showing up as Rejected/Reviewed.
   const reportStatusData = [
-    { name: 'Approved', value: approvedReports, color: '#00C49F' },
     { name: 'Pending', value: pendingReports, color: '#FFBB28' },
-     
-    { name: 'Flagged', value: reports?.filter((r) => r.report_status === 'Flagged').length || 0, color: '#FF8042' }
-  ];
+    { name: 'Reviewed', value: reviewedReports, color: '#8884d8' },
+    { name: 'Approved', value: approvedReports, color: '#00C49F' },
+    { name: 'Rejected', value: rejectedReports, color: '#FF8042' },
+  ].filter((d) => d.value > 0);
 
   // Leave status distribution
   const leaveStatusData = [
@@ -164,9 +180,11 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {totalReports > 0 ? Math.round((approvedReports / totalReports) * 100) : 0}%
+              {decidedReports > 0 ? Math.round((approvedReports / decidedReports) * 100) : 0}%
             </div>
-            <p className="text-xs text-muted-foreground">Reports approved</p>
+            <p className="text-xs text-muted-foreground">
+              {decidedReports > 0 ? `${approvedReports} of ${decidedReports} reviewed reports` : 'No reports reviewed yet'}
+            </p>
           </CardContent>
         </Card>
 

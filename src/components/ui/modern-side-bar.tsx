@@ -103,7 +103,7 @@ const getNavigationItems = (role: string, assignmentCount?: number, notification
         { id: "student-progress", name: "Student Progress", icon: BarChart3, href: "/lms/school-admin/student-progress" },
         { id: "assignment-analytics", name: "Assignment Analytics", icon: TrendingUp, href: "/lms/school-admin/assignment-analytics" },
         { id: "notifications", name: "Notifications", icon: Bell, href: "/lms/school-admin/notifications", badge: notificationCount && notificationCount > 0 ? String(notificationCount) : undefined },
-        { id: "password-reset-requests", name: "Password Reset Requests", icon: KeyRound, href: "/lms/school-admin/password-reset-requests" },
+        { id: "password-reset-requests", name: "Password Reset Requests", icon: KeyRound, href: "/lms/school-admin/password-reset-requests", badge: passwordResetCount && passwordResetCount > 0 ? String(passwordResetCount) : undefined },
         { id: "settings", name: "Settings", icon: Settings, href: "/lms/school-admin/settings" },
       ];
     case 'teacher':

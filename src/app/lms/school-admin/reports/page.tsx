@@ -38,6 +38,7 @@ interface TeacherReport {
   date: string;
   grade: string;
   topics_taught: string;
+  activities?: string;
   student_count: number;
   duration_hours: number;
   notes: string;
@@ -48,7 +49,10 @@ interface TeacherReport {
     full_name: string;
     email: string;
   };
-  status: 'Pending' | 'Approved' | 'Rejected';
+  // 'Reviewed' is set by a platform admin (via /admin/teacher-reports) as an
+  // in-between "looked at, not yet decided" state — still actionable here,
+  // same as 'Pending'.
+  status: 'Pending' | 'Reviewed' | 'Approved' | 'Rejected';
   // Deprecated: class_name is kept for backward compatibility but grade should be used
   class_name?: string;
 }
@@ -66,10 +70,17 @@ export default function ReportsManagement() {
   });
   const [selectedReports, setSelectedReports] = useState<string[]>([]);
   const [isBulkApproveOpen, setIsBulkApproveOpen] = useState(false);
+  const [isBulkRejectOpen, setIsBulkRejectOpen] = useState(false);
   const [_schoolId, setSchoolId] = useState<string>("");
   const [schedules, setSchedules] = useState<any[]>([]);
   const [periods, setPeriods] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
+  // Real DB-count totals from the backend — independent of the 500-row list
+  // cap below, so these stay accurate for schools with more reports than a
+  // single page fetches.
+  const [reportStats, setReportStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+
+  const isActionable = (status: TeacherReport['status']) => status === 'Pending' || status === 'Reviewed';
 
   const loadReports = useCallback(async () => {
     try {
@@ -100,6 +111,8 @@ export default function ReportsManagement() {
       const reportsData = reportsRes.data ?? {};
       const reportsArray = (reportsData as { reports?: unknown[] }).reports ?? (Array.isArray(reportsData) ? reportsData : []);
       setReports(reportsArray as TeacherReport[]);
+      const stats = (reportsData as { stats?: { total: number; pending: number; approved: number; rejected: number } }).stats;
+      setReportStats(stats ?? { total: 0, pending: 0, approved: 0, rejected: 0 });
 
       // Schedules
       const schedulesData = schedulesRes.data ?? {};
@@ -158,7 +171,7 @@ export default function ReportsManagement() {
 
   const handleBulkApprove = async () => {
     try {
-      const response = await schoolAdminApi.reports.bulk({ report_ids: selectedReports });
+      const response = await schoolAdminApi.reports.bulk({ report_ids: selectedReports, action: 'approve' });
       const data = (response.data ?? {}) as { approved?: number };
       toast.success(`Successfully approved ${data.approved ?? selectedReports.length} report(s)`);
       setSelectedReports([]);
@@ -170,6 +183,57 @@ export default function ReportsManagement() {
     }
   };
 
+  const handleBulkReject = async () => {
+    try {
+      const response = await schoolAdminApi.reports.bulk({ report_ids: selectedReports, action: 'reject' });
+      const data = (response.data ?? {}) as { approved?: number };
+      toast.success(`Successfully rejected ${data.approved ?? selectedReports.length} report(s)`);
+      setSelectedReports([]);
+      setIsBulkRejectOpen(false);
+      await loadReports();
+    } catch (error) {
+      console.error('Error bulk rejecting reports:', error);
+      toast.error(`Failed to reject reports: ${error instanceof Error ? error.message : 'Please try again.'}`);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (filteredReports.length === 0) {
+      toast.warning('No reports to export');
+      return;
+    }
+    const headers = ['Teacher Name', 'Teacher Email', 'Date', 'Grade', 'Topics Taught', 'Activities', 'Students', 'Duration (Hours)', 'Status', 'Notes'];
+    const rows = filteredReports.map((report: TeacherReport) => [
+      report.teacher.full_name || 'Unknown',
+      report.teacher.email || '',
+      new Date(report.date).toLocaleDateString(),
+      report.grade || 'N/A',
+      report.topics_taught || '',
+      report.activities || '',
+      report.student_count || 0,
+      report.duration_hours || 0,
+      report.status,
+      report.notes || ''
+    ]);
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row: (string | number)[]) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    let filename = 'teacher_reports';
+    if (dateRange.start) filename += `_${dateRange.start}`;
+    if (gradeFilter !== 'all') filename += `_${gradeFilter}`;
+    filename += '.csv';
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleSelectReport = (reportId: string) => {
     setSelectedReports(prev => 
       prev.includes(reportId) 
@@ -179,7 +243,7 @@ export default function ReportsManagement() {
   };
 
   const handleSelectAll = () => {
-    const pendingReports = filteredReports.filter((r: TeacherReport) => r.status === 'Pending');
+    const pendingReports = filteredReports.filter((r: TeacherReport) => isActionable(r.status));
     if (selectedReports.length === pendingReports.length) {
       setSelectedReports([]);
     } else {
@@ -216,15 +280,6 @@ export default function ReportsManagement() {
     return [...new Set(reports.map((r: TeacherReport) => r.grade))].sort();
   };
 
-  const getStats = () => {
-    const total = reports.length;
-    const pending = reports.filter((r: TeacherReport) => r.status === 'Pending').length;
-    const approved = reports.filter((r: TeacherReport) => r.status === 'Approved').length;
-    const rejected = reports.filter((r: TeacherReport) => r.status === 'Rejected').length;
-    
-    return { total, pending, approved, rejected };
-  };
-
   const calculateDuration = (p: any) => {
     if (!p) return 0;
     const s = new Date(`2000-01-01T${p.start_time}`);
@@ -247,7 +302,7 @@ export default function ReportsManagement() {
     };
   };
 
-  const stats = getStats();
+  const stats = reportStats;
 
   if (loading) {
     return (
@@ -358,6 +413,7 @@ export default function ReportsManagement() {
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="reviewed">Reviewed</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
@@ -431,7 +487,7 @@ export default function ReportsManagement() {
           {stats.pending > 0 && (
             <Dialog open={isBulkApproveOpen} onOpenChange={setIsBulkApproveOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" disabled={selectedReports.length === 0}>
                   <CheckSquare className="mr-2 h-4 w-4" />
                   Bulk Approve ({selectedReports.length})
                 </Button>
@@ -452,7 +508,31 @@ export default function ReportsManagement() {
               </DialogContent>
             </Dialog>
           )}
-          <Button variant="outline" size="sm">
+          {stats.pending > 0 && (
+            <Dialog open={isBulkRejectOpen} onOpenChange={setIsBulkRejectOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" disabled={selectedReports.length === 0}>
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Bulk Reject ({selectedReports.length})
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Bulk Reject Reports</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to reject {selectedReports.length} selected reports?
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsBulkRejectOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" onClick={handleBulkReject}>Reject All</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
@@ -476,7 +556,7 @@ export default function ReportsManagement() {
                     onClick={handleSelectAll}
                     className="h-8 w-8 p-0"
                   >
-                    {selectedReports.length === filteredReports.filter((r: TeacherReport) => r.status === 'Pending').length ? 
+                    {selectedReports.length === filteredReports.filter((r: TeacherReport) => isActionable(r.status)).length ?
                       <CheckSquare className="h-4 w-4" /> : 
                       <Square className="h-4 w-4" />
                     }
@@ -496,7 +576,7 @@ export default function ReportsManagement() {
               {filteredReports.map((report) => (
                 <TableRow key={report.id}>
                   <TableCell>
-                    {report.status === 'Pending' && (
+                    {isActionable(report.status) && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -536,6 +616,11 @@ export default function ReportsManagement() {
                     <div className="text-sm max-w-xs truncate" title={report.topics_taught}>
                       {report.topics_taught}
                     </div>
+                    {report.activities && (
+                      <div className="text-xs text-gray-400 max-w-xs truncate" title={report.activities}>
+                        {report.activities}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center text-sm">
@@ -549,13 +634,13 @@ export default function ReportsManagement() {
                   <TableCell>
                     <Badge variant={
                       report.status === 'Approved' ? 'default' :
-                      report.status === 'Pending' ? 'secondary' : 'destructive'
+                      report.status === 'Rejected' ? 'destructive' : 'secondary'
                     }>
                       {report.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {report.status === 'Pending' && (
+                    {isActionable(report.status) && (
                       <div className="flex gap-1">
                         <Button
                           size="sm"

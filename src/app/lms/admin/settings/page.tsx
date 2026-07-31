@@ -19,7 +19,7 @@ import {
   Lock
 } from "lucide-react";
 import { adminApi, commonApi, authApi, setAuthToken } from "@/lib/api";
-import { clearStoredSession, getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
+import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 
 type PasswordVisibility = {
   current: boolean;
@@ -123,12 +123,6 @@ export default function AdminSettings() {
     }
   };
 
-  const _handleLogout = async () => {
-    clearStoredSession();
-    setLogoutReason('session_expired');
-    router.push('/lms/login');
-  };
-
   const handleSaveProfile = async () => {
     if (!user || !userProfile) {
       setMessage({ type: 'error', text: 'User data not loaded. Please refresh the page.' });
@@ -175,10 +169,16 @@ export default function AdminSettings() {
       nameSaved = true;
 
       if (profileData.new_password && currentPasswordStatus === 'valid') {
-        await authApi.updatePassword({
+        const res = await authApi.updatePassword({
           current_password: profileData.current_password,
           new_password: profileData.new_password,
         });
+        // Changing password bumps tokenVersion server-side (invalidates the
+        // token this very request was authenticated with) — swap in the
+        // freshly-issued access token so subsequent calls on this page
+        // don't 401 immediately after a successful save.
+        const newAccessToken = (res.data as { tokens?: { accessToken?: string } })?.tokens?.accessToken;
+        if (newAccessToken) setAuthToken(newAccessToken);
       }
 
       setUserProfile({ ...userProfile, full_name: profileData.full_name.trim() });

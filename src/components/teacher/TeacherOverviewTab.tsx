@@ -142,28 +142,35 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
             <CardSkeleton rows={3} />
           ) : todaysClasses && todaysClasses.length > 0 ? (
             <div className="space-y-3">
-              {todaysClasses.map((classItem: ClassItem) => (
-                <div
-                  key={classItem.schedule_id || classItem.id}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
-                >
-                  <div>
-                    <p className="font-medium">{classItem.grade || classItem.class_name || 'N/A'}</p>
-                    <p className="text-sm text-gray-600">
-                      {classItem.subject || 'General'}
-                      {classItem.start_time && (
-                        <span className="text-gray-400">
-                          {' '}· {formatTime(classItem.start_time)}
-                          {classItem.end_time ? ` – ${formatTime(classItem.end_time)}` : ''}
-                        </span>
-                      )}
-                    </p>
+              {todaysClasses.map((classItem: ClassItem) => {
+                const periodId = classItem.schedule_id || classItem.id;
+                const row = (
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors">
+                    <div>
+                      <p className="font-medium">{classItem.grade || classItem.class_name || 'N/A'}</p>
+                      <p className="text-sm text-gray-600">
+                        {classItem.subject || 'General'}
+                        {classItem.start_time && (
+                          <span className="text-gray-400">
+                            {' '}· {formatTime(classItem.start_time)}
+                            {classItem.end_time ? ` – ${formatTime(classItem.end_time)}` : ''}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <Badge variant={classItem.hasReport ? "default" : "outline"}>
+                      {classItem.hasReport ? "Reported" : "Pending"}
+                    </Badge>
                   </div>
-                  <Badge variant={classItem.hasReport ? "default" : "outline"}>
-                    {classItem.hasReport ? "Reported" : "Pending"}
-                  </Badge>
-                </div>
-              ))}
+                );
+                return periodId ? (
+                  <Link key={periodId} href={`/lms/teacher/reports?period_id=${periodId}`} className="block">
+                    {row}
+                  </Link>
+                ) : (
+                  <div key={classItem.id}>{row}</div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">

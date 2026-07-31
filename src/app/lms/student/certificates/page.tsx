@@ -62,7 +62,7 @@ export default function CertificatesPage() {
   // Filter courses eligible for certificates (80%+ completion)
   // Note: We check progress_percentage >= 80, regardless of status
   type StudentCourse = { id: string; name?: string; title?: string; progress_percentage: number; status?: string; average_grade?: number; grade?: string; subject?: string };
-  type Certificate = { id: string; short_id?: string; course_id?: string; courses?: { id?: string; name?: string; title?: string; grade?: string; subject?: string }; certificate_name: string; certificate_url?: string; issued_at: string; profiles?: { full_name?: string } };
+  type Certificate = { id: string; short_id?: string; course_id?: string; courses?: { id?: string; name?: string; title?: string; grade?: string; subject?: string }; certificate_name: string; certificate_url?: string; issued_at: string; issued_by?: string };
 
   const coursesList = (courses as StudentCourse[] | undefined) || [];
 
@@ -206,7 +206,7 @@ export default function CertificatesPage() {
                         </div>
                         <div className="flex items-center justify-between text-xs text-gray-600">
                           <span>Issued By</span>
-                          <span>{cert.profiles?.full_name || 'System'}</span>
+                          <span>{cert.issued_by || 'Yugminds'}</span>
                         </div>
                       </div>
 
@@ -430,21 +430,15 @@ export default function CertificatesPage() {
               <CardTitle className="text-sm">Certificate Requirements</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-xs text-gray-600">
+              {/* This lists ONLY the actual gate the backend checks
+                  (certificateService.issueIfEligible: progress >= 80% of a
+                  course's chapters) — it used to also claim "all assignments
+                  submitted", "60%+ grade", and "75%+ attendance" are
+                  requirements with unconditional green checkmarks, none of
+                  which the backend has ever enforced. */}
               <div className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                <span>Complete 80% of course chapters</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                <span>Submit all required assignments</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                <span>Achieve passing grade (60%+)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                <span>Maintain 75%+ attendance</span>
+                <span>Complete 80% of a course&apos;s chapters — a certificate is issued automatically once you cross this threshold.</span>
               </div>
             </CardContent>
           </Card>

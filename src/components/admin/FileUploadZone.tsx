@@ -10,7 +10,7 @@ import { adminApi } from "../../lib/api/admin.api";
 import { cn } from "../../lib/utils";
 
 interface FileUploadZoneProps {
-  onUploadComplete: (fileUrl: string, filePath?: string) => void;
+  onUploadComplete: (fileUrl: string, filePath?: string, originalFileName?: string) => void;
   onUploadError?: (error: string) => void;
   accept?: string;
   maxSize?: number; // in bytes
@@ -136,7 +136,11 @@ export function FileUploadZone({
 
         setUploadedFile(null);
         setProgress(0);
-        onUploadComplete(result.file.url, result.file.path);
+        // The server stores files under a generated UUID name, discarding
+        // the original — pass the browser File object's own name through
+        // separately so callers can default a content title to something
+        // human-readable instead of the UUID.
+        onUploadComplete(result.file.url, result.file.path, file.name);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to upload file";

@@ -313,17 +313,9 @@ export function CourseCreationWizard({
     setBasicInfo({ ...basicInfo, thumbnail_url: fileUrl });
   };
 
-  // Generate UUID for new chapters
-  const generateChapterId = () => {
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
-      return window.crypto.randomUUID();
-    }
-    return `chapter-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  };
-
   const addChapter = () => {
     const newChapter: Chapter = {
-      id: generateChapterId(), // Generate UUID for new chapter
+      id: crypto.randomUUID(),
       name: "",
       description: "",
       learning_outcomes: [],

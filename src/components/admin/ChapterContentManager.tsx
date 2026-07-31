@@ -204,18 +204,10 @@ export function ChapterContentManager({
       return;
     }
 
-    // Generate ID if not editing or if content doesn't have an ID
-    const generateId = () => {
-      if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
-        return window.crypto.randomUUID();
-      }
-      return `content-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    };
-
     const newContent: ChapterContent = {
       ...(editingContent || {}),
-      id: editingContent?.id || editingContent?.content_id || generateId(),
-      content_id: editingContent?.content_id || editingContent?.id || generateId(),
+      id: editingContent?.id || editingContent?.content_id || crypto.randomUUID(),
+      content_id: editingContent?.content_id || editingContent?.id || crypto.randomUUID(),
       chapter_id: chapterId,
       content_type: finalContentType,
       title: formData.title.trim(),
@@ -289,11 +281,13 @@ export function ChapterContentManager({
     }
   };
 
-  const handleFileUpload = (fileUrl: string, filePath?: string) => {
-    // If backend returns a data URL for `fileUrl`, it won't contain the original filename/extension.
-    // Prefer `filePath` (which includes the original filename) when available.
+  const handleFileUpload = (fileUrl: string, filePath?: string, originalFileName?: string) => {
+    // The backend stores uploads under a generated UUID name, so `filePath`/`fileUrl`
+    // no longer contain anything human-readable — prefer the original browser
+    // File object's name (threaded through from FileUploadZone) as the default
+    // title, falling back to parsing the URL only if it's somehow unavailable.
     const sourceForName = filePath || fileUrl;
-    const fileName = sourceForName.split('/').pop() || 'Uploaded file';
+    const fileName = originalFileName || sourceForName.split('/').pop() || 'Uploaded file';
     // Determine content type based on file extension
     const fileExtension = fileName.split('.').pop()?.toLowerCase();
     let detectedContentType: ChapterContent['content_type'] = 'file';
@@ -307,17 +301,9 @@ export function ChapterContentManager({
       detectedContentType = 'audio';
     }
     
-    // Generate ID for uploaded content
-    const generateId = () => {
-      if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
-        return window.crypto.randomUUID();
-      }
-      return `content-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    };
-    
     const newContent: ChapterContent = {
-      id: generateId(),
-      content_id: generateId(),
+      id: crypto.randomUUID(),
+      content_id: crypto.randomUUID(),
       chapter_id: chapterId,
       content_type: contentType === 'pdf' ? 'pdf' : contentType === 'image' ? 'image' : detectedContentType,
       title: fileName,

@@ -53,6 +53,7 @@ function mapTeacherToTableRow(teacher: Teacher): SchoolAdminTeacherTableRow {
   const qualificationDisplay = teacher.qualification?.trim() || "—";
   const specializationDisplay = teacher.specialization?.trim() || "";
   const leavesCount = teacher.leaves_taken ?? 0;
+  const attendancePercentage = teacher.attendance_percentage ?? 0;
   const statusLabel = teacher.status || "Active";
   const school = teacher.teacher_schools?.[0];
   const grades = school?.grades_assigned ?? [];
@@ -71,6 +72,12 @@ function mapTeacherToTableRow(teacher: Teacher): SchoolAdminTeacherTableRow {
     specializationDisplay,
     leavesDisplay: `${leavesCount} day${leavesCount === 1 ? "" : "s"}`,
     leavesCount,
+    // Last-30-days present/total ratio (school-admin-extra.controller.ts
+    // listTeachers) — computed correctly but previously never rendered
+    // anywhere, so this page's "track attendance" subtitle wasn't backed by
+    // any visible attendance data at all.
+    attendanceDisplay: `${attendancePercentage}%`,
+    attendancePercentage,
     statusLabel,
     classesDisplay,
     subjectsDisplay,
@@ -323,7 +330,7 @@ function TeachersContent() {
     }
 
     // Prepare CSV data
-    const headers = ['Name', 'Email', 'Phone', 'Qualification', 'Specialization', 'Leaves Taken', 'Status'];
+    const headers = ['Name', 'Email', 'Phone', 'Qualification', 'Specialization', 'Leaves Taken', 'Attendance (30d)', 'Status'];
     const rows = filteredTeachers.map((teacher: Teacher) => [
       teacher.full_name || '',
       teacher.email || '',
@@ -331,6 +338,7 @@ function TeachersContent() {
       teacher.qualification || '',
       teacher.specialization || '',
       teacher.leaves_taken || 0,
+      `${teacher.attendance_percentage ?? 0}%`,
       teacher.status || 'Active'
     ]);
 

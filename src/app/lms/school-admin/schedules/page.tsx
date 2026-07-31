@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { DEFAULT_OPERATING_DAYS, WEEKDAY_NAMES_MON_FIRST } from "@/lib/weekday-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,6 +129,11 @@ interface Teacher {
     grades_assigned: string[];
     subjects: string[];
     working_days_per_week: number;
+    /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
+    working_days?: number[];
+    /** Calendar date range the teacher is assigned to this school (YYYY-MM-DD); null = no bound. */
+    assigned_from?: string | null;
+    assigned_until?: string | null;
     max_students_per_session: number;
   }>;
 }
@@ -139,11 +145,42 @@ interface Class {
   subject?: string;
 }
 
-const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const GRID_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAYS_OF_WEEK = WEEKDAY_NAMES_MON_FIRST;
+const GRID_DAYS = WEEKDAY_NAMES_MON_FIRST.slice(0, 6);
+
+/** 0=Sun..6=Sat — matches TeacherSchool.workingDays / school-admin-extra.controller.ts's DAY_MAP. */
+const DAY_NAME_TO_NUMBER: Record<string, number> = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
+
+/**
+ * Expands a single "starting" room number into `count` sequential room
+ * numbers for bulk creation. Preserves a numeric suffix's width (leading
+ * zeros) when one exists, e.g. "R101" x3 -> R101, R102, R103; "Lab-05" x3 ->
+ * Lab-05, Lab-06, Lab-07. Falls back to a "-N" suffix when the base has no
+ * trailing digits to increment, e.g. "Library" x3 -> Library-1, Library-2, Library-3.
+ */
+function generateBulkRoomNumbers(base: string, count: number): string[] {
+  const trimmed = base.trim();
+  const match = trimmed.match(/^(.*?)(\d+)$/);
+  if (match) {
+    const [, prefix, digits] = match;
+    const start = parseInt(digits, 10);
+    return Array.from({ length: count }, (_, i) =>
+      `${prefix}${String(start + i).padStart(digits.length, '0')}`,
+    );
+  }
+  return Array.from({ length: count }, (_, i) => `${trimmed}-${i + 1}`);
+}
 
 const AVAILABLE_GRADES = [
-  'Pre-K', 
+  'Pre-K',
   'Kindergarten', 
   'Grade 1', 
   'Grade 2', 
@@ -168,6 +205,8 @@ export default function ClassSchedulingPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolGrades, setSchoolGrades] = useState<string[]>([]);
+  /** Which weekdays the school holds classes — 0=Sun..6=Sat. Constrains the day-of-week picker below. */
+  const [schoolOperatingDays, setSchoolOperatingDays] = useState<number[]>(DEFAULT_OPERATING_DAYS);
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -224,6 +263,8 @@ export default function ClassSchedulingPage() {
   const [scheduleForm, setScheduleForm] = useState(initialScheduleForm);
   const [periodForm, setPeriodForm] = useState(initialPeriodForm);
   const [roomForm, setRoomForm] = useState(initialRoomForm);
+  const [bulkRoomMode, setBulkRoomMode] = useState(false);
+  const [bulkRoomCount, setBulkRoomCount] = useState('5');
 
   // Copy and Repeat Automations State
   const [copyScheduleDialogOpen, setCopyScheduleDialogOpen] = useState(false);
@@ -304,19 +345,25 @@ export default function ClassSchedulingPage() {
     try {
       setLoading(true);
 
-      // Fetch school info to get grades_offered and school_id
+      // Fetch school info to get grades_offered, operating_days, and school_id
       try {
         const schoolResponse = await schoolAdminApi.school.get();
         const schoolData = schoolResponse.data ?? {};
-        const school = (schoolData as { school?: { grades_offered?: string[] } }).school;
+        const school = (schoolData as { school?: { grades_offered?: string[]; operating_days?: number[] } }).school;
 
         if (school?.grades_offered && Array.isArray(school.grades_offered)) {
           setSchoolGrades(school.grades_offered);
         } else {
           setSchoolGrades(AVAILABLE_GRADES);
         }
+        setSchoolOperatingDays(
+          Array.isArray(school?.operating_days) && school.operating_days.length > 0
+            ? school.operating_days
+            : DEFAULT_OPERATING_DAYS,
+        );
       } catch {
         setSchoolGrades(AVAILABLE_GRADES);
+        setSchoolOperatingDays(DEFAULT_OPERATING_DAYS);
       }
 
       // Load all data in parallel
@@ -480,10 +527,33 @@ export default function ClassSchedulingPage() {
     
     return false;
   };
-  
-  const filteredTeachers = (scheduleForm.subject && scheduleForm.grade)
-    ? teachers.filter(t => isTeacherAssigned(t, scheduleForm.subject, scheduleForm.grade))
-    : teachers;
+
+  // Client-side hints only — the backend (assertTeacherSchedulable in
+  // school-admin-extra.controller.ts) is the real enforcement. These just
+  // keep obviously-unschedulable teachers out of the dropdown so a save
+  // isn't rejected after the fact.
+  const isTeacherWorkingOnDay = (t: Teacher, day: string) => {
+    if (!day) return true;
+    const dayNum = DAY_NAME_TO_NUMBER[day];
+    if (dayNum === undefined) return true;
+    const workingDays = t.teacher_schools?.[0]?.working_days;
+    if (!workingDays || workingDays.length === 0) return true;
+    return workingDays.includes(dayNum);
+  };
+
+  const isTeacherCurrentlyAssigned = (t: Teacher) => {
+    const schoolData = t.teacher_schools?.[0];
+    if (!schoolData) return true;
+    const today = new Date().toISOString().split('T')[0];
+    if (schoolData.assigned_from && today < schoolData.assigned_from) return false;
+    if (schoolData.assigned_until && today > schoolData.assigned_until) return false;
+    return true;
+  };
+
+  const filteredTeachers = teachers
+    .filter(t => (scheduleForm.subject && scheduleForm.grade) ? isTeacherAssigned(t, scheduleForm.subject, scheduleForm.grade) : true)
+    .filter(t => isTeacherWorkingOnDay(t, scheduleForm.day_of_week))
+    .filter(t => isTeacherCurrentlyAssigned(t));
     
   // Final safety: If no teachers match the specific filter, show all teachers 
   // but sorted by load, so the user isn't stuck with an empty list.
@@ -644,6 +714,7 @@ export default function ClassSchedulingPage() {
   };
 
   const handleAddScheduleGrid = (day: string, periodId: string) => {
+    if (!schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[day])) return;
     const period = periods.find(p => p.id === periodId);
     setScheduleForm({
       class_id: '',
@@ -851,23 +922,59 @@ export default function ClassSchedulingPage() {
 
   // Handle room operations
   const handleCreateRoom = async () => {
+    if (bulkRoomMode) {
+      const count = parseInt(bulkRoomCount, 10) || 0;
+      if (!roomForm.room_number.trim()) {
+        toast.error('Enter a starting room number');
+        return;
+      }
+      if (count < 2 || count > 100) {
+        toast.error('Quantity must be between 2 and 100');
+        return;
+      }
+      const roomNumbers = generateBulkRoomNumbers(roomForm.room_number, count);
+      try {
+        const res = await schoolAdminApi.rooms.bulkCreate({
+          rooms: roomNumbers.map((room_number) => ({
+            room_number,
+            room_name: roomForm.room_name || undefined,
+            capacity: roomForm.capacity ? parseInt(roomForm.capacity) : null,
+            location: roomForm.location || undefined,
+            facilities: roomForm.facilities,
+            is_active: roomForm.is_active,
+          })),
+        });
+        await loadData();
+        // Dialog stays open — reset the form so the admin can immediately
+        // add another room or batch, and see the new rooms in the list above.
+        resetRoomForm();
+        setBulkRoomMode(false);
+        setBulkRoomCount('5');
+        const created = (res?.data?.rooms as unknown[] | undefined)?.length ?? roomNumbers.length;
+        toast.success(`Added ${created} rooms: ${roomNumbers[0]}–${roomNumbers[roomNumbers.length - 1]}`);
+      } catch (error) {
+        console.error('Error bulk-creating rooms:', error);
+        const err = error as { response?: { data?: { error?: string; details?: string; message?: string } } };
+        toast.error(err.response?.data?.error ?? err.response?.data?.details ?? err.response?.data?.message ?? 'Failed to create rooms');
+      }
+      return;
+    }
+
+    if (!roomForm.room_number.trim()) {
+      toast.error('Room # is required');
+      return;
+    }
+
     try {
       await schoolAdminApi.rooms.create({
         ...roomForm,
         capacity: roomForm.capacity ? parseInt(roomForm.capacity) : null
       });
       await loadData();
-      setRoomDialogOpen(false);
-      setRoomForm({
-        room_number: '',
-        room_name: '',
-        room_type: 'Regular Classroom',
-        capacity: '',
-        location: '',
-        facilities: [],
-        is_active: true
-      });
-      setEditingRoom(null);
+      // Dialog stays open — reset the form so the admin can immediately add
+      // the next room without having to reopen "Manage Rooms" every time.
+      resetRoomForm();
+      toast.success('Room added');
     } catch (error) {
       console.error('Error creating room:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
@@ -877,6 +984,10 @@ export default function ClassSchedulingPage() {
 
   const handleUpdateRoom = async () => {
     if (!editingRoom) return;
+    if (!roomForm.room_number.trim()) {
+      toast.error('Room # is required');
+      return;
+    }
 
     try {
       await schoolAdminApi.rooms.update(editingRoom.id, {
@@ -884,17 +995,8 @@ export default function ClassSchedulingPage() {
         capacity: roomForm.capacity ? parseInt(roomForm.capacity) : null
       });
       await loadData();
-      setRoomDialogOpen(false);
-      setRoomForm({
-        room_number: '',
-        room_name: '',
-        room_type: 'Regular Classroom',
-        capacity: '',
-        location: '',
-        facilities: [],
-        is_active: true
-      });
-      setEditingRoom(null);
+      resetRoomForm();
+      toast.success('Room updated');
     } catch (error) {
       console.error('Error updating room:', error);
       const err = error as { response?: { data?: { error?: string; details?: string } } };
@@ -977,7 +1079,9 @@ export default function ClassSchedulingPage() {
     let skippedCount = 0;
     const errors: string[] = [];
 
-    const otherDays = DAYS_OF_WEEK.filter(d => d !== schedule.day_of_week);
+    const otherDays = DAYS_OF_WEEK.filter(
+      d => d !== schedule.day_of_week && schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d]),
+    );
 
     for (const day of otherDays) {
       const alreadyExists = schedules.some(s => 
@@ -1081,6 +1185,7 @@ export default function ClassSchedulingPage() {
 
    
   const handleEditRoom = (room: Room) => {
+    setBulkRoomMode(false);
     setEditingRoom(room);
     setRoomForm({
       room_number: room.room_number || '',
@@ -1136,7 +1241,8 @@ export default function ClassSchedulingPage() {
   };
 
   // Section 7 Logic: Completion Calculation
-  const totalPossibleSlots = (periods.length || 1) * GRID_DAYS.length;
+  const operatingGridDaysCount = GRID_DAYS.filter(d => schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).length;
+  const totalPossibleSlots = (periods.length || 1) * (operatingGridDaysCount || 1);
   const uniqueGrades = [...new Set(schedules.map((s: Schedule) => s.grade))].filter(Boolean).sort();
   const completionStats = uniqueGrades.map(grade => {
     const filledSlots = new Set(
@@ -1235,6 +1341,45 @@ export default function ClassSchedulingPage() {
           const p = sortedPeriods.find(p => p.id === s.period_id);
           errors.push(`Room ${s.room?.room_number} is double-booked on ${s.day_of_week} Period ${p?.period_number}`);
         }
+      }
+    });
+
+    // Errors: teacher not assigned to this school / not working that day /
+    // outside their assigned date range. Re-derives assertTeacherSchedulable
+    // (school-admin-extra.controller.ts) client-side from already-loaded data
+    // — this is what gives retroactive visibility into schedules that were
+    // created before this feature existed, or where an admin has since
+    // narrowed a teacher's assignment window.
+    const today = new Date().toISOString().split('T')[0];
+    activeSchedules.forEach(s => {
+      if (!s.teacher_id) return;
+      const teacher = teachers.find(t => t.id === s.teacher_id);
+      const schoolData = teacher?.teacher_schools?.[0];
+      const teacherName = s.teacher?.full_name ?? teacher?.full_name ?? 'Unknown teacher';
+      if (!schoolData) {
+        errors.push(`${teacherName} is scheduled on ${s.day_of_week} but is not assigned to your school`);
+        return;
+      }
+      if (schoolData.assigned_from && today < schoolData.assigned_from) {
+        errors.push(`${teacherName} is scheduled on ${s.day_of_week} but their assignment doesn't start until ${schoolData.assigned_from}`);
+      }
+      if (schoolData.assigned_until && today > schoolData.assigned_until) {
+        errors.push(`${teacherName} is scheduled on ${s.day_of_week} but their assignment ended on ${schoolData.assigned_until}`);
+      }
+      const dayNum = DAY_NAME_TO_NUMBER[s.day_of_week];
+      const workingDays = schoolData.working_days;
+      if (dayNum !== undefined && workingDays && workingDays.length > 0 && !workingDays.includes(dayNum)) {
+        errors.push(`${teacherName} doesn't work at your school on ${s.day_of_week}s, but is scheduled for ${s.subject} (${s.grade})`);
+      }
+    });
+
+    // Errors: schedule on a day the SCHOOL itself doesn't operate on — a
+    // school-wide constraint, independent of which (if any) teacher is
+    // assigned. Re-derives assertSchoolOperatesOnDay client-side.
+    activeSchedules.forEach(s => {
+      const dayNum = DAY_NAME_TO_NUMBER[s.day_of_week];
+      if (dayNum !== undefined && !schoolOperatingDays.includes(dayNum)) {
+        errors.push(`${s.subject} (${s.grade}) is scheduled on ${s.day_of_week}, but your school doesn't operate that day`);
       }
     });
 
@@ -1604,11 +1749,18 @@ export default function ClassSchedulingPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {GRID_DAYS.map((day, dayIdx) => (
-                        <TableRow key={day} className={`hover:bg-transparent ${dayIdx < GRID_DAYS.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                      {GRID_DAYS.map((day, dayIdx) => {
+                        const dayIsOpen = schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[day]);
+                        return (
+                        <TableRow key={day} className={`hover:bg-transparent ${dayIdx < GRID_DAYS.length - 1 ? 'border-b border-gray-50' : ''} ${!dayIsOpen ? 'bg-gray-50/60' : ''}`}>
                           <TableCell className="sticky left-0 bg-white z-10 border-r border-gray-100 align-middle shadow-[1px_0_0_0_#f3f4f6] group/row py-3 px-3">
                             <div className="flex items-center justify-between gap-1">
-                              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{day.slice(0,3)}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xs font-bold uppercase tracking-wider ${dayIsOpen ? 'text-gray-600' : 'text-gray-400'}`}>{day.slice(0,3)}</span>
+                                {!dayIsOpen && (
+                                  <span className="text-[9px] font-medium text-gray-400 bg-gray-100 rounded px-1 py-0.5" title="Your school doesn't operate on this day">Closed</span>
+                                )}
+                              </div>
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -1694,14 +1846,16 @@ export default function ClassSchedulingPage() {
                                         </div>
                                       );
                                     })}
-                                    <button
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-gray-400 hover:text-blue-600 py-1 px-2 rounded border border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 w-full mt-auto flex items-center justify-center gap-1"
-                                      onClick={() => handleAddScheduleGrid(day, period.id)}
-                                    >
-                                      <Plus className="h-3 w-3" /> Add
-                                    </button>
+                                    {dayIsOpen && (
+                                      <button
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-gray-400 hover:text-blue-600 py-1 px-2 rounded border border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 w-full mt-auto flex items-center justify-center gap-1"
+                                        onClick={() => handleAddScheduleGrid(day, period.id)}
+                                      >
+                                        <Plus className="h-3 w-3" /> Add
+                                      </button>
+                                    )}
                                   </div>
-                                ) : (
+                                ) : dayIsOpen ? (
                                   <button
                                     className="opacity-0 group-hover:opacity-100 transition-all w-full min-h-24 flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/40 text-gray-300 hover:text-blue-500"
                                     onClick={() => handleAddScheduleGrid(day, period.id)}
@@ -1709,12 +1863,17 @@ export default function ClassSchedulingPage() {
                                     <Plus className="h-4 w-4" />
                                     <span className="text-[10px] font-medium">Add class</span>
                                   </button>
+                                ) : (
+                                  <div className="w-full min-h-24 flex items-center justify-center text-[10px] text-gray-300">
+                                    School closed
+                                  </div>
                                 )}
                               </TableCell>
                             );
                           })}
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -1934,11 +2093,14 @@ export default function ClassSchedulingPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {DAYS_OF_WEEK.map((day: string) => (
+                        {DAYS_OF_WEEK.filter((day) => schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[day])).map((day: string) => (
                           <SelectItem key={day} value={day}>{day}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                  )}
+                  {!schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[scheduleForm.day_of_week]) && (
+                    <p className="text-xs text-red-500">Your school doesn&apos;t operate on {scheduleForm.day_of_week}s.</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -2320,7 +2482,17 @@ export default function ClassSchedulingPage() {
       </Dialog>
 
       {/* Room Dialog */}
-      <Dialog open={roomDialogOpen} onOpenChange={setRoomDialogOpen}>
+      <Dialog
+        open={roomDialogOpen}
+        onOpenChange={(open) => {
+          setRoomDialogOpen(open);
+          if (!open) {
+            resetRoomForm();
+            setBulkRoomMode(false);
+            setBulkRoomCount('5');
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0">
           <DialogTitle className="sr-only">Manage Rooms</DialogTitle>
           <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
@@ -2400,14 +2572,29 @@ export default function ClassSchedulingPage() {
 
             {/* Add / Edit Form */}
             <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                {editingRoom ? 'Edit Room' : 'Add New Room'}
-              </p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                  {editingRoom ? 'Edit Room' : 'Add New Room'}
+                </p>
+                {!editingRoom && (
+                  <label className="flex items-center gap-2 text-xs font-medium text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      checked={bulkRoomMode}
+                      onChange={(e) => setBulkRoomMode(e.target.checked)}
+                    />
+                    Add multiple rooms at once
+                  </label>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-sm font-medium text-gray-700">Room # <span className="text-red-400">*</span></Label>
+                      <Label className="text-sm font-medium text-gray-700">
+                        {bulkRoomMode ? 'Starting Room #' : 'Room #'} <span className="text-red-400">*</span>
+                      </Label>
                       <Input
                         value={roomForm.room_number}
                         onChange={(e) => setRoomForm({ ...roomForm, room_number: e.target.value })}
@@ -2415,16 +2602,41 @@ export default function ClassSchedulingPage() {
                         className="h-10"
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-medium text-gray-700">Room Name</Label>
-                      <Input
-                        value={roomForm.room_name}
-                        onChange={(e) => setRoomForm({ ...roomForm, room_name: e.target.value })}
-                        placeholder="Science Lab"
-                        className="h-10"
-                      />
-                    </div>
+                    {bulkRoomMode ? (
+                      <div className="space-y-1.5">
+                        <Label className="text-sm font-medium text-gray-700">Quantity <span className="text-red-400">*</span></Label>
+                        <Input
+                          type="number"
+                          min={2}
+                          max={100}
+                          value={bulkRoomCount}
+                          onChange={(e) => setBulkRoomCount(e.target.value)}
+                          placeholder="5"
+                          className="h-10"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <Label className="text-sm font-medium text-gray-700">Room Name</Label>
+                        <Input
+                          value={roomForm.room_name}
+                          onChange={(e) => setRoomForm({ ...roomForm, room_name: e.target.value })}
+                          placeholder="Science Lab"
+                          className="h-10"
+                        />
+                      </div>
+                    )}
                   </div>
+                  {bulkRoomMode && (
+                    <p className="text-[11px] text-gray-500 -mt-2">
+                      {(() => {
+                        const count = parseInt(bulkRoomCount, 10) || 0;
+                        if (!roomForm.room_number.trim() || count < 2) return 'Creates rooms numbered sequentially from the starting Room #, all sharing the same type/capacity/location/facilities below.';
+                        const preview = generateBulkRoomNumbers(roomForm.room_number, Math.min(count, 100));
+                        return `Will create: ${preview[0]}, ${preview.length > 1 ? preview[1] : ''}${preview.length > 2 ? ', … , ' + preview[preview.length - 1] : ''}`;
+                      })()}
+                    </p>
+                  )}
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium text-gray-700">Room Type</Label>
                     <Select value={roomForm.room_type || 'Regular Classroom'} onValueChange={(val) => setRoomForm({ ...roomForm, room_type: val })}>
@@ -2493,10 +2705,20 @@ export default function ClassSchedulingPage() {
                   onClick={editingRoom ? handleUpdateRoom : handleCreateRoom}
                   className={`h-9 bg-emerald-600 hover:bg-emerald-700 ${editingRoom ? 'flex-1' : 'w-full'}`}
                 >
-                  {editingRoom ? 'Save Changes' : 'Add Room'}
+                  {editingRoom ? 'Save Changes' : bulkRoomMode ? `Add ${parseInt(bulkRoomCount, 10) || 0} Rooms` : 'Add Room'}
                 </Button>
               </div>
             </div>
+          </div>
+
+          <div className="sticky bottom-0 px-6 py-3 border-t border-gray-100 bg-white flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setRoomDialogOpen(false)}
+              className="h-9 px-8"
+            >
+              Done
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2524,7 +2746,7 @@ export default function ClassSchedulingPage() {
                   <SelectValue placeholder="Choose a day" />
                 </SelectTrigger>
                 <SelectContent>
-                  {DAYS_OF_WEEK.filter(d => d !== scheduleToCopy?.day_of_week).map(day => (
+                  {DAYS_OF_WEEK.filter(d => d !== scheduleToCopy?.day_of_week && schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).map(day => (
                     <SelectItem key={day} value={day}>{day}</SelectItem>
                   ))}
                 </SelectContent>
@@ -2563,7 +2785,7 @@ export default function ClassSchedulingPage() {
           <div className="px-6 py-5 space-y-4">
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Select Target Days</p>
             <div className="grid grid-cols-2 gap-2">
-              {DAYS_OF_WEEK.filter(d => d !== sourceDayToCopy).map(day => {
+              {DAYS_OF_WEEK.filter(d => d !== sourceDayToCopy && schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).map(day => {
                 const selected = targetDays.includes(day);
                 return (
                   <button

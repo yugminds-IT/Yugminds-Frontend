@@ -88,6 +88,8 @@ interface AssignedSchool {
   subjects?: string[];
   /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
   workingDays?: number[];
+  assignedFrom?: string | null;
+  assignedUntil?: string | null;
   sectionsAssignedToOtherTeachers?: SectionAssignedToOther[];
 }
 
@@ -127,6 +129,10 @@ interface TeacherSchool {
   working_days?: number[];
   /** When this working-days pattern takes effect (YYYY-MM-DD). */
   effective_from?: string;
+  /** Calendar date the teacher's assignment to this school begins (YYYY-MM-DD). Optional. */
+  assigned_from?: string;
+  /** Calendar date the teacher's assignment to this school ends (YYYY-MM-DD). Optional — blank means ongoing. */
+  assigned_until?: string;
   max_students_per_session?: number;
   is_primary?: boolean;
   schoolName?: string;
@@ -148,6 +154,9 @@ interface School {
   gradesOffered?: string[];
   grades?: { id: string; name: string; sections?: { id: string; name: string }[] }[];
   number_of_sections?: number;
+  /** Which weekdays the school holds classes — 0=Sun..6=Sat. Constrains a teacher's working-days picker for this school. */
+  operatingDays?: number[];
+  operating_days?: number[];
 }
 
 interface LeaveRequest {
@@ -164,6 +173,8 @@ interface LeaveRequest {
   approved_at?: string;
   rejected_at?: string;
   approved_by?: string;
+  reviewer?: { id: string; full_name: string; email: string } | null;
+  substitute_required?: boolean;
   admin_remarks?: string;
   profiles?: {
     id: string;
@@ -1049,6 +1060,8 @@ export default function TeachersManagement() {
           working_days: a.workingDays?.length ? a.workingDays : [1, 2, 3, 4, 5],
           working_days_per_week: a.workingDays?.length ? a.workingDays.length : 5,
           effective_from: todayStr(),
+          assigned_from: a.assignedFrom ?? "",
+          assigned_until: a.assignedUntil ?? "",
           max_students_per_session: 30,
           is_primary: i === 0,
         };
@@ -1065,6 +1078,8 @@ export default function TeachersManagement() {
         working_days: workingDays,
         working_days_per_week: t.working_days_per_week ?? workingDays.length,
         effective_from: todayStr(),
+        assigned_from: t.assigned_from ?? "",
+        assigned_until: t.assigned_until ?? "",
         max_students_per_session: t.max_students_per_session ?? 30,
         is_primary: t.is_primary ?? false,
       };
@@ -1165,14 +1180,40 @@ export default function TeachersManagement() {
     interface SchoolAssignment {
       school_id?: string;
       grades_assigned?: string[];
+      assigned_from?: string;
+      assigned_until?: string;
+      working_days?: number[];
     }
-    
-    const hasValidAssignments = formData.school_assignments.some((assignment: SchoolAssignment) => 
+
+    const hasValidAssignments = formData.school_assignments.some((assignment: SchoolAssignment) =>
       assignment.school_id && (assignment.grades_assigned?.length ?? 0) > 0
     );
 
     if (!hasValidAssignments) {
       toast.error('Please assign at least one school and one grade before saving.');
+      return;
+    }
+
+    const badDateRange = formData.school_assignments.find(
+      (assignment: SchoolAssignment) =>
+        assignment.assigned_from &&
+        assignment.assigned_until &&
+        assignment.assigned_until < assignment.assigned_from,
+    );
+    if (badDateRange) {
+      toast.error('"Assigned Until" must not be before "Assigned From" for one of the school assignments.');
+      return;
+    }
+
+    const badWorkingDays = formData.school_assignments.find((assignment: SchoolAssignment) => {
+      const school = schools.find((s) => s.id === assignment.school_id);
+      const operatingDays = school?.operatingDays;
+      if (!operatingDays || !assignment.working_days) return false;
+      return assignment.working_days.some((d) => !operatingDays.includes(d));
+    });
+    if (badWorkingDays) {
+      const school = schools.find((s) => s.id === badWorkingDays.school_id);
+      toast.error(`${school?.name ?? 'One of the assigned schools'} doesn't operate on one of the selected working days — adjust it before saving.`);
       return;
     }
 
@@ -2209,14 +2250,21 @@ export default function TeachersManagement() {
                       <div className="text-sm">
                         <span className="font-medium">School:</span> {request.schools?.name}
                       </div>
+                      {request.substitute_required && (
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                          Substitute Required
+                        </Badge>
+                      )}
                       {request.status === 'Approved' && request.approved_at && (
                         <div className="text-xs text-green-600">
                           <span className="font-medium">Approved on:</span> {new Date(request.approved_at).toLocaleDateString()}
+                          {request.reviewer?.full_name && ` by ${request.reviewer.full_name}`}
                         </div>
                       )}
                       {request.status === 'Rejected' && request.rejected_at && (
                         <div className="text-xs text-red-600">
                           <span className="font-medium">Rejected on:</span> {new Date(request.rejected_at).toLocaleDateString()}
+                          {request.reviewer?.full_name && ` by ${request.reviewer.full_name}`}
                         </div>
                       )}
                       {request.admin_remarks && (
@@ -2528,6 +2576,8 @@ export default function TeachersManagement() {
                       working_days: [1, 2, 3, 4, 5],
                       working_days_per_week: 5,
                       effective_from: todayStr(),
+                      assigned_from: todayStr(),
+                      assigned_until: "",
                       max_students_per_session: 30,
                       is_primary: formData.school_assignments.length === 0
                     };
@@ -2697,6 +2747,7 @@ export default function TeachersManagement() {
                         <WeekdayPicker
                           idPrefix={`working_days_${index}`}
                           value={assignment.working_days ?? [1, 2, 3, 4, 5]}
+                          allowedDays={schools.find((s) => s.id === assignment.school_id)?.operatingDays}
                           onChange={(days) => {
                             const updatedAssignments = [...formData.school_assignments];
                             updatedAssignments[index].working_days = days;
@@ -2738,6 +2789,49 @@ export default function TeachersManagement() {
                             attendance keeps using whatever pattern was in effect before.
                           </p>
                         </div>
+                        <div className="mt-4 grid grid-cols-2 gap-3 max-w-md">
+                          <div>
+                            <Label htmlFor={`assigned_from_${index}`} className="text-xs text-gray-500">
+                              Assigned From
+                            </Label>
+                            <Input
+                              id={`assigned_from_${index}`}
+                              type="date"
+                              value={assignment.assigned_from ?? ""}
+                              onChange={(e) => {
+                                const updatedAssignments = [...formData.school_assignments];
+                                updatedAssignments[index].assigned_from = e.target.value;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  school_assignments: updatedAssignments
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`assigned_until_${index}`} className="text-xs text-gray-500">
+                              Assigned Until (optional)
+                            </Label>
+                            <Input
+                              id={`assigned_until_${index}`}
+                              type="date"
+                              value={assignment.assigned_until ?? ""}
+                              onChange={(e) => {
+                                const updatedAssignments = [...formData.school_assignments];
+                                updatedAssignments[index].assigned_until = e.target.value;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  school_assignments: updatedAssignments
+                                }));
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          The date range this teacher is actually assigned/present at this school
+                          (not the weekly pattern above) — leave &quot;Assigned Until&quot; blank if ongoing.
+                          Class Scheduling only allows scheduling this teacher here within this window.
+                        </p>
                         {assignment.school_id && editingTeacher && (
                           <WorkingDaysHistoryPanel
                             teacherId={String(editingTeacher.id)}

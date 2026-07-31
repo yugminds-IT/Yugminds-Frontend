@@ -19,11 +19,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   Bell,
   CheckCircle,
-  FileText,
-  BookOpen,
   AlertCircle,
-  Award,
-  Calendar,
   Check,
   Trash2,
   MessageSquare,
@@ -38,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { commonApi, studentApi } from "@/lib/api";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { queryKeys } from "@/lib/query-keys";
+import { formatNotificationType } from "@/lib/notification-format";
 
 type NotifItem = {
   id: string;
@@ -74,6 +71,7 @@ export default function NotificationsPage() {
   const { data: notifications, isLoading } = useStudentNotifications();
   const markAsRead = useMarkNotificationAsRead();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [markingAll, setMarkingAll] = useState(false);
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -196,9 +194,16 @@ export default function NotificationsPage() {
     const unread = (notifications as NotifItem[]).filter((n) => !n.is_read && n.id);
     if (unread.length === 0) return;
     try {
-      await Promise.all(unread.map((n) => markAsRead.mutateAsync(String(n.id))));
+      setMarkingAll(true);
+      // Single batch request, matching teacher/school-admin/admin — not one
+      // PATCH per notification.
+      await commonApi.notifications.user.update({ mark_all: true, is_read: true });
+      queryClient.invalidateQueries({ queryKey: ["studentNotifications"] });
+      queryClient.invalidateQueries({ queryKey: ["unreadNotificationCount"] });
     } catch (error) {
       console.error('Error marking all as read:', error);
+    } finally {
+      setMarkingAll(false);
     }
   };
 
@@ -218,45 +223,24 @@ export default function NotificationsPage() {
     }
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'assignment': return <FileText className="h-5 w-5 text-orange-600" />;
-      case 'grade': return <Award className="h-5 w-5 text-green-600" />;
-      case 'course': return <BookOpen className="h-5 w-5 text-blue-600" />;
-      case 'announcement': return <Bell className="h-5 w-5 text-purple-600" />;
-      case 'attendance': return <Calendar className="h-5 w-5 text-yellow-600" />;
-      default: return <AlertCircle className="h-5 w-5 text-gray-600" />;
-    }
-  };
-
-  const getNotificationColor = (type: string, isRead: boolean) => {
-    if (isRead) return 'bg-gray-50 border-gray-200';
-    switch (type) {
-      case 'assignment': return 'bg-orange-50 border-orange-200';
-      case 'grade': return 'bg-green-50 border-green-200';
-      case 'course': return 'bg-blue-50 border-blue-200';
-      case 'announcement': return 'bg-purple-50 border-purple-200';
-      case 'attendance': return 'bg-yellow-50 border-yellow-200';
-      default: return 'bg-gray-50 border-gray-200';
-    }
-  };
-
   const filteredNotifications =
     (notifications as NotifItem[] | undefined)?.filter((n) =>
       filter === 'unread' ? !n.is_read : true
     ) ?? [];
   const unreadCount = (notifications as NotifItem[] | undefined)?.filter((n) => !n.is_read).length ?? 0;
 
-  const NotifCard = ({ notification }: { notification: NotifItem }) => (
+  const NotifCard = ({ notification }: { notification: NotifItem }) => {
+    const typeDisplay = formatNotificationType(notification.type);
+    const TypeIcon = typeDisplay.icon;
+    return (
     <Card
-      className={`transition-all hover:shadow-md ${getNotificationColor(
-        notification.type || 'general',
-        !!notification.is_read
-      )}`}
+      className={`transition-all hover:shadow-md ${
+        notification.is_read ? 'bg-gray-50 border-gray-200' : typeDisplay.cardClassName
+      }`}
     >
       <CardContent className="p-4">
         <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 mt-1">{getNotificationIcon(notification.type || 'general')}</div>
+          <div className="flex-shrink-0 mt-1"><TypeIcon className="h-5 w-5 text-gray-600" /></div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
               <h3 className={`font-semibold ${!notification.is_read ? 'text-gray-900' : 'text-gray-700'}`}>
@@ -264,8 +248,8 @@ export default function NotificationsPage() {
               </h3>
               <div className="flex items-center gap-2">
                 {!notification.is_read && <div className="w-2 h-2 rounded-full bg-blue-600" />}
-                <Badge variant="outline" className="text-xs capitalize">
-                  {notification.type || 'general'}
+                <Badge variant="outline" className={`text-xs ${typeDisplay.badgeClassName}`}>
+                  {typeDisplay.label}
                 </Badge>
               </div>
             </div>
@@ -301,7 +285,8 @@ export default function NotificationsPage() {
         </div>
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -314,9 +299,9 @@ export default function NotificationsPage() {
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="text-sm">{unreadCount} Unread</Badge>
           {unreadCount > 0 && (
-            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} disabled={markAsRead.isPending}>
+            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} disabled={markingAll}>
               <CheckCircle className="h-4 w-4 mr-2" />
-              {markAsRead.isPending ? 'Marking...' : 'Mark All as Read'}
+              {markingAll ? 'Marking...' : 'Mark All as Read'}
             </Button>
           )}
           <Button size="sm" onClick={openSendDialog} className="bg-blue-600 hover:bg-blue-700 text-white">

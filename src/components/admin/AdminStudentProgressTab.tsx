@@ -223,7 +223,7 @@ export default function AdminStudentProgressTab() {
             {grades.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={section} onValueChange={setSection}>
+        <Select value={section} onValueChange={(v) => { setSection(v); setPage(0); }}>
           <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="All Sections" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Sections</SelectItem>

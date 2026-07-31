@@ -13,19 +13,20 @@ import {
   type TeacherClassRow,
   type TeacherScheduleRow,
 } from "@/hooks/useTeacherData";
-import { BookOpen, Users, Calendar, FileText, CheckCircle, AlertCircle, Filter, X, RefreshCw } from "lucide-react";
+import { BookOpen, FileText, AlertCircle, Filter, X, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { frontendLogger } from "@/lib/frontend-logger";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
+import { WEEKDAY_NAMES_MON_FIRST } from "@/lib/weekday-utils";
 
 /**
  * My Classes Page
- * 
+ *
  * Displays all classes assigned to the teacher
  */
-const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAYS_OF_WEEK = WEEKDAY_NAMES_MON_FIRST;
 
 type ScheduleRow = TeacherScheduleRow;
 type ClassRow = TeacherClassRow;
@@ -502,47 +503,30 @@ export default function ClassesPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredClasses.map((classItem: ClassRow) => (
-            <Card key={classItem.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-xl">{classItem.grade || classItem.class_name || 'N/A'}</CardTitle>
-                    <CardDescription className="mt-2">
-                      {classItem.subject || 'General'}
-                    </CardDescription>
+                <Link
+                  key={classItem.id}
+                  href={`/lms/teacher/reports${classItem.grade ? `?grade=${encodeURIComponent(classItem.grade)}` : ''}`}
+                  title="Submit a report for this class"
+                  className="flex items-center justify-between gap-3 rounded-lg border p-3 hover:shadow-sm hover:border-blue-300 transition-shadow"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">
+                      {classItem.grade || classItem.class_name || 'N/A'}
+                      {classItem.section ? ` - ${classItem.section}` : ''}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {classItem.school_name || 'Unknown school'}
+                    </p>
                   </div>
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <BookOpen className="h-5 w-5 text-blue-600" />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Users className="h-4 w-4" />
-                    <span>Max Students: {classItem.max_students || 'N/A'}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Calendar className="h-4 w-4" />
-                    <span>Academic Year: {classItem.academic_year || '2024-25'}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t">
-                    <Badge variant={classItem.is_active ? 'default' : 'secondary'}>
-                      {classItem.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                    <Link href={`/lms/teacher/reports?class_id=${classItem.id}`}>
-                      <Button size="sm" variant="outline">
-                        Submit Report
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  <Badge
+                    variant={classItem.is_active ? 'default' : 'secondary'}
+                    className="shrink-0"
+                  >
+                    {classItem.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </Link>
               ))}
             </div>
           </CardContent>
@@ -579,50 +563,6 @@ export default function ClassesPage() {
           </CardContent>
         </Card>
       ) : null}
-
-      {/* Stats Summary */}
-      {filteredClasses && filteredClasses.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Classes</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{filteredClasses.length}</div>
-              <p className="text-xs text-muted-foreground">
-                {hasActiveFilters ? 'Filtered classes' : 'Classes assigned'}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Classes</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {filteredClasses.filter((c: ClassRow) => c.is_active).length}
-              </div>
-              <p className="text-xs text-muted-foreground">Currently active</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Capacity</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {filteredClasses.reduce((sum: number, c: ClassRow) => sum + (c.max_students || 0), 0)}
-              </div>
-              <p className="text-xs text-muted-foreground">Total students capacity</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

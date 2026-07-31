@@ -27,6 +27,7 @@ interface Course {
   id: string;
   school_id: string;
   grade: string;
+  grades: string[];
   course_name: string;
   description: string;
   num_chapters: number;
@@ -209,6 +210,7 @@ export default function CoursesManagement() {
           id: c.id,
           school_id: c.school_id,
           grade: grades.join(', '), // Comma-separated string for display
+          grades, // Individual grade names, for filtering
           course_name: c.title || c.course_name || 'Untitled Course',
           description: c.description || '',
           num_chapters: c.num_chapters !== undefined ? c.num_chapters : chapters.length,
@@ -326,7 +328,7 @@ export default function CoursesManagement() {
     loadCourses();
   }, [loadCourses]);
 
-  const _handleViewCourseDetails = (course: Course) => {
+  const handleViewCourseDetails = (course: Course) => {
     setSelectedCourse(course);
     setIsCourseDetailsOpen(true);
   };
@@ -364,7 +366,7 @@ export default function CoursesManagement() {
     }
   };
 
-  const _handleOpenStudentsDialog = async (courseId: string) => {
+  const handleOpenStudentsDialog = async (courseId: string) => {
     try {
       console.log('📊 Opening students dialog for course:', courseId);
       
@@ -407,13 +409,16 @@ export default function CoursesManagement() {
     const matchesSearch = name.includes((searchTerm || '').toLowerCase()) || desc.includes((searchTerm || '').toLowerCase());
     const status = (course.status || '').toLowerCase();
     const matchesStatus = statusFilter === "all" || status === statusFilter;
-    const matchesGrade = gradeFilter === "all" || course.grade === gradeFilter;
-    
+    const matchesGrade = gradeFilter === "all" || (course.grades || []).includes(gradeFilter);
+
     return matchesSearch && matchesStatus && matchesGrade;
   });
 
   const getGrades = () => {
-    return [...new Set(courses.map((c: Course) => c.grade).filter(Boolean))].sort();
+    // Individual grade names (not the comma-joined per-course display
+    // string) — a multi-grade course used to collapse into one unfilterable
+    // "Grade Grade 4, Grade 5, Grade 6" option instead of three real ones.
+    return [...new Set(courses.flatMap((c: Course) => c.grades || []).filter(Boolean))].sort();
   };
 
   const getStats = () => {
@@ -528,7 +533,6 @@ export default function CoursesManagement() {
                       <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="published">Published</SelectItem>
                       <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -543,7 +547,7 @@ export default function CoursesManagement() {
                       <SelectItem value="all">All Grades</SelectItem>
                       {getGrades().map((grade: string) => (
                         <SelectItem key={grade} value={grade}>
-                          Grade {grade}
+                          {grade}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -572,16 +576,13 @@ export default function CoursesManagement() {
                 <TableBody>
                   {filteredCourses.map((course) => {
                     const rowKey = course.id;
-                    // Parse grades from comma-separated string or use grades array if available
-                    interface CourseWithGrades extends Course {
-                      grades?: string[];
-                    }
-                    
-                    const grades: string[] = Array.isArray((course as CourseWithGrades).grades) 
-                      ? ((course as CourseWithGrades).grades ?? []) 
-                      : (course.grade ? String(course.grade).split(',').map(g => g.trim()).filter(Boolean) : []);
+                    const grades: string[] = Array.isArray(course.grades) ? course.grades : [];
                     return (
-                      <TableRow key={rowKey}>
+                      <TableRow
+                        key={rowKey}
+                        className="cursor-pointer hover:bg-gray-50"
+                        onClick={() => handleViewCourseDetails(course)}
+                      >
                         <TableCell>
                           <div>
                             <div className="font-medium">{course.course_name}</div>
@@ -602,11 +603,20 @@ export default function CoursesManagement() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="text-sm font-medium">{course.student_progress.total_students}</div>
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-blue-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenStudentsDialog(course.id);
+                            }}
+                          >
+                            {course.student_progress.total_students}
+                          </button>
                         </TableCell>
                         <TableCell>
                           <Badge variant={
-                            course.status === 'Published' ? 'default' : 
+                            course.status === 'Published' ? 'default' :
                             course.status === 'Draft' ? 'secondary' : 'destructive'
                           }>
                             {course.status}

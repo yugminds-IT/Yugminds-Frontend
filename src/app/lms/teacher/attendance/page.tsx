@@ -26,7 +26,7 @@ type MonthlyLog = TeacherMonthlyLog;
  * Shows teacher's monthly attendance data, calendar view, and statistics
  */
 export default function AttendancePage() {
-  const { selectedSchool } = useTeacherSchool();
+  const { selectedSchool, schools } = useTeacherSchool();
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -460,7 +460,9 @@ export default function AttendancePage() {
                         {log.month ? new Date(log.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'N/A'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {selectedSchool?.name || 'N/A'}
+                        {schools.find((s) => s.id === log.school_id)?.name
+                          ?? selectedSchool?.name
+                          ?? 'N/A'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
                         {log.total_working_days ?? 0}

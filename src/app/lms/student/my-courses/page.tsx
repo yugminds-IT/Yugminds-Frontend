@@ -462,8 +462,17 @@ export default function MyCoursesPage() {
 
   const calendarStats = useMemo(() => {
     const cutoffMs = (nowMs ?? 0) - 28 * 24 * 60 * 60 * 1000
+    // `d.date` is a bare "YYYY-MM-DD" key built from LOCAL date parts above —
+    // `new Date("YYYY-MM-DD")` parses date-only strings as UTC midnight, which
+    // can shift the moment by several hours relative to `nowMs` (local epoch)
+    // for non-UTC users, occasionally dropping/keeping a day across the 28-day
+    // boundary incorrectly. Parse the same key back into local date parts
+    // instead, so both sides of the comparison agree on what "today" means.
     const activeDays = nowMs
-      ? activityDays.filter(d => new Date(d.date).getTime() >= cutoffMs).length
+      ? activityDays.filter(d => {
+          const [y, m, day] = d.date.split('-').map(Number)
+          return new Date(y, m - 1, day).getTime() >= cutoffMs
+        }).length
       : 0
     const chaptersCompleted = courses.reduce((s, c) => s + c.completed_chapters, 0)
     const inProgress = courses.filter(c => c.status === 'active').length

@@ -71,8 +71,14 @@ export const teacherApi = {
 
   /** Notifications */
   notifications: {
-    list: (params?: { limit?: number }) =>
-      apiClient.get(withParams(`${TEACHER}/notifications`, params)),
+    list: (params?: {
+      limit?: number;
+      offset?: number;
+      mode?: string;
+      search?: string;
+      status?: string;
+      school_id?: string;
+    }) => apiClient.get(withParams(`${TEACHER}/notifications`, params)),
     get: (id: string) => apiClient.get(`${TEACHER}/notifications/${id}`),
     recipients: (params?: { school_id?: string }) =>
       apiClient.get(withParams(`${TEACHER}/notifications/recipients`, params)),

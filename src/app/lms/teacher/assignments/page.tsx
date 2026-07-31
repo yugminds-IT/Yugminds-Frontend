@@ -182,7 +182,16 @@ export default function TeacherAssignmentsPage() {
   const gradedSubmissions = useMemo(() => submissions.filter((s) => s.status === "graded"), [submissions]);
   const pendingSubmissions = useMemo(() => submissions.filter((s) => s.status !== "graded"), [submissions]);
 
-  // Group all submission rows by student, pick best (highest graded score) and latest attempt.
+  // Group all submission rows by student, pick best and latest attempt.
+  // "Best" honors the assignment's own retakeScoringRule ('highest' vs
+  // 'latest') — same tie-break as the canonical StudentRankingService and
+  // this page's own Analytics tab (getTeacherAssignmentAnalytics). This
+  // table used to always pick the highest-scoring graded attempt regardless
+  // of the rule, so a 'latest'-rule assignment where a retake scored lower
+  // than an earlier attempt showed the wrong (higher, stale) score here
+  // while the Analytics tab correctly showed the real latest score for the
+  // identical student+assignment.
+  const retakeRule = (selectedAssignment?.retake_rule ?? "latest").toLowerCase();
   const studentRows = useMemo((): StudentRow[] => {
     const map = new Map<number, StudentRow>();
     for (const s of submissions) {
@@ -199,16 +208,21 @@ export default function TeacherAssignmentsPage() {
       row.attempts.push(s);
       // latest = highest attempt_number
       if (s.attempt_number >= row.latest.attempt_number) row.latest = s;
-      // best = graded attempt with highest score
       if (s.status === "graded" && s.score != null) {
-        if (!row.best || (row.best.score ?? -1) < s.score) row.best = s;
+        if (retakeRule === "highest") {
+          if (!row.best || (row.best.score ?? -1) < s.score) row.best = s;
+        } else {
+          // 'latest': the most recently attempted graded submission wins,
+          // regardless of whether an earlier attempt scored higher.
+          if (!row.best || s.attempt_number >= row.best.attempt_number) row.best = s;
+        }
       }
       map.set(s.student_id, row);
     }
     return Array.from(map.values()).sort((a, b) =>
       a.student_name.localeCompare(b.student_name)
     );
-  }, [submissions]);
+  }, [submissions, retakeRule]);
 
   const filteredStudentRows = useMemo(() => {
     let rows = studentRows;
@@ -412,9 +426,14 @@ export default function TeacherAssignmentsPage() {
   };
 
   const handleDelete = async (assignmentId: string) => {
+    const target = assignments.find((a) => a.id === assignmentId);
+    const submissionCount = target?.submission_count ?? 0;
     if (!(await confirmDialog({
       title: 'Delete this assignment?',
-      description: 'This action cannot be undone.',
+      description:
+        submissionCount > 0
+          ? `This will permanently delete ${submissionCount} existing student submission${submissionCount === 1 ? '' : 's'} (including any grades/feedback already given) along with the assignment. This action cannot be undone.`
+          : 'This action cannot be undone.',
       confirmText: 'Delete',
       variant: 'danger',
     }))) return;

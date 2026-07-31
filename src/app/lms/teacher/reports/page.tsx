@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTeacherSchool } from "../context";
+import { WEEKDAY_NAMES } from "@/lib/weekday-utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ type ReportRow = { id?: string; grade?: string; date?: string; report_status?: s
  */
 export default function SubmitReportPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { selectedSchool } = useTeacherSchool();
   
@@ -86,6 +88,19 @@ export default function SubmitReportPage() {
     );
   };
 
+  // Prefill the period when arriving via a "Today's Classes" row click on the
+  // dashboard (?period_id=...) — previously this page always opened blank,
+  // forcing the teacher to re-pick the exact period they'd just clicked.
+  // Only applies once, and only when there's no in-progress draft already
+  // selecting a different period (autosave restore takes precedence).
+  useEffect(() => {
+    const periodIdParam = searchParams.get('period_id');
+    if (periodIdParam && !savedFormData?.period_id) {
+      setFormData((prev) => (prev.period_id ? prev : { ...prev, period_id: periodIdParam }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const { data: _classes, isLoading: _classesLoading, refetch: refetchClasses } = useTeacherClasses(selectedSchool?.id);
   const { data: reports, isLoading: _reportsLoading, refetch: refetchReports } = useTeacherReports(
     selectedSchool?.id,
@@ -100,20 +115,19 @@ export default function SubmitReportPage() {
 
   // Get today's day name (Monday, Tuesday, etc.)
   const todayDayName = useMemo(() => {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     // Parse the date string (format: YYYY-MM-DD)
     const dateStr = formData.date;
     const date = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
-    
+
     // Validate the date
     if (isNaN(date.getTime())) {
       console.error('❌ Invalid date:', dateStr);
-      return days[new Date().getDay()]; // Fallback to today
+      return WEEKDAY_NAMES[new Date().getDay()]; // Fallback to today
     }
-    
+
     const dayIndex = date.getDay();
-    const dayName = days[dayIndex];
-    
+    const dayName = WEEKDAY_NAMES[dayIndex];
+
     return dayName;
   }, [formData.date]);
 
@@ -125,13 +139,32 @@ export default function SubmitReportPage() {
       refetchPeriods();
     }
   }, [selectedSchool?.id, todayDayName, refetchPeriods]);
-  const { data: schedules, refetch: refetchSchedules } = useTeacherSchedules(selectedSchool?.id);
 
-  // Get schedules for today
-  const todaysSchedules = useMemo<ScheduleRow[]>(() => {
-    if (!schedules) return [];
-    return (schedules as ScheduleRow[] || []).filter((s) => s.day_of_week === todayDayName);
-  }, [schedules, todayDayName]);
+  // Prefill from a "My Classes" card click (?grade=...) — since a period
+  // (not a bare grade) is the actual selectable field, find one of today's
+  // periods teaching that grade and select it. Prefers a period that hasn't
+  // already been reported today — a teacher can teach the same grade in two
+  // different periods the same day, and blindly picking the first match
+  // could select an already-submitted one instead of the one they actually
+  // meant to report. No-op if the grade isn't scheduled today or a draft is
+  // already in progress.
+  useEffect(() => {
+    const gradeParam = searchParams.get('grade');
+    if (!gradeParam || periodsLoading || !periods || savedFormData?.period_id) return;
+    const candidates = (periods as PeriodRow[]).filter((p) => p.grade === gradeParam);
+    if (candidates.length === 0) return;
+    const reportedPeriodIds = new Set(
+      (reports as ReportRow[] | undefined ?? [])
+        .filter((r) => r.date === formData.date)
+        .map((r) => r.period_id)
+        .filter(Boolean),
+    );
+    const match = candidates.find((p) => !reportedPeriodIds.has(p.id)) ?? candidates[0];
+    setFormData((prev) => (prev.period_id ? prev : { ...prev, period_id: match.id }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, periods, periodsLoading, reports]);
+
+  const { data: schedules, refetch: refetchSchedules } = useTeacherSchedules(selectedSchool?.id);
 
   // Refresh function to reload all data
   const handleRefresh = async () => {
@@ -175,13 +208,6 @@ export default function SubmitReportPage() {
      
     return (periods as PeriodRow[]).find((p) => p.id === formData.period_id) || null;
   }, [formData.period_id, periods]);
-
-  // Get matching schedule details for display
-  const matchingSchedule = useMemo<ScheduleRow | null>(() => {
-    if (!formData.period_id || todaysSchedules.length === 0) return null;
-     
-    return (todaysSchedules as ScheduleRow[]).find((s) => s.period_id === formData.period_id) || null;
-  }, [formData.period_id, todaysSchedules]);
 
   // When period is selected, auto-populate grade from the period's schedule
   // Use grade as the primary identifier (same as scheduling)
@@ -256,7 +282,6 @@ export default function SubmitReportPage() {
       toast.warning('Please select a period to get the grade information. If the issue persists, please contact support.');
       console.error('No grade available:', {
         formData,
-        matchingSchedule,
         selectedPeriod,
         finalGrade
       });
@@ -271,7 +296,7 @@ export default function SubmitReportPage() {
     }
 
     try {
-      await submitReport.mutateAsync({
+      const result = await submitReport.mutateAsync({
         school_id: selectedSchool.id!,
         period_id: formData.period_id,
         grade: finalGrade,
@@ -304,7 +329,12 @@ export default function SubmitReportPage() {
       clearFormData('teacher-report-form');
       clearSavedData();
 
-      toast.success('Report submitted successfully! Your attendance has been marked as Present.');
+      const attendanceMarked = (result as { attendance_marked_present?: boolean })?.attendance_marked_present;
+      toast.success(
+        attendanceMarked
+          ? 'Report submitted successfully! Your attendance has been marked as Present.'
+          : 'Report submitted successfully!',
+      );
      
     } catch (error: unknown) {
       const err = error as { message?: string; response?: { json: () => Promise<{ details?: string; error?: string }> }; data?: { details?: string; error?: string }; details?: string; hint?: string };
@@ -381,22 +411,21 @@ export default function SubmitReportPage() {
       return { availablePeriods: periods || [], submittedPeriods: [] };
     }
 
-    // Get all grades that have reports for the selected date
-    const submittedGrades = new Set(
-      (reports as ReportRow[])
-        .filter((r: ReportRow) => r.date === formData.date)
-        .map((r: ReportRow) => r.grade as string)
-        .filter(Boolean)
+    // Reports for the selected date, keyed by period_id — grade alone isn't
+    // unique (a teacher can teach the same grade in two different periods
+    // the same day), so grouping by grade only used to hide a second,
+    // never-reported period as "Already Submitted" once the first one was.
+    const reportsToday = (reports as ReportRow[]).filter((r: ReportRow) => r.date === formData.date);
+    const submittedByPeriodId = new Map(
+      reportsToday.filter((r) => r.period_id).map((r) => [r.period_id as string, r]),
     );
 
     const available: PeriodRow[] = [];
     const submitted: (PeriodRow & { report?: ReportRow })[] = [];
 
     (periods as PeriodRow[]).forEach((period: PeriodRow) => {
-      if (period.grade && submittedGrades.has(period.grade)) {
-        const report = (reports as ReportRow[]).find((r: ReportRow) =>
-          r.grade === period.grade && r.date === formData.date
-        );
+      const report = submittedByPeriodId.get(period.id);
+      if (report) {
         submitted.push({ ...period, report });
       } else {
         available.push(period);
@@ -453,7 +482,7 @@ export default function SubmitReportPage() {
             <CardHeader>
               <CardTitle>Daily Teaching Report</CardTitle>
               <CardDescription>
-                Fill in the details of your teaching session. Submitting this report will automatically mark your attendance as Present for today.
+                Fill in the details of your teaching session. Your attendance is automatically marked Present once you&apos;ve reported every class scheduled for you that day.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -611,6 +640,7 @@ export default function SubmitReportPage() {
                     type="date"
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    max={new Date().toLocaleDateString('en-CA')}
                     required
                   />
                 </div>
@@ -692,14 +722,7 @@ export default function SubmitReportPage() {
                       <ul className="list-disc list-inside space-y-1">
                         {!formData.period_id && <li>Select a period</li>}
                         {!finalGrade && formData.period_id && (
-                          <li>
-                            Grade information is missing (try selecting the period again or refresh the page)
-                            {selectedPeriod && (
-                              <span className="block mt-1 text-yellow-700">
-                                Debug: Period has grade: {selectedPeriod.grade ? `"${selectedPeriod.grade}"` : 'null/empty'}
-                              </span>
-                            )}
-                          </li>
+                          <li>Grade information is missing (try selecting the period again or refresh the page)</li>
                         )}
                         {!formData.topics_taught?.trim() && <li>Enter topics taught</li>}
                         {existingReport && <li>You have already submitted a report for this grade today</li>}
@@ -758,7 +781,7 @@ export default function SubmitReportPage() {
                         </div>
                         <Badge variant={
                           report.report_status === 'Approved' ? 'default' :
-                          report.report_status === 'Flagged' ? 'destructive' :
+                          report.report_status === 'Rejected' ? 'destructive' :
                           'secondary'
                         }>
                           {report.report_status}

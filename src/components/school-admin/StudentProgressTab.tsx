@@ -33,7 +33,6 @@ export default function StudentProgressTab() {
   const [section, setSection] = useState("all");
   const [grade, setGrade] = useState("all");
   const [course, setCourse] = useState("all");
-  const [teacher, setTeacher] = useState("all");
   const [sortKey, setSortKey] = useState<StudentSortKey>("full_name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -45,7 +44,6 @@ export default function StudentProgressTab() {
   });
 
   const students = useMemo(() => data?.students ?? [], [data]);
-  const teachers = data?.teachers ?? [];
   const summary = data?.summary;
 
   const courses = useMemo(() => {
@@ -235,15 +233,6 @@ export default function StudentProgressTab() {
                 <SelectItem value="all">All Courses</SelectItem>
                 {courses.map((c: CourseFromAPI) => (
                   <SelectItem key={c.course_id} value={c.course_id}>{c.course_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={teacher} onValueChange={setTeacher}>
-              <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="All Teachers" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Teachers</SelectItem>
-                {teachers.map((t: any) => (
-                  <SelectItem key={t.teacher_id} value={t.teacher_id}>{t.full_name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

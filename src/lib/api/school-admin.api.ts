@@ -17,7 +17,6 @@ export const schoolAdminApi = {
   /** Stats / dashboard */
   stats: {
     get: () => apiClient.get(`${SCHOOL_ADMIN}/stats`),
-    assignmentAnalytics: () => apiClient.get(`${SCHOOL_ADMIN}/assignment-analytics`),
     leaderboard: () => apiClient.get(`${SCHOOL_ADMIN}/leaderboard`),
   },
 
@@ -94,6 +93,8 @@ export const schoolAdminApi = {
     get: (id: string) => apiClient.get(`${SCHOOL_ADMIN}/rooms/${id}`),
     create: (data: Record<string, unknown>) =>
       apiClient.post(`${SCHOOL_ADMIN}/rooms`, data),
+    bulkCreate: (data: { rooms: Record<string, unknown>[] }) =>
+      apiClient.post(`${SCHOOL_ADMIN}/rooms/bulk`, data),
     update: (id: string, data: Record<string, unknown>) =>
       apiClient.patch(`${SCHOOL_ADMIN}/rooms/${id}`, data),
     delete: (id: string) => apiClient.delete(`${SCHOOL_ADMIN}/rooms/${id}`),
@@ -112,8 +113,14 @@ export const schoolAdminApi = {
 
   /** Notifications */
   notifications: {
-    list: (params?: { limit?: number; school_id?: string; mode?: string }) =>
-      apiClient.get(withParams(`${SCHOOL_ADMIN}/notifications`, params)),
+    list: (params?: {
+      limit?: number;
+      offset?: number;
+      school_id?: string;
+      mode?: string;
+      search?: string;
+      status?: string;
+    }) => apiClient.get(withParams(`${SCHOOL_ADMIN}/notifications`, params)),
     create: (data: Record<string, unknown>) =>
       apiClient.post(`${SCHOOL_ADMIN}/notifications`, data),
     update: (id: string, data: Record<string, unknown>) =>
@@ -133,7 +140,9 @@ export const schoolAdminApi = {
 
   /** Password reset requests */
   passwordResetRequests: {
-    list: (params?: Record<string, string | number | undefined>) =>
+    pendingCount: () =>
+      apiClient.get(`${SCHOOL_ADMIN}/password-reset-requests/pending-count`),
+    list: (params?: { status?: string; limit?: number; offset?: number; search?: string }) =>
       apiClient.get(withParams(`${SCHOOL_ADMIN}/password-reset-requests`, params)),
     update: (data: Record<string, unknown>) =>
       apiClient.patch(`${SCHOOL_ADMIN}/password-reset-requests`, data),

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   User,
   AlertTriangle,
@@ -18,6 +19,7 @@ import {
   Loader2,
   Lock,
   AlertCircle,
+  Bell,
 } from "lucide-react";
 import { commonApi, authApi, setAuthToken } from "@/lib/api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
@@ -32,7 +34,13 @@ function StudentSettingsInner() {
 
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [profileData, setProfileData] = useState({ full_name: "", email: "" });
-  const [extraInfo, setExtraInfo] = useState<{ school?: string; grade?: string; joining_code?: string }>({});
+  const [extraInfo, setExtraInfo] = useState<{ school?: string; grade?: string; section?: string; joining_code?: string }>({});
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    email_notifications: true,
+    assignment_reminders: true,
+    grade_notifications: true,
+    course_updates: true,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -62,11 +70,24 @@ function StudentSettingsInner() {
         email: authUser.email || "",
       });
 
-      const p = profile as { students?: Array<{ schools?: Array<{ name?: string }>; grade?: string; joining_code?: string }> };
+      const p = profile as {
+        students?: Array<{ schools?: Array<{ name?: string }>; grade?: string; section?: string; joining_code?: string }>;
+        email_notifications?: boolean;
+        assignment_reminders?: boolean;
+        grade_notifications?: boolean;
+        course_updates?: boolean;
+      };
       setExtraInfo({
         school: p?.students?.[0]?.schools?.[0]?.name,
         grade: p?.students?.[0]?.grade,
+        section: p?.students?.[0]?.section,
         joining_code: p?.students?.[0]?.joining_code,
+      });
+      setNotificationPrefs({
+        email_notifications: p?.email_notifications ?? true,
+        assignment_reminders: p?.assignment_reminders ?? true,
+        grade_notifications: p?.grade_notifications ?? true,
+        course_updates: p?.course_updates ?? true,
       });
 
       setPasswordFields({ current_password: "", new_password: "", confirm_password: "" });
@@ -117,10 +138,19 @@ function StudentSettingsInner() {
     setMessage(null);
 
     try {
-      await commonApi.profile.update({ full_name: profileData.full_name.trim() });
+      await commonApi.profile.update({
+        full_name: profileData.full_name.trim(),
+        ...notificationPrefs,
+      });
 
       if (passwordFields.new_password && currentPasswordStatus === "valid") {
-        await authApi.updatePassword({ current_password: passwordFields.current_password, new_password: passwordFields.new_password });
+        const res = await authApi.updatePassword({ current_password: passwordFields.current_password, new_password: passwordFields.new_password });
+        // Changing password bumps tokenVersion server-side (invalidates the
+        // token this very request was authenticated with) — swap in the
+        // freshly-issued access token so subsequent calls on this page
+        // don't 401 immediately after a successful save.
+        const newAccessToken = (res.data as { tokens?: { accessToken?: string } })?.tokens?.accessToken;
+        if (newAccessToken) setAuthToken(newAccessToken);
       }
 
       setMessage({ type: "success", text: "Profile updated successfully!" });
@@ -226,8 +256,8 @@ function StudentSettingsInner() {
             </div>
           </div>
 
-          {(extraInfo.school || extraInfo.grade || extraInfo.joining_code) && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {(extraInfo.school || extraInfo.grade || extraInfo.section || extraInfo.joining_code) && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {extraInfo.school && (
                 <div className="space-y-2">
                   <Label className="text-gray-500">School</Label>
@@ -242,6 +272,15 @@ function StudentSettingsInner() {
                   <Label className="text-gray-500">Grade</Label>
                   <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 bg-gray-50">
                     <span className="flex-1 text-sm text-gray-500">{extraInfo.grade}</span>
+                    <Lock className="h-4 w-4 text-gray-400 shrink-0" />
+                  </div>
+                </div>
+              )}
+              {extraInfo.section && (
+                <div className="space-y-2">
+                  <Label className="text-gray-500">Section</Label>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 bg-gray-50">
+                    <span className="flex-1 text-sm text-gray-500">{extraInfo.section}</span>
                     <Lock className="h-4 w-4 text-gray-400 shrink-0" />
                   </div>
                 </div>
@@ -350,6 +389,40 @@ function StudentSettingsInner() {
                   <p className="text-xs text-green-600">Passwords match</p>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-medium flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                Notification Preferences
+              </h3>
+              <p className="text-sm text-gray-500 mt-0.5">Choose what you get notified about</p>
+            </div>
+            <div className="space-y-3">
+              {(
+                [
+                  { key: "email_notifications" as const, label: "Email Notifications", description: "Receive notifications by email" },
+                  { key: "assignment_reminders" as const, label: "Assignment Reminders", description: "Reminders about upcoming assignment deadlines" },
+                  { key: "grade_notifications" as const, label: "Grade Notifications", description: "Updates when grades are posted or changed" },
+                  { key: "course_updates" as const, label: "Course Updates", description: "Announcements about course content changes" },
+                ]
+              ).map((item) => (
+                <div key={item.key} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={item.key}>{item.label}</Label>
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <Switch
+                    id={item.key}
+                    checked={notificationPrefs[item.key]}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs((prev) => ({ ...prev, [item.key]: checked }))
+                    }
+                  />
+                </div>
+              ))}
             </div>
           </div>
 

@@ -126,4 +126,51 @@ test.describe('School Admin — Students', () => {
 
     await expect(page.getByText(/Password updated for/i)).toBeVisible({ timeout: 10000 });
   });
+
+  test('Edit dialog pre-fills the Section dropdown with the student\'s real, already-assigned section', async ({
+    page,
+  }) => {
+    const studentsResponse = page.waitForResponse(
+      (res) => res.url().includes('/school-admin/students') && res.request().method() === 'GET',
+    );
+    await page.goto('/lms/school-admin/students');
+    await studentsResponse;
+
+    // Regression test for a bug where the Edit form blanked out a student's
+    // real section whenever it didn't byte-for-byte match the school's
+    // *current* configured section list (predefinedSections.includes check),
+    // showing "Select section" instead of the real, correct value.
+    const studentRow = page.getByRole('row', { name: /QA Student 0/ });
+    await expect(studentRow).toBeVisible();
+    await studentRow.getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+
+    const editDialog = page.getByRole('dialog', { name: /Edit Student/i });
+    await expect(editDialog).toBeVisible();
+    await expect(editDialog.getByText('Select section', { exact: true })).toHaveCount(0);
+    await expect(editDialog.getByText(fixture.section, { exact: true })).toBeVisible();
+  });
+
+  test('Student Details modal shows the grade without a doubled "Grade Grade" prefix', async ({
+    page,
+  }) => {
+    const studentsResponse = page.waitForResponse(
+      (res) => res.url().includes('/school-admin/students') && res.request().method() === 'GET',
+    );
+    await page.goto('/lms/school-admin/students');
+    await studentsResponse;
+
+    const studentRow = page.getByRole('row', { name: /QA Student 0/ });
+    await expect(studentRow).toBeVisible();
+    await studentRow.getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('menuitem', { name: 'View details' }).click();
+
+    const detailsDialog = page.getByRole('dialog', { name: /Student Details/i });
+    await expect(detailsDialog).toBeVisible();
+    // fixture.grade is 'Grade 1' — the stored value already includes the
+    // "Grade " prefix, so the badge must show it exactly once, not
+    // "Grade Grade 1".
+    await expect(detailsDialog.getByText(fixture.grade, { exact: true })).toBeVisible();
+    await expect(detailsDialog.getByText(`Grade ${fixture.grade}`)).toHaveCount(0);
+  });
 });

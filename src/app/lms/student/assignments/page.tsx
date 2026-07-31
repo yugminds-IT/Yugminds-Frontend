@@ -37,6 +37,7 @@ interface Assignment {
     grade: number | null;
     feedback: string;
     submitted_at: string;
+    graded_at: string | null;
     status: string;
   } | null;
   is_overdue: boolean;
@@ -450,7 +451,12 @@ export default function StudentAssignmentsPage() {
     return Array.from(map.values());
   }, [allAssignments]);
 
-  // Calendar stats — last 4 weeks (nowMs set on mount to avoid Date.now() in render)
+  // Calendar stats — last 4 weeks (nowMs set on mount to avoid Date.now() in render).
+  // All three figures must actually be scoped to the window the "Last 4 weeks"
+  // header promises — Pending/Graded used to silently fall back to summary's
+  // all-time totals while only Submitted was date-filtered, so the panel
+  // quietly stopped matching its own label as soon as any assignment activity
+  // existed outside the last 4 weeks.
   const calendarStats = useMemo(() => {
     const cutoffMs = (nowMs ?? 0) - 28 * 24 * 60 * 60 * 1000;
     const submittedRecent = nowMs
@@ -459,12 +465,28 @@ export default function StudentAssignmentsPage() {
           new Date(a.submission.submitted_at).getTime() >= cutoffMs,
         ).length
       : 0;
+    const gradedRecent = nowMs
+      ? allAssignments.filter(a =>
+          a.submission?.graded_at &&
+          new Date(a.submission.graded_at).getTime() >= cutoffMs,
+        ).length
+      : 0;
+    // "Pending" has no completion timestamp to filter by — scope it to
+    // assignments that came due within the window and are still unsubmitted,
+    // which is the closest meaningful reading of "recent pending work".
+    const pendingRecent = nowMs
+      ? allAssignments.filter(a =>
+          (a.status === "not_started" || a.status === "in_progress") &&
+          a.due_date &&
+          new Date(a.due_date).getTime() >= cutoffMs,
+        ).length
+      : 0;
     return [
-      { label: "Pending", value: summary.pending },
+      { label: "Pending", value: pendingRecent },
       { label: "Submitted", value: submittedRecent },
-      { label: "Graded", value: summary.graded },
+      { label: "Graded", value: gradedRecent },
     ];
-  }, [allAssignments, summary, nowMs]);
+  }, [allAssignments, nowMs]);
 
   const visibleAssignments =
     activeTab === "course"

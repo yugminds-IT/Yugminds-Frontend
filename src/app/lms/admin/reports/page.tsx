@@ -60,6 +60,7 @@ interface TeacherReport {
   date: string;
   grade: string;
   topics_taught: string;
+  activities?: string;
   student_count: number;
   duration_hours: number;
   notes: string;
@@ -114,6 +115,11 @@ export default function TeacherReports() {
   const [schoolFilter, setSchoolFilter] = useState("");
   const [gradeFilter, setGradeFilter] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  // Real DB-count totals scoped to the current structural filters
+  // (school/teacher/grade/date) — independent of the 500-row list cap, so
+  // "Total Reports" stays accurate instead of measuring only what's loaded.
+  const [reportStats, setReportStats] = useState({ total: 0, submitted: 0, reviewed: 0, approved: 0, rejected: 0 });
   { }
    
   type School = {
@@ -316,11 +322,14 @@ export default function TeacherReports() {
       if (gradeFilter) params.grade = gradeFilter;
       if (teacherFilter) params.teacher_id = teacherFilter;
       if (searchTerm) params.search = searchTerm;
+      if (statusFilter) params.status = statusFilter;
 
       const { data: result } = await adminApi.teacherReports.list(params);
       const reportsData = result?.reports || result || [];
       setReports(reportsData);
-      
+      const stats = (result as { stats?: { total: number; submitted: number; reviewed: number; approved: number; rejected: number } })?.stats;
+      setReportStats(stats ?? { total: 0, submitted: 0, reviewed: 0, approved: 0, rejected: 0 });
+
       // Extract unique grades from reports for filter dropdown
       const uniqueGrades = [...new Set(reportsData.map((r: TeacherReport) => r.grade).filter(Boolean) as string[])].sort() as string[];
       if (uniqueGrades.length > 0) {
@@ -342,7 +351,7 @@ export default function TeacherReports() {
     } finally {
       setLoading(false);
     }
-  }, [calculateAnalyticsData, calculatePerformanceMetrics, dateFilter, gradeFilter, schoolFilter, searchTerm, teacherFilter]);
+  }, [calculateAnalyticsData, calculatePerformanceMetrics, dateFilter, gradeFilter, schoolFilter, searchTerm, statusFilter, teacherFilter]);
 
   const loadTeachers = useCallback(async () => {
     try {
@@ -423,15 +432,6 @@ export default function TeacherReports() {
   // Reports are already filtered by API, no need to filter again
   const filteredReports = reports;
 
-  // Genuinely scoped to the current calendar month — `reports.length` alone
-  // isn't (the query has no default month filter), so the "This month"
-  // caption below was previously just wrong for any non-empty date range.
-  const reportsThisMonth = reports.filter((r) => {
-    const d = new Date(r.date);
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length;
-
   const orphanedCount = reports.filter((r) => r.teacher_deleted || r.school_deleted).length;
 
   // Get today's date in YYYY-MM-DD format
@@ -507,8 +507,10 @@ export default function TeacherReports() {
                 <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{reportsThisMonth}</div>
-                <p className="text-xs text-muted-foreground">This month ({reports.length} loaded)</p>
+                <div className="text-2xl font-bold">{reportStats.total}</div>
+                <p className="text-xs text-muted-foreground">
+                  Matching current filters ({reportStats.submitted + reportStats.reviewed} pending, {reports.length} loaded)
+                </p>
               </CardContent>
             </Card>
 
@@ -566,7 +568,7 @@ export default function TeacherReports() {
                   <CardTitle>Filter Reports</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="search">Search</Label>
                       <div className="relative">
@@ -579,6 +581,21 @@ export default function TeacherReports() {
                           className="pl-10"
                         />
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="status">Status</Label>
+                      <select
+                        id="status"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">All Status</option>
+                        <option value="submitted">Pending</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="date">Date</Label>
@@ -1048,6 +1065,7 @@ export default function TeacherReports() {
                 <p><span className="font-medium">Teacher:</span> {reviewingReport.profiles?.full_name || reviewingReport.teacher_name}</p>
                 <p><span className="font-medium">Date:</span> {new Date(reviewingReport.date).toLocaleDateString()}</p>
                 <p><span className="font-medium">Topics:</span> {reviewingReport.topics_taught}</p>
+                {reviewingReport.activities && <p><span className="font-medium">Activities:</span> {reviewingReport.activities}</p>}
                 {reviewingReport.notes && <p><span className="font-medium">Teacher Notes:</span> {reviewingReport.notes}</p>}
                 {reviewingReport.admin_notes && <p><span className="font-medium">Previous Admin Notes:</span> {reviewingReport.admin_notes}</p>}
               </div>

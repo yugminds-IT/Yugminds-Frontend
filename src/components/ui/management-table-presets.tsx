@@ -6,6 +6,7 @@ import {
   BookOpen,
   Building,
   Calendar,
+  CalendarDays,
   CheckCircle,
   Key,
   Mail,
@@ -19,6 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import type { ManagementTableColumn } from "@/components/ui/management-table";
+import { formatWorkingDays } from "@/lib/weekday-utils";
 
 // ——— Schools ———
 
@@ -37,6 +39,8 @@ export type SchoolManagementRow = {
   joinCodeCount: number;
   established_year?: number;
   grades_offered?: string[];
+  /** Which weekdays the school holds classes — 0=Sun..6=Sat. */
+  operating_days?: number[];
   searchBlob: string;
   adminBlob: string;
   peopleLine: string;
@@ -104,6 +108,10 @@ export const SCHOOL_MANAGEMENT_COLUMNS: ManagementTableColumn<SchoolManagementRo
               {row.grades_offered.length} grades
             </div>
           )}
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-3 w-3 shrink-0" />
+            {formatWorkingDays(row.operating_days)}
+          </div>
         </div>
       </div>
     ),
@@ -723,8 +731,8 @@ export const SCHOOL_ADMIN_STUDENT_COLUMNS: ManagementTableColumn<SchoolAdminStud
       sortable: true,
       sortValue: (r) => (r.hasJoinCode ? 1 : 0),
       filterable: true,
-      filterValue: (r) => (r.hasJoinCode ? "self-registered" : ""),
-      render: (r) => (r.hasJoinCode ? <SelfRegisteredBadge /> : <span className="text-sm text-muted-foreground">—</span>),
+      filterValue: (r) => (r.hasJoinCode ? "self-registered" : "added by admin"),
+      render: (r) => (r.hasJoinCode ? <SelfRegisteredBadge /> : <span className="text-sm text-muted-foreground">Added by admin</span>),
     },
     {
       id: "enrolled",
@@ -763,6 +771,8 @@ export type SchoolAdminTeacherTableRow = {
   specializationDisplay: string;
   leavesDisplay: string;
   leavesCount: number;
+  attendanceDisplay: string;
+  attendancePercentage: number;
   statusLabel: string;
   classesDisplay: string;
   subjectsDisplay: string;
@@ -843,6 +853,27 @@ export const SCHOOL_ADMIN_TEACHER_COLUMNS: ManagementTableColumn<SchoolAdminTeac
       filterable: true,
       filterValue: (r) => r.leavesDisplay,
       render: (r) => <span className="text-sm">{r.leavesDisplay}</span>,
+    },
+    {
+      id: "attendance",
+      header: "Attendance (30d)",
+      sortable: true,
+      sortValue: (r) => r.attendancePercentage,
+      filterable: true,
+      filterValue: (r) => r.attendanceDisplay,
+      render: (r) => (
+        <span
+          className={
+            r.attendancePercentage >= 90
+              ? "text-sm text-green-700"
+              : r.attendancePercentage >= 75
+                ? "text-sm text-yellow-700"
+                : "text-sm text-red-700"
+          }
+        >
+          {r.attendanceDisplay}
+        </span>
+      ),
     },
     {
       id: "status",

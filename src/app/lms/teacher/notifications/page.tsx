@@ -47,6 +47,7 @@ import {
 import { useTeacherSchool } from "../context";
 import { commonApi, teacherApi } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
+import { formatNotificationType } from "@/lib/notification-format";
 
 interface Reply {
   id: string;
@@ -94,10 +95,14 @@ interface RecipientOption {
   isActive?: boolean;
 }
 
+const PAGE_SIZE = 20;
+
 export default function TeacherNotifications() {
   const { selectedSchool } = useTeacherSchool();
   const toast = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeTab, setActiveTab] = useState<'send' | 'view'>('send');
@@ -118,6 +123,9 @@ export default function TeacherNotifications() {
   // View filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'read' | 'unread'>('all');
+  // Default to "received" — the previous unconditional mode='all' fetch
+  // silently mixed sent notifications into what this tab labeled "Sent".
+  const [notificationMode, setNotificationMode] = useState<'all' | 'sent' | 'received'>('received');
 
   // Reply dialog state
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
@@ -139,6 +147,10 @@ export default function TeacherNotifications() {
 
   useEffect(() => {
     loadNotifications();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadNotifications reads current state directly
+  }, [selectedSchool, notificationMode, offset, searchQuery, filterStatus]);
+
+  useEffect(() => {
     loadRecipients();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load when school changes only
   }, [selectedSchool]);
@@ -163,38 +175,43 @@ export default function TeacherNotifications() {
         setLoading(false);
         return;
       }
-      const { data } = await teacherApi.notifications.list({ limit: 100 });
-      const typed = data as { notifications?: Notification[] };
-        // Dedupe/group notifications:
-        // The DB stores one notification row per recipient (user_id),
-        // so broadcasts appear as many rows. Group them for display.
-        const rawNotifications: Notification[] = typed.notifications || [];
-        const groupedNotifications: (Notification & { recipient_count?: number; notification_ids?: string[] })[] = (() => {
-          const byKey = new Map<string, (Notification & { recipient_count?: number; notification_ids?: string[] })>();
-          for (const n of rawNotifications) {
-            const ts = (n.created_at || '').slice(0, 19); // second-level granularity
-            const key = `${n.type}|${n.title}|${n.message}|${ts}`;
-            const existing = byKey.get(key);
-            if (existing) {
-              existing.recipient_count = (existing.recipient_count || 1) + 1;
-              if (!existing.notification_ids) {
-                existing.notification_ids = [existing.id];
+      const { data } = await teacherApi.notifications.list({
+        limit: PAGE_SIZE,
+        offset,
+        mode: notificationMode,
+        search: searchQuery.trim() || undefined,
+        status: filterStatus !== 'all' ? filterStatus : undefined,
+      });
+      const typed = data as { notifications?: Notification[]; total?: number };
+      const rawNotifications: (Notification & { broadcast_id?: string | null })[] =
+        typed.notifications || [];
+      setTotal(typed.total ?? rawNotifications.length);
+      // Dedupe/group notifications for "sent/all" views: the DB stores one
+      // notification row per recipient (user_id), so a single broadcast
+      // looks like many rows. Group by the notification's own broadcast_id
+      // (falls back to its own id for legacy single-recipient sends, i.e.
+      // no merge) — matches the admin/school-admin dashboards exactly,
+      // instead of a fragile type+title+message+second-granularity
+      // heuristic that could mis-merge or mis-split two same-second sends.
+      const groupedNotifications: (Notification & { recipient_count?: number; notification_ids?: string[] })[] =
+        notificationMode === 'received'
+          ? rawNotifications
+          : (() => {
+              const byKey = new Map<string, (Notification & { recipient_count?: number; notification_ids?: string[] })>();
+              for (const n of rawNotifications) {
+                const key = n.broadcast_id ?? n.id;
+                const existing = byKey.get(key);
+                if (existing) {
+                  existing.recipient_count = (existing.recipient_count || 1) + 1;
+                  if (!existing.notification_ids) existing.notification_ids = [existing.id];
+                  existing.notification_ids.push(n.id);
+                  if (!n.is_read) existing.is_read = false;
+                } else {
+                  byKey.set(key, { ...n, recipient_count: 1, notification_ids: [n.id] });
+                }
               }
-              existing.notification_ids.push(n.id);
-              // Update is_read: if any is unread, the group is unread
-              if (!n.is_read) {
-                existing.is_read = false;
-              }
-            } else {
-              byKey.set(key, { 
-                ...n, 
-                recipient_count: 1,
-                notification_ids: [n.id]
-              });
-            }
-          }
-          return Array.from(byKey.values());
-        })();
+              return Array.from(byKey.values());
+            })();
 
         // Load reply counts for each notification
         const notificationsWithReplies = await Promise.all(
@@ -209,7 +226,7 @@ export default function TeacherNotifications() {
           })
         );
         setNotifications(notificationsWithReplies);
-     
+
     } catch (error: unknown) {
       console.error('Error loading notifications:', error);
       const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -218,6 +235,11 @@ export default function TeacherNotifications() {
       setLoading(false);
     }
   };
+
+  // Any filter/mode change invalidates the current page.
+  useEffect(() => {
+    setOffset(0);
+  }, [notificationMode, searchQuery, filterStatus]);
 
   const loadReplies = async (notificationId: string) => {
     try {
@@ -413,6 +435,33 @@ export default function TeacherNotifications() {
     }
   };
 
+  // Delete/mark-all-read only make sense for "received" — the underlying
+  // rows in "sent"/"all" mode belong to the recipient, not this teacher, so
+  // the backend's ownership check on these actions would reject them (same
+  // class of bug the mark-as-read button used to hit for sent rows).
+  const handleDelete = async (notification: Notification) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+    setTotal((t) => Math.max(0, t - 1));
+    try {
+      await commonApi.notifications.user.update({ notification_id: notification.id, deleted: true });
+      toast.success('Notification dismissed');
+    } catch (err) {
+      await loadNotifications();
+      toast.error(`Failed to dismiss: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    try {
+      await commonApi.notifications.user.update({ mark_all: true, is_read: true });
+      toast.success('All notifications marked as read');
+    } catch (err) {
+      await loadNotifications();
+      toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   const handleRecipientToggle = (id: string) => {
     setSelectedRecipients(prev =>
       prev.includes(id)
@@ -421,38 +470,10 @@ export default function TeacherNotifications() {
     );
   };
 
-  const filteredNotifications = notifications.filter((notification: Notification) => {
-    const matchesSearch = !searchQuery || 
-      notification.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      notification.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      notification.profiles?.full_name.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = filterStatus === 'all' ||
-      (filterStatus === 'read' && notification.is_read) ||
-      (filterStatus === 'unread' && !notification.is_read);
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'info': return <Info className="h-4 w-4 text-blue-500" />;
-      case 'success': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'warning': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />;
-      default: return <Bell className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'info': return 'bg-blue-100 text-blue-800';
-      case 'success': return 'bg-green-100 text-green-800';
-      case 'warning': return 'bg-yellow-100 text-yellow-800';
-      case 'error': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+  // Search/status/mode filtering now happens server-side (see
+  // loadNotifications), so `notifications` already reflects the current
+  // filters.
+  const filteredNotifications = notifications;
 
   return (
     <div className="p-8">
@@ -464,7 +485,7 @@ export default function TeacherNotifications() {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'send' | 'view')}>
         <TabsList>
           <TabsTrigger value="send">Send Notification</TabsTrigger>
-          <TabsTrigger value="view">View Sent</TabsTrigger>
+          <TabsTrigger value="view">View Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="send" className="space-y-6">
@@ -475,7 +496,7 @@ export default function TeacherNotifications() {
                 Send Notification
               </CardTitle>
               <CardDescription>
-                Send notifications to students in your school
+                Send notifications to teachers or students in your school
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -526,8 +547,8 @@ export default function TeacherNotifications() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="role">By Role (Students)</SelectItem>
-                    <SelectItem value="individual">Individual Students</SelectItem>
+                    <SelectItem value="role">By Role (Teachers, Students)</SelectItem>
+                    <SelectItem value="individual">Individual Users</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -559,9 +580,9 @@ export default function TeacherNotifications() {
 
               {recipientType === 'individual' && (
                 <div className="space-y-2">
-                  <Label>Select Students</Label>
+                  <Label>Select Users</Label>
                   {loadingRecipients ? (
-                    <p className="text-sm text-gray-500">Loading students...</p>
+                    <p className="text-sm text-gray-500">Loading users...</p>
                   ) : (
                     <div className="space-y-2 border rounded-lg p-4 max-h-48 overflow-y-auto">
                       {users.map((user) => (
@@ -626,16 +647,29 @@ export default function TeacherNotifications() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Bell className="h-5 w-5" />
-                    Sent Notifications
+                    {notificationMode === 'sent' ? 'Sent Notifications' :
+                     notificationMode === 'received' ? 'Received Notifications' :
+                     'All Notifications'}
                   </CardTitle>
                   <CardDescription>
-                    View all notifications you&apos;ve sent
+                    {notificationMode === 'sent' ? "View all notifications you've sent" :
+                     notificationMode === 'received' ? "View all notifications you've received" :
+                     'View all notifications'}
+                    {' '}· {total} notification{total !== 1 ? 's' : ''}
                   </CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={loadNotifications}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                  {notificationMode === 'received' && notifications.some((n) => !n.is_read) && (
+                    <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Mark all read
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={loadNotifications}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -657,6 +691,16 @@ export default function TeacherNotifications() {
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="read">Read</SelectItem>
                     <SelectItem value="unread">Unread</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={notificationMode} onValueChange={(v) => setNotificationMode(v as 'all' | 'sent' | 'received')}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="received">Received by Me</SelectItem>
+                    <SelectItem value="sent">Sent (Grouped)</SelectItem>
+                    <SelectItem value="all">All (Grouped)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -681,10 +725,13 @@ export default function TeacherNotifications() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            {getTypeIcon(notification.type)}
+                            {(() => {
+                              const TypeIcon = formatNotificationType(notification.type).icon;
+                              return <TypeIcon className="h-4 w-4 text-gray-500" />;
+                            })()}
                             <h3 className="font-semibold text-gray-900">{notification.title}</h3>
-                            <Badge className={getTypeColor(notification.type)}>
-                              {notification.type}
+                            <Badge className={formatNotificationType(notification.type).badgeClassName}>
+                              {formatNotificationType(notification.type).label}
                             </Badge>
                             {!notification.is_read ? (
                               <Badge variant="outline" className="bg-blue-50 text-blue-700">
@@ -715,7 +762,7 @@ export default function TeacherNotifications() {
                               {notification.reply_count}
                             </Badge>
                           )}
-                          {!notification.is_read && (
+                          {notificationMode === 'received' && !notification.is_read && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -735,10 +782,44 @@ export default function TeacherNotifications() {
                             <Reply className="h-3 w-3" />
                             View Replies
                           </Button>
+                          {notificationMode === 'received' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(notification)}
+                            >
+                              Dismiss
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {total > PAGE_SIZE && (
+                <div className="flex items-center justify-between pt-4 mt-4 border-t text-sm text-gray-600">
+                  <span>
+                    Showing {notifications.length === 0 ? 0 : offset + 1}–{offset + notifications.length} of {total}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={offset === 0 || loading}
+                      onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={offset + PAGE_SIZE >= total || loading}
+                      onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

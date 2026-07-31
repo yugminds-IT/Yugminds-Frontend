@@ -50,6 +50,7 @@ import { commonApi, setAuthToken } from "@/lib/api";
 import { getSession } from "@/lib/session-utils";
 import { queryKeys } from "@/lib/query-keys";
 import { useToast } from "@/components/ui/toast";
+import { formatNotificationType } from "@/lib/notification-format";
 
 interface Reply {
   id: string;
@@ -122,6 +123,9 @@ export default function SchoolAdminNotifications() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'read' | 'unread'>('all');
   // Default to "received" to avoid showing one row per-recipient when admins broadcast.
   const [notificationMode, setNotificationMode] = useState<'all' | 'sent' | 'received'>('received');
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const PAGE_SIZE = 20;
 
   // Reply dialog state
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
@@ -135,9 +139,12 @@ export default function SchoolAdminNotifications() {
     try {
       setLoading(true);
       const response = await schoolAdminApi.notifications.list({
-        limit: 100,
+        limit: PAGE_SIZE,
+        offset,
         school_id: schoolInfo?.id,
         mode: notificationMode,
+        search: searchQuery.trim() || undefined,
+        status: filterStatus !== 'all' ? filterStatus : undefined,
       });
 
       const data = response.data ?? {};
@@ -145,18 +152,23 @@ export default function SchoolAdminNotifications() {
       if (true) {
         // Dedupe notifications for "sent/all" views:
         // The DB stores one notification row per recipient (user_id),
-        // so a single broadcast looks like many rows in admin views.
-        const rawNotifications: Notification[] =
+        // so a single broadcast looks like many rows. Group by the
+        // notification's own broadcast_id (falls back to its own id for
+        // legacy single-recipient sends, i.e. no merge) — matches the
+        // admin dashboard's grouping exactly, instead of a fragile
+        // type+title+message+second-granularity heuristic that could
+        // mis-merge or mis-split two same-second broadcasts.
+        const rawNotifications: (Notification & { broadcast_id?: string | null })[] =
           (data as { notifications?: Notification[] }).notifications ??
           ((Array.isArray(data) ? data : []) as Notification[]);
+        setTotal((data as { total?: number }).total ?? rawNotifications.length);
         const normalizedNotifications: (Notification & { recipient_count?: number })[] =
           notificationMode === 'received'
             ? rawNotifications
             : (() => {
                 const byKey = new Map<string, (Notification & { recipient_count: number })>();
                 for (const n of rawNotifications) {
-                  const ts = (n.created_at || '').slice(0, 19); // second-level granularity
-                  const key = `${n.type}|${n.title}|${n.message}|${ts}`;
+                  const key = n.broadcast_id ?? n.id;
                   const existing = byKey.get(key);
                   if (existing) {
                     existing.recipient_count += 1;
@@ -190,7 +202,12 @@ export default function SchoolAdminNotifications() {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notificationMode, schoolInfo?.id]);
+  }, [notificationMode, schoolInfo?.id, offset, searchQuery, filterStatus]);
+
+  // Any filter/mode change invalidates the current page.
+  useEffect(() => {
+    setOffset(0);
+  }, [notificationMode, searchQuery, filterStatus]);
 
   useDashboardRealtime('school_admin', {
     enabled: true,
@@ -397,45 +414,43 @@ export default function SchoolAdminNotifications() {
     }
   };
 
+  // Delete/mark-all-read only make sense for "received" — the underlying
+  // rows in "sent"/"all" mode belong to the recipient (userId), not this
+  // school admin, so the backend's ownership check on these actions would
+  // reject them (same class of bug the mark-as-read button used to hit).
+  const handleDelete = async (notificationId: string) => {
+    const removed = notifications.find((n) => n.id === notificationId);
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    setTotal((t) => Math.max(0, t - 1));
+    try {
+      await commonApi.notifications.user.update({ notification_id: notificationId, deleted: true });
+      toast.success('Notification dismissed');
+    } catch (err) {
+      if (removed) setNotifications((prev) => [...prev, removed].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      ));
+      setTotal((t) => t + 1);
+      toast.error(`Failed to dismiss: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    try {
+      await commonApi.notifications.user.update({ mark_all: true, is_read: true });
+      toast.success('All notifications marked as read');
+    } catch (err) {
+      await loadNotifications();
+      toast.error(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   const handleRecipientToggle = (id: string) => {
     setSelectedRecipients(prev =>
       prev.includes(id)
         ? prev.filter((r: string) => r !== id)
         : [...prev, id]
     );
-  };
-
-  const filteredNotifications = notifications.filter((notification: Notification) => {
-    const matchesSearch = !searchQuery || 
-      notification.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      notification.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      notification.profiles?.full_name.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = filterStatus === 'all' ||
-      (filterStatus === 'read' && notification.is_read) ||
-      (filterStatus === 'unread' && !notification.is_read);
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'info': return <Info className="h-4 w-4 text-blue-500" />;
-      case 'success': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'warning': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />;
-      default: return <Bell className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'info': return 'bg-blue-100 text-blue-800';
-      case 'success': return 'bg-green-100 text-green-800';
-      case 'warning': return 'bg-yellow-100 text-yellow-800';
-      case 'error': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
   };
 
   return (
@@ -448,7 +463,7 @@ export default function SchoolAdminNotifications() {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'send' | 'view')}>
         <TabsList>
           <TabsTrigger value="send">Send Notification</TabsTrigger>
-          <TabsTrigger value="view">View Sent</TabsTrigger>
+          <TabsTrigger value="view">View Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="send" className="space-y-6">
@@ -618,12 +633,21 @@ export default function SchoolAdminNotifications() {
                     {notificationMode === 'sent' ? 'View all notifications you\'ve sent' :
                      notificationMode === 'received' ? 'View all notifications you\'ve received' :
                      'View all notifications'}
+                    {' '}· {total} notification{total !== 1 ? 's' : ''}
                   </CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={loadNotifications}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                  {notificationMode === 'received' && notifications.some((n) => !n.is_read) && (
+                    <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Mark all read
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={loadNotifications}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -664,14 +688,14 @@ export default function SchoolAdminNotifications() {
                   <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-gray-400" />
                   <p className="text-sm text-gray-500">Loading notifications...</p>
                 </div>
-              ) : filteredNotifications.length === 0 ? (
+              ) : notifications.length === 0 ? (
                 <div className="text-center py-8">
                   <Bell className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                   <p className="text-sm text-gray-500">No notifications found</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {filteredNotifications.map((notification) => (
+                  {notifications.map((notification) => (
                     <div
                       key={notification.id}
                       className={`border rounded-lg p-4 ${notification.is_read ? 'bg-gray-50' : 'bg-white border-blue-200'}`}
@@ -679,8 +703,11 @@ export default function SchoolAdminNotifications() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            {getTypeIcon(notification.type)}
-                            <h3 
+                            {(() => {
+                              const TypeIcon = formatNotificationType(notification.type).icon;
+                              return <TypeIcon className="h-4 w-4 text-gray-500" />;
+                            })()}
+                            <h3
                               className={`font-semibold ${!notification.is_read ? 'font-bold' : ''} text-gray-900 cursor-pointer hover:text-blue-600`}
                               onClick={() => {
                                 if (notification.title.toLowerCase().includes('password reset request')) {
@@ -690,8 +717,8 @@ export default function SchoolAdminNotifications() {
                             >
                               {notification.title}
                             </h3>
-                            <Badge className={getTypeColor(notification.type)}>
-                              {notification.type}
+                            <Badge className={formatNotificationType(notification.type).badgeClassName}>
+                              {formatNotificationType(notification.type).label}
                             </Badge>
                             {(notification as Notification & { recipient_count?: number }).recipient_count != null && (notification as Notification & { recipient_count?: number }).recipient_count! > 1 && (
                               <Badge variant="outline" className="bg-gray-50 text-gray-700">
@@ -733,7 +760,7 @@ export default function SchoolAdminNotifications() {
                               {notification.reply_count}
                             </Badge>
                           )}
-                          {!notification.is_read && (
+                          {notificationMode === 'received' && !notification.is_read && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -751,10 +778,44 @@ export default function SchoolAdminNotifications() {
                             <Reply className="h-3 w-3" />
                             View Replies
                           </Button>
+                          {notificationMode === 'received' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(notification.id)}
+                            >
+                              Dismiss
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {total > PAGE_SIZE && (
+                <div className="flex items-center justify-between pt-4 mt-4 border-t text-sm text-gray-600">
+                  <span>
+                    Showing {notifications.length === 0 ? 0 : offset + 1}–{offset + notifications.length} of {total}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={offset === 0 || loading}
+                      onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={offset + PAGE_SIZE >= total || loading}
+                      onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

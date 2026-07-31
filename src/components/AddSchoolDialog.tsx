@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { DEFAULT_OPERATING_DAYS } from "@/lib/weekday-utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -39,11 +40,13 @@ import {
   Eye,
   EyeOff,
   Layers,
-  Trash2
+  Trash2,
+  Calendar
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
+import WeekdayPicker from "./WeekdayPicker";
 import { validatePasswordClient } from "../lib/password-validation";
 import { useAutoSaveForm } from "../hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "../lib/form-persistence";
@@ -69,7 +72,10 @@ interface SchoolFormData {
   affiliation_type: string;
   school_type: string;
   school_logo: string;
-  
+
+  // Operating Days — which weekdays the school holds classes (0=Sun..6=Sat)
+  operating_days: number[];
+
   // School Admin
   school_admin_name: string;
   school_admin_email: string;
@@ -119,7 +125,7 @@ const schoolTypes = [
 
 export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoolDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [currentTab, setCurrentTab] = useState<'basic' | 'admin' | 'academic' | 'sections' | 'codes'>('basic');
+  const [currentTab, setCurrentTab] = useState<'basic' | 'operating-days' | 'admin' | 'academic' | 'sections' | 'codes'>('basic');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   
   // Load saved form data
@@ -140,6 +146,8 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     affiliation_type: "",
     school_type: "",
     school_logo: "",
+    // Operating Days
+    operating_days: DEFAULT_OPERATING_DAYS,
     // School Admin
     school_admin_name: "",
     school_admin_email: "",
@@ -192,8 +200,8 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         setFormData({ ...initialFormData, ...saved, sections_per_grade: saved.sections_per_grade ?? {} });
         setErrors({});
         setGeneratedCodes(saved.generated_codes || {});
-        if (saved.currentTab && ['basic', 'admin', 'academic', 'sections', 'codes'].includes(saved.currentTab)) {
-          setCurrentTab(saved.currentTab as 'basic' | 'admin' | 'academic' | 'sections' | 'codes');
+        if (saved.currentTab && ['basic', 'operating-days', 'admin', 'academic', 'sections', 'codes'].includes(saved.currentTab)) {
+          setCurrentTab(saved.currentTab as 'basic' | 'operating-days' | 'admin' | 'academic' | 'sections' | 'codes');
         }
       } else {
         setFormData(initialFormData);
@@ -443,6 +451,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         affiliation_type: formData.affiliation_type,
         school_type: formData.school_type,
         school_logo: formData.school_logo,
+        operating_days: formData.operating_days,
         // Principal Information
         principal_name: formData.principal_name.trim(),
         principal_phone: formData.principal_phone.trim(),
@@ -496,8 +505,9 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     }
   };
 
-  const tabs: Array<{ id: 'basic' | 'admin' | 'academic' | 'sections' | 'codes'; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  const tabs: Array<{ id: 'basic' | 'operating-days' | 'admin' | 'academic' | 'sections' | 'codes'; label: string; icon: React.ComponentType<{ className?: string }> }> = [
     { id: 'basic', label: 'Basic Information', icon: Building },
+    { id: 'operating-days', label: 'Operating Days', icon: Calendar },
     { id: 'admin', label: 'School Admin', icon: Users },
     { id: 'academic', label: 'Academic Details', icon: GraduationCap },
     { id: 'sections', label: 'Sections', icon: Layers },
@@ -754,6 +764,31 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                       {errors.school_type && <p className="text-sm text-red-500">{errors.school_type}</p>}
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Operating Days Tab */}
+          {currentTab === 'operating-days' && (
+            <div className="space-y-6">
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-blue-600" />
+                    Operating Days
+                  </CardTitle>
+                  <CardDescription>
+                    Which days does this school hold classes? Teachers can only be scheduled to
+                    work, and classes can only be scheduled, on days selected here.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <WeekdayPicker
+                    idPrefix="school_operating_days"
+                    value={formData.operating_days}
+                    onChange={(days) => setFormData({ ...formData, operating_days: days })}
+                  />
                 </CardContent>
               </Card>
             </div>

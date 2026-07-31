@@ -111,11 +111,19 @@ export default function SchoolAdminSettings() {
     setSaving(true);
     setMessage(null);
 
+    let nameSaved = false;
     try {
       await schoolAdminApi.profile.update({ full_name: profileData.full_name.trim() });
+      nameSaved = true;
 
       if (passwordFields.new_password && currentPasswordStatus === "valid") {
-        await authApi.updatePassword({ current_password: passwordFields.current_password, new_password: passwordFields.new_password });
+        const res = await authApi.updatePassword({ current_password: passwordFields.current_password, new_password: passwordFields.new_password });
+        // Changing password bumps tokenVersion server-side (invalidates the
+        // token this very request was authenticated with) — swap in the
+        // freshly-issued access token so subsequent calls on this page
+        // don't 401 immediately after a successful save.
+        const newAccessToken = (res.data as { tokens?: { accessToken?: string } })?.tokens?.accessToken;
+        if (newAccessToken) setAuthToken(newAccessToken);
       }
 
       setMessage({ type: "success", text: "Profile updated successfully!" });
@@ -126,7 +134,15 @@ export default function SchoolAdminSettings() {
     } catch (error: unknown) {
       const errMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
         || (error instanceof Error ? error.message : "Unknown error");
-      setMessage({ type: "error", text: `Error updating profile: ${errMsg}` });
+      // If the name update already succeeded, the password step is what
+      // failed — say so explicitly rather than implying nothing was saved.
+      setMessage({
+        type: "error",
+        text: nameSaved
+          ? `Name saved, but the password change failed: ${errMsg}`
+          : `Error updating profile: ${errMsg}`,
+      });
+      if (nameSaved) await loadUserData();
     } finally {
       setSaving(false);
     }

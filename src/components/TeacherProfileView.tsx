@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect } from "react";
+import { WEEKDAY_LABELS } from "@/lib/weekday-utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -546,7 +547,7 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-7 gap-2 p-4 bg-gray-50 rounded-lg">
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day: string) => (
+                      {WEEKDAY_LABELS.map((day: string) => (
                         <div key={day} className="text-center font-semibold text-sm text-gray-600 py-2">
                           {day}
                         </div>

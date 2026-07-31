@@ -25,6 +25,9 @@ export type AdminSchoolItem = {
   createdAt?: string;
   is_active?: boolean;
   isActive?: boolean;
+  /** Which weekdays the school holds classes — 0=Sun..6=Sat. */
+  operatingDays?: number[];
+  operating_days?: number[];
 };
 
 /** EdTech-style envelope: { data, meta } */

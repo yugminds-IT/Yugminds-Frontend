@@ -66,6 +66,9 @@ interface School {
   gradesOffered?: string[];
   grades?: { id: string; name: string; sections?: { id: string; name: string }[] }[];
   number_of_sections?: number;
+  /** Which weekdays the school holds classes — 0=Sun..6=Sat. Constrains a teacher's working-days picker for this school. */
+  operatingDays?: number[];
+  operating_days?: number[];
 }
 
 interface GradeSectionAssignment {
@@ -84,6 +87,10 @@ interface SchoolAssignment {
   working_days: number[];
   /** When this working-days pattern takes effect (YYYY-MM-DD). */
   effective_from: string;
+  /** Calendar date the teacher's assignment to this school begins (YYYY-MM-DD). Optional. */
+  assigned_from?: string;
+  /** Calendar date the teacher's assignment to this school ends (YYYY-MM-DD). Optional — blank means ongoing. */
+  assigned_until?: string;
   max_students_per_session: number;
   is_primary: boolean;
 }
@@ -234,6 +241,8 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
         working_days_per_week: 5,
         working_days: [1, 2, 3, 4, 5],
         effective_from: todayStr(),
+        assigned_from: todayStr(),
+        assigned_until: "",
         max_students_per_session: 30,
         is_primary: formData.school_assignments.length === 0 // First school is primary
       };
@@ -477,6 +486,18 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     formData.school_assignments.forEach(assignment => {
       if (!assignment.working_days || assignment.working_days.length === 0) {
         newErrors[`working_days_${assignment.school_id}`] = 'Select at least one working day for each school';
+      } else {
+        const school = schools.find((s: School) => s.id === assignment.school_id);
+        const operatingDays = school?.operatingDays;
+        if (operatingDays) {
+          const disallowed = assignment.working_days.filter((d) => !operatingDays.includes(d));
+          if (disallowed.length > 0) {
+            newErrors[`working_days_${assignment.school_id}`] = `${school?.name ?? 'This school'} doesn't operate on the selected day(s) — adjust working days to match its operating days.`;
+          }
+        }
+      }
+      if (assignment.assigned_from && assignment.assigned_until && assignment.assigned_until < assignment.assigned_from) {
+        newErrors[`assigned_dates_${assignment.school_id}`] = '"Assigned Until" must not be before "Assigned From"';
       }
       if (assignment.grades_assigned.length === 0) {
         newErrors[`grades_${assignment.school_id}`] = 'At least one grade must be selected for each school';
@@ -999,6 +1020,7 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                       <WeekdayPicker
                         idPrefix={`working_days_${assignment.school_id}`}
                         value={assignment.working_days ?? [1, 2, 3, 4, 5]}
+                        allowedDays={schools.find((s: School) => s.id === assignment.school_id)?.operatingDays}
                         onChange={(days) => {
                           handleAssignmentChange(assignment.school_id, 'working_days', days);
                           handleAssignmentChange(assignment.school_id, 'working_days_per_week', days.length);
@@ -1019,7 +1041,45 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                           value={assignment.effective_from ?? todayStr()}
                           onChange={(e) => handleAssignmentChange(assignment.school_id, 'effective_from', e.target.value)}
                         />
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          When this weekly working-days pattern above takes effect.
+                        </p>
                       </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3 max-w-md">
+                        <div>
+                          <Label htmlFor={`assigned_from_${assignment.school_id}`} className="text-xs text-gray-500">
+                            Assigned From
+                          </Label>
+                          <Input
+                            id={`assigned_from_${assignment.school_id}`}
+                            type="date"
+                            value={assignment.assigned_from ?? ""}
+                            onChange={(e) => handleAssignmentChange(assignment.school_id, 'assigned_from', e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`assigned_until_${assignment.school_id}`} className="text-xs text-gray-500">
+                            Assigned Until (optional)
+                          </Label>
+                          <Input
+                            id={`assigned_until_${assignment.school_id}`}
+                            type="date"
+                            value={assignment.assigned_until ?? ""}
+                            onChange={(e) => handleAssignmentChange(assignment.school_id, 'assigned_until', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      {errors[`assigned_dates_${assignment.school_id}`] && (
+                        <p className="text-sm text-red-500 mt-1">
+                          {errors[`assigned_dates_${assignment.school_id}`]}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        The date range this teacher is actually assigned/present at this school
+                        (not the weekly pattern above) — leave &quot;Assigned Until&quot; blank if ongoing.
+                        Class Scheduling only allows scheduling this teacher here within this window.
+                      </p>
                     </div>
                     <div className="max-w-xs">
                       <Label htmlFor={`max_students_${assignment.school_id}`}>Max Students per Session</Label>

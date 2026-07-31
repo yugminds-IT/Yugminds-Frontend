@@ -98,7 +98,7 @@ const DURATION_PRESETS = [
 ] as const;
 
 function makeUid() {
-  return `d-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return crypto.randomUUID();
 }
 
 function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {

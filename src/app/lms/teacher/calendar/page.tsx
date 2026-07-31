@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { teacherApi, setAuthToken } from "@/lib/api";
+import { WEEKDAY_LABELS } from "@/lib/weekday-utils";
 import { getSession } from "@/lib/session-utils";
 import { useTeacherSchool } from "../context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,13 +71,23 @@ export default function TeacherCalendarPage() {
         year: String(year),
         month: String(month).padStart(2, "0"),
       });
-      const body = data as { calendar?: CalendarEntry[]; schedule?: ScheduleDay[] };
+      const body = data as {
+        calendar?: CalendarEntry[];
+        schedule?: ScheduleDay[];
+        unassigned_dates?: string[];
+      };
       return {
         calendar: body?.calendar ?? [],
         schedule: body?.schedule ?? [],
+        unassignedDates: body?.unassigned_dates ?? [],
       };
     },
   });
+
+  const unassignedDateSet = useMemo(
+    () => new Set(data?.unassignedDates ?? []),
+    [data],
+  );
 
   const scheduleByDate = useMemo(() => {
     const map = new Map<string, ScheduleDay[]>();
@@ -174,7 +185,7 @@ export default function TeacherCalendarPage() {
           ) : (
             <>
               <div className="grid grid-cols-7 gap-1 text-xs font-medium text-muted-foreground mb-1">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                {WEEKDAY_LABELS.map((d) => (
                   <div key={d} className="text-center py-1">{d}</div>
                 ))}
               </div>
@@ -183,23 +194,35 @@ export default function TeacherCalendarPage() {
                   if (!cell) return <div key={`empty-${i}`} className="min-h-[76px]" />;
                   const entries = entriesByDate.get(cell.dateStr) ?? [];
                   const scheduledSchools = scheduleByDate.get(cell.dateStr) ?? [];
-                  // Falls back to the old Sunday-only heuristic only when the
-                  // backend has no working-days schedule at all for this
-                  // teacher yet (e.g. brand new assignment) — otherwise "no
-                  // school scheduled today" from real data means off.
-                  const hasScheduleData = (data?.schedule?.length ?? 0) > 0;
-                  const isOff = hasScheduleData
-                    ? scheduledSchools.length === 0
-                    : new Date(cell.dateStr + "T12:00:00Z").getUTCDay() === 0;
+                  // Two distinct reasons a day can show no scheduled school:
+                  // genuinely off under your CURRENT pattern (e.g. Sunday) vs.
+                  // you had no assignment at ANY school yet on that date
+                  // (true for every weekday before your first-ever
+                  // assignment, not just the structurally-off ones) —
+                  // conflating them as one "Weekly off" label was misleading
+                  // for anyone looking at dates before they joined.
+                  const isUnassigned = unassignedDateSet.has(cell.dateStr);
+                  const isOff = !isUnassigned && scheduledSchools.length === 0;
                   return (
                     <div
                       key={cell.dateStr}
                       className={`min-h-[76px] rounded border p-1 text-xs ${
-                        isOff ? "bg-red-50 border-red-100" : "border-gray-100"
+                        isOff
+                          ? "bg-red-50 border-red-100"
+                          : isUnassigned
+                            ? "bg-gray-50 border-gray-100"
+                            : "border-gray-100"
                       }`}
                     >
                       <div className="font-medium text-gray-700">{cell.day}</div>
-                      {isOff ? (
+                      {isUnassigned ? (
+                        <div
+                          className="text-[10px] text-gray-400 mt-0.5"
+                          title="You weren't assigned to any school yet on this date"
+                        >
+                          Not yet assigned
+                        </div>
+                      ) : isOff ? (
                         <div className="text-[10px] text-red-500 mt-0.5">Weekly off</div>
                       ) : (
                         <div className="space-y-0.5 mt-0.5">
@@ -242,6 +265,12 @@ export default function TeacherCalendarPage() {
                     {TYPE_LABELS[t]}
                   </div>
                 ))}
+                {unassignedDateSet.size > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-3 rounded border bg-gray-50 border-gray-200" />
+                    Not yet assigned
+                  </div>
+                )}
                 {schools.length > 1 && (
                   <>
                     <span className="text-muted-foreground/40">|</span>
