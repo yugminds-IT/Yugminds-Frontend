@@ -49,6 +49,7 @@
     "nodemailer": "^7.0.11",
     "papaparse": "^5.5.3",
     "postcss": "^8.5.6",
+    "postprocessing": "^6.39.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-pageflip": "^2.0.3",
@@ -57,6 +58,7 @@
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^3.4.19",
+    "three": "^0.185.1",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

@@ -1,36 +1,251 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
-import { motion, useScroll, useInView, animate } from "framer-motion";
+import dynamic from "next/dynamic";
 import {
-  Menu,
-  X,
-  Code2,
-  Cpu,
-  FlaskConical,
-  Factory,
-  GraduationCap,
-  ArrowRight,
-  ArrowUpRight,
-  Phone,
-  Mail,
-  MapPin,
-  Instagram,
-  Youtube,
-  Facebook,
-  Star,
-  Zap,
-} from "lucide-react";
+  motion,
+  MotionConfig,
+  useScroll,
+  useTransform,
+  useInView,
+  animate,
+  useReducedMotion,
+  type MotionValue,
+} from "framer-motion";
+import { ArrowRight, ArrowUp, Menu, X } from "lucide-react";
 import BrandSwitcherBar from "../components/BrandSwitcherBar";
 
+const LOGO_SRC = "/Yugminds_Official_Logo-preview.png";
+const EASE_OUT = [0.16, 1, 0.3, 1] as const;
+const EASE_CURTAIN = [0.76, 0, 0.24, 1] as const;
+
+/* WebGL only exists client-side, and the bundle (three + postprocessing) is
+   heavy — load it lazily rather than in the main chunk every page pays for. */
+const HyperspeedBG = dynamic(() => import("../components/public/Hyperspeed"), {
+  ssr: false,
+});
+
+/* Module-level, not useMemo: the component's own docs warn that a new
+   effectOptions object identity recreates the whole WebGL scene, and a
+   plain top-level constant is simpler than memoizing something that never
+   depends on props or state. background/fog is white (not the vendored
+   default black) since the road/island are hidden in Hyperspeed.tsx and
+   only the car-light streaks should read here; streak colors are blue only,
+   matching the site's no-gold rule instead of the default neon pink/cyan. */
+const HYPERSPEED_OPTIONS = {
+  distortion: "turbulentDistortion",
+  length: 400,
+  roadWidth: 10,
+  islandWidth: 2,
+  lanesPerRoad: 3,
+  fov: 90,
+  fovSpeedUp: 150,
+  speedUp: 2,
+  carLightsFade: 0.4,
+  totalSideLightSticks: 20,
+  lightPairsPerRoadWay: 40,
+  colors: {
+    roadColor: 0xffffff,
+    islandColor: 0xffffff,
+    background: 0xffffff,
+    shoulderLines: 0xffffff,
+    brokenLines: 0xffffff,
+    leftCars: [0x2563eb, 0x1d4ed8, 0x60a5fa],
+    rightCars: [0x172554, 0x1e3a8a, 0x3b82f6],
+    sticks: 0x2563eb,
+  },
+};
+
+/* Three.js's `fov` is the *vertical* field of view; the horizontal FOV a
+   PerspectiveCamera actually shows is `2·atan(tan(fov/2)·aspect)`. A phone
+   in portrait has aspect ~0.46 versus ~1.6 on desktop, so the identical
+   `fov: 90` config renders a horizontal FOV of roughly 50° on mobile against
+   ~115° on desktop — the same road geometry fills far more of the (already
+   narrower) screen and swamps the text. This variant compensates: a much
+   wider fov plus a narrower, sparser, thinner road so the streaks read as a
+   background accent rather than a wall of light cutting through the copy. */
+const HYPERSPEED_OPTIONS_MOBILE = {
+  ...HYPERSPEED_OPTIONS,
+  fov: 145,
+  roadWidth: 6,
+  islandWidth: 1.2,
+  lanesPerRoad: 2,
+  totalSideLightSticks: 10,
+  lightPairsPerRoadWay: 18,
+  carLightsRadius: [0.03, 0.08] as [number, number],
+  lightStickWidth: [0.08, 0.3] as [number, number],
+};
+
 /* ─────────────────────────────────────────────
-   MOTION HELPERS
+   LOGO MARK
+   The brand logo is a raster PNG whose alpha channel is a clean
+   silhouette, so a CSS mask repaints it in any single colour —
+   that is how the mark appears monochrome blue everywhere it's used —
+   full-colour nowhere on this page.
 ───────────────────────────────────────────── */
+function LogoMark({
+  tint,
+  className = "",
+}: {
+  tint: string;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={className}
+      style={{
+        display: "block",
+        backgroundColor: tint,
+        maskImage: `url("${LOGO_SRC}")`,
+        WebkitMaskImage: `url("${LOGO_SRC}")`,
+        maskSize: "contain",
+        WebkitMaskSize: "contain",
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: "center",
+        WebkitMaskPosition: "center",
+      }}
+    />
+  );
+}
+
+/* The ring that draws itself around the mark — the stroke-then-fill
+   opening beat of the reference animation. */
+function DrawnRing({
+  className = "",
+  duration = 1.2,
+  delay = 0,
+  inView = false,
+  stroke = "#2563EB",
+}: {
+  className?: string;
+  duration?: number;
+  delay?: number;
+  inView?: boolean;
+  stroke?: string;
+}) {
+  const animateProp = { pathLength: 1, opacity: 1 };
+  return (
+    <svg className={className} viewBox="0 0 200 200" fill="none">
+      <motion.circle
+        cx="100"
+        cy="100"
+        r="94"
+        stroke={stroke}
+        strokeWidth="0.9"
+        strokeLinecap="round"
+        initial={{ pathLength: 0, opacity: 0 }}
+        {...(inView
+          ? { whileInView: animateProp, viewport: { once: true, margin: "-15%" } }
+          : { animate: animateProp })}
+        transition={{ duration, delay, ease: EASE_OUT }}
+        style={{ rotate: -90, transformOrigin: "50% 50%" }}
+      />
+      <motion.circle
+        cx="100"
+        cy="100"
+        r="78"
+        stroke={stroke}
+        strokeWidth="0.5"
+        strokeLinecap="round"
+        initial={{ pathLength: 0, opacity: 0 }}
+        {...(inView
+          ? {
+              whileInView: { pathLength: 1, opacity: 0.45 },
+              viewport: { once: true, margin: "-15%" },
+            }
+          : { animate: { pathLength: 1, opacity: 0.45 } })}
+        transition={{ duration: duration * 1.15, delay: delay + 0.12, ease: EASE_OUT }}
+        style={{ rotate: -90, transformOrigin: "50% 50%" }}
+      />
+    </svg>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   PRELOADER
+   Ring draws → mark fills in → wordmark rises → curtain lifts.
+───────────────────────────────────────────── */
+function Preloader({ onDone }: { onDone: () => void }) {
+  const reduced = useReducedMotion();
+  const [lifting, setLifting] = useState(false);
+  const word = "YUGMINDS".split("");
+
+  useEffect(() => {
+    const hold = reduced ? 200 : 2700;
+    const t = window.setTimeout(() => setLifting(true), hold);
+    return () => window.clearTimeout(t);
+  }, [reduced]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[100] overflow-hidden"
+      initial={{ y: 0 }}
+      animate={lifting ? { y: "-100%" } : { y: 0 }}
+      transition={{ duration: reduced ? 0.2 : 1.05, ease: EASE_CURTAIN }}
+      onAnimationComplete={() => lifting && onDone()}
+    >
+      <div className="absolute inset-0 bg-ym-cream" />
+
+      <div className="relative h-full w-full flex flex-col items-center justify-center">
+        <div className="relative w-[190px] h-[190px] md:w-[230px] md:h-[230px]">
+          <DrawnRing
+            className="absolute inset-0 w-full h-full"
+            duration={1.15}
+            delay={0.18}
+            stroke="#2563EB"
+          />
+          <motion.div
+            className="absolute inset-[19%]"
+            initial={{ opacity: 0, scale: 0.86, filter: "blur(6px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.95, delay: 1.05, ease: EASE_OUT }}
+          >
+            <LogoMark tint="#2563EB" className="w-full h-full" />
+          </motion.div>
+        </div>
+
+        <div className="mt-8 flex overflow-hidden">
+          {word.map((c, i) => (
+            <motion.span
+              key={`${c}-${i}`}
+              className="font-extrabold text-[1.6rem] md:text-[2rem] text-ym-text leading-none"
+              style={{ letterSpacing: "0.2em" }}
+              initial={{ y: "110%", opacity: 0 }}
+              animate={{ y: "0%", opacity: 1 }}
+              transition={{
+                duration: 0.7,
+                delay: 1.5 + i * 0.045,
+                ease: EASE_OUT,
+              }}
+            >
+              {c}
+            </motion.span>
+          ))}
+        </div>
+
+        <motion.div
+          className="mt-7 h-px bg-ym-blue/40"
+          initial={{ width: 0 }}
+          animate={{ width: 110 }}
+          transition={{ duration: 0.9, delay: 1.85, ease: EASE_OUT }}
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   MOTION PRIMITIVES
+───────────────────────────────────────────── */
+
+/* Fade + rise on entry. The house reveal. */
 function Reveal({
   children,
   delay = 0,
-  y = 40,
+  y = 26,
   className = "",
 }: {
   children: React.ReactNode;
@@ -41,28 +256,100 @@ function Reveal({
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y, scale: 0.97 }}
-      whileInView={{ opacity: 1, y: 0, scale: 1 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.8, delay, ease: [0.21, 0.61, 0.35, 1] }}
+      initial={{ opacity: 0, y }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-12%" }}
+      transition={{ duration: 1, delay, ease: EASE_OUT }}
     >
       {children}
     </motion.div>
   );
 }
 
-/* thin scroll progress bar pinned above everything */
-function ScrollProgressBar() {
-  const { scrollYProgress } = useScroll();
+/* Type that rises out from behind a mask, one line at a time. */
+function MaskLines({
+  lines,
+  className = "",
+  lineClassName = "",
+  delay = 0,
+  stagger = 0.13,
+}: {
+  lines: React.ReactNode[];
+  className?: string;
+  lineClassName?: string;
+  delay?: number;
+  stagger?: number;
+}) {
   return (
-    <motion.div
-      style={{ scaleX: scrollYProgress }}
-      className="fixed top-0 inset-x-0 h-[3px] origin-left bg-gradient-to-r from-blue-600 via-sky-400 to-amber-400 z-[60] pointer-events-none"
-    />
+    <div className={className}>
+      {lines.map((line, i) => (
+        /* The trigger has to sit on the *clipping* wrapper, not on the line
+           itself: IntersectionObserver clips a target to its ancestors' boxes,
+           and a line parked at y:115% inside overflow-hidden has zero visible
+           area — so it would never report as in view and never animate.
+           Variants propagate the state down to the child that actually moves. */
+        <motion.span
+          key={i}
+          className="block overflow-hidden"
+          initial="hidden"
+          whileInView="shown"
+          viewport={{ once: true, margin: "-12%" }}
+        >
+          <motion.span
+            className={`block ${lineClassName}`}
+            variants={{ hidden: { y: "115%" }, shown: { y: "0%" } }}
+            transition={{
+              duration: 1.05,
+              delay: delay + i * stagger,
+              ease: EASE_OUT,
+            }}
+          >
+            {line}
+          </motion.span>
+        </motion.span>
+      ))}
+    </div>
   );
 }
 
-/* animated number that counts up when scrolled into view */
+/* Hairline rule that draws across as it enters. */
+function Rule({ className = "", delay = 0 }: { className?: string; delay?: number }) {
+  /* Trigger sits on the untransformed wrapper: a rule collapsed to scaleX(0)
+     has zero width, so IntersectionObserver would never call it visible. */
+  return (
+    <motion.div
+      className="w-full"
+      initial="hidden"
+      whileInView="shown"
+      viewport={{ once: true, margin: "-10%" }}
+    >
+      <motion.div
+        className={`h-px origin-left ${className}`}
+        variants={{ hidden: { scaleX: 0 }, shown: { scaleX: 1 } }}
+        transition={{ duration: 1.1, delay, ease: EASE_OUT }}
+      />
+    </motion.div>
+  );
+}
+
+/* Small letterspaced uppercase label. */
+function Eyebrow({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`font-semibold text-xs md:text-sm uppercase ${className}`}
+      style={{ letterSpacing: "0.12em" }}
+    >
+      {children}
+    </span>
+  );
+}
+
 function CountUp({
   value,
   suffix = "",
@@ -72,276 +359,142 @@ function CountUp({
   suffix?: string;
   className?: string;
 }) {
-  const ref = useRef<HTMLParagraphElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-60px" });
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-15%" });
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
     if (!inView) return;
     const controls = animate(0, value, {
-      duration: 1.6,
-      ease: [0.16, 1, 0.3, 1],
+      duration: 1.9,
+      ease: EASE_OUT,
       onUpdate: (v) => setDisplay(Math.round(v)),
     });
     return () => controls.stop();
   }, [inView, value]);
 
   return (
-    <p ref={ref} className={className}>
+    <span ref={ref} className={className}>
       {display}
       {suffix}
-    </p>
+    </span>
   );
 }
 
-function Floating({
-  children,
-  duration = 5,
-  offset = 12,
-  delay = 0,
-  className = "",
-}: {
-  children: React.ReactNode;
-  duration?: number;
-  offset?: number;
-  delay?: number;
-  className?: string;
-}) {
+/* ─────────────────────────────────────────────
+   SCROLL PROGRESS HAIRLINE
+───────────────────────────────────────────── */
+function ScrollProgress() {
+  const { scrollYProgress } = useScroll();
   return (
     <motion.div
-      className={className}
-      animate={{ y: [0, -offset, 0] }}
-      transition={{ duration, delay, repeat: Infinity, ease: "easeInOut" }}
-    >
-      {children}
-    </motion.div>
+      style={{ scaleX: scrollYProgress }}
+      className="fixed top-0 inset-x-0 h-[2px] origin-left bg-ym-blue z-[70] pointer-events-none"
+    />
   );
 }
 
 /* ─────────────────────────────────────────────
-   HAND-DRAWN SVG DECORATIONS
+   NAVIGATION
+   Transparent over the hero, cream once the page moves.
 ───────────────────────────────────────────── */
-function SquiggleUnderline({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 220 24"
-      fill="none"
-      preserveAspectRatio="none"
-    >
-      <motion.path
-        d="M4 16 Q 30 4, 58 14 T 112 14 T 166 14 T 216 12"
-        stroke="currentColor"
-        strokeWidth="6"
-        strokeLinecap="round"
-        initial={{ pathLength: 0 }}
-        whileInView={{ pathLength: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.9, delay: 0.5, ease: "easeOut" }}
-      />
-    </svg>
-  );
-}
+const NAV_LINKS = [
+  { label: "About", href: "#about" },
+  { label: "Divisions", href: "#divisions" },
+  { label: "Work", href: "#work" },
+  { label: "Robocoders", href: "/robocoders" },
+  { label: "Contact", href: "#contact" },
+];
 
-function HandCircle({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 260 90" fill="none">
-      <motion.path
-        d="M130 8 C 210 4, 254 22, 253 44 C 252 70, 196 84, 126 83 C 58 82, 8 68, 7 45 C 6 24, 52 10, 148 10"
-        stroke="currentColor"
-        strokeWidth="5"
-        strokeLinecap="round"
-        initial={{ pathLength: 0 }}
-        whileInView={{ pathLength: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 1.1, delay: 0.6, ease: "easeOut" }}
-      />
-    </svg>
-  );
-}
-
-function ScribbleArrow({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 120 110" fill="none">
-      <motion.path
-        d="M14 10 C 60 18, 46 52, 26 56 C 10 60, 8 42, 26 40 C 58 38, 86 60, 96 92"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinecap="round"
-        initial={{ pathLength: 0 }}
-        whileInView={{ pathLength: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 1.2, delay: 0.8 }}
-      />
-      <motion.path
-        d="M82 88 L 97 94 L 102 78"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ delay: 1.9 }}
-      />
-    </svg>
-  );
-}
-
-function Spiral({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 100 100" fill="none">
-      {[44, 34, 24, 14, 6].map((r, i) => (
-        <circle
-          key={i}
-          cx="50"
-          cy="50"
-          r={r}
-          stroke="currentColor"
-          strokeWidth="5"
-          strokeDasharray={i % 2 === 0 ? "999" : "180 40"}
-        />
-      ))}
-    </svg>
-  );
-}
-
-function Seal({ className = "" }: { className?: string }) {
-  // flower / seal badge shape
-  const petals = 12;
-  const pts: string[] = [];
-  for (let i = 0; i < petals * 2; i++) {
-    const angle = (Math.PI * i) / petals;
-    const r = i % 2 === 0 ? 50 : 42;
-    pts.push(
-      `${(50 + r * Math.cos(angle)).toFixed(2)},${(50 + r * Math.sin(angle)).toFixed(2)}`
-    );
-  }
-  return (
-    <svg className={className} viewBox="0 0 100 100">
-      <polygon points={pts.join(" ")} fill="currentColor" />
-    </svg>
-  );
-}
-
-function WaveMarks({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 140 90" fill="none">
-      {[0, 1, 2].map((row) => (
-        <path
-          key={row}
-          d={`M8 ${18 + row * 26} q 12 -14 24 0 t 24 0 t 24 0 t 24 0 t 24 0`}
-          stroke="currentColor"
-          strokeWidth="14"
-          strokeLinecap="round"
-          opacity={row === 1 ? 0.85 : 1}
-        />
-      ))}
-    </svg>
-  );
-}
-
-function DotGrid({ className = "" }: { className?: string }) {
-  return (
-    <div className={`grid grid-cols-6 gap-2 ${className}`}>
-      {Array(24)
-        .fill(0)
-        .map((_, i) => (
-          <div key={i} className="w-1.5 h-1.5 rounded-full bg-current" />
-        ))}
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   NAVBAR
-───────────────────────────────────────────── */
-function YugmindsNavbar() {
+function Nav() {
+  const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  /* An open mobile panel is cream, so the bar above it has to be too —
+     otherwise the header reads as two mismatched halves. */
+  const solid = scrolled || open;
 
-  const links = [
-    { name: "Home", href: "#home" },
-    { name: "About", href: "#about" },
-    { name: "Services", href: "#services" },
-    { name: "Divisions", href: "#divisions" },
-    { name: "Contact", href: "#contact" },
-  ];
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-50 px-3 md:px-6 pt-3">
-      <nav className="max-w-6xl mx-auto bg-white/85 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.06)] ring-1 ring-slate-900/5">
-        <div className="relative pl-5 pr-2.5 md:pl-7 md:pr-3 py-2.5 flex items-center justify-between">
-          {/* Logo */}
-          <a href="#home" className="flex items-center gap-2.5 shrink-0">
-            <Image
-              src="/Yugminds_Official_Logo-preview.png"
-              alt="YugMinds Logo"
-              width={38}
-              height={38}
-              className="object-contain"
-              priority
-            />
-            <span className="text-lg font-extrabold text-slate-900 tracking-tight">
-              YugMinds
-            </span>
-          </a>
-
-          {/* Desktop links — clean text */}
-          <div className="hidden md:flex items-center gap-9 absolute left-1/2 -translate-x-1/2">
-            {links.map((l) => (
-              <a
-                key={l.name}
-                href={l.href}
-                className="relative text-[0.92rem] font-medium text-slate-600 hover:text-slate-900 transition-colors duration-200 after:absolute after:-bottom-1.5 after:left-1/2 after:-translate-x-1/2 after:h-[3px] after:w-0 after:rounded-full after:bg-blue-600 after:transition-all after:duration-300 hover:after:w-4"
-              >
-                {l.name}
-              </a>
-            ))}
-          </div>
-
-          {/* CTA */}
-          <motion.a
-            href="#contact"
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.97 }}
-            className="hidden md:inline-flex items-center gap-2 bg-blue-600 text-white pl-5 pr-1.5 py-1.5 rounded-full text-sm font-semibold shadow-md shadow-blue-600/25 hover:bg-blue-700 transition-colors group"
+    /* The hero is white now, same as the rest of the page, so the nav no
+       longer needs a separate light-on-dark "over the hero" palette — it's
+       always the light style. `solid` still shifts it down from top-9 to
+       top-0 on scroll, closing the gap the brand bar leaves as it fades. */
+    <header
+      className={`fixed inset-x-0 z-[60] bg-ym-cream/95 backdrop-blur-md border-b border-ym-text/10 transition-[top] duration-500 ${
+        solid ? "top-0" : "top-9"
+      }`}
+    >
+      <div className="max-w-[92rem] mx-auto px-5 md:px-10 h-[4.2rem] flex items-center justify-between">
+        <a href="#top" className="flex items-center gap-3 shrink-0">
+          <LogoMark tint="#2563EB" className="w-8 h-8" />
+          <span
+            className="font-extrabold text-[1.05rem] md:text-[1.15rem] text-ym-blue"
+            style={{ letterSpacing: "0.1em" }}
           >
-            Get in Touch
-            <span className="w-7 h-7 rounded-full bg-white text-blue-600 flex items-center justify-center transition-transform duration-300 group-hover:rotate-45">
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </span>
-          </motion.a>
+            YUGMINDS
+          </span>
+        </a>
 
-          {/* Mobile toggle */}
+        <nav className="hidden lg:flex items-center gap-9">
+          {NAV_LINKS.map((l) => (
+            <a
+              key={l.label}
+              href={l.href}
+              className="group relative font-semibold text-sm uppercase text-ym-text/75 hover:text-ym-blue transition-colors duration-300"
+              style={{ letterSpacing: "0.1em" }}
+            >
+              {l.label}
+              <span className="absolute -bottom-1.5 left-0 h-px w-0 bg-ym-blue transition-all duration-400 group-hover:w-full" />
+            </a>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-3">
+          <a
+            href="#contact"
+            className="hidden sm:inline-flex items-center justify-center px-6 py-2.5 border border-ym-blue/35 text-ym-blue font-semibold text-sm uppercase hover:bg-ym-blue hover:text-ym-cream transition-colors duration-300"
+            style={{ letterSpacing: "0.1em" }}
+          >
+            Enquire
+          </a>
           <button
-            className="md:hidden text-slate-700 w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
-            onClick={() => setOpen(!open)}
+            type="button"
+            onClick={() => setOpen((v) => !v)}
             aria-label="Toggle menu"
+            aria-expanded={open}
+            className="lg:hidden w-10 h-10 flex items-center justify-center text-ym-text"
           >
             {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
-      </nav>
+      </div>
 
-      {/* Mobile menu */}
       {open && (
-        <div className="md:hidden max-w-6xl mx-auto mt-2 bg-white/95 backdrop-blur-xl rounded-3xl shadow-lg ring-1 ring-slate-900/5 px-4 py-5 flex flex-col gap-1">
-          {links.map((l) => (
+        <div className="lg:hidden bg-ym-cream border-t border-ym-text/10 px-5 py-6 flex flex-col gap-1">
+          {NAV_LINKS.map((l) => (
             <a
-              key={l.name}
+              key={l.label}
               href={l.href}
               onClick={() => setOpen(false)}
-              className="text-sm font-medium text-slate-700 hover:text-blue-600 px-4 py-2.5 rounded-full hover:bg-blue-50 transition-colors"
+              className="font-semibold text-sm uppercase text-ym-text/80 py-3 border-b border-ym-text/8"
+              style={{ letterSpacing: "0.1em" }}
             >
-              {l.name}
+              {l.label}
             </a>
           ))}
           <a
             href="#contact"
             onClick={() => setOpen(false)}
-            className="bg-blue-600 text-white px-5 py-2.5 rounded-full text-sm font-semibold text-center hover:bg-blue-700 transition-colors mt-2"
+            className="mt-6 inline-flex items-center justify-center px-6 py-4 border border-ym-blue/35 text-ym-blue font-semibold text-sm uppercase"
+            style={{ letterSpacing: "0.1em" }}
           >
-            Get in Touch
+            Enquire
           </a>
         </div>
       )}
@@ -350,656 +503,174 @@ function YugmindsNavbar() {
 }
 
 /* ─────────────────────────────────────────────
-   HERO — centered, playful, WonderKids style
+   HERO — white field, Hyperspeed streaks behind centered copy
 ───────────────────────────────────────────── */
-function HeroSection() {
+
+/* The brand's own tagline, given the Robocoders treatment: a multi-line
+   headline with the payoff phrase picked out in blue. */
+const HERO_TAGLINE = [
+  { text: "Building", accent: false },
+  { text: "Tomorrow's", accent: true },
+  { text: "Industries", accent: true },
+];
+
+function Hero({ start }: { start: boolean }) {
+  const ref = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end start"],
+  });
+  const y = useTransform(scrollYProgress, [0, 1], [0, 140]);
+  const fade = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
+
+  /* Hero copy waits for the curtain so the two never play over each other. */
+  const anim = start ? "in" : "out";
+  const rise = {
+    out: { opacity: 0, y: 34 },
+    in: { opacity: 1, y: 0 },
+  };
+
+  /* Gate the *mount* on knowing the viewport class first, not just which
+     config to pass: mounting with the wrong (e.g. desktop) config for even
+     one frame before matchMedia reports back would briefly show the
+     oversized-on-mobile version. `null` = not yet known. */
+  const [viewport, setViewport] = useState<"mobile" | "desktop" | null>(null);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setViewport(mq.matches ? "desktop" : "mobile");
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   return (
-    <section id="home" className="relative bg-white overflow-hidden">
-      {/* soft ambient blobs */}
-      <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-50 rounded-full blur-3xl opacity-70 pointer-events-none" />
-      <div className="absolute top-40 -right-32 w-[28rem] h-[28rem] bg-sky-50 rounded-full blur-3xl opacity-70 pointer-events-none" />
-
-      <div className="max-w-6xl mx-auto px-4 md:px-8 pt-16 md:pt-24 pb-24 relative">
-        {/* ── floating side decorations (parallax drift) ── */}
-        {/* left: logo bubble on blue blob */}
-        <Floating
-          className="hidden lg:block absolute left-0 top-32"
-          duration={6}
-        >
-          <div className="relative">
-            <div className="w-32 h-20 bg-blue-100 rounded-[3rem] rotate-[-8deg]" />
-            <div className="absolute -top-8 left-6 w-20 h-20 rounded-full bg-white shadow-xl border-4 border-blue-100 flex items-center justify-center overflow-hidden">
-              <Image
-                src="/Yugminds_Official_Logo-preview.png"
-                alt="YugMinds"
-                width={52}
-                height={52}
-                className="object-contain"
-              />
-            </div>
-          </div>
-          <ScribbleArrow className="w-20 h-20 text-blue-500 mt-6 ml-2" />
-        </Floating>
-
-        {/* right: rotating seal badge */}
-        <motion.div
-          className="hidden lg:flex absolute right-0 top-24 w-28 h-28 items-center justify-center"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 24, repeat: Infinity, ease: "linear" }}
-        >
-          <svg viewBox="0 0 100 100" className="w-full h-full">
-            <defs>
-              <path
-                id="heroCirclePath"
-                d="M50,50 m-40,0 a40,40 0 1,1 80,0 a40,40 0 1,1 -80,0"
-              />
-            </defs>
-            <circle
-              cx="50"
-              cy="50"
-              r="48"
-              className="fill-white stroke-blue-200"
-              strokeWidth="1.5"
-            />
-            <text className="fill-blue-600 text-[8.5px] font-bold tracking-[0.05em] uppercase">
-              <textPath href="#heroCirclePath">
-                YugMinds · Est. 2024 · YugMinds · Est. 2024 ·
-              </textPath>
-            </text>
-            <circle cx="50" cy="50" r="14" className="fill-blue-600" />
-            <circle cx="44" cy="44" r="4" className="fill-sky-300" />
-            <circle cx="57" cy="49" r="4" className="fill-amber-300" />
-            <circle cx="48" cy="58" r="4" className="fill-white" />
-          </svg>
-        </motion.div>
-
-        {/* right: hashtag pills */}
-        <div className="hidden lg:block absolute right-4 top-[420px]">
-          {[
-            { tag: "#software", cls: "bg-blue-100 text-blue-700 rotate-[-6deg]" },
-            { tag: "#robotics", cls: "bg-amber-300 text-amber-900 rotate-[4deg] ml-16 -mt-1" },
-            { tag: "#innovation", cls: "bg-blue-600 text-white rotate-[-3deg] ml-6 mt-2" },
-          ].map((p, i) => (
-            <Floating key={p.tag} duration={4 + i} delay={i * 0.4}>
-              <span
-                className={`inline-block px-4 py-1.5 rounded-full text-sm font-semibold shadow-sm mb-2 ${p.cls}`}
-              >
-                {p.tag}
-              </span>
-            </Floating>
-          ))}
+    <section
+      ref={ref}
+      id="top"
+      className="relative min-h-[100svh] flex flex-col justify-center overflow-hidden bg-ym-cream"
+    >
+      {/* pointer-events-none so the streaks never block clicks on the CTAs
+          or nav sitting above them */}
+      {viewport && (
+        <div className="absolute inset-0 z-0 pointer-events-none">
+          <HyperspeedBG
+            effectOptions={viewport === "desktop" ? HYPERSPEED_OPTIONS : HYPERSPEED_OPTIONS_MOBILE}
+          />
         </div>
+      )}
 
-        {/* left: spiral */}
-        <Floating
-          className="hidden lg:block absolute left-10 top-[430px]"
-          duration={7}
-          offset={8}
-        >
-          <Spiral className="w-16 h-16 text-blue-300" />
-        </Floating>
-
-        {/* ── centered content ── */}
-        <div className="text-center max-w-4xl mx-auto">
-          <Reveal>
-            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-blue-600 bg-blue-50 px-4 py-2 rounded-full mb-8">
-              <Zap className="w-3.5 h-3.5" /> Software · Machines · Education
-            </p>
-          </Reveal>
-
-          <Reveal delay={0.1}>
-            <h1 className="text-5xl sm:text-6xl md:text-[5.25rem] font-extrabold leading-[1.08] text-slate-900 mb-8">
-              Building{" "}
-              <span className="relative inline-block text-blue-600 italic">
-                Tomorrow&apos;s
-                <SquiggleUnderline className="absolute -bottom-3 left-0 w-full h-5 text-blue-400" />
-              </span>
-              <br />
-              <span className="relative inline-block">
-                <span className="relative z-10 text-slate-900">Industries</span>
-                <HandCircle className="absolute -inset-x-8 -inset-y-3 w-[calc(100%+4rem)] h-[calc(100%+1.5rem)] text-amber-400 z-0" />
-              </span>
-            </h1>
-          </Reveal>
-
-          <Reveal delay={0.2}>
-            <p className="text-slate-500 text-lg leading-relaxed mb-10 max-w-xl mx-auto">
-              YugMinds Private Limited builds software, electronics, and
-              machines — and teaches students coding and robotics through
-              Robocoders™, our flagship education program.
-            </p>
-          </Reveal>
-
-          <Reveal delay={0.3}>
-            <div className="flex flex-wrap justify-center gap-4">
-              <motion.a
-                href="#divisions"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
-                className="inline-flex items-center gap-2.5 bg-blue-600 text-white pl-7 pr-2.5 py-2.5 rounded-full font-semibold shadow-lg shadow-blue-600/25 hover:bg-blue-700 transition-colors text-sm"
-              >
-                Explore Divisions
-                <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  <ArrowUpRight className="w-4 h-4" />
-                </span>
-              </motion.a>
-              <motion.a
-                href="#about"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
-                className="inline-flex items-center gap-2 border-2 border-slate-200 text-slate-700 px-7 py-3 rounded-full font-semibold hover:border-blue-400 hover:text-blue-600 transition-colors text-sm"
-              >
-                Learn More
-              </motion.a>
-            </div>
-          </Reveal>
-        </div>
-
-        {/* ── bottom photo strip in pill blobs ── */}
-        <Reveal delay={0.35} className="mt-20">
-          <div className="flex items-end justify-center gap-4 md:gap-6">
-            <Floating duration={5.5} offset={8} className="hidden sm:block">
-              <div className="relative w-36 h-24 md:w-48 md:h-32 rounded-[2.5rem] overflow-hidden bg-blue-100 rotate-[-4deg] shadow-lg">
-                <Image
-                  src="/images/landing/dev-team.jpg"
-                  alt="Software developers working together"
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 144px, 192px"
-                />
-              </div>
-            </Floating>
-            <Floating duration={6.5} offset={10}>
-              <div className="relative w-48 h-32 md:w-64 md:h-44 rounded-[3rem] overflow-hidden bg-amber-100 shadow-xl z-10">
-                <Image
-                  src="/Kids Dong Robotics.png"
-                  alt="Kids doing robotics with Robocoders"
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 192px, 256px"
-                />
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm text-blue-700 text-[10px] md:text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap">
-                  Robocoders™ in action
-                </div>
-              </div>
-            </Floating>
-            <Floating duration={5} offset={7} className="hidden sm:block">
-              <div className="relative w-36 h-24 md:w-48 md:h-32 rounded-[2.5rem] overflow-hidden bg-sky-100 rotate-[4deg] shadow-lg">
-                <Image
-                  src="/images/landing/factory-engineer.jpg"
-                  alt="Engineer working in a modern factory"
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 144px, 192px"
-                />
-              </div>
-            </Floating>
-          </div>
-        </Reveal>
-
-        {/* floating stat chips */}
-        <Floating
-          className="hidden md:block absolute bottom-40 left-6 lg:left-24"
-          duration={6}
-          delay={0.5}
-        >
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-100 px-5 py-3 rotate-[-3deg]">
-            <p className="text-[11px] text-slate-500 font-medium">
-              Active Projects
-            </p>
-            <p className="text-2xl font-extrabold text-blue-600">200+</p>
-          </div>
-        </Floating>
-        <Floating
-          className="hidden md:block absolute bottom-48 right-6 lg:right-24"
-          duration={5}
-          delay={1}
-        >
-          <div className="bg-blue-600 rounded-2xl shadow-xl px-5 py-2.5 rotate-[3deg] text-white text-sm font-bold">
-            Est. 2024 ✦
-          </div>
-        </Floating>
-      </div>
-
-      {/* wave divider into next section */}
-      <svg
-        viewBox="0 0 1440 60"
-        className="w-full h-10 md:h-14 text-slate-50 -mb-px"
-        preserveAspectRatio="none"
+      <motion.div
+        style={{ y, opacity: fade }}
+        className="relative z-10 max-w-4xl mx-auto w-full px-5 md:px-10 pt-32 pb-20 text-center"
       >
-        <path
-          d="M0,32 C240,64 480,0 720,24 C960,48 1200,8 1440,32 L1440,60 L0,60 Z"
-          fill="currentColor"
-        />
-      </svg>
-    </section>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   FEATURES — three big tinted cards
-───────────────────────────────────────────── */
-function FeaturesSection() {
-  const cards = [
-    {
-      title: "Software",
-      accent: "Development",
-      desc: "Expert teams that build websites, mobile apps, and business software for clients around the world.",
-      icon: <Code2 className="w-6 h-6 text-blue-700" />,
-      card: "bg-blue-100 text-slate-900",
-      sub: "text-slate-600",
-      accentCls: "text-blue-700 italic",
-      decor: <Spiral className="w-24 h-24 text-blue-400/60" />,
-    },
-    {
-      title: "Manufacturing",
-      accent: "& Hardware",
-      desc: "Modern factories and workshops that make high-quality, carefully engineered products in large numbers.",
-      icon: <Factory className="w-6 h-6 text-blue-700" />,
-      card: "bg-blue-600 text-white",
-      sub: "text-blue-100",
-      accentCls: "text-amber-300 italic",
-      decor: <WaveMarks className="w-28 h-20 text-blue-400/70" />,
-    },
-    {
-      title: "Research &",
-      accent: "Development",
-      desc: "Our own labs where we test new ideas and turn them into useful, real-world products.",
-      icon: <FlaskConical className="w-6 h-6 text-amber-700" />,
-      card: "bg-amber-300 text-amber-950",
-      sub: "text-amber-800",
-      accentCls: "text-blue-700 italic",
-      decor: <DotGrid className="text-amber-600/50" />,
-    },
-  ];
-
-  return (
-    <section id="services" className="bg-slate-50 py-20 md:py-28 relative overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 md:px-8">
-        <Reveal>
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-14">
-            <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight">
-              Our{" "}
-              <span className="relative inline-block text-blue-600 italic">
-                core
-                <SquiggleUnderline className="absolute -bottom-2 left-0 w-full h-4 text-amber-400" />
-              </span>
-              <br className="hidden md:block" /> strengths
-            </h2>
-            <p className="text-slate-500 text-base leading-relaxed md:max-w-sm">
-              Whatever the project, we give every client our best work —
-              across everything we do.
-            </p>
-          </div>
-        </Reveal>
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-          {cards.map((c, i) => (
-            <Reveal key={c.title} delay={i * 0.15}>
-              <motion.div
-                whileHover={{ y: -10 }}
-                transition={{ type: "spring", stiffness: 300, damping: 22 }}
-                className={`relative rounded-[2.5rem] p-8 md:p-10 min-h-[340px] flex flex-col overflow-hidden ${c.card}`}
-              >
-                {/* decoration top-right */}
-                <div className="absolute top-6 right-6">{c.decor}</div>
-
-                {/* icon in seal blob */}
-                <div className="relative w-16 h-16 mb-auto">
-                  <Seal className="absolute inset-0 w-16 h-16 text-white" />
-                  <span className="absolute inset-0 flex items-center justify-center">
-                    {c.icon}
-                  </span>
-                </div>
-
-                <h3 className="text-2xl md:text-[1.7rem] font-extrabold leading-snug mt-10 mb-3">
-                  {c.title} <span className={c.accentCls}>{c.accent}</span>
-                </h3>
-                <p className={`text-sm leading-relaxed ${c.sub}`}>{c.desc}</p>
-
-                <a
-                  href="#divisions"
-                  className="inline-flex items-center gap-1.5 text-sm font-bold mt-5 group"
-                >
-                  Read more
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </a>
-              </motion.div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   MISSION BAND + DIVISIONS — full blue section
-───────────────────────────────────────────── */
-function DivisionsSection() {
-  const divisions = [
-    {
-      icon: <Code2 className="w-9 h-9" />,
-      circle: "bg-amber-300 text-amber-900",
-      title: "Software Development",
-      role: "Web · Mobile · Enterprise",
-    },
-    {
-      icon: <Factory className="w-9 h-9" />,
-      circle: "bg-white text-blue-700",
-      title: "Manufacturing",
-      role: "Precision at scale",
-    },
-    {
-      icon: <Cpu className="w-9 h-9" />,
-      circle: "bg-sky-300 text-sky-900",
-      title: "Hardware Engineering",
-      role: "Design & prototyping",
-    },
-    {
-      icon: <GraduationCap className="w-9 h-9" />,
-      circle: "bg-amber-300 text-amber-900",
-      title: "Robocoders™ EdTech",
-      role: "Coding · Robotics · AI",
-    },
-  ];
-
-  return (
-    <section id="divisions" className="bg-slate-50 pb-20 md:pb-28 pt-4">
-      <div className="max-w-7xl mx-auto px-4 md:px-8">
         <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 60 }}
-          whileInView={{ opacity: 1, scale: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.9, ease: [0.21, 0.61, 0.35, 1] }}
+          variants={rise}
+          initial="out"
+          animate={anim}
+          transition={{ duration: 1, delay: 0.15, ease: EASE_OUT }}
         >
-          <div className="relative bg-blue-600 rounded-[3rem] px-6 md:px-16 py-16 md:py-20 overflow-hidden">
-            {/* decorations */}
-            <Seal className="absolute top-10 left-10 w-14 h-14 text-amber-300" />
-            <WaveMarks className="absolute bottom-8 right-10 w-24 h-16 text-blue-400/60 hidden md:block" />
-            <div className="absolute -top-16 -right-16 w-64 h-64 bg-blue-500/40 rounded-full blur-2xl" />
-
-            {/* mission statement */}
-            <div className="text-center max-w-2xl mx-auto mb-14 relative z-10">
-              <h2 className="text-3xl md:text-[2.6rem] font-extrabold text-white leading-snug">
-                From software and machines to classrooms, we{" "}
-                <span className="text-amber-300 italic">
-                  love building new things
-                </span>{" "}
-                — and we build them to last.
-              </h2>
-            </div>
-
-            {/* division "avatar" cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 md:gap-6 relative z-10">
-              {divisions.map((d, i) => (
-                <Reveal key={d.title} delay={0.15 + i * 0.12}>
-                  <motion.div
-                    whileHover={{ y: -8 }}
-                    className="flex flex-col items-center text-center group cursor-default"
-                  >
-                    <div className="relative mb-5">
-                      {/* blob behind circle */}
-                      <div
-                        className={`w-28 h-28 md:w-32 md:h-32 rounded-full flex items-center justify-center shadow-xl transition-transform duration-300 group-hover:scale-105 ${d.circle}`}
-                      >
-                        {d.icon}
-                      </div>
-                      <div className="absolute -top-1 -right-2 grid grid-cols-3 gap-1">
-                        {Array(9)
-                          .fill(0)
-                          .map((_, j) => (
-                            <div
-                              key={j}
-                              className="w-1 h-1 rounded-full bg-white/50"
-                            />
-                          ))}
-                      </div>
-                    </div>
-                    <h3 className="text-white font-bold text-base md:text-lg">
-                      {d.title}
-                    </h3>
-                    <p className="text-blue-200 text-xs md:text-sm mt-1">
-                      {d.role}
-                    </p>
-                  </motion.div>
-                </Reveal>
-              ))}
-            </div>
-          </div>
+          <Eyebrow className="text-ym-blue">Welcome to YugMinds</Eyebrow>
         </motion.div>
-      </div>
-    </section>
-  );
-}
 
-/* ─────────────────────────────────────────────
-   ABOUT SPLIT — circled word + photo collage
-───────────────────────────────────────────── */
-function AboutSection() {
-  return (
-    <section id="about" className="bg-white py-20 md:py-28 relative overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 md:px-8 grid md:grid-cols-2 gap-14 md:gap-20 items-center">
-        {/* Left — text with circled accent */}
-        <div>
-          <Reveal>
-            <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 leading-[1.15] mb-6">
-              The solutions we provide are{" "}
-              <span className="relative inline-block">
-                <span className="relative z-10 text-blue-600 italic">
-                  reliable
-                </span>
-                <HandCircle className="absolute -inset-x-5 -inset-y-2 w-[calc(100%+2.5rem)] h-[calc(100%+1rem)] text-amber-400 z-0" />
-              </span>{" "}
-              for every business
-            </h2>
-          </Reveal>
-          <Reveal delay={0.15}>
-            <p className="text-slate-500 leading-relaxed mb-8 max-w-md">
-              YugMinds brings experts in software, machines, and education
-              together under one roof — to help your business grow, work
-              smarter, and stay ahead of the competition.
-            </p>
-          </Reveal>
-          <Reveal delay={0.25}>
-            <motion.a
-              href="#divisions"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.97 }}
-              className="inline-flex items-center gap-2.5 border-2 border-blue-600 text-blue-600 pl-6 pr-2 py-2 rounded-full font-semibold text-sm hover:bg-blue-50 transition-colors"
-            >
-              Learn More
-              <span className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </span>
-            </motion.a>
-          </Reveal>
-        </div>
-
-        {/* Right — stacked pill collage */}
-        <div className="relative flex flex-col items-center gap-4">
-          <Spiral className="absolute -top-8 -left-2 w-14 h-14 text-amber-400 z-10" />
-          <Reveal delay={0.1} y={40}>
-            <div className="flex items-center gap-3">
-              <div className="relative w-56 h-24 md:w-72 md:h-28 rounded-full overflow-hidden bg-blue-100 shadow-md">
-                <Image
-                  src="/images/landing/software-code.jpg"
-                  alt="Software code on a screen"
-                  fill
-                  className="object-cover"
-                  sizes="288px"
-                />
-              </div>
-              <div className="w-20 h-24 md:w-28 md:h-28 rounded-full bg-blue-600 flex items-center justify-center">
-                <WaveMarks className="w-14 h-10 text-blue-300" />
-              </div>
-            </div>
-          </Reveal>
-          <Reveal delay={0.25} y={40}>
-            <div className="flex items-center gap-3">
-              <div className="w-20 h-24 md:w-28 md:h-28 rounded-full bg-amber-300 flex items-center justify-center">
-                <Star className="w-9 h-9 text-amber-700 fill-amber-700" />
-              </div>
-              <div className="relative w-56 h-24 md:w-72 md:h-28 rounded-full overflow-hidden bg-amber-100 shadow-md">
-                <Image
-                  src="/images/landing/circuit-board.jpg"
-                  alt="Electronics circuit board"
-                  fill
-                  className="object-cover"
-                  sizes="288px"
-                />
-              </div>
-            </div>
-          </Reveal>
-          <Reveal delay={0.4} y={40}>
-            <div className="flex items-center gap-3">
-              <div className="relative w-56 h-24 md:w-72 md:h-28 rounded-full overflow-hidden bg-sky-100 shadow-md">
-                <Image
-                  src="/About Us.jpg"
-                  alt="The YugMinds team"
-                  fill
-                  className="object-cover"
-                  sizes="288px"
-                />
-              </div>
-              <div className="w-20 h-24 md:w-28 md:h-28 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden">
-                <Image
-                  src="/Yugminds_Official_Logo-preview.png"
-                  alt="YugMinds logo"
-                  width={56}
-                  height={56}
-                  className="object-contain"
-                />
-              </div>
-            </div>
-          </Reveal>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   STATS / TRUST BAND
-───────────────────────────────────────────── */
-function StatsSection() {
-  const stats = [
-    { value: 200, suffix: "+", label: "Projects Delivered", cls: "bg-blue-100 text-blue-700" },
-    { value: 50, suffix: "+", label: "Clients Worldwide", cls: "bg-amber-300 text-amber-900" },
-    { value: 5, suffix: "+", label: "Fields We Work In", cls: "bg-blue-600 text-white" },
-    { value: 2024, suffix: "", label: "Established", cls: "bg-sky-100 text-sky-800" },
-  ];
-
-  return (
-    <section className="bg-white pb-20 md:pb-28">
-      <div className="max-w-7xl mx-auto px-4 md:px-8">
-        <Reveal>
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 leading-tight">
-              The more clients trust{" "}
-              <span className="text-blue-600 italic">YugMinds,</span>
-              <br className="hidden md:block" /> the more we achieve together
-            </h2>
-          </div>
-        </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 md:gap-7">
-          {stats.map((s, i) => (
-            <Reveal key={s.label} delay={i * 0.1}>
-              <motion.div
-                whileHover={{ y: -8, rotate: i % 2 === 0 ? -1.5 : 1.5 }}
-                className={`rounded-[2rem] px-6 py-10 text-center shadow-sm ${s.cls}`}
+        {/* The tagline carries the headline slot, same as Robocoders'
+            "Empowering Students to Code, Create, and Innovate" — the brand
+            name moved to the eyebrow above, since it's already the biggest
+            thing in the nav. Each line masks/rises in on its own delay,
+            gated on `start` like the rest of the hero (not MaskLines'
+            whileInView — that fires the moment the section enters the
+            viewport, curtain or no curtain, which would let it finish
+            revealing itself behind the preloader). */}
+        <h1 className="mt-6 font-extrabold text-ym-text leading-[0.98] text-[3rem] sm:text-[4.4rem] md:text-[5.4rem] lg:text-[6rem]">
+          {HERO_TAGLINE.map((line, i) => (
+            <span key={line.text} className="block overflow-hidden">
+              <motion.span
+                className={`block ${line.accent ? "text-ym-blue" : ""}`}
+                initial={{ y: "112%" }}
+                animate={start ? { y: "0%" } : { y: "112%" }}
+                transition={{ duration: 1.1, delay: 0.35 + i * 0.13, ease: EASE_OUT }}
               >
-                <CountUp
-                  value={s.value}
-                  suffix={s.suffix}
-                  className="text-4xl md:text-5xl font-extrabold mb-2"
-                />
-                <p className="text-sm font-semibold opacity-80">{s.label}</p>
-              </motion.div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   STORIES — blog-style photo cards
-───────────────────────────────────────────── */
-function StoriesSection() {
-  const stories = [
-    {
-      img: "/child-making-robot.jpg",
-      alt: "Child building a robot",
-      title: "Hands-on Robotics for Every Student",
-      desc: "How Robocoders™ brings real hardware into classrooms so students learn by building, not just watching.",
-    },
-    {
-      img: "/Kids Dong Robotics.png",
-      alt: "Kids doing robotics together",
-      title: "From Classroom to Competition",
-      desc: "Our structured STEM curriculum takes students from first circuits to national-level robotics challenges.",
-    },
-    {
-      img: "/images/landing/office-team.jpg",
-      alt: "YugMinds team collaborating at the office",
-      title: "One Team, Many Industries",
-      desc: "Inside YugMinds — how one team builds software, electronics, and machines under one roof.",
-    },
-  ];
-
-  return (
-    <section className="bg-slate-50 py-20 md:py-28 relative overflow-hidden">
-      <Seal className="absolute top-16 right-10 w-16 h-16 text-amber-300 hidden md:block" />
-      <div className="max-w-7xl mx-auto px-4 md:px-8">
-        <Reveal>
-          <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-14">
-            Explore our{" "}
-            <span className="relative inline-block text-blue-600 italic">
-              story
-              <SquiggleUnderline className="absolute -bottom-2 left-0 w-full h-4 text-amber-400" />
+                {line.text}
+              </motion.span>
             </span>
-          </h2>
-        </Reveal>
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-          {stories.map((s, i) => (
-            <Reveal key={s.title} delay={i * 0.15}>
-              <motion.article
-                whileHover={{ y: -10 }}
-                transition={{ type: "spring", stiffness: 300, damping: 22 }}
-                className="bg-white rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl transition-shadow duration-300 flex flex-col h-full"
-              >
-                <div className="relative h-52 m-3 rounded-[1.6rem] overflow-hidden">
-                  <Image
-                    src={s.img}
-                    alt={s.alt}
-                    fill
-                    className="object-cover transition-transform duration-500 hover:scale-105"
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                  />
-                </div>
-                <div className="px-6 pb-7 pt-2 flex flex-col flex-1">
-                  <h3 className="font-extrabold text-slate-900 text-lg leading-snug mb-2">
-                    {s.title}
-                  </h3>
-                  <p className="text-slate-500 text-sm leading-relaxed mb-6 flex-1">
-                    {s.desc}
-                  </p>
-                  <a
-                    href="#contact"
-                    className="inline-flex items-center gap-2.5 text-blue-600 text-sm font-bold group"
-                  >
-                    Read More
-                    <span className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center group-hover:bg-blue-700 group-hover:translate-x-1 transition-all">
-                      <ArrowUpRight className="w-4 h-4" />
-                    </span>
-                  </a>
-                </div>
-              </motion.article>
-            </Reveal>
           ))}
+        </h1>
+
+        <motion.p
+          variants={rise}
+          initial="out"
+          animate={anim}
+          transition={{ duration: 1, delay: 0.9, ease: EASE_OUT }}
+          className="mt-7 mx-auto max-w-xl text-[1.1rem] md:text-[1.25rem] font-normal text-ym-text/70 leading-relaxed"
+        >
+          Software, electronics and machines — engineered by one team,
+          taught to the next.
+        </motion.p>
+
+        <motion.div
+          variants={rise}
+          initial="out"
+          animate={anim}
+          transition={{ duration: 1, delay: 1.02, ease: EASE_OUT }}
+          className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-5"
+        >
+          <a
+            href="#divisions"
+            className="inline-flex items-center justify-center px-9 py-4 bg-ym-blue text-ym-cream font-semibold text-sm uppercase hover:bg-ym-blue-lit transition-colors duration-500"
+            style={{ letterSpacing: "0.12em" }}
+          >
+            Explore Divisions
+          </a>
+          <a
+            href="#contact"
+            className="group inline-flex items-center gap-3 text-ym-blue font-semibold text-sm uppercase hover:text-ym-blue-lit transition-colors"
+            style={{ letterSpacing: "0.12em" }}
+          >
+            Start a Project
+            <ArrowRight className="w-4 h-4 transition-transform duration-500 group-hover:translate-x-1.5" />
+          </a>
+        </motion.div>
+      </motion.div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   MANIFESTO — cream, line-by-line, mark draws in
+───────────────────────────────────────────── */
+function Manifesto() {
+  return (
+    <section id="about" className="relative bg-ym-cream py-28 md:py-40 overflow-hidden">
+      <div className="max-w-[92rem] mx-auto px-5 md:px-10 grid lg:grid-cols-[1.15fr_0.85fr] gap-16 items-center">
+        <MaskLines
+          className="font-extrabold text-ym-text text-[1.9rem] sm:text-[2.4rem] md:text-[3rem] leading-[1.35] space-y-4 md:space-y-6"
+          lines={[
+            <>Where an idea becomes a working thing.</>,
+            <>
+              Where a factory floor and a
+              <br className="hidden sm:block" /> classroom share a roof.
+            </>,
+            <>Where students build what engineers ship.</>,
+          ]}
+        />
+
+        <div className="relative flex justify-center lg:justify-end">
+          <div className="relative w-[16rem] h-[16rem] md:w-[21rem] md:h-[21rem]">
+            <DrawnRing
+              className="absolute inset-0 w-full h-full"
+              stroke="#2563EB"
+              duration={1.6}
+              inView
+            />
+            <motion.div
+              className="absolute inset-[24%]"
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true, margin: "-15%" }}
+              transition={{ duration: 1.1, delay: 0.8, ease: EASE_OUT }}
+            >
+              <LogoMark tint="#2563EB" className="w-full h-full opacity-90" />
+            </motion.div>
+          </div>
         </div>
       </div>
     </section>
@@ -1007,85 +678,428 @@ function StoriesSection() {
 }
 
 /* ─────────────────────────────────────────────
-   LEADERSHIP / ABOUT COMPANY
+   STORY — image left, editorial column right
 ───────────────────────────────────────────── */
-function LeadershipSection() {
+function Story() {
   return (
-    <section className="bg-white py-20 md:py-28">
-      <div className="max-w-7xl mx-auto px-4 md:px-8 grid md:grid-cols-2 gap-16 items-center">
-        {/* Left — circular visual */}
-        <Reveal>
-          <div className="flex justify-center">
-            <div className="relative inline-block">
-              <motion.div
-                className="absolute inset-0 rounded-full border-2 border-dashed border-blue-300"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+    <section className="bg-ym-cream pb-28 md:pb-40 overflow-hidden">
+      <div className="max-w-[92rem] mx-auto px-5 md:px-10 grid md:grid-cols-2 gap-12 md:gap-20 items-start">
+        {/* Observer on the outer wrapper — the clip-path wipe collapses the
+            frame to zero area, which would stop it ever reporting in view. */}
+        <motion.div
+          initial="hidden"
+          whileInView="shown"
+          viewport={{ once: true, margin: "-12%" }}
+        >
+          <motion.div
+            className="relative aspect-[3/4] overflow-hidden"
+            variants={{
+              hidden: { clipPath: "inset(100% 0% 0% 0%)" },
+              shown: { clipPath: "inset(0% 0% 0% 0%)" },
+            }}
+            transition={{ duration: 1.3, ease: EASE_CURTAIN }}
+          >
+            <motion.div
+              className="absolute inset-0"
+              variants={{ hidden: { scale: 1.18 }, shown: { scale: 1 } }}
+              transition={{ duration: 1.6, ease: EASE_OUT }}
+            >
+              <Image
+                src="/images/landing/factory-engineer.jpg"
+                alt="A YugMinds engineer at work on the shop floor"
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 45vw"
               />
-              <div className="w-64 h-64 md:w-72 md:h-72 rounded-full flex items-center justify-center">
-                <div className="w-48 h-48 md:w-56 md:h-56 rounded-full bg-blue-50 flex items-center justify-center shadow-xl overflow-hidden">
-                  <Image
-                    src="/Yugminds_Official_Logo-preview.png"
-                    alt="YugMinds Logo"
-                    width={150}
-                    height={150}
-                    className="object-contain"
-                  />
-                </div>
-              </div>
-              {/* orbiting dots */}
-              <Floating className="absolute -top-2 right-8" duration={4}>
-                <div className="w-5 h-5 rounded-full bg-amber-400" />
-              </Floating>
-              <Floating className="absolute bottom-10 -left-3" duration={5} delay={0.5}>
-                <div className="w-4 h-4 rounded-full bg-blue-500" />
-              </Floating>
-              {/* Name badge */}
-              <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-white shadow-lg rounded-full px-5 py-2.5 flex items-center gap-2 whitespace-nowrap border border-slate-100">
-                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span className="text-xs font-bold text-slate-700">
-                  YugMinds Pvt Ltd
-                </span>
-                <span className="text-xs text-slate-400">· Est. 2024</span>
-              </div>
-            </div>
-          </div>
-        </Reveal>
+            </motion.div>
+          </motion.div>
+        </motion.div>
 
-        {/* Right — text */}
-        <div>
-          <Reveal>
-            <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-xs font-semibold mb-5">
-              <Star className="w-3 h-3 fill-blue-600" />
-              Great Company · Trusted Team
-            </span>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight mb-5">
-              About <span className="text-blue-600 italic">YugMinds</span>
-            </h2>
-          </Reveal>
-          <Reveal delay={0.2}>
-            <p className="text-slate-500 leading-relaxed mb-8">
-              Started in 2024 with a simple goal — use technology to make work
-              and learning better — YugMinds Private Limited today builds
-              software, electronics, and machines, and teaches students coding
-              and robotics. Whatever we make, we make it to last.
-            </p>
-          </Reveal>
-          <Reveal delay={0.3}>
-            <motion.a
+        <div className="md:pt-16">
+          <MaskLines
+            className="font-extrabold text-ym-text text-[2rem] sm:text-[2.6rem] md:text-[3.2rem] leading-[1.2]"
+            lines={[
+              <>Started in 2024 with</>,
+              <>one stubborn idea.</>,
+              <>Everything else came after.</>,
+            ]}
+          />
+
+          <Rule className="bg-ym-text/20 my-10" delay={0.35} />
+
+          <MaskLines
+            className="font-normal text-ym-text/85 text-[1.15rem] md:text-[1.4rem] leading-relaxed space-y-5"
+            delay={0.45}
+            stagger={0.1}
+            lines={[
+              <>Software teams shipping for clients worldwide.</>,
+              <>A factory floor making the parts ourselves.</>,
+              <>Labs where the next product is still an argument.</>,
+              <>And classrooms where students build all three.</>,
+            ]}
+          />
+
+          <Reveal delay={0.6} className="mt-12">
+            <a
               href="#divisions"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.97 }}
-              className="inline-flex items-center gap-2.5 bg-blue-600 text-white pl-6 pr-2 py-2 rounded-full font-semibold text-sm shadow-lg shadow-blue-600/25 hover:bg-blue-700 transition-colors"
+              className="group inline-flex items-center gap-3 text-ym-blue font-semibold text-sm uppercase"
+              style={{ letterSpacing: "0.12em" }}
             >
-              Learn More
-              <span className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
-                <ArrowUpRight className="w-3.5 h-3.5" />
+              <span className="relative">
+                See the divisions
+                <span className="absolute -bottom-1.5 left-0 h-px w-full bg-ym-blue/30 transition-all duration-500 group-hover:bg-ym-blue" />
+              </span>
+              <ArrowRight className="w-4 h-4 transition-transform duration-500 group-hover:translate-x-1.5" />
+            </a>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   SCROLL-SCRUBBED STATEMENT
+   Each character resolves as the section crosses the viewport.
+───────────────────────────────────────────── */
+function ScrubChar({
+  char,
+  index,
+  total,
+  progress,
+}: {
+  char: string;
+  index: number;
+  total: number;
+  progress: MotionValue<number>;
+}) {
+  const start = (index / total) * 0.72;
+  const opacity = useTransform(progress, [start, start + 0.28], [0.1, 1]);
+  return <motion.span style={{ opacity }}>{char}</motion.span>;
+}
+
+function ScrubStatement() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start 0.85", "end 0.35"],
+  });
+  const text = "You don't hire YugMinds. You build with us.";
+  const chars = text.split("");
+
+  return (
+    /* Tall on purpose: the character scrub needs real scroll distance,
+       otherwise the whole reveal resolves in a few dozen pixels. */
+    <section className="bg-ym-sand min-h-[85svh] flex items-center py-32 md:py-48 overflow-hidden">
+      <div ref={ref} className="max-w-5xl mx-auto px-5 md:px-10 text-center">
+        <p className="font-extrabold text-ym-text text-[1.8rem] sm:text-[2.6rem] md:text-[3.6rem] leading-[1.25]">
+          {/* Word-break spaces render as plain text nodes, not inside a
+              motion.span — a space isolated as the sole content of its own
+              inline element is fragile (this file shipped a build where one
+              such space had silently become a non-breaking space, and the
+              whole sentence rendered as a single unwrappable line overflowing
+              its centered container). A bare " " between elements is the one
+              pattern browsers always wrap correctly, regardless. */}
+          {chars.map((c, i) =>
+            c === " " ? (
+              " "
+            ) : (
+              <ScrubChar
+                key={i}
+                char={c}
+                index={i}
+                total={chars.length}
+                progress={scrollYProgress}
+              />
+            )
+          )}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   DIVISIONS — hairline timeline rows
+───────────────────────────────────────────── */
+const DIVISIONS = [
+  {
+    no: "01",
+    title: "Build",
+    unit: "YugMinds Software",
+    desc: "Websites, mobile apps and business systems, shipped for clients worldwide.",
+  },
+  {
+    no: "02",
+    title: "Make",
+    unit: "YugMinds Manufacturing",
+    desc: "Workshops and factory lines turning engineered designs into volume.",
+  },
+  {
+    no: "03",
+    title: "Design",
+    unit: "YugMinds Hardware",
+    desc: "Electronics drawn, prototyped and taken to production in-house.",
+  },
+  {
+    no: "04",
+    title: "Research",
+    unit: "YugMinds Labs",
+    desc: "Where an untested idea earns its way into a real product.",
+  },
+  {
+    no: "05",
+    title: "Teach",
+    unit: "Robocoders™ EdTech",
+    desc: "Real hardware in classrooms — coding, robotics and AI for students.",
+    href: "/robocoders",
+  },
+];
+
+function Divisions() {
+  return (
+    <section id="divisions" className="bg-ym-cream py-28 md:py-40 overflow-hidden">
+      <div className="max-w-[92rem] mx-auto px-5 md:px-10">
+        <Reveal>
+          <Eyebrow className="text-ym-blue">Five divisions</Eyebrow>
+        </Reveal>
+        <MaskLines
+          className="mt-6 font-extrabold text-ym-text text-[2.2rem] sm:text-[3rem] md:text-[3.6rem] leading-[1.2]"
+          lines={[<>Five divisions. One company.</>]}
+        />
+
+        <Rule className="bg-ym-blue/40 mt-14" />
+
+        <div>
+          {DIVISIONS.map((d, i) => {
+            const Row = d.href ? motion.a : motion.div;
+            return (
+              <Row
+                key={d.no}
+                {...(d.href ? { href: d.href } : {})}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-8%" }}
+                transition={{ duration: 0.9, delay: i * 0.07, ease: EASE_OUT }}
+                className="group grid grid-cols-[3rem_1fr] md:grid-cols-[5rem_14rem_1fr_3rem] items-baseline md:items-center gap-x-4 md:gap-x-8 gap-y-2 py-8 md:py-9 border-b border-ym-text/12 transition-colors duration-500 hover:border-ym-blue/40"
+              >
+                <span
+                  className="font-semibold text-sm text-ym-muted tabular-nums"
+                  style={{ letterSpacing: "0.1em" }}
+                >
+                  {d.no}
+                </span>
+
+                <div className="md:col-auto">
+                  <h3 className="font-extrabold text-ym-text text-[1.9rem] md:text-[2.4rem] leading-none transition-colors duration-500 group-hover:text-ym-blue">
+                    {d.title}
+                  </h3>
+                  <Eyebrow className="mt-2.5 block text-ym-muted">
+                    {d.unit}
+                  </Eyebrow>
+                </div>
+
+                <p className="col-start-2 md:col-auto text-[1.05rem] md:text-[1.3rem] font-normal text-ym-text/70 leading-relaxed">
+                  {d.desc}
+                </p>
+
+                <span className="hidden md:flex justify-end text-ym-muted transition-all duration-500 group-hover:text-ym-blue group-hover:translate-x-1.5">
+                  <ArrowRight className="w-5 h-5" strokeWidth={1.1} />
+                </span>
+              </Row>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   NUMBERS
+───────────────────────────────────────────── */
+const STATS = [
+  { value: 200, suffix: "+", label: "Projects delivered" },
+  { value: 50, suffix: "+", label: "Clients worldwide" },
+  { value: 5, suffix: "", label: "Divisions under one roof" },
+  { value: 2024, suffix: "", label: "Established" },
+];
+
+function Numbers() {
+  return (
+    <section
+      className="relative py-28 md:py-40 overflow-hidden ym-grain"
+      style={{
+        background:
+          "radial-gradient(ellipse 80% 70% at 50% 40%, #2563EB 0%, #1E3A8A 48%, #020617 100%)",
+      }}
+    >
+      <div className="absolute inset-0 ym-rings opacity-60 pointer-events-none" />
+      <div className="relative max-w-[92rem] mx-auto px-5 md:px-10">
+        <Reveal className="text-center">
+          <Eyebrow className="text-ym-blue-soft/90">By the numbers</Eyebrow>
+        </Reveal>
+        <MaskLines
+          className="mt-6 text-center font-extrabold text-ym-cream text-[2rem] sm:text-[2.7rem] md:text-[3.3rem] leading-[1.22]"
+          lines={[
+            <>The more clients trust us,</>,
+            <>the more we build together.</>,
+          ]}
+        />
+
+        <div className="mt-20 grid grid-cols-2 lg:grid-cols-4">
+          {STATS.map((s, i) => (
+            <Reveal
+              key={s.label}
+              delay={i * 0.1}
+              className="px-4 py-8 md:px-8 text-center border-ym-cream/12 border-t lg:border-t-0 lg:border-l lg:first:border-l-0 [&:nth-child(-n+2)]:border-t-0 lg:[&:nth-child(-n+2)]:border-t-0"
+            >
+              <CountUp
+                value={s.value}
+                suffix={s.suffix}
+                className="block font-extrabold text-ym-cream text-[3rem] md:text-[4.2rem] leading-none tabular-nums"
+              />
+              <Eyebrow className="mt-5 block text-ym-cream/50">
+                {s.label}
+              </Eyebrow>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   WORK / JOURNAL
+───────────────────────────────────────────── */
+const STORIES = [
+  {
+    img: "/child-making-robot.jpg",
+    alt: "A student building a robot",
+    kicker: "Robocoders™",
+    title: "Hands-on robotics for every student",
+    desc: "Real hardware in classrooms, so students learn by building rather than watching.",
+    href: "/robocoders",
+  },
+  {
+    img: "/Kids Dong Robotics.png",
+    alt: "Students working on robotics together",
+    kicker: "Curriculum",
+    title: "From classroom to competition",
+    desc: "A structured STEM path that takes students from first circuits to national events.",
+    href: "/robocoders/programs",
+  },
+  {
+    img: "/images/landing/office-team.jpg",
+    alt: "The YugMinds team collaborating",
+    kicker: "Inside YugMinds",
+    title: "One team, many industries",
+    desc: "How a single team builds software, electronics and machines under one roof.",
+    href: "#about",
+  },
+];
+
+function Work() {
+  return (
+    <section id="work" className="bg-ym-cream py-28 md:py-40 overflow-hidden">
+      <div className="max-w-[92rem] mx-auto px-5 md:px-10">
+        <Reveal>
+          <Eyebrow className="text-ym-blue">The journal</Eyebrow>
+        </Reveal>
+        <MaskLines
+          className="mt-6 font-extrabold text-ym-text text-[2.2rem] sm:text-[3rem] md:text-[3.6rem] leading-[1.2]"
+          lines={[<>Explore our story.</>]}
+        />
+
+        <div className="mt-16 grid md:grid-cols-3 gap-10 md:gap-8">
+          {STORIES.map((s, i) => (
+            <motion.a
+              key={s.title}
+              href={s.href}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-10%" }}
+              transition={{ duration: 1, delay: i * 0.12, ease: EASE_OUT }}
+              className="group block"
+            >
+              <div className="relative aspect-[4/5] overflow-hidden bg-ym-sand">
+                <Image
+                  src={s.img}
+                  alt={s.alt}
+                  fill
+                  className="object-cover transition-transform duration-[1.2s] ease-out group-hover:scale-[1.06]"
+                  sizes="(max-width: 768px) 100vw, 33vw"
+                />
+                <span className="absolute inset-0 bg-ym-blue-deep/0 transition-colors duration-700 group-hover:bg-ym-blue-deep/15" />
+              </div>
+
+              <Eyebrow className="mt-7 block text-ym-blue">{s.kicker}</Eyebrow>
+              <h3 className="mt-3 font-bold text-ym-text text-[1.5rem] md:text-[1.8rem] leading-snug transition-colors duration-500 group-hover:text-ym-blue">
+                {s.title}
+              </h3>
+              <p className="mt-3 text-[1.05rem] font-normal text-ym-text/70 leading-relaxed">
+                {s.desc}
+              </p>
+              <span
+                className="mt-6 inline-flex items-center gap-2.5 font-semibold text-sm uppercase text-ym-blue"
+                style={{ letterSpacing: "0.1em" }}
+              >
+                Read more
+                <ArrowRight className="w-3.5 h-3.5 transition-transform duration-500 group-hover:translate-x-1.5" />
               </span>
             </motion.a>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   CONTACT / DETAILS
+───────────────────────────────────────────── */
+function Details() {
+  const rows = [
+    { k: "Email", v: "info@yugminds.org", href: "mailto:info@yugminds.org" },
+    { k: "Phone", v: "+91 85003 45655", href: "tel:+918500345655" },
+    { k: "Studio", v: "Begumpet, Hyderabad, Telangana, India" },
+    { k: "Founded", v: "2024 · YugMinds Private Limited" },
+  ];
+
+  return (
+    <section className="bg-ym-sand py-28 md:py-40 overflow-hidden">
+      <div className="max-w-[92rem] mx-auto px-5 md:px-10 grid md:grid-cols-[0.9fr_1.1fr] gap-14 md:gap-20">
+        <div>
+          <Reveal>
+            <Eyebrow className="text-ym-blue">Get in touch</Eyebrow>
           </Reveal>
+          <MaskLines
+            className="mt-6 font-extrabold text-ym-text text-[2.2rem] md:text-[3rem] leading-[1.2]"
+            lines={[<>Tell us what</>, <>you want built.</>]}
+          />
+        </div>
+
+        <div>
+          {rows.map((r, i) => (
+            <Reveal key={r.k} delay={i * 0.08}>
+              <div className="grid grid-cols-[7rem_1fr] md:grid-cols-[10rem_1fr] gap-4 items-baseline py-6 border-b border-ym-text/12">
+                <Eyebrow className="text-ym-muted">{r.k}</Eyebrow>
+                {r.href ? (
+                  <a
+                    href={r.href}
+                    className="text-[1.15rem] md:text-[1.4rem] font-semibold text-ym-text hover:text-ym-blue transition-colors"
+                  >
+                    {r.v}
+                  </a>
+                ) : (
+                  <span className="text-[1.15rem] md:text-[1.4rem] font-semibold text-ym-text">
+                    {r.v}
+                  </span>
+                )}
+              </div>
+            </Reveal>
+          ))}
         </div>
       </div>
     </section>
@@ -1095,180 +1109,137 @@ function LeadershipSection() {
 /* ─────────────────────────────────────────────
    FOOTER
 ───────────────────────────────────────────── */
-function YugmindsFooter() {
-  const cols = [
-    {
-      heading: "Services",
-      links: [
-        "Software Dev",
-        "Manufacturing",
-        "Hardware Engg",
-        "Research",
-        "EdTech",
-      ],
-    },
-    {
-      heading: "Divisions",
-      links: [
-        "Software",
-        "Manufacturing",
-        "Hardware",
-        "Robocoders™",
-        "Research Lab",
-      ],
-    },
-    {
-      heading: "About",
-      links: ["Our Story", "Leadership", "Careers", "News", "Partners"],
-    },
-  ];
+const FOOTER_COLS = [
+  {
+    heading: "Divisions",
+    links: [
+      { label: "Software", href: "#divisions" },
+      { label: "Manufacturing", href: "#divisions" },
+      { label: "Hardware", href: "#divisions" },
+      { label: "Research Labs", href: "#divisions" },
+      { label: "Robocoders™", href: "/robocoders" },
+    ],
+  },
+  {
+    heading: "The company",
+    links: [
+      { label: "Our story", href: "#about" },
+      { label: "The journal", href: "#work" },
+      { label: "Careers", href: "#contact" },
+      { label: "Partners", href: "#contact" },
+    ],
+  },
+  {
+    heading: "Robocoders™",
+    links: [
+      { label: "Programs", href: "/robocoders/programs" },
+      { label: "For schools", href: "/robocoders/for-schools" },
+      { label: "For parents", href: "/robocoders/for-parents" },
+      { label: "Student login", href: "/lms" },
+    ],
+  },
+];
 
+function Footer() {
   return (
-    <footer id="contact" className="bg-slate-950 pt-8 pb-8 relative overflow-hidden">
-      {/* faint oversized watermark */}
-      <p className="pointer-events-none select-none absolute -bottom-10 left-1/2 -translate-x-1/2 text-[9rem] md:text-[13rem] font-extrabold text-white/[0.025] whitespace-nowrap leading-none">
-        YugMinds
-      </p>
-
-      <div className="max-w-7xl mx-auto px-4 md:px-8 relative">
-        {/* CTA banner */}
-        <Reveal>
-          <div className="relative bg-gradient-to-br from-blue-600 to-blue-700 rounded-[2.5rem] px-8 md:px-14 py-12 md:py-14 mb-20 overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-2xl shadow-blue-900/30">
-            <motion.div
-              className="absolute -top-6 -left-6"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
-            >
-              <Seal className="w-24 h-24 text-blue-400/40" />
-            </motion.div>
-            <Floating duration={5} offset={6} className="absolute bottom-4 right-40 hidden lg:block">
-              <WaveMarks className="w-20 h-14 text-blue-400/40" />
-            </Floating>
-            <div className="absolute -bottom-16 -right-16 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl" />
-
-            <div className="relative z-10">
-              <h3 className="text-3xl md:text-4xl font-extrabold text-white mb-2">
-                Ready to get started?
-              </h3>
-              <p className="text-blue-100 text-sm md:text-base">
-                Let&apos;s build the future of your industry — together.
+    <footer id="contact" className="bg-ym-ink pt-20 pb-10 overflow-hidden">
+      <div className="max-w-[92rem] mx-auto px-5 md:px-10">
+        <Reveal className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div className="flex items-center gap-5">
+            <span className="w-16 h-16 border border-ym-cream/20 flex items-center justify-center shrink-0">
+              <LogoMark tint="#2563EB" className="w-9 h-9" />
+            </span>
+            <div>
+              <p
+                className="font-extrabold text-[1.35rem] text-ym-cream"
+                style={{ letterSpacing: "0.1em" }}
+              >
+                YUGMINDS
+              </p>
+              <p className="mt-1.5 text-[0.98rem] font-normal text-ym-cream/55">
+                Software, machines and education — Hyderabad, India
               </p>
             </div>
-            <motion.a
-              href="mailto:info@yugminds.org"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.97 }}
-              className="relative z-10 inline-flex items-center gap-2.5 bg-white text-blue-700 pl-7 pr-2.5 py-2.5 rounded-full font-bold text-sm shadow-lg group"
-            >
-              Join Us
-              <span className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center transition-transform duration-300 group-hover:rotate-45">
-                <ArrowRight className="w-4 h-4" />
-              </span>
-            </motion.a>
           </div>
+
+          <a
+            href="mailto:info@yugminds.org"
+            className="inline-flex items-center justify-center px-10 py-4 bg-ym-blue text-ym-cream font-semibold text-sm uppercase hover:bg-ym-blue-lit transition-colors duration-500"
+            style={{ letterSpacing: "0.12em" }}
+          >
+            Start a project
+          </a>
         </Reveal>
 
-        {/* Links grid */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-14">
-          {/* Brand column */}
-          <Reveal className="col-span-2 md:col-span-2">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="bg-white rounded-full p-1">
-                <Image
-                  src="/Yugminds_Official_Logo-preview.png"
-                  alt="YugMinds Logo"
-                  width={36}
-                  height={36}
-                  className="object-contain"
-                />
-              </div>
-              <span className="text-lg font-extrabold text-white">
-                YugMinds
-              </span>
-            </div>
-            <p className="text-slate-400 text-sm leading-relaxed max-w-xs mb-6">
-              We build software, electronics, and machines — and teach
-              students coding and robotics. Building tomorrow&apos;s
-              industries.
-            </p>
-            <div className="flex items-center gap-3">
-              {[
-                { icon: <Facebook className="w-4 h-4" />, label: "Facebook", hover: "hover:bg-blue-600" },
-                { icon: <Instagram className="w-4 h-4" />, label: "Instagram", hover: "hover:bg-pink-500" },
-                { icon: <Youtube className="w-4 h-4" />, label: "YouTube", hover: "hover:bg-red-500" },
-              ].map((s) => (
-                <motion.a
-                  key={s.label}
-                  href="#"
-                  aria-label={s.label}
-                  whileHover={{ scale: 1.12, y: -2 }}
-                  whileTap={{ scale: 0.95 }}
-                  className={`w-9 h-9 rounded-full bg-white/5 border border-white/10 text-slate-400 flex items-center justify-center transition-colors hover:text-white hover:border-transparent ${s.hover}`}
-                >
-                  {s.icon}
-                </motion.a>
-              ))}
-            </div>
-          </Reveal>
+        <Rule className="bg-ym-blue-soft/30 mt-14 mb-14" />
 
-          {cols.map((col, i) => (
-            <Reveal key={col.heading} delay={0.1 + i * 0.08}>
-              <h4 className="font-bold text-white text-sm mb-4">
-                {col.heading}
-              </h4>
-              <ul className="space-y-2.5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-8">
+          {FOOTER_COLS.map((col, i) => (
+            <Reveal key={col.heading} delay={i * 0.08}>
+              <Eyebrow className="text-ym-cream/40">{col.heading}</Eyebrow>
+              <ul className="mt-6 space-y-3.5">
                 {col.links.map((l) => (
-                  <li key={l}>
+                  <li key={l.label}>
                     <a
-                      href="#"
-                      className="group inline-flex items-center text-slate-400 text-sm hover:text-white transition-colors"
+                      href={l.href}
+                      className="text-[1.05rem] font-normal text-ym-cream/75 hover:text-ym-blue-soft transition-colors duration-400"
                     >
-                      <span className="relative">
-                        {l}
-                        <span className="absolute -bottom-0.5 left-0 h-px w-0 bg-blue-400 transition-all duration-300 group-hover:w-full" />
-                      </span>
+                      {l.label}
                     </a>
                   </li>
                 ))}
               </ul>
             </Reveal>
           ))}
+
+          <Reveal delay={0.24}>
+            <Eyebrow className="text-ym-cream/40">Contact</Eyebrow>
+            <ul className="mt-6 space-y-3.5">
+              <li>
+                <a
+                  href="mailto:info@yugminds.org"
+                  className="text-[1.05rem] font-normal text-ym-cream/75 hover:text-ym-blue-soft transition-colors"
+                >
+                  info@yugminds.org
+                </a>
+              </li>
+              <li>
+                <a
+                  href="tel:+918500345655"
+                  className="text-[1.05rem] font-normal text-ym-cream/75 hover:text-ym-blue-soft transition-colors"
+                >
+                  +91 85003 45655
+                </a>
+              </li>
+              <li className="text-[1.05rem] font-normal text-ym-cream/55 leading-relaxed">
+                Begumpet, Hyderabad,
+                <br />
+                Telangana, India
+              </li>
+            </ul>
+          </Reveal>
         </div>
 
-        {/* Contact strip */}
-        <Reveal>
-          <div className="flex flex-col md:flex-row flex-wrap gap-3 md:gap-4 mb-10">
-            {[
-              { icon: <Mail className="w-3.5 h-3.5" />, text: "info@yugminds.org" },
-              { icon: <Phone className="w-3.5 h-3.5" />, text: "+91 85003 45655" },
-              { icon: <MapPin className="w-3.5 h-3.5" />, text: "Begumpet, Hyderabad, Telangana, India." },
-            ].map((c) => (
-              <span
-                key={c.text}
-                className="flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-full pl-2 pr-4 py-2 text-slate-300 text-sm"
-              >
-                <span className="w-7 h-7 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center flex-shrink-0">
-                  {c.icon}
-                </span>
-                {c.text}
-              </span>
-            ))}
-          </div>
-        </Reveal>
+        <Rule className="bg-ym-cream/12 mt-16 mb-7" />
 
-        <hr className="border-white/10 mb-6" />
-
-        {/* Bottom bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-slate-500 text-xs">
-            © {new Date().getFullYear()} YugMinds Private Limited. All rights reserved.
-          </p>
-          <div className="flex gap-6 text-slate-400 text-xs">
-            <a href="#" className="hover:text-white transition-colors">
-              Terms &amp; Conditions
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+          <Eyebrow className="text-ym-cream/35">
+            © {new Date().getFullYear()} YugMinds Private Limited
+          </Eyebrow>
+          <div className="flex items-center gap-8">
+            <a href="#" className="font-semibold text-sm uppercase text-ym-cream/60 hover:text-ym-cream transition-colors" style={{ letterSpacing: "0.1em" }}>
+              Terms
             </a>
-            <a href="#" className="hover:text-white transition-colors">
-              Privacy Policy
+            <a href="#" className="font-semibold text-sm uppercase text-ym-cream/60 hover:text-ym-cream transition-colors" style={{ letterSpacing: "0.1em" }}>
+              Privacy
+            </a>
+            <a
+              href="#top"
+              className="group inline-flex items-center gap-2.5 font-semibold text-sm uppercase text-ym-cream/60 hover:text-ym-cream transition-colors"
+              style={{ letterSpacing: "0.1em" }}
+            >
+              Back to top
+              <ArrowUp className="w-3.5 h-3.5 transition-transform duration-500 group-hover:-translate-y-1" />
             </a>
           </div>
         </div>
@@ -1278,22 +1249,61 @@ function YugmindsFooter() {
 }
 
 /* ─────────────────────────────────────────────
-   PAGE EXPORT
+   PAGE
 ───────────────────────────────────────────── */
 export default function YugmindsHomePage() {
+  /* The intro plays once per tab, not on every client-side return to `/`.
+     useSyncExternalStore reads sessionStorage without a setState-in-effect:
+     the server snapshot is "already seen", so SSR markup never contains the
+     curtain and hydration stays clean. The flag is only written once the
+     curtain has finished, so re-reading it mid-animation can't cut it short. */
+  const introSeen = useSyncExternalStore(
+    () => () => {},
+    () => sessionStorage.getItem("ym-intro") === "1",
+    () => true,
+  );
+  const [introDone, setIntroDone] = useState(false);
+
+  const showPreloader = !introSeen && !introDone;
+  const revealed = introSeen || introDone;
+
+  useEffect(() => {
+    if (introSeen) return;
+    /* Browsers restore scroll on reload; without this the curtain would
+       lift onto the middle of the page instead of the hero. */
+    window.scrollTo(0, 0);
+    document.body.classList.add("ym-locked");
+    return () => document.body.classList.remove("ym-locked");
+  }, [introSeen]);
+
+  const finishIntro = () => {
+    document.body.classList.remove("ym-locked");
+    sessionStorage.setItem("ym-intro", "1");
+    setIntroDone(true);
+  };
+
   return (
-    <div className="min-h-screen scroll-smooth">
-      <ScrollProgressBar />
-      <BrandSwitcherBar />
-      <YugmindsNavbar />
-      <HeroSection />
-      <FeaturesSection />
-      <DivisionsSection />
-      <AboutSection />
-      <StatsSection />
-      <StoriesSection />
-      <LeadershipSection />
-      <YugmindsFooter />
-    </div>
+    /* The CSS prefers-reduced-motion block can't reach framer's inline
+       transforms — this makes every motion component here skip straight to
+       its end state for users who ask for reduced motion. */
+    <MotionConfig reducedMotion="user">
+      <div data-landing className="min-h-screen bg-ym-cream">
+        {showPreloader && <Preloader onDone={finishIntro} />}
+        <ScrollProgress />
+        <BrandSwitcherBar fixed editorial />
+        <Nav />
+        <main>
+          <Hero start={revealed} />
+          <Manifesto />
+          <Story />
+          <ScrubStatement />
+          <Divisions />
+          <Numbers />
+          <Work />
+          <Details />
+        </main>
+        <Footer />
+      </div>
+    </MotionConfig>
   );
 }

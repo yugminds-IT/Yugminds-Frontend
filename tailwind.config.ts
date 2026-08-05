@@ -24,6 +24,21 @@ const config: Config = {
         abeezee: ['var(--font-abeezee)', 'sans-serif'],
       },
       colors: {
+        /* Public landing page palette — blue / white / black only, no
+           accent color. "blue-soft" is the same brand blue family, just
+           light enough to stay visible where the background is already
+           mid-blue (hero, preloader, numbers band) — not a second hue. */
+        ym: {
+          cream: "#FFFFFF",
+          sand: "#F8FAFC",
+          ink: "#020617",
+          text: "#0F172A",
+          muted: "#64748B",
+          blue: "#2563EB",
+          "blue-deep": "#172554",
+          "blue-lit": "#1D4ED8",
+          "blue-soft": "#93C5FD",
+        },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
