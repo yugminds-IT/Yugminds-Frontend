@@ -166,12 +166,22 @@ export function loadFormData<T extends object>(
   formId: string,
   useSession = false
 ): T | null {
-  // First try Zustand store (fastest, in-memory)
+  // First try Zustand store (fastest, in-memory) — but this store persists
+  // to localStorage too (zustand `persist` middleware), so without a
+  // staleness check it returns drafts from days/weeks ago indefinitely,
+  // resurrecting old form data on a supposedly-fresh "Add New X" dialog.
+  // Same 24h cutoff as the raw localStorage path below.
+  const maxAge = 24 * 60 * 60 * 1000; // 24 hours
   if (typeof window !== 'undefined') {
     try {
-      const storeData = useFormStore.getState().getFormData<T>(formId);
-      if (storeData) {
-        return storeData;
+      const lastSaved = useFormStore.getState().getAutoSaveStatus(formId)?.lastSaved;
+      if (lastSaved && Date.now() - lastSaved > maxAge) {
+        useFormStore.getState().clearFormData(formId);
+      } else {
+        const storeData = useFormStore.getState().getFormData<T>(formId);
+        if (storeData) {
+          return storeData;
+        }
       }
     } catch {
       // Ignore store errors

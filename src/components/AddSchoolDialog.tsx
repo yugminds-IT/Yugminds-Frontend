@@ -93,10 +93,8 @@ interface SchoolFormData {
   sections_per_grade: Record<string, number>;
   
   // Joining Codes
-  code_generation_type: 'auto' | 'manual';
   usage_type: 'single' | 'multiple';
   max_uses: number | null;
-  manual_codes: Record<string, string>;
   generated_codes: Record<string, string>;
   disabled_codes: Record<string, boolean>;
   show_joining_codes: boolean;
@@ -162,10 +160,8 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     total_teachers_estimate: 0,
     sections_per_grade: {},
     // Joining code options
-    code_generation_type: 'auto',
     usage_type: 'multiple',
     max_uses: null,
-    manual_codes: {},
     generated_codes: {},
     disabled_codes: {},
     show_joining_codes: false
@@ -464,10 +460,8 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         total_students_estimate: formData.total_students_estimate,
         total_teachers_estimate: formData.total_teachers_estimate,
         sections_per_grade: formData.sections_per_grade,
-        code_generation_type: formData.code_generation_type,
         usage_type: formData.usage_type,
         max_uses: formData.max_uses,
-        manual_codes: formData.code_generation_type === 'manual' ? formData.manual_codes : null,
         generated_codes: formData.generated_codes,
         disabled_codes: formData.disabled_codes,
         show_joining_codes: formData.show_joining_codes,
@@ -1121,33 +1115,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                     </div>
                   ) : (
                     <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Code Generation Type</Label>
-                          <div className="flex space-x-4">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="radio"
-                                value="auto"
-                                checked={formData.code_generation_type === 'auto'}
-                                onChange={(e) => handleInputChange('code_generation_type', e.target.value)}
-                                className="text-blue-600"
-                              />
-                              <span className="text-sm">Automatic</span>
-                            </label>
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="radio"
-                                value="manual"
-                                checked={formData.code_generation_type === 'manual'}
-                                onChange={(e) => handleInputChange('code_generation_type', e.target.value)}
-                                className="text-blue-600"
-                              />
-                              <span className="text-sm">Manual</span>
-                            </label>
-                          </div>
-                        </div>
-
+                      <div className="grid grid-cols-1 gap-6">
                         <div className="space-y-2">
                           <Label className="text-sm font-medium">Usage Type</Label>
                           <div className="flex space-x-4">
