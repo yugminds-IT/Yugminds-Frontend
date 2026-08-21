@@ -70,6 +70,8 @@ interface Chapter {
   order_index?: number
   is_completed?: boolean
   is_unlocked?: boolean
+  unlocks_in_days?: number | null
+  lock_reason?: 'time' | 'sequential' | null
   content_count?: number
   completed_count?: number
   [key: string]: unknown

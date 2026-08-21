@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
-/* `editorial` matches the public landing page's cream/ink/gold theme.
+/* `editorial` matches the public landing page's cream/ink/blue theme.
    Everything else (Robocoders pages) keeps the original blue pill. */
 export default function BrandSwitcherBar({
   fixed = false,
@@ -42,7 +42,7 @@ export default function BrandSwitcherBar({
 
   const round = editorial ? "rounded-none" : "rounded-full";
   const labelCls = editorial
-    ? "font-jost text-[0.6rem] font-light uppercase tracking-[0.22em]"
+    ? "text-[0.6rem] font-light uppercase tracking-[0.22em]"
     : "text-xs font-semibold";
   const onColor = editorial ? "#F4EFE6" : "#ffffff";
   const offColor = editorial ? "#8A8578" : "#94a3b8";
@@ -51,7 +51,7 @@ export default function BrandSwitcherBar({
     <div
       className={`py-1.5 px-4 w-full h-9 flex items-center transition-opacity duration-300 ${
         editorial
-          ? "bg-ym-ink text-ym-cream border-b border-ym-gold/20"
+          ? "bg-ym-ink text-ym-cream border-b border-ym-cream/20"
           : "bg-slate-900 text-white"
       } ${fixed ? "fixed top-0 left-0 right-0 z-50" : ""} ${
         atTop ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
@@ -65,7 +65,7 @@ export default function BrandSwitcherBar({
         <span
           className={
             editorial
-              ? "font-jost text-[0.6rem] font-light uppercase tracking-[0.28em] text-ym-cream/40"
+              ? "text-[0.6rem] font-light uppercase tracking-[0.28em] text-ym-cream/40"
               : "text-xs text-slate-400 font-medium"
           }
         >

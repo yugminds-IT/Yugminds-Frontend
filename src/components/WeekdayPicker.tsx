@@ -21,8 +21,12 @@ export default function WeekdayPicker({
   allowedDays?: number[];
 }) {
   const toggle = (day: number) => {
-    if (allowedDays && !allowedDays.includes(day)) return;
-    const next = value.includes(day)
+    const isSelected = value.includes(day);
+    // A disallowed day can still be REMOVED (that's how a stale/legacy
+    // assignment — created before the school's operating days were
+    // restricted — gets fixed). Only block ADDING a new disallowed day.
+    if (allowedDays && !allowedDays.includes(day) && !isSelected) return;
+    const next = isSelected
       ? value.filter((d) => d !== day)
       : [...value, day];
     onChange(next.sort((a, b) => a - b));
@@ -37,7 +41,9 @@ export default function WeekdayPicker({
       <div className="flex flex-wrap gap-1.5">
         {WEEKDAY_DISPLAY_ORDER.map((day) => {
           const active = value.includes(day);
-          const disabled = allowedDays ? !allowedDays.includes(day) : false;
+          // Never disable an already-selected day — it must stay clickable
+          // so a stale/legacy assignment can be corrected by removing it.
+          const disabled = allowedDays ? !allowedDays.includes(day) && !active : false;
           return (
             <Button
               key={day}

@@ -6,7 +6,7 @@ import { useStudentAssignments } from '@/hooks/useStudentData'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { BookOpen, ChevronRight, FileText, AlertCircle } from 'lucide-react'
+import { BookOpen, ChevronRight, FileText, AlertCircle, Lock } from 'lucide-react'
 
 type AssignmentRow = {
   id: string
@@ -15,6 +15,8 @@ type AssignmentRow = {
   course_id?: string
   course_title?: string
   status?: string
+  is_locked?: boolean
+  unlocks_in_days?: number | null
 }
 
 export default function AssignmentHierarchyPage() {
@@ -105,28 +107,46 @@ export default function AssignmentHierarchyPage() {
                 </div>
               </div>
               <div className="space-y-3">
-                {c.items.map((a) => (
-                  <Link
-                    key={a.id}
-                    href={`/lms/student/assignments/${a.id}/view`}
-                    className="block rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="p-4 flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{a.title ?? 'Assignment'}</p>
-                        {a.description ? (
-                          <p className="text-sm text-gray-600 truncate">{a.description}</p>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <Badge variant="outline" className="capitalize">
-                          {a.status ?? 'not_started'}
+                {c.items.map((a) =>
+                  a.is_locked ? (
+                    <div
+                      key={a.id}
+                      className="block rounded-lg border border-gray-200 opacity-70 cursor-not-allowed"
+                      title={`Unlocks in ${a.unlocks_in_days} day${a.unlocks_in_days === 1 ? '' : 's'}`}
+                    >
+                      <div className="p-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <Lock className="h-4 w-4 text-gray-400 shrink-0" />
+                          <p className="font-medium text-gray-500 truncate">{a.title ?? 'Assignment'}</p>
+                        </div>
+                        <Badge variant="outline" className="text-gray-500 whitespace-nowrap">
+                          Unlocks in {a.unlocks_in_days}d
                         </Badge>
-                        <ChevronRight className="h-4 w-4 text-gray-400" />
                       </div>
                     </div>
-                  </Link>
-                ))}
+                  ) : (
+                    <Link
+                      key={a.id}
+                      href={`/lms/student/assignments/${a.id}/view`}
+                      className="block rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="p-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{a.title ?? 'Assignment'}</p>
+                          {a.description ? (
+                            <p className="text-sm text-gray-600 truncate">{a.description}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <Badge variant="outline" className="capitalize">
+                            {a.status ?? 'not_started'}
+                          </Badge>
+                          <ChevronRight className="h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+                    </Link>
+                  ),
+                )}
               </div>
             </Card>
           ))}

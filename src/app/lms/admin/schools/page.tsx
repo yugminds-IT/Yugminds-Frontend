@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { DEFAULT_OPERATING_DAYS } from "@/lib/weekday-utils";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,15 +23,12 @@ import {
   DialogTitle 
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import AddSchoolDialog from "@/components/AddSchoolDialog";
 import JoiningCodesDialog from "@/components/JoiningCodesDialog";
-import WeekdayPicker from "@/components/WeekdayPicker";
 import { adminApi, setAuthToken } from "@/lib/api";
 import { getSession } from "@/lib/session-utils";
 import { useAdminSchools, useInvalidateAdminSchools } from "@/hooks/useAdminSchools";
 import { toast } from "@/components/ui/toast";
-import { validatePasswordClient } from "@/lib/password-validation";
 import {
   SchoolManagementTable,
   type SchoolManagementRow,
@@ -223,7 +219,6 @@ function mapSchoolToRow(school: School): SchoolTableRow {
 
 export default function SchoolsManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingSchool, setEditingSchool] = useState<School | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [joiningCodesDialog, setJoiningCodesDialog] = useState<{isOpen: boolean, schoolId: string, schoolName: string}>({
     isOpen: false,
@@ -231,10 +226,7 @@ export default function SchoolsManagement() {
     schoolName: ''
   });
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editFormData, setEditFormData] = useState<
-    Partial<School> & { school_admin_new_password?: string }
-  >({});
-  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({});
+  const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [bulkDeleteTargets, setBulkDeleteTargets] = useState<SchoolTableRow[] | null>(null);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
@@ -322,111 +314,9 @@ export default function SchoolsManagement() {
     }
   };
 
-  const validateEditSchool = (): boolean => {
-    const err: Record<string, string> = {};
-    if (!editFormData.name?.trim()) err.name = "School name is required";
-    if (!editFormData.contact_email?.trim()) err.contact_email = "School email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.contact_email.trim())) {
-      err.contact_email = "Enter a valid email";
-    }
-    if (!editFormData.contact_phone?.trim()) err.contact_phone = "Phone is required";
-    if (!editFormData.address?.trim()) err.address = "Address is required";
-
-    const hadAdmin = !!(editingSchool?.school_admin_email?.trim());
-    const adminEmail = editFormData.school_admin_email?.trim() ?? "";
-    const adminName = editFormData.school_admin_name?.trim() ?? "";
-    const newPw = editFormData.school_admin_new_password?.trim() ?? "";
-    const touchingAdmin =
-      adminEmail !== "" || adminName !== "" || newPw !== "";
-    const adminIntent = hadAdmin || touchingAdmin;
-
-    if (adminIntent) {
-      if (!adminName) err.school_admin_name = "School admin name is required";
-      if (!adminEmail) err.school_admin_email = "School admin email is required";
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
-        err.school_admin_email = "Enter a valid admin email";
-      }
-      if (!hadAdmin && touchingAdmin && !newPw) {
-        err.school_admin_new_password = "Temporary password is required to create the first school admin";
-      }
-      if (newPw) {
-        const pe = validatePasswordClient(newPw);
-        if (pe) err.school_admin_new_password = pe;
-      }
-    }
-    setEditFieldErrors(err);
-    return Object.keys(err).length === 0;
-  };
-
   const handleEditSchool = (school: School) => {
-    setEditingSchool(school);
-    setEditFieldErrors({});
-    setEditFormData({
-      name: school.name,
-      contact_email: school.contact_email,
-      contact_phone: school.contact_phone,
-      address: school.address,
-      city: school.city || "",
-      state: school.state || "",
-      pincode: school.pincode || "",
-      affiliation_type: school.affiliation_type || "",
-      school_type: school.school_type || "",
-      established_year: school.established_year || new Date().getFullYear(),
-      total_students_estimate: school.total_students_estimate || 0,
-      total_teachers_estimate: school.total_teachers_estimate || 0,
-      grades_offered: school.grades_offered || [],
-      operating_days: school.operating_days && school.operating_days.length > 0 ? school.operating_days : DEFAULT_OPERATING_DAYS,
-      school_admin_name: school.school_admin_name || "",
-      school_admin_email: school.school_admin_email || "",
-      school_admin_new_password: "",
-    });
+    setEditingSchoolId(school.id);
     setEditDialogOpen(true);
-  };
-
-  const handleUpdateSchool = async () => {
-    if (!editingSchool) return;
-    if (!validateEditSchool()) return;
-
-    try {
-      setActionLoading(editingSchool.id);
-      const payload: Record<string, unknown> = {
-        name: editFormData.name,
-        contact_email: editFormData.contact_email,
-        contact_phone: editFormData.contact_phone,
-        address: editFormData.address,
-        city: editFormData.city,
-        state: editFormData.state,
-        pincode: editFormData.pincode,
-        affiliation_type: editFormData.affiliation_type,
-        school_type: editFormData.school_type,
-        established_year: editFormData.established_year,
-        total_students_estimate: editFormData.total_students_estimate,
-        total_teachers_estimate: editFormData.total_teachers_estimate,
-        grades_offered: editFormData.grades_offered,
-        operating_days: editFormData.operating_days,
-      };
-      const adminEmail = editFormData.school_admin_email?.trim();
-      const adminName = editFormData.school_admin_name?.trim();
-      const newPw = editFormData.school_admin_new_password?.trim();
-      if (adminEmail || adminName || newPw) {
-        payload.school_admin_email = adminEmail;
-        payload.school_admin_name = adminName;
-        if (newPw) payload.school_admin_new_password = newPw;
-      }
-
-      await adminApi.schools.update(editingSchool.id, payload);
-      await invalidateSchools();
-      setEditDialogOpen(false);
-      setEditingSchool(null);
-      setEditFormData({});
-      setEditFieldErrors({});
-      toast.success("School updated successfully.");
-    } catch (error) {
-      console.error("Error updating school:", error);
-      toast.error("Failed to update school. Please try again.");
-    } finally {
-      setActionLoading(null);
-    }
   };
 
   const requestDeleteSchoolRow = (row: SchoolTableRow) => {
@@ -576,233 +466,19 @@ export default function SchoolsManagement() {
         schoolName={joiningCodesDialog.schoolName}
       />
 
-      {/* Edit School Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
-                <DialogHeader>
-            <DialogTitle>Edit School Details</DialogTitle>
-                  <DialogDescription>
-              Update the school information and settings
-                  </DialogDescription>
-                </DialogHeader>
-            
-          <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                <Label htmlFor="edit-name">School Name *</Label>
-                    <Input
-                  id="edit-name"
-                  value={editFormData.name || ''}
-                  onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                      placeholder="Enter school name"
-                    />
-                  {editFieldErrors.name && <p className="text-sm text-red-500">{editFieldErrors.name}</p>}
-                  </div>
-                  <div className="space-y-2">
-                <Label htmlFor="edit-email">School Email *</Label>
-                    <Input
-                  id="edit-email"
-                      type="email"
-                  value={editFormData.contact_email || ''}
-                  onChange={(e) => setEditFormData({...editFormData, contact_email: e.target.value})}
-                      placeholder="info@school.edu"
-                    />
-                  {editFieldErrors.contact_email && <p className="text-sm text-red-500">{editFieldErrors.contact_email}</p>}
-                  </div>
-                  <div className="space-y-2">
-                <Label htmlFor="edit-phone">Contact Phone *</Label>
-                    <Input
-                  id="edit-phone"
-                  value={editFormData.contact_phone || ''}
-                  onChange={(e) => setEditFormData({...editFormData, contact_phone: e.target.value})}
-                      placeholder="+91 9876543210"
-                    />
-                  {editFieldErrors.contact_phone && <p className="text-sm text-red-500">{editFieldErrors.contact_phone}</p>}
-                  </div>
-                  <div className="space-y-2">
-                <Label htmlFor="edit-year">Established Year</Label>
-                    <Input
-                  id="edit-year"
-                      type="number"
-                  value={editFormData.established_year || ''}
-                  onChange={(e) => setEditFormData({...editFormData, established_year: parseInt(e.target.value) || new Date().getFullYear()})}
-                  placeholder="2024"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-              <Label htmlFor="edit-address">Address *</Label>
-                  <Textarea
-                id="edit-address"
-                value={editFormData.address || ''}
-                onChange={(e) => setEditFormData({...editFormData, address: e.target.value})}
-                placeholder="Enter complete address"
-                    rows={3}
-                  />
-                {editFieldErrors.address && <p className="text-sm text-red-500">{editFieldErrors.address}</p>}
-                </div>
 
-                <div className="border-t pt-6 space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    School administrator
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Leave the new password blank to keep the current password. To add the first admin, fill name, email, and a temporary password.
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-admin-name">Admin name</Label>
-                      <Input
-                        id="edit-admin-name"
-                        value={editFormData.school_admin_name || ""}
-                        onChange={(e) =>
-                          setEditFormData({ ...editFormData, school_admin_name: e.target.value })
-                        }
-                        placeholder="Administrator name"
-                      />
-                      {editFieldErrors.school_admin_name && (
-                        <p className="text-sm text-red-500">{editFieldErrors.school_admin_name}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-admin-email">Admin email</Label>
-                      <Input
-                        id="edit-admin-email"
-                        type="email"
-                        value={editFormData.school_admin_email || ""}
-                        onChange={(e) =>
-                          setEditFormData({ ...editFormData, school_admin_email: e.target.value })
-                        }
-                        placeholder="admin@school.edu"
-                      />
-                      {editFieldErrors.school_admin_email && (
-                        <p className="text-sm text-red-500">{editFieldErrors.school_admin_email}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="edit-admin-password">New password (optional)</Label>
-                      <Input
-                        id="edit-admin-password"
-                        type="password"
-                        value={editFormData.school_admin_new_password || ""}
-                        onChange={(e) =>
-                          setEditFormData({
-                            ...editFormData,
-                            school_admin_new_password: e.target.value,
-                          })
-                        }
-                        placeholder="Only if resetting admin password"
-                        autoComplete="new-password"
-                      />
-                      {editFieldErrors.school_admin_new_password && (
-                        <p className="text-sm text-red-500">{editFieldErrors.school_admin_new_password}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                <Label htmlFor="edit-city">City</Label>
-                    <Input
-                  id="edit-city"
-                  value={editFormData.city || ''}
-                  onChange={(e) => setEditFormData({...editFormData, city: e.target.value})}
-                  placeholder="Enter city"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                <Label htmlFor="edit-state">State</Label>
-                    <Input
-                  id="edit-state"
-                  value={editFormData.state || ''}
-                  onChange={(e) => setEditFormData({...editFormData, state: e.target.value})}
-                  placeholder="Enter state"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                <Label htmlFor="edit-pincode">Pincode</Label>
-                  <Input
-                  id="edit-pincode"
-                  value={editFormData.pincode || ''}
-                  onChange={(e) => setEditFormData({...editFormData, pincode: e.target.value})}
-                  placeholder="123456"
-                  />
-                </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Operating Days</Label>
-              <WeekdayPicker
-                idPrefix="edit_school_operating_days"
-                value={editFormData.operating_days ?? DEFAULT_OPERATING_DAYS}
-                onChange={(days) => setEditFormData({ ...editFormData, operating_days: days })}
-              />
-              <p className="text-xs text-gray-400">
-                Which days this school holds classes — constrains teacher working days and Class Scheduling.
-              </p>
-            </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                <Label htmlFor="edit-affiliation">Affiliation Type</Label>
-                    <Input
-                  id="edit-affiliation"
-                  value={editFormData.affiliation_type || ''}
-                  onChange={(e) => setEditFormData({...editFormData, affiliation_type: e.target.value})}
-                  placeholder="CBSE, ICSE, etc."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                <Label htmlFor="edit-type">School Type</Label>
-                    <Input
-                  id="edit-type"
-                  value={editFormData.school_type || ''}
-                  onChange={(e) => setEditFormData({...editFormData, school_type: e.target.value})}
-                  placeholder="Private, Public, etc."
-                    />
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                <Label htmlFor="edit-students">Total Students (Estimate)</Label>
-                    <Input
-                  id="edit-students"
-                      type="number"
-                  value={editFormData.total_students_estimate || ''}
-                  onChange={(e) => setEditFormData({...editFormData, total_students_estimate: parseInt(e.target.value) || 0})}
-                  placeholder="100"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                <Label htmlFor="edit-teachers">Total Teachers (Estimate)</Label>
-                    <Input
-                  id="edit-teachers"
-                      type="number"
-                  value={editFormData.total_teachers_estimate || ''}
-                  onChange={(e) => setEditFormData({...editFormData, total_teachers_estimate: parseInt(e.target.value) || 0})}
-                  placeholder="10"
-                    />
-                  </div>
-                </div>
-          </div>
-            
-                <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                    Cancel
-                  </Button>
-              <Button 
-              onClick={handleUpdateSchool}
-              disabled={actionLoading === editingSchool?.id}
-              >
-              {actionLoading === editingSchool?.id ? 'Updating...' : 'Update School'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+      {/* Edit School Dialog — same wizard as Add New School, prefilled */}
+      <AddSchoolDialog
+        isOpen={editDialogOpen}
+        editingSchoolId={editingSchoolId}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setEditingSchoolId(null);
+        }}
+        onSuccess={() => {
+          void invalidateSchools();
+        }}
+      />
 
       <Dialog open={deleteTargetId !== null} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
         <DialogContent className="bg-white sm:max-w-md">

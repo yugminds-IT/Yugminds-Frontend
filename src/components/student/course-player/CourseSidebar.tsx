@@ -28,6 +28,8 @@ interface Chapter {
   order_index?: number
   is_completed?: boolean
   is_unlocked?: boolean
+  unlocks_in_days?: number | null
+  lock_reason?: 'time' | 'sequential' | null
   content_count?: number
   completed_count?: number
 }
@@ -169,7 +171,13 @@ export default function CourseSidebar({
                   toggleChapter(chapter.id)
                   onChapterSelect?.(chapter.id)
                 }}
-                title={isLocked ? 'Complete the previous module to unlock' : undefined}
+                title={
+                  isLocked
+                    ? chapter.lock_reason === 'time'
+                      ? `Unlocks in ${chapter.unlocks_in_days} day${chapter.unlocks_in_days === 1 ? '' : 's'}`
+                      : 'Complete the previous module to unlock'
+                    : undefined
+                }
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-0.5">
@@ -187,6 +195,16 @@ export default function CourseSidebar({
                   >
                     {chapter.name || chapter.title || `Chapter ${moduleNum}`}
                   </p>
+                  {isLocked && chapter.lock_reason === 'time' && (
+                    <p className="text-[11px] text-amber-600 font-medium mt-0.5">
+                      Unlocks in {chapter.unlocks_in_days} day{chapter.unlocks_in_days === 1 ? '' : 's'}
+                    </p>
+                  )}
+                  {isLocked && chapter.lock_reason === 'sequential' && (
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      Complete the previous module to unlock
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
                   {isLocked ? (

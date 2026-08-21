@@ -21,6 +21,7 @@ export type TeacherManagementTableProps<T extends TeacherManagementRow = Teacher
     onView: (row: T) => void;
     onEdit: (row: T) => void;
     onDelete: (row: T) => void;
+    onCopyAssignment?: (row: T) => void;
     onBulkDeleteSelected?: (rows: T[]) => void;
     resetSelectionKey?: number;
     renderSchoolsCell: (row: T) => ReactNode;
@@ -36,6 +37,7 @@ export function TeacherManagementTable<T extends TeacherManagementRow>({
   onView,
   onEdit,
   onDelete,
+  onCopyAssignment,
   onBulkDeleteSelected,
   resetSelectionKey,
   renderSchoolsCell,
@@ -53,6 +55,15 @@ export function TeacherManagementTable<T extends TeacherManagementRow>({
     () => [
       { id: "view", label: "View", onClick: onView },
       { id: "edit", label: "Edit", onClick: onEdit },
+      ...(onCopyAssignment
+        ? [
+            {
+              id: "copy-assignment",
+              label: "Copy school assignment…",
+              onClick: onCopyAssignment,
+            },
+          ]
+        : []),
       {
         id: "delete",
         label: "Delete",
@@ -60,7 +71,7 @@ export function TeacherManagementTable<T extends TeacherManagementRow>({
         onClick: onDelete,
       },
     ],
-    [onView, onEdit, onDelete],
+    [onView, onEdit, onCopyAssignment, onDelete],
   );
 
   return (

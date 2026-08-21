@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -8,8 +8,6 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Badge } from "../ui/badge";
 import { Alert, AlertDescription } from "../ui/alert";
 import {
   Save,
@@ -24,7 +22,6 @@ import {
 import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
 import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
-import { adminApi } from "../../lib/api/admin.api";
 import { generateUUID } from "../../lib/uuid-utils";
 
 export interface Chapter {
@@ -81,9 +78,6 @@ interface CourseFromAPI {
   course_name?: string;
   title?: string;
   description?: string;
-  duration_weeks?: number;
-  prerequisites_course_ids?: string[];
-  prerequisites_text?: string;
   thumbnail_url?: string;
   school_ids?: string[];
   grades?: string[];
@@ -92,7 +86,8 @@ interface CourseFromAPI {
   assignments?: AssignmentFromAPI[];
   chapter_contents?: ChapterContentFromAPI[];
   videos?: VideoFromAPI[];
-  difficulty_level?: string;
+  /** Drip schedule: chapter K unlocks K * this many days after enrollment. null/0 = no drip. */
+  chapter_unlock_interval_days?: number | null;
   [key: string]: unknown;
 }
 
@@ -100,11 +95,8 @@ interface CourseData {
   id: string;
   name: string;
   description?: string;
-  duration_weeks?: number;
-  prerequisites_course_ids?: string[];
-  prerequisites_text?: string;
   thumbnail_url?: string;
-  difficulty_level?: string;
+  chapter_unlock_interval_days?: number;
   chapters: Chapter[];
   assignments?: AssignmentFromAPI[];
   videos?: Array<{ chapter_id: string; title: string; video_url: string; duration?: number }>;
@@ -140,6 +132,67 @@ function normalizeContent(
   };
 }
 
+function computeInitialChapterContents(
+  course: CourseFromAPI
+): Record<string, ChapterContent[]> {
+  const contents: Record<string, ChapterContent[]> = {};
+
+  (course.chapters || []).forEach((ch: Chapter) => {
+    if (!ch.id) return;
+    const nested = ch.contents || [];
+    contents[ch.id] = nested.map((c) => normalizeContent(c, ch.id!));
+  });
+
+  const totalNested = Object.values(contents).reduce((s, a) => s + a.length, 0);
+  if (totalNested === 0 && course.chapter_contents) {
+    course.chapter_contents.forEach((c) => {
+      const cid = c.chapter_id;
+      if (!cid) return;
+      if (!contents[cid]) contents[cid] = [];
+      contents[cid].push(normalizeContent(c, cid));
+    });
+  }
+
+  return contents;
+}
+
+function computeInitialAssignments(course: CourseFromAPI): Record<string, Assignment> {
+  const chaptersToUse = course.chapters || [];
+  const apiAssignments = course.assignments || [];
+  const result: Record<string, Assignment> = {};
+
+  apiAssignments.forEach((a: AssignmentFromAPI) => {
+    let chapterId = a.chapter_id || null;
+
+    // Fallback: parse from config for old data
+    if (!chapterId && a.config) {
+      try {
+        const cfg = typeof a.config === "string" ? JSON.parse(a.config) : a.config;
+        chapterId = cfg.chapter_id || null;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!chapterId) return;
+
+    const matchingChapter = chaptersToUse.find((ch) => ch.id === chapterId);
+    const key = matchingChapter?.id || chapterId;
+
+    result[key] = {
+      id: a.id,
+      chapter_id: key,
+      title: a.title || "",
+      description: a.description || "",
+      max_score: a.max_score ?? a.max_marks ?? 100,
+      auto_grading_enabled: a.auto_grading_enabled ?? false,
+      questions: (a.questions as Assignment["questions"]) || [],
+    };
+  });
+
+  return result;
+}
+
 function dedupeChapters(chapters: Chapter[]): Chapter[] {
   const seen = new Set<string>();
   return chapters.reduce<Chapter[]>((acc, ch) => {
@@ -161,111 +214,29 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
   const [basicInfo, setBasicInfo] = useState({
     name: course.name || "",
     description: course.description || "",
-    duration_weeks: course.duration_weeks?.toString() || "",
-    prerequisites_text: course.prerequisites_text || "",
-    prerequisites_course_ids: course.prerequisites_course_ids || [] as string[],
     thumbnail_url: course.thumbnail_url || "",
-    difficulty_level: course.difficulty_level || "Beginner",
+    chapter_unlock_interval_days: course.chapter_unlock_interval_days?.toString() || "",
   });
-
-  const [allCourses, setAllCourses] = useState<Array<{ id: string; name: string }>>([]);
-  useEffect(() => {
-    adminApi.courses.list().then(({ data }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const list = (data as any)?.courses ?? (Array.isArray(data) ? data : []);
-      setAllCourses(
-        (list as Array<{ id: string; title?: string; name?: string }>)
-          .filter((c) => c.id !== course.id)
-          .map((c) => ({ id: c.id, name: c.title ?? c.name ?? c.id }))
-      );
-    }).catch(() => {});
-  }, [course.id]);
 
   const [chapters, setChapters] = useState<Chapter[]>(() =>
     dedupeChapters(course.chapters || [])
   );
   const [pendingDeleteChapterIndex, setPendingDeleteChapterIndex] = useState<number | null>(null);
 
-  const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>({});
-  const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
+  // Seeded once from the initial `course` prop (CourseEditor is remounted
+  // fresh per edit session, see admin/courses/page.tsx). Must NOT be a
+  // useEffect keyed off `course`/`chapters`: chapters state changes on every
+  // add/delete/reorder, and re-deriving these from the original prop on each
+  // of those changes silently wiped unsaved content/assignment edits.
+  const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>(
+    () => computeInitialChapterContents(course)
+  );
+  const [assignments, setAssignments] = useState<Record<string, Assignment>>(() =>
+    computeInitialAssignments(course)
+  );
   const [videos, setVideos] = useState<
     Array<{ chapter_id: string; title: string; video_url: string; duration?: number }>
   >([]);
-
-  // Load chapter contents from nested chapters or top-level chapter_contents
-  const loadChapterContents = useCallback(() => {
-    const chaptersToUse = course.chapters || chapters;
-    const contents: Record<string, ChapterContent[]> = {};
-
-    chaptersToUse.forEach((ch: Chapter) => {
-      if (!ch.id) return;
-      const nested = ch.contents || [];
-      contents[ch.id] = nested.map((c) => normalizeContent(c, ch.id!));
-    });
-
-    const totalNested = Object.values(contents).reduce((s, a) => s + a.length, 0);
-    if (totalNested === 0 && course.chapter_contents) {
-      course.chapter_contents.forEach((c) => {
-        const cid = c.chapter_id;
-        if (!cid) return;
-        if (!contents[cid]) contents[cid] = [];
-        contents[cid].push(normalizeContent(c, cid));
-      });
-    }
-
-    setChapterContents(contents);
-  }, [course.chapters, course.chapter_contents, chapters]);
-
-  // Load assignments: group by chapter_id
-  const loadAssignments = useCallback(() => {
-    const chaptersToUse = course.chapters || chapters;
-    const apiAssignments = course.assignments || [];
-    const result: Record<string, Assignment> = {};
-
-    apiAssignments.forEach((a: AssignmentFromAPI) => {
-      let chapterId = a.chapter_id || null;
-
-      // Fallback: parse from config for old data
-      if (!chapterId && a.config) {
-        try {
-          const cfg =
-            typeof a.config === "string" ? JSON.parse(a.config) : a.config;
-          chapterId = cfg.chapter_id || null;
-        } catch {
-          // ignore
-        }
-      }
-
-      if (!chapterId) return;
-
-      const matchingChapter = chaptersToUse.find((ch) => ch.id === chapterId);
-      const key = matchingChapter?.id || chapterId;
-
-      result[key] = {
-        id: a.id,
-        chapter_id: key,
-        title: a.title || "",
-        description: a.description || "",
-        max_score: a.max_score ?? a.max_marks ?? 100,
-        auto_grading_enabled: a.auto_grading_enabled ?? false,
-        questions: (a.questions as Assignment["questions"]) || [],
-      };
-    });
-
-    setAssignments(result);
-  }, [course.assignments, course.chapters, chapters]);
-
-  useEffect(() => {
-    setChapters(dedupeChapters(course.chapters || []));
-  }, [course.chapters]);
-
-  useEffect(() => {
-    loadChapterContents();
-  }, [loadChapterContents]);
-
-  useEffect(() => {
-    loadAssignments();
-  }, [loadAssignments]);
 
   useEffect(() => {
     if (course.videos && Array.isArray(course.videos)) {
@@ -368,16 +339,15 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
         id: course.id,
         name: basicInfo.name.trim(),
         description: basicInfo.description || undefined,
-        duration_weeks: basicInfo.duration_weeks
-          ? parseInt(basicInfo.duration_weeks)
-          : undefined,
-        prerequisites_course_ids:
-          basicInfo.prerequisites_course_ids.length > 0
-            ? basicInfo.prerequisites_course_ids
-            : undefined,
-        prerequisites_text: basicInfo.prerequisites_text || undefined,
         thumbnail_url: basicInfo.thumbnail_url || undefined,
-        difficulty_level: basicInfo.difficulty_level || "Beginner",
+        // Always sent explicitly (0 when cleared, not undefined) — unlike
+        // the other optional fields above, the backend only touches this
+        // column when the key is present at all, so omitting it would make
+        // clearing the field in this editor silently no-op instead of
+        // actually turning drip off.
+        chapter_unlock_interval_days: basicInfo.chapter_unlock_interval_days
+          ? parseInt(basicInfo.chapter_unlock_interval_days)
+          : 0,
         chapters: chapters.map((ch) => ({ ...ch, name: ch.name.trim() })),
         chapter_contents: Object.entries(chapterContents).flatMap(
           ([chapterId, contents]) =>
@@ -473,101 +443,6 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="duration">Duration (weeks)</Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    min="1"
-                    value={basicInfo.duration_weeks}
-                    onChange={(e) =>
-                      setBasicInfo({ ...basicInfo, duration_weeks: e.target.value })
-                    }
-                    placeholder="e.g., 8"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="difficulty">Difficulty Level</Label>
-                  <Select
-                    value={basicInfo.difficulty_level}
-                    onValueChange={(value) =>
-                      setBasicInfo({
-                        ...basicInfo,
-                        difficulty_level: value as "Beginner" | "Intermediate" | "Advanced",
-                      })
-                    }
-                  >
-                    <SelectTrigger id="difficulty">
-                      <SelectValue placeholder="Select difficulty level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Beginner">Beginner</SelectItem>
-                      <SelectItem value="Intermediate">Intermediate</SelectItem>
-                      <SelectItem value="Advanced">Advanced</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div>
-                <Label>Prerequisites</Label>
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="prerequisites-text" className="text-sm font-normal">
-                      Prerequisites Description
-                    </Label>
-                    <Textarea
-                      id="prerequisites-text"
-                      value={basicInfo.prerequisites_text}
-                      onChange={(e) =>
-                        setBasicInfo({ ...basicInfo, prerequisites_text: e.target.value })
-                      }
-                      placeholder="e.g., Basic programming knowledge recommended"
-                      rows={2}
-                    />
-                  </div>
-                  {allCourses.length > 0 && (
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-normal">Prerequisite Courses</Label>
-                      <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-1.5">
-                        {allCourses.map((c) => {
-                          const checked = basicInfo.prerequisites_course_ids.includes(c.id);
-                          return (
-                            <label key={c.id} className="flex items-center gap-2 cursor-pointer text-sm">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => {
-                                  const ids = e.target.checked
-                                    ? [...basicInfo.prerequisites_course_ids, c.id]
-                                    : basicInfo.prerequisites_course_ids.filter((id) => id !== c.id);
-                                  setBasicInfo({ ...basicInfo, prerequisites_course_ids: ids });
-                                }}
-                                className="rounded"
-                              />
-                              <span>{c.name}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      {basicInfo.prerequisites_course_ids.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {basicInfo.prerequisites_course_ids.map((id) => {
-                            const c = allCourses.find((x) => x.id === id);
-                            return c ? (
-                              <Badge key={id} variant="secondary" className="text-xs">
-                                {c.name}
-                              </Badge>
-                            ) : null;
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
               <div>
                 <Label>Course Thumbnail</Label>
                 <FileUploadZone
@@ -611,6 +486,50 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-md border p-3 space-y-2">
+                <Label htmlFor="edit_chapter_unlock_interval_days" className="text-sm font-medium">
+                  Chapter release schedule
+                </Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    id="edit_chapter_unlock_interval_days"
+                    type="number"
+                    min="0"
+                    className="w-28"
+                    placeholder="0"
+                    value={basicInfo.chapter_unlock_interval_days}
+                    onChange={(e) =>
+                      setBasicInfo({ ...basicInfo, chapter_unlock_interval_days: e.target.value })
+                    }
+                  />
+                  <span className="text-sm text-gray-500">day(s) between each chapter unlocking</span>
+                  <div className="flex gap-1 ml-2">
+                    {[
+                      { label: "Daily", value: "1" },
+                      { label: "Weekly", value: "7" },
+                      { label: "Every 2 weeks", value: "14" },
+                    ].map((preset) => (
+                      <Button
+                        key={preset.value}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setBasicInfo({ ...basicInfo, chapter_unlock_interval_days: preset.value })
+                        }
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  {basicInfo.chapter_unlock_interval_days && Number(basicInfo.chapter_unlock_interval_days) > 0
+                    ? `Chapter 1 unlocks at enrollment; each later chapter unlocks ${basicInfo.chapter_unlock_interval_days} day(s) after enrollment, per chapter position — but only once the previous chapter is also completed. Applies immediately to every enrolled student.`
+                    : "No drip — chapters unlock as soon as the previous one is completed."}
+                </p>
+              </div>
+
               {chapters.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <p>No chapters added yet</p>

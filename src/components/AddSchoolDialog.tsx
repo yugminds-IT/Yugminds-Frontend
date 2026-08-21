@@ -57,6 +57,8 @@ interface AddSchoolDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** When set, the dialog edits this existing school instead of creating a new one. */
+  editingSchoolId?: string | null;
 }
 
 interface SchoolFormData {
@@ -121,10 +123,15 @@ const schoolTypes = [
   'Public', 'Private', 'Government', 'Semi-Government', 'International', 'Montessori'
 ];
 
-export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoolDialogProps) {
+export default function AddSchoolDialog({ isOpen, onClose, onSuccess, editingSchoolId }: AddSchoolDialogProps) {
+  const isEditMode = !!editingSchoolId;
   const [loading, setLoading] = useState(false);
   const [currentTab, setCurrentTab] = useState<'basic' | 'operating-days' | 'admin' | 'academic' | 'sections' | 'codes'>('basic');
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+  // Whether the school already had an admin when we loaded it (edit mode) —
+  // an existing admin's name/email/phone stay optional to re-submit; a new
+  // password is only required if this is false or the admin actively types one.
+  const [hadAdmin, setHadAdmin] = useState(false);
   
   // Load saved form data
   const _savedFormData = typeof window !== 'undefined' && isOpen
@@ -173,44 +180,90 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   const [createdCodesOpen, setCreatedCodesOpen] = useState(false);
   const [createdCodesMap, setCreatedCodesMap] = useState<Record<string, string>>({});
 
-  // Auto-save form data while dialog is open
+  // Auto-save form data while dialog is open — skipped in edit mode so an
+  // unrelated leftover creation draft never gets restored into (or
+  // overwritten from) an edit session.
   const { clearSavedData } = useAutoSaveForm({
     formId: 'add-school-dialog-form',
     formData: { ...formData, currentTab, generated_codes: generatedCodes } as Record<string, unknown>,
-    autoSave: isOpen, // Only auto-save when dialog is open
+    autoSave: isOpen && !isEditMode,
     autoSaveInterval: 2000,
     debounceDelay: 500,
     useSession: false,
     markDirty: true,
   });
 
+  const [editLoading, setEditLoading] = useState(false);
+
   // Load saved data or reset form when dialog opens/closes
   useEffect(() => {
-    if (isOpen) {
-      // Try to load saved data
-      const saved = loadFormData<SchoolFormData & { currentTab?: string }>('add-school-dialog-form');
-      if (saved) {
-        // Merge over the current default shape (not a wholesale replace) so a
-        // draft saved before a field like `sections_per_grade` existed still
-        // gets a safe default instead of `undefined`.
-        setFormData({ ...initialFormData, ...saved, sections_per_grade: saved.sections_per_grade ?? {} });
-        setErrors({});
-        setGeneratedCodes(saved.generated_codes || {});
-        if (saved.currentTab && ['basic', 'operating-days', 'admin', 'academic', 'sections', 'codes'].includes(saved.currentTab)) {
-          setCurrentTab(saved.currentTab as 'basic' | 'operating-days' | 'admin' | 'academic' | 'sections' | 'codes');
-        }
-      } else {
-        setFormData(initialFormData);
-        setErrors({});
-        setGeneratedCodes({});
-        setCurrentTab('basic');
+    if (!isOpen) return;
+    if (isEditMode) return; // handled by the edit-mode fetch effect below
+    // Try to load saved data
+    const saved = loadFormData<SchoolFormData & { currentTab?: string }>('add-school-dialog-form');
+    if (saved) {
+      // Merge over the current default shape (not a wholesale replace) so a
+      // draft saved before a field like `sections_per_grade` existed still
+      // gets a safe default instead of `undefined`.
+      setFormData({ ...initialFormData, ...saved, sections_per_grade: saved.sections_per_grade ?? {} });
+      setErrors({});
+      setGeneratedCodes(saved.generated_codes || {});
+      if (saved.currentTab && ['basic', 'operating-days', 'admin', 'academic', 'sections', 'codes'].includes(saved.currentTab)) {
+        setCurrentTab(saved.currentTab as 'basic' | 'operating-days' | 'admin' | 'academic' | 'sections' | 'codes');
       }
     } else {
-      // Clear saved data when dialog closes (optional - can keep for recovery)
-      // clearFormData('add-school-dialog-form');
+      setFormData(initialFormData);
+      setErrors({});
+      setGeneratedCodes({});
+      setCurrentTab('basic');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- initialFormData is stable, only reset when isOpen changes
-  }, [isOpen]);
+  }, [isOpen, isEditMode]);
+
+  // Edit mode: fetch the real current school and prefill every tab.
+  useEffect(() => {
+    if (!isOpen || !editingSchoolId) return;
+    setErrors({});
+    setCurrentTab('basic');
+    setEditLoading(true);
+    adminApi.schools.get(editingSchoolId)
+      .then((res) => {
+        const s = (res.data as { data?: Record<string, unknown> })?.data ?? (res.data as Record<string, unknown>);
+        const grades = Array.isArray(s.grades) ? (s.grades as Array<{ name: string; sections?: unknown[] }>) : [];
+        const sections_per_grade: Record<string, number> = {};
+        grades.forEach((g) => { sections_per_grade[g.name] = Array.isArray(g.sections) ? g.sections.length : 1; });
+        const adminEmail = (s.school_admin_email as string | null) ?? '';
+        setHadAdmin(!!adminEmail);
+        setFormData({
+          ...initialFormData,
+          name: (s.name as string) ?? '',
+          contact_email: (s.email as string) ?? '',
+          contact_phone: (s.phone as string) ?? '',
+          established_year: (s.establishedYear as number) ?? new Date().getFullYear(),
+          address: (s.address as string) ?? '',
+          city: (s.city as string) ?? '',
+          state: (s.state as string) ?? '',
+          pincode: (s.pincode as string) ?? '',
+          affiliation_type: (s.affiliationType as string) ?? '',
+          school_type: (s.schoolType as string) ?? '',
+          operating_days: Array.isArray(s.operatingDays) ? (s.operatingDays as number[]) : DEFAULT_OPERATING_DAYS,
+          school_admin_name: (s.school_admin_name as string) ?? '',
+          school_admin_email: adminEmail,
+          school_admin_phone: (s.school_admin_phone as string) ?? '',
+          school_admin_temp_password: '',
+          principal_name: (s.principalName as string) ?? '',
+          principal_phone: '',
+          grades_offered: grades.map((g) => g.name),
+          total_students_estimate: (s.totalStudentsEstimate as number) ?? 0,
+          total_teachers_estimate: (s.totalTeachersEstimate as number) ?? 0,
+          sections_per_grade,
+        });
+      })
+      .catch(() => {
+        toast.error('Could not load school details.');
+      })
+      .finally(() => setEditLoading(false));
+  }, [isOpen, editingSchoolId]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -226,22 +279,34 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
   const getIncompleteTabs = (): Array<'basic' | 'admin' | 'academic'> => {
     const incomplete: Array<'basic' | 'admin' | 'academic'> = [];
 
+    // principal_phone isn't persisted on the backend at all (never was, even
+    // at creation), so edit mode can never prefill it — don't block saving
+    // on a field that's thrown away either way.
     const basicOk =
       !!formData.name.trim() &&
       !!formData.contact_email.trim() &&
       !!formData.contact_phone.trim() &&
       !!formData.address.trim() &&
       !!formData.principal_name.trim() &&
-      !!formData.principal_phone.trim();
+      (isEditMode || !!formData.principal_phone.trim());
     if (!basicOk) incomplete.push('basic');
 
     const pw = formData.school_admin_temp_password.trim();
-    const pwOk = pw.length > 0 && !validatePasswordClient(pw);
-    const adminOk =
-      !!formData.school_admin_name.trim() &&
-      !!formData.school_admin_email.trim() &&
-      !!formData.school_admin_phone.trim() &&
-      pwOk;
+    const newPwOk = pw.length > 0 && !validatePasswordClient(pw);
+    let adminOk: boolean;
+    if (isEditMode && hadAdmin) {
+      // Existing admin — name/email/phone are already real; a new password
+      // is optional (blank means "keep current"), but if typed it must pass.
+      adminOk = pw.length === 0 || newPwOk;
+    } else {
+      // Creating the first admin (fresh school, or edit-mode school with no
+      // admin yet) always needs the core fields + a real password.
+      adminOk =
+        !!formData.school_admin_name.trim() &&
+        !!formData.school_admin_email.trim() &&
+        !!formData.school_admin_phone.trim() &&
+        newPwOk;
+    }
     if (!adminOk) incomplete.push('admin');
 
     if (formData.grades_offered.length === 0) incomplete.push('academic');
@@ -266,24 +331,31 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
     
     // Principal Information validation
     if (!formData.principal_name.trim()) newErrors.principal_name = 'Principal name is required';
-    if (!formData.principal_phone.trim()) newErrors.principal_phone = 'Principal phone is required';
-    
-    // School Admin validation
-    if (!formData.school_admin_name.trim()) newErrors.school_admin_name = 'Admin name is required';
-    if (!formData.school_admin_email.trim()) newErrors.school_admin_email = 'Admin email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.school_admin_email)) {
-      newErrors.school_admin_email = 'Please enter a valid admin email';
-    }
-    if (!formData.school_admin_phone.trim()) newErrors.school_admin_phone = 'Admin phone is required';
-    if (!formData.school_admin_temp_password.trim()) newErrors.school_admin_temp_password = 'Temporary password is required';
-    else {
-      // Validate password strength (8+ chars, uppercase, lowercase, number)
-      const passwordError = validatePasswordClient(formData.school_admin_temp_password);
-      if (passwordError) {
-        newErrors.school_admin_temp_password = passwordError;
+    if (!isEditMode && !formData.principal_phone.trim()) newErrors.principal_phone = 'Principal phone is required';
+
+    // School Admin validation — an existing admin (edit mode) doesn't need
+    // to be re-entered; a new password there is optional (blank = keep
+    // current) but must be valid if typed.
+    const pwTyped = formData.school_admin_temp_password.trim();
+    if (isEditMode && hadAdmin) {
+      if (pwTyped) {
+        const passwordError = validatePasswordClient(pwTyped);
+        if (passwordError) newErrors.school_admin_temp_password = passwordError;
+      }
+    } else {
+      if (!formData.school_admin_name.trim()) newErrors.school_admin_name = 'Admin name is required';
+      if (!formData.school_admin_email.trim()) newErrors.school_admin_email = 'Admin email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.school_admin_email)) {
+        newErrors.school_admin_email = 'Please enter a valid admin email';
+      }
+      if (!formData.school_admin_phone.trim()) newErrors.school_admin_phone = 'Admin phone is required';
+      if (!pwTyped) newErrors.school_admin_temp_password = 'Temporary password is required';
+      else {
+        const passwordError = validatePasswordClient(pwTyped);
+        if (passwordError) newErrors.school_admin_temp_password = passwordError;
       }
     }
-    
+
     // Academic Details validation
     if (formData.grades_offered.length === 0) newErrors.grades_offered = 'Please select at least one grade';
     if (!formData.school_type.trim()) newErrors.school_type = 'Please select a school type';
@@ -468,6 +540,14 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         generate_joining_codes: formData.grades_offered.length > 0
       };
 
+      if (isEditMode) {
+        await adminApi.schools.update(editingSchoolId as string, requestData as Record<string, unknown>);
+        toast.success("School updated successfully.");
+        onSuccess();
+        onClose();
+        return;
+      }
+
       const res = await adminApi.schools.create(requestData as Record<string, unknown>);
       const httpBody = res.data as {
         data?: { joining_codes?: Record<string, string>; school?: unknown };
@@ -490,9 +570,9 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         onClose();
       }
     } catch (error) {
-      console.error("Error creating school:", error);
+      console.error(isEditMode ? "Error updating school:" : "Error creating school:", error);
       toast.error(
-        `Could not create school: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Could not ${isEditMode ? 'update' : 'create'} school: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     } finally {
       setLoading(false);
@@ -515,12 +595,17 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <School className="h-6 w-6 text-blue-600" />
-            Add New School
+            {isEditMode ? 'Edit School' : 'Add New School'}
           </DialogTitle>
           <DialogDescription>
-            Create a new school with admin access and joining codes
+            {isEditMode
+              ? 'Update school information, admin access, grades, sections, and joining codes'
+              : 'Create a new school with admin access and joining codes'}
           </DialogDescription>
         </DialogHeader>
+        {editLoading && (
+          <p className="text-sm text-gray-500">Loading school details…</p>
+        )}
 
         <div className="w-full">
           {/* Tab Navigation */}
@@ -1298,12 +1383,12 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess }: AddSchoo
                   {loading ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Creating...
+                      {isEditMode ? 'Updating...' : 'Creating...'}
                     </>
                   ) : (
                     <>
                       <Plus className="h-4 w-4 mr-2" />
-                      Create School
+                      {isEditMode ? 'Update School' : 'Create School'}
                     </>
                   )}
                 </Button>

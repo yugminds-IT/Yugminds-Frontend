@@ -20,6 +20,7 @@ import {
   Zap,
   RotateCcw,
   Circle,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -42,6 +43,8 @@ interface Assignment {
   } | null;
   is_overdue: boolean;
   days_until_due: number;
+  is_locked?: boolean;
+  unlocks_in_days?: number | null;
 }
 
 type StatusFilter = "all" | "pending" | "submitted" | "graded" | "overdue";
@@ -265,6 +268,30 @@ function AssignmentTable({
               : `/lms/student/assignments/${a.id}`;
             const score = a.submission?.grade;
 
+            if (a.is_locked) {
+              return (
+                <div
+                  key={a.id}
+                  className="grid grid-cols-[2rem_1fr_auto] items-center gap-2 sm:gap-4 px-4 py-3.5 border-b border-gray-50 last:border-0 opacity-70 cursor-not-allowed"
+                  title={`Unlocks in ${a.unlocks_in_days} day${a.unlocks_in_days === 1 ? "" : "s"}`}
+                >
+                  <span className="text-xs font-medium text-gray-400 text-right">{idx + 1}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Lock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                      <p className="font-semibold text-sm text-gray-500 truncate">{a.title}</p>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate ml-5">
+                      {a.course_title || a.subject || (type === "daily" ? "Daily" : "Course")}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs px-2 py-0.5 text-gray-500 whitespace-nowrap">
+                    Unlocks in {a.unlocks_in_days}d
+                  </Badge>
+                </div>
+              );
+            }
+
             return (
               <Link
                 key={a.id}
@@ -346,6 +373,8 @@ function normalizeAssignment(raw: Record<string, unknown>): Assignment {
     submission: (raw.submission as Assignment["submission"]) ?? null,
     is_overdue: Boolean(raw.is_overdue ?? false),
     days_until_due: Number(raw.days_until_due ?? 0),
+    is_locked: Boolean(raw.is_locked ?? false),
+    unlocks_in_days: raw.unlocks_in_days != null ? Number(raw.unlocks_in_days) : null,
   };
 }
 

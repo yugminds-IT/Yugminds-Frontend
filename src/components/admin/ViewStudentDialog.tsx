@@ -93,23 +93,23 @@ export default function ViewStudentDialog({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-sm font-medium text-gray-500">Full Name</Label>
-                    <p className="text-base font-medium">{student.full_name}</p>
+                    <p className="text-base font-medium break-words">{student.full_name}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-sm font-medium text-gray-500">Email</Label>
-                    <p className="text-base">{student.email}</p>
+                    <p className="text-base break-words">{student.email}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-sm font-medium text-gray-500">Student ID</Label>
-                    <p className="text-base font-mono text-sm">{student.id}</p>
+                    <p className="text-base font-mono text-sm break-words">{student.id}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-sm font-medium text-gray-500">Role</Label>
                     <Badge variant="outline">{student.role}</Badge>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-sm font-medium text-gray-500">Created At</Label>
                     <p className="text-base">{new Date(student.created_at).toLocaleDateString()}</p>
                   </div>

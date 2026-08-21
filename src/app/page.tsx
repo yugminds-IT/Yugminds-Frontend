@@ -25,7 +25,6 @@ const EASE_CURTAIN = [0.76, 0, 0.24, 1] as const;
 const HyperspeedBG = dynamic(() => import("../components/public/Hyperspeed"), {
   ssr: false,
 });
-
 /* Module-level, not useMemo: the component's own docs warn that a new
    effectOptions object identity recreates the whole WebGL scene, and a
    plain top-level constant is simpler than memoizing something that never
@@ -559,6 +558,22 @@ function Hero({ start }: { start: boolean }) {
         </div>
       )}
 
+      {/* The road's vanishing point sits roughly in the middle of the
+          viewport regardless of config — tuning the 3D camera per
+          breakpoint to dodge the text is exactly the fragile per-viewport
+          chase that broke on mobile earlier. A soft white fade behind the
+          copy is robust instead: streaks stay fully visible in the margins
+          and dim out under the headline/paragraph, whatever their shape. */}
+      {viewport && (
+        <div
+          className="absolute inset-0 z-[5] pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse 62% 58% at 50% 46%, rgba(255,255,255,0.94) 0%, rgba(255,255,255,0.75) 45%, rgba(255,255,255,0) 75%)",
+          }}
+        />
+      )}
+
       <motion.div
         style={{ y, opacity: fade }}
         className="relative z-10 max-w-4xl mx-auto w-full px-5 md:px-10 pt-32 pb-20 text-center"
@@ -580,9 +595,17 @@ function Hero({ start }: { start: boolean }) {
             whileInView — that fires the moment the section enters the
             viewport, curtain or no curtain, which would let it finish
             revealing itself behind the preloader). */}
-        <h1 className="mt-6 font-extrabold text-ym-text leading-[0.98] text-[3rem] sm:text-[4.4rem] md:text-[5.4rem] lg:text-[6rem]">
+        {/* leading-[0.98] let descenders (the "g" in "Building") overlap
+            the line below at this font-weight/size — 1.08 gives room
+            between lines, but each line also sits in its own
+            overflow-hidden wrapper (for the upward mask-reveal), and that
+            wrapper's box is exactly one line-height tall with nothing
+            reserved below the baseline — so the "g" was still getting
+            clipped by its *own* line's box, not just crowded by the next
+            one. pb-[0.18em] gives the wrapper room for the descender. */}
+        <h1 className="mt-6 font-extrabold text-ym-text leading-[1.08] text-[3rem] sm:text-[4.4rem] md:text-[5.4rem] lg:text-[6rem]">
           {HERO_TAGLINE.map((line, i) => (
-            <span key={line.text} className="block overflow-hidden">
+            <span key={line.text} className="block overflow-hidden pb-[0.18em] -mb-[0.18em]">
               <motion.span
                 className={`block ${line.accent ? "text-ym-blue" : ""}`}
                 initial={{ y: "112%" }}
@@ -653,7 +676,7 @@ function Manifesto() {
           ]}
         />
 
-        <div className="relative flex justify-center lg:justify-end">
+        <div className="relative flex flex-col items-center lg:items-end gap-6">
           <div className="relative w-[16rem] h-[16rem] md:w-[21rem] md:h-[21rem]">
             <DrawnRing
               className="absolute inset-0 w-full h-full"
@@ -670,6 +693,30 @@ function Manifesto() {
             >
               <LogoMark tint="#2563EB" className="w-full h-full opacity-90" />
             </motion.div>
+          </div>
+
+          {/* Static, not scroll-revealed: both a hand-rolled motion.span
+              and the codebase's proven Reveal (motion.div) never fired
+              whileInView in this exact spot — confirmed with a raw
+              IntersectionObserver on the same node reporting fully visible,
+              real wheel-scroll input (not just programmatic scrollTo), and
+              multi-second waits well past the transition's delay+duration —
+              while every sibling whileInView on this page animates
+              correctly. Root cause unresolved; not worth blocking a small
+              label on it, so it just renders. */}
+          {/* Same fixed width as the ring above and text-center, so it's
+              centered *under the ring itself* regardless of whether the
+              parent's items-end (desktop) or items-center (mobile) is
+              active — matching widths means the two boxes' edges always
+              align, so centering text within this one centers it under
+              the ring's own middle, not the column's. */}
+          <div className="w-[16rem] md:w-[21rem] text-center">
+            <span
+              className="font-extrabold text-ym-blue text-[1.6rem] md:text-[2rem]"
+              style={{ letterSpacing: "0.14em" }}
+            >
+              YUGMINDS
+            </span>
           </div>
         </div>
       </div>
@@ -1135,7 +1182,7 @@ const FOOTER_COLS = [
       { label: "Programs", href: "/robocoders/programs" },
       { label: "For schools", href: "/robocoders/for-schools" },
       { label: "For parents", href: "/robocoders/for-parents" },
-      { label: "Student login", href: "/lms" },
+      { label: "Student login", href: "/lms/login" },
     ],
   },
 ];

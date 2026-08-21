@@ -35,11 +35,7 @@ import {
 } from "@/components/ui/table";
 import { adminApi } from '@/lib/api/admin.api';
 import { toast } from '@/components/ui/toast';
-import {
-  clearCourseFormState,
-  hasCourseFormState,
-} from '@/lib/course-form-persistence';
-import { CourseCreationWizard } from '@/components/admin/CourseCreationWizard';
+import { CourseCreationWizard, hasWizardDraft } from '@/components/admin/CourseCreationWizard';
 import { CourseEditor, type Chapter as EditorChapter, type AssignmentFromAPI as EditorAssignmentFromAPI } from '@/components/admin/CourseEditor';
 import { CoursePublishDialog } from '@/components/admin/CoursePublishDialog';
 import { CourseVersionHistory } from '@/components/admin/CourseVersionHistory';
@@ -81,11 +77,9 @@ interface Course {
   total_materials: number;
   total_assignments: number;
   release_type: 'Daily' | 'Weekly' | 'Bi-weekly';
-  duration_weeks?: number;
-  prerequisites_course_ids?: string[];
-  prerequisites_text?: string;
   thumbnail_url?: string;
-  difficulty_level?: string;
+  /** Drip schedule: chapter K unlocks K * this many days after enrollment. null/0 = no drip. */
+  chapter_unlock_interval_days?: number | null;
   assignments?: Assignment[];
   content_summary?: Record<string, unknown>;
   created_at: string;
@@ -406,8 +400,8 @@ export default function CoursesManagement() {
     customRefresh: loadData,
     minRefreshInterval: 180000, // 3 minutes minimum between refreshes (prevents refresh during 1-minute tab switches)
     hasUnsavedData: () => {
-      // Check if any dialog is open OR if there's saved form data
-      return isCreateDialogOpen || isEditDialogOpen || hasCourseFormState();
+      // Check if any dialog is open OR if there's a recoverable wizard draft
+      return isCreateDialogOpen || isEditDialogOpen || hasWizardDraft();
     },
   });
 
@@ -519,7 +513,7 @@ export default function CoursesManagement() {
     if (!isCreateDialogOpen) return;
     
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasCourseFormState()) {
+      if (hasWizardDraft()) {
         e.preventDefault();
         e.returnValue = 'You have unsaved course data. Are you sure you want to leave?';
         return e.returnValue;
@@ -1199,7 +1193,6 @@ export default function CoursesManagement() {
                 status: 'Draft',
               });
               setIsCreateDialogOpen(false);
-              clearCourseFormState();
               setStatusFilter('Draft'); // Show Draft courses to see the new one
               loadData();
               toast.success('Course created successfully.');
@@ -1234,11 +1227,7 @@ export default function CoursesManagement() {
                 id: editingCourse.id,
                 name: editingCourse.name || editingCourse.course_name || '',
                 description: editingCourse.description || '',
-                duration_weeks: editingCourse.duration_weeks,
-                prerequisites_course_ids: editingCourse.prerequisites_course_ids || [],
-                prerequisites_text: editingCourse.prerequisites_text || '',
                 thumbnail_url: editingCourse.thumbnail_url || '',
-                difficulty_level: editingCourse.difficulty_level || 'Beginner',
                 status: editingCourse.status || 'Draft',
                 chapters: (editingCourse.chapters || []) as unknown as EditorChapter[],
                 assignments: (editingCourse.assignments || []) as unknown as EditorAssignmentFromAPI[],

@@ -10,7 +10,6 @@ import { Textarea } from "../ui/textarea";
 import { Badge } from "../ui/badge";
 import { Progress } from "../ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import {
   ArrowLeft,
   ArrowRight,
@@ -25,7 +24,6 @@ import {
 import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
 import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
-import { adminApi } from "../../lib/api/admin.api";
 
 export interface Chapter {
   id?: string;
@@ -40,11 +38,9 @@ export interface Chapter {
 interface BasicInfo {
   name: string;
   description: string;
-  duration_weeks: string;
-  prerequisites_text: string;
-  prerequisites_course_ids: string[];
   thumbnail_url: string;
-  difficulty_level: string;
+  /** Drip schedule: chapter K unlocks K * this many days after enrollment. Blank/0 = no drip. */
+  chapter_unlock_interval_days: string;
 }
 
 interface WizardDraft {
@@ -99,14 +95,16 @@ function clearWizardDraft(): void {
   }
 }
 
+/** Whether an in-progress (non-expired) wizard draft exists. */
+export function hasWizardDraft(): boolean {
+  return loadWizardDraft() !== null;
+}
+
 interface CourseCreationWizardProps {
   courseId?: string; // If provided, we're editing
   initialData?: {
     name?: string;
     description?: string;
-    duration_weeks?: number;
-    prerequisites_course_ids?: string[];
-    prerequisites_text?: string;
     thumbnail_url?: string;
     school_ids?: string[];
     grades?: string[];
@@ -144,11 +142,9 @@ export function CourseCreationWizard({
     draft?.basicInfo ?? {
       name: initialData?.name || "",
       description: initialData?.description || "",
-      duration_weeks: initialData?.duration_weeks?.toString() || "",
-      prerequisites_text: initialData?.prerequisites_text || "",
-      prerequisites_course_ids: initialData?.prerequisites_course_ids || [],
       thumbnail_url: initialData?.thumbnail_url || "",
-      difficulty_level: (initialData as { difficulty_level?: string })?.difficulty_level || "Beginner",
+      chapter_unlock_interval_days:
+        (initialData as { chapter_unlock_interval_days?: number })?.chapter_unlock_interval_days?.toString() || "",
     },
   );
 
@@ -163,15 +159,6 @@ export function CourseCreationWizard({
   const [assignments, setAssignments] = useState<Record<string, Assignment>>(
     draft?.assignments ?? {}
   );
-  const [availableCourses, setAvailableCourses] = useState<Array<{ id: string; name: string }>>([]);
-
-  // Load available courses for prerequisites once on mount (needed by both the
-  // basic-info step and the review step, which a restored draft can open on).
-  useEffect(() => {
-    loadAvailableCourses();
-  /* eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount */
-  }, []);
-
   // Auto-save the full wizard state so an accidental close/refresh can be
   // recovered. Only persist when the form actually has content, and never
   // while editing an existing course.
@@ -201,23 +188,6 @@ export function CourseCreationWizard({
     currentStep,
   ]);
 
-  const loadAvailableCourses = async () => {
-    try {
-      const { data } = await adminApi.courses.list();
-      type CourseItem = { id: string; name?: string; course_name?: string; title?: string };
-      const raw = (data?.courses || data || []) as CourseItem[];
-      const courses = raw
-        .filter((c: CourseItem) => !courseId || c.id !== courseId)
-        .map((c: CourseItem) => ({
-          id: c.id,
-          name: c.name || c.course_name || c.title || "Untitled Course",
-        }));
-      setAvailableCourses(courses);
-    } catch {
-      // non-critical: prerequisite courses list is optional
-    }
-  };
-
   const validateStep = (step: number): boolean => {
     setError(null);
     
@@ -226,13 +196,6 @@ export function CourseCreationWizard({
         if (!basicInfo.name.trim()) {
           setError("Course name is required");
           return false;
-        }
-        if (basicInfo.duration_weeks.trim() !== "") {
-          const weeks = Number(basicInfo.duration_weeks);
-          if (!Number.isInteger(weeks) || weeks < 1) {
-            setError("Duration must be a whole number of weeks (1 or more)");
-            return false;
-          }
         }
         return true;
       
@@ -295,11 +258,8 @@ export function CourseCreationWizard({
     setBasicInfo({
       name: "",
       description: "",
-      duration_weeks: "",
-      prerequisites_text: "",
-      prerequisites_course_ids: [],
       thumbnail_url: "",
-      difficulty_level: "Beginner",
+      chapter_unlock_interval_days: "",
     });
     setChapters([]);
     setChapterContents({});
@@ -362,13 +322,10 @@ export function CourseCreationWizard({
         id: courseId,
         name: basicInfo.name,
         description: basicInfo.description || undefined,
-        duration_weeks: basicInfo.duration_weeks ? parseInt(basicInfo.duration_weeks) : undefined,
-        prerequisites_course_ids: basicInfo.prerequisites_course_ids.length > 0 
-          ? basicInfo.prerequisites_course_ids 
-          : undefined,
-        prerequisites_text: basicInfo.prerequisites_text || undefined,
         thumbnail_url: basicInfo.thumbnail_url || undefined,
-        difficulty_level: basicInfo.difficulty_level || "Beginner",
+        chapter_unlock_interval_days: basicInfo.chapter_unlock_interval_days
+          ? parseInt(basicInfo.chapter_unlock_interval_days)
+          : undefined,
         chapters: chapters.map((ch: Chapter) => ({
           ...ch,
           name: ch.name.trim(),
@@ -503,104 +460,6 @@ export function CourseCreationWizard({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="duration">Duration (weeks)</Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    min="1"
-                    value={basicInfo.duration_weeks}
-                    onChange={(e) => setBasicInfo({ ...basicInfo, duration_weeks: e.target.value })}
-                    placeholder="e.g., 8"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="difficulty">Difficulty Level</Label>
-                  <Select
-                    value={basicInfo.difficulty_level}
-                    onValueChange={(value) => setBasicInfo({ ...basicInfo, difficulty_level: value })}
-                  >
-                    <SelectTrigger id="difficulty">
-                      <SelectValue placeholder="Select difficulty level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Beginner">Beginner</SelectItem>
-                      <SelectItem value="Intermediate">Intermediate</SelectItem>
-                      <SelectItem value="Advanced">Advanced</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div>
-                <Label>Prerequisites</Label>
-                <div className="space-y-2">
-                  <div>
-                    <Label htmlFor="prerequisites-text" className="text-sm font-normal">
-                      Prerequisites Description
-                    </Label>
-                    <Textarea
-                      id="prerequisites-text"
-                      value={basicInfo.prerequisites_text}
-                      onChange={(e) => setBasicInfo({ ...basicInfo, prerequisites_text: e.target.value })}
-                      placeholder="e.g., Basic programming knowledge recommended"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-normal">Prerequisite Courses</Label>
-                    <Select
-                      value=""
-                      onValueChange={(value) => {
-                        if (value && !basicInfo.prerequisites_course_ids.includes(value)) {
-                          setBasicInfo({
-                            ...basicInfo,
-                            prerequisites_course_ids: [...basicInfo.prerequisites_course_ids, value],
-                          });
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select prerequisite course" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableCourses.map((course) => (
-                          <SelectItem key={course.id} value={course.id}>
-                            {course.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {basicInfo.prerequisites_course_ids.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {basicInfo.prerequisites_course_ids.map((courseId) => {
-                          const course = availableCourses.find((c: { id: string; name: string }) => c.id === courseId);
-                          return (
-                            <Badge key={courseId} variant="secondary" className="flex items-center gap-1">
-                              {course?.name || courseId}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setBasicInfo({
-                                    ...basicInfo,
-                                    prerequisites_course_ids: basicInfo.prerequisites_course_ids.filter((id: string) => id !== courseId),
-                                  });
-                                }}
-                                className="ml-1"
-                              >
-                                <span className="sr-only">Remove</span>
-                                ×
-                              </button>
-                            </Badge>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               <div>
                 <Label>Course Thumbnail</Label>
                 <FileUploadZone
@@ -637,6 +496,52 @@ export function CourseCreationWizard({
                   <span className="mr-1">+</span> Add Chapter
                 </Button>
               </div>
+
+              <Card>
+                <CardContent className="py-4 space-y-2">
+                  <Label htmlFor="chapter_unlock_interval_days" className="text-sm font-medium">
+                    Chapter release schedule
+                  </Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      id="chapter_unlock_interval_days"
+                      type="number"
+                      min="0"
+                      className="w-28"
+                      placeholder="0"
+                      value={basicInfo.chapter_unlock_interval_days}
+                      onChange={(e) =>
+                        setBasicInfo({ ...basicInfo, chapter_unlock_interval_days: e.target.value })
+                      }
+                    />
+                    <span className="text-sm text-gray-500">day(s) between each chapter unlocking</span>
+                    <div className="flex gap-1 ml-2">
+                      {[
+                        { label: "Daily", value: "1" },
+                        { label: "Weekly", value: "7" },
+                        { label: "Every 2 weeks", value: "14" },
+                      ].map((preset) => (
+                        <Button
+                          key={preset.value}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setBasicInfo({ ...basicInfo, chapter_unlock_interval_days: preset.value })
+                          }
+                        >
+                          {preset.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {basicInfo.chapter_unlock_interval_days && Number(basicInfo.chapter_unlock_interval_days) > 0
+                      ? `Chapter 1 unlocks at enrollment; each later chapter unlocks ${basicInfo.chapter_unlock_interval_days} day(s) after enrollment, per chapter position — but only once the previous chapter is also completed.`
+                      : "No drip — chapters unlock as soon as the previous one is completed (today's default behavior)."}
+                  </p>
+                </CardContent>
+              </Card>
 
               {chapters.length === 0 ? (
                 <Card>
@@ -762,29 +667,6 @@ export function CourseCreationWizard({
                   {basicInfo.description && (
                     <div>
                       <span className="font-medium">Description:</span> {basicInfo.description}
-                    </div>
-                  )}
-                  {basicInfo.duration_weeks && (
-                    <div>
-                      <span className="font-medium">Duration:</span> {basicInfo.duration_weeks} weeks
-                    </div>
-                  )}
-                  {basicInfo.difficulty_level && (
-                    <div>
-                      <span className="font-medium">Difficulty Level:</span> {basicInfo.difficulty_level}
-                    </div>
-                  )}
-                  {basicInfo.prerequisites_text && (
-                    <div>
-                      <span className="font-medium">Prerequisites:</span> {basicInfo.prerequisites_text}
-                    </div>
-                  )}
-                  {basicInfo.prerequisites_course_ids.length > 0 && (
-                    <div>
-                      <span className="font-medium">Prerequisite Courses:</span>{" "}
-                      {basicInfo.prerequisites_course_ids
-                        .map((id) => availableCourses.find((c) => c.id === id)?.name || id)
-                        .join(", ")}
                     </div>
                   )}
                   {basicInfo.thumbnail_url && (

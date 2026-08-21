@@ -173,12 +173,15 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // Fetch teacher assignments per school so we can show "Assigned: Name" beside sections
+  // Fetch teacher assignments per school so we can show "Assigned: Name" both
+  // beside sections (once a school is picked) and beside each school in the
+  // "Assign Schools" checklist itself (before it's picked) — informational
+  // only, never blocks selecting an already-assigned school.
   useEffect(() => {
-    if (!isOpen) return;
-    const schoolIds = formData.school_assignments.map((a) => a.school_id).filter(Boolean);
-    schoolIds.forEach((schoolId) => {
-      if (assignmentsBySchoolId[schoolId]) return;
+    if (!isOpen || schools.length === 0) return;
+    schools.forEach((school) => {
+      const schoolId = school.id;
+      if (!schoolId || assignmentsBySchoolId[schoolId]) return;
       adminApi.schools.getTeacherAssignments(schoolId)
         .then((res) => {
           const data = res.data as { assignments?: { sectionId: string; teacherName: string }[] };
@@ -188,7 +191,7 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
         .catch(() => {});
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, formData.selected_schools.join(',')]);
+  }, [isOpen, schools.length]);
 
    
   const handleInputChange = (field: keyof TeacherFormData, value: string | number | string[] | SchoolAssignment[]) => {
@@ -760,7 +763,11 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                         <div>
                 <Label>Assign Schools <span className="text-red-500">*</span></Label>
                 <div className="mt-2 space-y-2 max-h-40 overflow-y-auto border rounded-md p-3">
-                  {schools.map((school) => (
+                  {schools.map((school) => {
+                    const assignedTeacherNames = [...new Set(
+                      (assignmentsBySchoolId[school.id] ?? []).map((a) => a.teacherName),
+                    )];
+                    return (
                     <div key={school.id} className="flex items-center space-x-2">
                       <Checkbox
                         id={`school-${school.id}`}
@@ -774,10 +781,14 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                           <Badge variant="secondary" className="text-xs">
                             {(school.gradesOffered ?? school.grades_offered)?.length || (school.grades?.length ?? 0)} grades
                           </Badge>
+                          {assignedTeacherNames.length > 0 && (
+                            <span className="text-xs text-gray-500">(Assigned: {assignedTeacherNames.join(', ')})</span>
+                          )}
                         </div>
                       </Label>
                         </div>
-                          ))}
+                    );
+                          })}
                         </div>
                 {errors.schools && <p className="text-sm text-red-500 mt-1">{errors.schools}</p>}
                       </div>

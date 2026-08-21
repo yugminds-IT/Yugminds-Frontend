@@ -33,6 +33,7 @@ import {
   Textarea 
 } from "@/components/ui/textarea";
 import AddTeacherDialog from "@/components/AddTeacherDialog";
+import CopySchoolAssignmentDialog from "@/components/CopySchoolAssignmentDialog";
 import WeekdayPicker from "@/components/WeekdayPicker";
 import WorkingDaysHistoryPanel from "@/components/admin/WorkingDaysHistoryPanel";
 import { formatWorkingDays } from "@/lib/weekday-utils";
@@ -426,7 +427,7 @@ export default function TeachersManagement() {
   // most edits only touch one assignment at a time. Keyed by assignment
   // id/index so each school assignment card expands independently.
   const [expandedGradesAssignments, setExpandedGradesAssignments] = useState<Set<string>>(new Set());
-  const [assignmentsBySchoolId, setAssignmentsBySchoolId] = useState<Record<string, { sectionId: string; teacherName: string }[]>>({});
+  const [assignmentsBySchoolId, setAssignmentsBySchoolId] = useState<Record<string, { sectionId: string; teacherId?: number; teacherName: string }[]>>({});
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [allLeaveRequests, setAllLeaveRequests] = useState<LeaveRequest[]>([]);
   const [leaveStatusFilter, setLeaveStatusFilter] = useState<'all' | 'Pending' | 'Approved' | 'Rejected'>('all');
@@ -471,6 +472,7 @@ export default function TeachersManagement() {
   const [profileRefreshTrigger, setProfileRefreshTrigger] = useState(0);
   const [leaveRefreshTrigger, _setLeaveRefreshTrigger] = useState(0);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+  const [copySourceTeacher, setCopySourceTeacher] = useState<TeacherTableRow | null>(null);
   const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   
@@ -508,20 +510,23 @@ export default function TeachersManagement() {
     if (saved) setFormData(saved);
   }, []);
 
+  // Fetches for every school (not just ones already assigned to this
+  // teacher) so the school-picker dropdown can show "(Assigned: Name)" for
+  // schools not yet added, same as the Add Teacher dialog's checklist.
   useEffect(() => {
-    if (!editingTeacher) return;
-    formData.school_assignments.forEach((a: { school_id?: string }) => {
-      const schoolId = a.school_id;
+    if (!editingTeacher || schools.length === 0) return;
+    schools.forEach((school) => {
+      const schoolId = school.id;
       if (!schoolId || assignmentsBySchoolId[schoolId]) return;
       adminApi.schools.getTeacherAssignments(schoolId)
         .then((res) => {
-          const data = res.data as { assignments?: { sectionId: string; teacherName: string }[] };
+          const data = res.data as { assignments?: { sectionId: string; teacherId?: number; teacherName: string }[] };
           setAssignmentsBySchoolId((prev) => ({ ...prev, [schoolId]: data.assignments ?? [] }));
         })
         .catch(() => {});
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingTeacher?.id, formData.school_assignments.map((a: { school_id?: string }) => a.school_id).filter(Boolean).join(',')]);
+  }, [editingTeacher?.id, schools.length]);
 
   // Auto-save form data
   const { isDirty: isFormDirty } = useAutoSaveForm({
@@ -1027,6 +1032,10 @@ export default function TeachersManagement() {
     [teachers],
   );
 
+  const handleCopyAssignment = (teacher: TeacherTableRow) => {
+    setCopySourceTeacher(teacher);
+  };
+
   // Handle view teacher profile
   const handleViewTeacherProfile = (teacher: Teacher) => {
     setSelectedTeacher(teacher);
@@ -1034,9 +1043,13 @@ export default function TeachersManagement() {
   };
 
   // Handle edit teacher
-  const handleEditTeacher = (teacher: Teacher) => {
+  // `extraSources` lets a "Copy school assignment" action pre-fill additional
+  // school rows (from a DIFFERENT teacher) as an unsaved draft alongside this
+  // teacher's own real assignments — the admin reviews/adjusts them here
+  // (same conflict warnings as any manual edit) before clicking Update.
+  const handleEditTeacher = (teacher: Teacher, extraSources: AssignedSchool[] = []) => {
     setEditingTeacher(teacher);
-    const sources = teacher.assignedSchools ?? teacher.teacher_schools ?? [];
+    const sources = [...(teacher.assignedSchools ?? teacher.teacher_schools ?? []), ...extraSources];
     // Clear cached assignments for this teacher's schools so we refetch fresh data (e.g. after an update)
     const schoolIds = sources.map((s: AssignedSchool | TeacherSchool) => s.schoolId ?? (s as TeacherSchool).school_id).filter(Boolean);
     setAssignmentsBySchoolId((prev) => {
@@ -1104,6 +1117,28 @@ export default function TeachersManagement() {
     setShowNewPassword(false); // Reset new password visibility
     setCustomSubjectInputs({}); // Reset custom subject inputs
     setShowEditDialog(true);
+  };
+
+  // Loads the target teacher's real data, then opens their Edit dialog with
+  // the source teacher's picked schools appended as unsaved draft rows —
+  // nothing is written until the admin reviews and clicks Update Teacher.
+  const handleCopyConfirm = async (schoolIds: string[], targetTeacherId: string) => {
+    if (!copySourceTeacher) return;
+    try {
+      const res = await adminApi.teachers.get(targetTeacherId);
+      const targetTeacher = (res.data?.data ?? res.data) as Teacher;
+      const sourceSchools = copySourceTeacher.assignedSchools ?? copySourceTeacher.teacher_schools ?? [];
+      const extraSources = sourceSchools.filter((s: AssignedSchool | TeacherSchool) =>
+        schoolIds.includes(s.schoolId ?? (s as TeacherSchool).school_id ?? ''),
+      ) as AssignedSchool[];
+      handleEditTeacher(targetTeacher, extraSources);
+      setCopySourceTeacher(null);
+      toast.success(
+        `Pre-filled ${extraSources.length} school${extraSources.length === 1 ? '' : 's'} from ${copySourceTeacher.nameDisplay ?? copySourceTeacher.name ?? 'the source teacher'} — review and click "Update Teacher" to save.`,
+      );
+    } catch {
+      toast.error('Could not load the target teacher — try again.');
+    }
   };
 
   // Handle change password
@@ -1639,6 +1674,7 @@ export default function TeachersManagement() {
                 onView={handleViewTeacherProfile}
                 onEdit={handleEditTeacher}
                 onDelete={requestDeleteTeacherRow}
+                onCopyAssignment={handleCopyAssignment}
                 onBulkDeleteSelected={requestBulkDeleteTeachers}
                 resetSelectionKey={bulkSelectionResetKey}
                 renderSchoolsCell={renderTeacherSchoolsCell}
@@ -2341,6 +2377,14 @@ export default function TeachersManagement() {
         }}
       />
 
+      <CopySchoolAssignmentDialog
+        open={!!copySourceTeacher}
+        onClose={() => setCopySourceTeacher(null)}
+        sourceTeacher={copySourceTeacher}
+        teachers={teacherTableRows}
+        onConfirm={handleCopyConfirm}
+      />
+
       <Dialog
         open={isBulkDeleteDialogOpen}
         onOpenChange={(open) => {
@@ -2733,11 +2777,19 @@ export default function TeachersManagement() {
                             <SelectValue placeholder="Select a school" />
                           </SelectTrigger>
                           <SelectContent>
-                            {schools.map((school) => (
+                            {schools.map((school) => {
+                              const assignedTeacherNames = [...new Set(
+                                (assignmentsBySchoolId[school.id] ?? [])
+                                  .filter((a) => a.teacherId !== editingTeacher?.id)
+                                  .map((a) => a.teacherName),
+                              )];
+                              return (
                               <SelectItem key={school.id} value={school.id}>
                                 {school.name}
+                                {assignedTeacherNames.length > 0 && ` (Assigned: ${assignedTeacherNames.join(', ')})`}
                               </SelectItem>
-                            ))}
+                              );
+                            })}
                           </SelectContent>
                         </Select>
                       </div>
