@@ -194,6 +194,8 @@ export default function LicensesPage() {
   const [inspectResult, setInspectResult] = useState<Record<string, unknown> | null>(null);
   const [inspecting, setInspecting] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<string>("keys");
+
   const generateSchool = (schools ?? []).find((s) => s.id === generateSchoolId);
 
   // Single server-side query across all schools, honoring the active filters.
@@ -313,6 +315,36 @@ export default function LicensesPage() {
         (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         (e instanceof Error ? e.message : String(e));
       toast.error(`${label}: ${msg || "Failed to generate key"}`);
+
+      // The backend only returns this exact message when the conflict is a
+      // pre-existing active license for this machine on this school — jump
+      // straight to editing it instead of leaving the admin at a dead end
+      // (there was previously no link from this error to the license it's
+      // referring to).
+      if (msg?.includes("already has an active license")) {
+        try {
+          const { data } = await adminApi.licenses.list({
+            schoolId: generateSchoolId,
+            search: machineId,
+          });
+          const root = (data ?? {}) as Record<string, unknown>;
+          const payload =
+            root.data && typeof root.data === "object" && !Array.isArray(root.data)
+              ? (root.data as Record<string, unknown>)
+              : root;
+          const found = ((payload.licenses as LicenseItem[]) ?? []).find(
+            (l) => l.machine_id === machineId
+          );
+          if (found) {
+            setFilterSchoolId(generateSchoolId);
+            setSearchInput(machineId);
+            setActiveTab("keys");
+            openEdit(found);
+          }
+        } catch {
+          // best-effort — the error toast above already told the admin what happened
+        }
+      }
     }
   };
 
@@ -478,7 +510,7 @@ export default function LicensesPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="keys" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="keys" className="flex items-center gap-2">
             <TableIcon className="h-4 w-4" />
