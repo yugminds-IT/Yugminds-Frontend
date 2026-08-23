@@ -6,23 +6,22 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { Badge } from "../ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Video, 
-  FileText, 
-  Link, 
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Video,
+  FileText,
+  Link,
   Image,
-  File,
-  GripVertical
+  File
 } from "lucide-react";
 import { FileUploadZone } from "./FileUploadZone";
 import { toast } from "../ui/toast";
 import { confirmDialog } from "../ui/confirm-dialog";
+import { generateUUID } from "../../lib/uuid-utils";
 
 export interface ChapterContent {
   id?: string;
@@ -46,6 +45,10 @@ interface ChapterContentManagerProps {
   courseId?: string;
   disabled?: boolean;
   onVideoAdded?: (video: { chapter_id: string; title: string; video_url: string; duration?: number }) => void;
+  /** Renders without its own outer Card/title chrome when nested inside a parent
+   * that already shows the chapter name (e.g. ChapterBuilderCard) — avoids
+   * repeating the chapter name and stacking redundant card borders. */
+  embedded?: boolean;
 }
 
 type ContentType = 'text' | 'video' | 'video_link' | 'pdf' | 'image' | 'file' | 'link';
@@ -58,6 +61,7 @@ export function ChapterContentManager({
   courseId,
   disabled = false,
   onVideoAdded,
+  embedded = false,
 }: ChapterContentManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingContent, setEditingContent] = useState<ChapterContent | null>(null);
@@ -204,21 +208,41 @@ export function ChapterContentManager({
       return;
     }
 
+    // `id` and `content_id` must always match — some call sites read one,
+    // some the other. Generating them separately (crypto.randomUUID() twice)
+    // meant every new item had two different ids; also crypto.randomUUID()
+    // itself is undefined outside a secure context (plain-http LAN/staging),
+    // so it's routed through the app's guarded generateUUID() fallback.
+    const contentUuid = editingContent?.id || editingContent?.content_id || generateUUID();
     const newContent: ChapterContent = {
       ...(editingContent || {}),
-      id: editingContent?.id || editingContent?.content_id || crypto.randomUUID(),
-      content_id: editingContent?.content_id || editingContent?.id || crypto.randomUUID(),
+      id: contentUuid,
+      content_id: contentUuid,
       chapter_id: chapterId,
       content_type: finalContentType,
       title: formData.title.trim(),
       content_text: finalContentType === 'text' ? formData.content_text : undefined,
-      content_url: ['video_link', 'link'].includes(finalContentType) ? formData.content_url.trim() : undefined,
-      duration_minutes: finalContentType === 'video_link' && formData.duration_minutes ? parseFloat(formData.duration_minutes) : undefined,
+      // For link/video_link the URL/duration come from the form fields below.
+      // Every other type (file/pdf/image/video uploaded via FileUploadZone)
+      // has no such fields in this dialog — this save path only runs for a
+      // title/description-only edit of an already-uploaded item (a fresh
+      // upload bypasses this entirely via handleFileUpload), so it must keep
+      // whatever URL/duration the item already had instead of blanking them.
+      content_url: ['video_link', 'link'].includes(finalContentType)
+        ? formData.content_url.trim()
+        : editingContent?.content_url,
+      duration_minutes: finalContentType === 'video_link'
+        ? (formData.duration_minutes ? parseFloat(formData.duration_minutes) : undefined)
+        : editingContent?.duration_minutes,
       order_index: editingContent?.order_index || (contents.length > 0 ? Math.max(...contents.map((c: ChapterContent) => c.order_index ?? 0)) + 1 : 1),
     };
 
-    // If it's a video link, also notify parent to add it to videos table
-    if (finalContentType === 'video_link' && onVideoAdded && formData.content_url.trim()) {
+    // If it's a NEW video link, also notify parent to add it to the videos
+    // table. Gated on !editingContent: onVideoAdded is append-only (no id,
+    // no matching update path in either caller), so firing it on every edit
+    // of an existing video link — even just a title change — kept appending
+    // duplicate rows for the same video.
+    if (!editingContent && finalContentType === 'video_link' && onVideoAdded && formData.content_url.trim()) {
       onVideoAdded({
         chapter_id: chapterId,
         title: formData.title.trim(),
@@ -301,23 +325,41 @@ export function ChapterContentManager({
       detectedContentType = 'audio';
     }
     
+    // Prefer whatever the admin typed into the Title field before uploading —
+    // it was previously always clobbered by the raw uploaded file name.
+    const title = formData.title.trim() || fileName;
+
+    // Reuse the item's existing id when this upload is replacing the file on
+    // an item already being edited — otherwise it silently duplicated the
+    // row (new item appended, stale original left behind) instead of
+    // replacing it.
+    const contentUuid = editingContent?.id || editingContent?.content_id || generateUUID();
     const newContent: ChapterContent = {
-      id: crypto.randomUUID(),
-      content_id: crypto.randomUUID(),
+      id: contentUuid,
+      content_id: contentUuid,
       chapter_id: chapterId,
       content_type: contentType === 'pdf' ? 'pdf' : contentType === 'image' ? 'image' : detectedContentType,
-      title: fileName,
+      title,
       content_url: fileUrl,
       storage_path: filePath || undefined, // Save storage_path from upload response
-      order_index: contents.length > 0 ? Math.max(...contents.map((c: ChapterContent) => c.order_index ?? 0)) + 1 : 1,
+      order_index: editingContent?.order_index
+        ?? (contents.length > 0 ? Math.max(...contents.map((c: ChapterContent) => c.order_index ?? 0)) + 1 : 1),
     };
     console.log('✅ File uploaded and added to chapter contents:', {
-      title: fileName,
+      title,
       fileUrl,
       storage_path: filePath,
       content_type: newContent.content_type
     });
-    onContentsChange([...contents, newContent]);
+    if (editingContent) {
+      const editingId = editingContent.id || editingContent.content_id;
+      onContentsChange(contents.map((c: ChapterContent) => {
+        const cId = c.id || c.content_id;
+        return cId === editingId ? newContent : c;
+      }));
+    } else {
+      onContentsChange([...contents, newContent]);
+    }
     closeDialog(); // Close dialog after successful upload
   };
 
@@ -362,82 +404,79 @@ export function ChapterContentManager({
     }
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">{chapterName}</CardTitle>
-            <CardDescription>
-              {sortedContents.length} content item{sortedContents.length !== 1 ? 's' : ''}
-            </CardDescription>
+  const actionButtons = !disabled && (
+    <div className="flex flex-wrap gap-1.5">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => openDialog('text')}
+        className="h-8 border-gray-200 text-xs font-medium text-gray-700"
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        Text
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openDialog('link');
+        }}
+        className="h-8 border-gray-200 text-xs font-medium text-gray-700"
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        Link
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => openDialog('file')}
+        className="h-8 border-gray-200 text-xs font-medium text-gray-700"
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        Material
+      </Button>
+    </div>
+  );
+
+  const contentListAndDialog = (
+    <>
+      {sortedContents.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center">
+            <p className="text-sm text-gray-500">No content yet</p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Add text, a link, or upload material to build out this chapter.
+            </p>
           </div>
-          {!disabled && (
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => openDialog('text')}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Text
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  openDialog('link');
-                }}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Link
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => openDialog('file')}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Material
-              </Button>
-            </div>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {sortedContents.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-4">
-            No content added yet. Click &quot;Add Text&quot;, &quot;Add Link&quot;, or &quot;Add Material&quot; to get started.
-          </p>
         ) : (
-          sortedContents.map((content, index) => {
+          <div className="space-y-2">
+          {sortedContents.map((content, index) => {
             const Icon = getContentIcon(content.content_type);
             return (
               <div
                 key={content.id || content.content_id || index}
-                className="flex items-start gap-3 p-3 border rounded-lg hover:bg-gray-50"
+                className="group/item flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 hover:bg-gray-50/60"
               >
-                <GripVertical className="h-5 w-5 text-gray-400 mt-1" />
-                <Icon className="h-5 w-5 text-gray-600 mt-1" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-medium text-sm">{content.title}</h4>
-                    <Badge variant="secondary" className="text-xs">
-                      {getContentTypeLabel(content.content_type)}
-                    </Badge>
-                    {content.duration_minutes && (
-                      <Badge variant="outline" className="text-xs">
+                <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-600">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate text-sm font-medium text-gray-900">{content.title}</h4>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {getContentTypeLabel(content.content_type)}
+                    {content.duration_minutes ? (
+                      <>
+                        <span className="mx-1.5 text-gray-300">•</span>
                         {content.duration_minutes} min
-                      </Badge>
-                    )}
-                  </div>
+                      </>
+                    ) : null}
+                  </p>
                   {content.content_text && (
-                    <p className="text-xs text-gray-600 line-clamp-2">
+                    <p className="mt-1 line-clamp-2 text-xs text-gray-600">
                       {content.content_text}
                     </p>
                   )}
@@ -446,22 +485,23 @@ export function ChapterContentManager({
                       href={content.content_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:underline break-all"
+                      className="mt-1 block truncate text-xs text-gray-400 hover:text-blue-600 hover:underline"
                       title={content.content_url}
                     >
-                      {content.content_url.length > 50 
-                        ? `${content.content_url.substring(0, 50)}...` 
-                        : content.content_url}
+                      {content.content_url}
                     </a>
                   )}
                 </div>
                 {!disabled && (
-                  <div className="flex gap-1">
+                  <div className="flex flex-shrink-0 gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover/item:opacity-100 sm:group-focus-within/item:opacity-100">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => openDialog(content.content_type as ContentType, content)}
+                      title="Edit content"
+                      aria-label="Edit content"
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-gray-700"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -515,7 +555,8 @@ export function ChapterContentManager({
                         }
                       }}
                       title="Delete content"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      aria-label="Delete content"
+                      className="h-8 w-8 p-0 text-gray-400 hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -523,13 +564,14 @@ export function ChapterContentManager({
                 )}
               </div>
             );
-          })
+          })}
+          </div>
         )}
 
         {/* Add Content Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
+          <DialogContent className="grid max-h-[85vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+            <DialogHeader className="border-b px-6 pt-6 pb-4">
               <DialogTitle>
                 {editingContent ? 'Edit' : 'Add'} {getContentTypeLabel(contentType)}
               </DialogTitle>
@@ -541,8 +583,8 @@ export function ChapterContentManager({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div>
+            <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
+              <div className="space-y-1.5">
                 <Label htmlFor="content-title">Title *</Label>
                 <Input
                   id="content-title"
@@ -681,7 +723,7 @@ export function ChapterContentManager({
               )}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="border-t px-6 py-4">
               <Button type="button" variant="outline" onClick={closeDialog}>
                 Cancel
               </Button>
@@ -691,6 +733,41 @@ export function ChapterContentManager({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            Content
+            <span className="ml-1.5 font-normal normal-case tracking-normal text-gray-400">
+              ({sortedContents.length})
+            </span>
+          </h4>
+          {actionButtons}
+        </div>
+        {contentListAndDialog}
+      </div>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">{chapterName}</CardTitle>
+            <CardDescription>
+              {sortedContents.length} content item{sortedContents.length !== 1 ? 's' : ''}
+            </CardDescription>
+          </div>
+          {actionButtons}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {contentListAndDialog}
       </CardContent>
     </Card>
   );

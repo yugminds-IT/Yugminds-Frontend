@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -16,25 +15,14 @@ import {
   CheckCircle2,
   BookOpen,
   FileText,
-  ChevronUp,
-  ChevronDown,
 } from "lucide-react";
 import { FileUploadZone } from "./FileUploadZone";
-import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
-import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
+import { ChapterContent } from "./ChapterContentManager";
+import { Assignment } from "./AssignmentBuilder";
+import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
 import { generateUUID } from "../../lib/uuid-utils";
 
-export interface Chapter {
-  id?: string;
-  course_id?: string;
-  name: string;
-  description?: string;
-  learning_outcomes: string[];
-  order_number: number;
-  contents?: ChapterContent[];
-  title?: string;
-  [key: string]: unknown;
-}
+export type { Chapter };
 
 export interface AssignmentFromAPI {
   id?: string;
@@ -221,7 +209,9 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
   const [chapters, setChapters] = useState<Chapter[]>(() =>
     dedupeChapters(course.chapters || [])
   );
-  const [pendingDeleteChapterIndex, setPendingDeleteChapterIndex] = useState<number | null>(null);
+  // Collapsed-by-default chapter list — only one chapter's content/assignment
+  // builder is ever mounted at a time (see ChapterBuilderCard).
+  const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
 
   // Seeded once from the initial `course` prop (CourseEditor is remounted
   // fresh per edit session, see admin/courses/page.tsx). Must NOT be a
@@ -260,6 +250,7 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
       order_number: chapters.length + 1,
     };
     setChapters([...chapters, newChapter]);
+    setExpandedChapterId(newChapter.id ?? null);
   };
 
   const updateChapter = (index: number, updates: Partial<Chapter>) => {
@@ -293,8 +284,8 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
         delete next[chapterId];
         return next;
       });
+      if (expandedChapterId === chapterId) setExpandedChapterId(null);
     }
-    setPendingDeleteChapterIndex(null);
   };
 
   const handleSave = async () => {
@@ -377,7 +368,27 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
   };
 
   return (
-    <div className="space-y-4">
+    /* Same pinned-header / scrolling-body / pinned-footer shape as the create
+       wizard, so the tab bar and Save button never scroll out of reach. */
+    <Tabs
+      value={activeTab}
+      onValueChange={setActiveTab}
+      className="grid min-h-0 grid-rows-[auto_1fr_auto] gap-0 overflow-hidden"
+    >
+      <div className="border-b px-6 pt-5 pb-4">
+        <TabsList>
+          <TabsTrigger value="basic">
+            <BookOpen className="h-4 w-4 mr-2" />
+            Basic Info
+          </TabsTrigger>
+          <TabsTrigger value="chapters">
+            <FileText className="h-4 w-4 mr-2" />
+            Chapters
+          </TabsTrigger>
+        </TabsList>
+      </div>
+
+      <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -394,31 +405,12 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
         </Alert>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="basic">
-            <BookOpen className="h-4 w-4 mr-2" />
-            Basic Info
-          </TabsTrigger>
-          <TabsTrigger value="chapters">
-            <FileText className="h-4 w-4 mr-2" />
-            Chapters
-          </TabsTrigger>
-        </TabsList>
-
         {/* Basic Info */}
-        <TabsContent value="basic" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Basic Information</CardTitle>
-              <CardDescription>
-                Update course name, description, and other basic details
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="course-name">
-                  Course Name <span className="text-red-500">*</span>
+        <TabsContent value="basic" className="mt-0">
+          <div className="max-w-2xl space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="course-name" className="text-sm font-medium">
+                  Course name <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="course-name"
@@ -426,66 +418,83 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
                   onChange={(e) =>
                     setBasicInfo({ ...basicInfo, name: e.target.value })
                   }
-                  placeholder="Enter course name"
+                  placeholder="e.g. Introduction to Block Coding"
                 />
+                <p className="text-xs text-gray-500">
+                  Shown to students in the course catalog.
+                </p>
               </div>
 
-              <div>
-                <Label htmlFor="course-description">Description</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="course-description" className="text-sm font-medium">
+                  Description
+                </Label>
                 <Textarea
                   id="course-description"
                   value={basicInfo.description}
                   onChange={(e) =>
                     setBasicInfo({ ...basicInfo, description: e.target.value })
                   }
-                  placeholder="Enter course description"
+                  placeholder="What students will learn in this course"
                   rows={4}
                 />
               </div>
 
-              <div>
-                <Label>Course Thumbnail</Label>
-                <FileUploadZone
-                  type="thumbnail"
-                  courseId={course.id}
-                  onUploadComplete={(url) =>
-                    setBasicInfo({ ...basicInfo, thumbnail_url: url })
-                  }
-                  label="Upload thumbnail image"
-                  description="Recommended: 800x600px, max 5MB"
-                />
-                {basicInfo.thumbnail_url && (
-                  <div className="mt-2 relative h-32 w-48">
-                    <Image
-                      src={basicInfo.thumbnail_url}
-                      alt="Course thumbnail"
-                      fill
-                      className="object-contain rounded border"
-                    />
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Course thumbnail</Label>
+                {basicInfo.thumbnail_url ? (
+                  <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
+                    <div className="relative h-16 w-24 flex-shrink-0 overflow-hidden rounded border bg-gray-50">
+                      <Image
+                        src={basicInfo.thumbnail_url}
+                        alt="Course thumbnail"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900">Thumbnail uploaded</p>
+                      <p className="text-xs text-gray-500">Recommended 800×600px</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBasicInfo({ ...basicInfo, thumbnail_url: "" })}
+                    >
+                      Replace
+                    </Button>
                   </div>
+                ) : (
+                  <FileUploadZone
+                    type="thumbnail"
+                    courseId={course.id}
+                    onUploadComplete={(url) =>
+                      setBasicInfo({ ...basicInfo, thumbnail_url: url })
+                    }
+                    description="PNG or JPG, recommended 800×600px, max 5MB"
+                  />
                 )}
               </div>
-            </CardContent>
-          </Card>
+          </div>
         </TabsContent>
 
         {/* Chapters */}
-        <TabsContent value="chapters" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+        <TabsContent value="chapters" className="mt-0">
+          <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <CardTitle>Chapters & Content</CardTitle>
-                  <CardDescription>
-                    Manage chapters, content, and assignments
-                  </CardDescription>
+                  <h3 className="font-semibold text-gray-900">Curriculum</h3>
+                  <p className="text-sm text-gray-500">
+                    {chapters.length === 0
+                      ? "Add chapters and organize course content"
+                      : `${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} • ${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0)} content item${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0) !== 1 ? "s" : ""} • ${Object.keys(assignments).length} assignment${Object.keys(assignments).length !== 1 ? "s" : ""}`}
+                  </p>
                 </div>
                 <Button type="button" onClick={addChapter}>
                   <span className="mr-1">+</span> Add Chapter
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
               <div className="rounded-md border p-3 space-y-2">
                 <Label htmlFor="edit_chapter_unlock_interval_days" className="text-sm font-medium">
                   Chapter release schedule
@@ -531,153 +540,83 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
               </div>
 
               {chapters.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <p>No chapters added yet</p>
+                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 px-6 py-12 text-center">
+                  <FileText className="mx-auto mb-3 h-8 w-8 text-gray-300" />
+                  <p className="font-medium text-gray-700">No chapters yet</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Chapters group your videos, readings and assignments.
+                  </p>
                   <Button type="button" onClick={addChapter} className="mt-4">
-                    Add First Chapter
+                    <span className="mr-1">+</span> Add First Chapter
                   </Button>
                 </div>
               ) : (
                 chapters.map((chapter, index) => {
                   const chapterId = chapter.id!;
                   return (
-                    <Card key={chapterId}>
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-2">
-                            <Input
-                              value={chapter.name}
-                              onChange={(e) =>
-                                updateChapter(index, { name: e.target.value })
-                              }
-                              placeholder="Chapter name"
-                              className="font-medium"
-                            />
-                            <Textarea
-                              value={chapter.description || ""}
-                              onChange={(e) =>
-                                updateChapter(index, { description: e.target.value })
-                              }
-                              placeholder="Chapter description"
-                              rows={2}
-                            />
-                          </div>
-                          <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => moveChapter(index, 'up')}
-                              disabled={index === 0}
-                              title="Move up"
-                            >
-                              <ChevronUp className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => moveChapter(index, 'down')}
-                              disabled={index === chapters.length - 1}
-                              title="Move down"
-                            >
-                              <ChevronDown className="h-4 w-4" />
-                            </Button>
-                            {pendingDeleteChapterIndex === index ? (
-                              <>
-                                <Button
-                                  type="button"
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => deleteChapter(index)}
-                                >
-                                  Confirm
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setPendingDeleteChapterIndex(null)}
-                                >
-                                  Cancel
-                                </Button>
-                              </>
-                            ) : (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setPendingDeleteChapterIndex(index)}
-                                className="text-red-500 hover:text-red-700"
-                              >
-                                Delete
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <ChapterContentManager
-                          chapterId={chapterId}
-                          chapterName={chapter.name || `Chapter ${index + 1}`}
-                          contents={chapterContents[chapterId] || []}
-                          onContentsChange={(contents) =>
-                            setChapterContents((prev) => ({
-                              ...prev,
-                              [chapterId]: contents,
-                            }))
-                          }
-                          courseId={course.id}
-                          onVideoAdded={(video) =>
-                            setVideos((prev) => [...prev, video])
-                          }
-                        />
-                        <AssignmentBuilder
-                          chapterId={chapterId}
-                          chapterName={chapter.name || `Chapter ${index + 1}`}
-                          assignment={
-                            assignments[chapterId]
-                              ? {
-                                  ...assignments[chapterId],
-                                  questions: Array.isArray(
-                                    assignments[chapterId].questions
-                                  )
-                                    ? assignments[chapterId].questions
-                                    : [],
-                                }
-                              : null
-                          }
-                          onAssignmentChange={(assignment) => {
-                            if (assignment) {
-                              setAssignments((prev) => ({
-                                ...prev,
-                                [chapterId]: {
-                                  ...assignment,
-                                  chapter_id: chapterId,
-                                  id: assignment.id || generateUUID(),
-                                },
-                              }));
-                            } else {
-                              setAssignments((prev) => {
-                                const next = { ...prev };
-                                delete next[chapterId];
-                                return next;
-                              });
+                    <ChapterBuilderCard
+                      key={chapterId}
+                      chapter={chapter}
+                      chapterKey={chapterId}
+                      index={index}
+                      isExpanded={expandedChapterId === chapterId}
+                      onToggleExpand={() =>
+                        setExpandedChapterId(expandedChapterId === chapterId ? null : chapterId)
+                      }
+                      onUpdate={(updates) => updateChapter(index, updates)}
+                      onDelete={() => deleteChapter(index)}
+                      onMoveUp={index === 0 ? undefined : () => moveChapter(index, 'up')}
+                      onMoveDown={index === chapters.length - 1 ? undefined : () => moveChapter(index, 'down')}
+                      contents={chapterContents[chapterId] || []}
+                      onContentsChange={(contents) =>
+                        setChapterContents((prev) => ({
+                          ...prev,
+                          [chapterId]: contents,
+                        }))
+                      }
+                      assignment={
+                        assignments[chapterId]
+                          ? {
+                              ...assignments[chapterId],
+                              questions: Array.isArray(
+                                assignments[chapterId].questions
+                              )
+                                ? assignments[chapterId].questions
+                                : [],
                             }
-                          }}
-                        />
-                      </CardContent>
-                    </Card>
+                          : null
+                      }
+                      onAssignmentChange={(assignment) => {
+                        if (assignment) {
+                          setAssignments((prev) => ({
+                            ...prev,
+                            [chapterId]: {
+                              ...assignment,
+                              chapter_id: chapterId,
+                              id: assignment.id || generateUUID(),
+                            },
+                          }));
+                        } else {
+                          setAssignments((prev) => {
+                            const next = { ...prev };
+                            delete next[chapterId];
+                            return next;
+                          });
+                        }
+                      }}
+                      courseId={course.id}
+                      onVideoAdded={(video) =>
+                        setVideos((prev) => [...prev, video])
+                      }
+                    />
                   );
                 })
               )}
-            </CardContent>
-          </Card>
+          </div>
         </TabsContent>
+      </div>
 
-      </Tabs>
-
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2 border-t px-6 py-4">
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
@@ -697,6 +636,6 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
           )}
         </Button>
       </div>
-    </div>
+    </Tabs>
   );
 }

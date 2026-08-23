@@ -484,14 +484,14 @@ export default function MyCoursesPage() {
   }, [activityDays, courses, nowMs])
 
   const tabs = useMemo(() => [
-    { id: 'in_progress' as Tab, label: 'In Progress', count: courses.filter(c => c.status !== 'completed' && c.progress_percentage < 100).length },
+    { id: 'in_progress' as Tab, label: 'In Progress', count: courses.filter(c => c.status !== 'completed' && c.progress_percentage > 0 && c.progress_percentage < 100).length },
     { id: 'completed' as Tab, label: 'Completed', count: courses.filter(c => c.status === 'completed' || c.progress_percentage >= 100).length },
     { id: 'all' as Tab, label: 'All Courses', count: courses.length },
   ], [courses])
 
   const filtered = useMemo(() => {
     let list = courses
-    if (activeTab === 'in_progress') list = list.filter(c => c.status !== 'completed' && c.progress_percentage < 100)
+    if (activeTab === 'in_progress') list = list.filter(c => c.status !== 'completed' && c.progress_percentage > 0 && c.progress_percentage < 100)
     else if (activeTab === 'completed') list = list.filter(c => c.status === 'completed' || c.progress_percentage >= 100)
 
     if (searchQuery.trim()) {

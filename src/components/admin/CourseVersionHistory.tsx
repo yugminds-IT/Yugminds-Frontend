@@ -503,7 +503,7 @@ export function CourseVersionHistory({ courseId, courseName, onVersionRevert }: 
 
       {/* ── Revert Dialog ── */}
       <Dialog open={!!revertTarget} onOpenChange={(open) => { if (!open) { setRevertTarget(null); setRevertError(null); setRevertSuccess(false); } }}>
-        <DialogContent className="bg-white max-w-md">
+        <DialogContent className="w-[calc(100vw-2rem)] bg-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-4 w-4 text-orange-500" />

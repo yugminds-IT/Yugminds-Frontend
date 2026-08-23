@@ -21,7 +21,10 @@
   --destructive-foreground: 0 0% 98%;
   --border: 0 0% 89.8%;
   --input: 0 0% 89.8%;
-  --ring: 0 0% 3.9%;
+  /* Focus ring — was near-black (0 0% 3.9%), which rendered as a heavy dark
+     slab around focused inputs. Uses the app's blue so focus reads as a
+     highlight rather than an error/outline. */
+  --ring: 221 83% 53%;
   --radius: 0.5rem;
 }
 
@@ -44,7 +47,7 @@
   --destructive-foreground: 0 0% 98%;
   --border: 0 0% 14.9%;
   --input: 0 0% 14.9%;
-  --ring: 0 0% 83.1%;
+  --ring: 217 91% 60%;
 }
 
 body {

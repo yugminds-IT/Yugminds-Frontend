@@ -5,7 +5,7 @@ import NextImage from "next/image";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { Alert, AlertDescription } from "../ui/alert";
-import { Upload, X, File, Image, FileVideo, FileText, Loader2, AlertCircle } from "lucide-react";
+import { Upload, X, File, Loader2, AlertCircle } from "lucide-react";
 import { adminApi } from "../../lib/api/admin.api";
 import { cn } from "../../lib/utils";
 
@@ -22,12 +22,6 @@ interface FileUploadZoneProps {
   label?: string;
   description?: string;
 }
-
-const FILE_TYPE_ICONS = {
-  video: FileVideo,
-  material: FileText,
-  thumbnail: Image,
-};
 
 const MAX_FILE_SIZES = {
   video: 100 * 1024 * 1024, // 100MB
@@ -63,7 +57,6 @@ export function FileUploadZone({
   const dragCounter = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const Icon = FILE_TYPE_ICONS[type];
   const maxFileSize = maxSize || MAX_FILE_SIZES[type];
   const acceptTypes = accept || ACCEPT_TYPES[type];
 
@@ -222,25 +215,33 @@ export function FileUploadZone({
 
   return (
     <div className={cn("space-y-2", className)}>
-      {label && (
-        <label className="text-sm font-medium flex items-center gap-2">
-          <Icon className="h-4 w-4" />
-          {label}
-        </label>
-      )}
-      {description && (
-        <p className="text-sm text-gray-500">{description}</p>
-      )}
-
+      {/* The caller always renders its own field label above this component, so
+          the old internal label/description rows just repeated the same text
+          three times over. The hint now lives inside the drop zone instead. */}
       <div
+        role={!disabled && !uploading && !uploadedFile ? "button" : undefined}
+        tabIndex={!disabled && !uploading && !uploadedFile ? 0 : undefined}
+        aria-label={!disabled && !uploading && !uploadedFile ? (label || `Upload ${type}`) : undefined}
         className={cn(
-          "border-2 border-dashed rounded-lg p-6 transition-colors",
-          isDragging && "border-primary bg-primary/5",
-          uploading && "border-blue-500 bg-blue-50",
-          error && "border-red-500 bg-red-50",
-          disabled && "opacity-50 cursor-not-allowed",
-          !isDragging && !uploading && !error && "border-gray-300 hover:border-gray-400"
+          "rounded-lg border border-dashed p-5 transition-colors",
+          isDragging && "border-blue-400 bg-blue-50/60",
+          uploading && "border-blue-300 bg-blue-50/40",
+          error && "border-red-300 bg-red-50",
+          disabled && "cursor-not-allowed opacity-50",
+          !isDragging && !uploading && !error && "border-gray-300 bg-gray-50/40",
+          !disabled && !uploading && !uploadedFile && "cursor-pointer hover:border-gray-400 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring"
         )}
+        onClick={() => {
+          if (disabled || uploading || uploadedFile) return;
+          fileInputRef.current?.click();
+        }}
+        onKeyDown={(e) => {
+          if (disabled || uploading || uploadedFile) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -297,25 +298,16 @@ export function FileUploadZone({
             )}
           </div>
         ) : (
-          <div className="text-center space-y-2">
-            <Upload className="h-8 w-8 mx-auto text-gray-400" />
-            <div>
-              <p className="text-sm font-medium text-gray-700">
-                {isDragging ? "Drop file here" : "Drag and drop or click to upload"}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Max size: {Math.round(maxFileSize / (1024 * 1024))}MB
-              </p>
+          <div className="flex flex-col items-center gap-1 text-center">
+            <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-gray-200">
+              <Upload className="h-4 w-4 text-gray-500" />
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={disabled}
-            >
-              Select File
-            </Button>
+            <p className="text-sm font-medium text-gray-700">
+              {isDragging ? "Drop file here" : "Drag and drop, or click to browse"}
+            </p>
+            <p className="text-xs text-gray-500">
+              {description || `Max ${Math.round(maxFileSize / (1024 * 1024))}MB`}
+            </p>
           </div>
         )}
       </div>

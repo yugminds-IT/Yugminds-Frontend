@@ -8,13 +8,12 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Badge } from "../ui/badge";
-import { Progress } from "../ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
   ArrowLeft,
   ArrowRight,
+  Check,
   CheckCircle2,
-  Circle,
   BookOpen,
   FileText,
   Eye,
@@ -22,18 +21,12 @@ import {
   Loader2
 } from "lucide-react";
 import { FileUploadZone } from "./FileUploadZone";
-import { ChapterContentManager, ChapterContent } from "./ChapterContentManager";
-import { AssignmentBuilder, Assignment } from "./AssignmentBuilder";
+import { ChapterContent } from "./ChapterContentManager";
+import { Assignment } from "./AssignmentBuilder";
+import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
+import { generateUUID } from "../../lib/uuid-utils";
 
-export interface Chapter {
-  id?: string;
-  course_id?: string;
-  name: string;
-  description?: string;
-  learning_outcomes: string[];
-  order_number: number;
-  [key: string]: unknown;
-}
+export type { Chapter };
 
 interface BasicInfo {
   name: string;
@@ -152,7 +145,10 @@ export function CourseCreationWizard({
   const [chapters, setChapters] = useState<Chapter[]>(
     draft?.chapters ?? initialData?.chapters ?? []
   );
-  const [pendingDeleteChapterIndex, setPendingDeleteChapterIndex] = useState<number | null>(null);
+  // Collapsed-by-default chapter list — only one chapter's content/assignment
+  // builder is ever mounted at a time, so adding more chapters doesn't turn
+  // this step into a long scroll (see ChapterBuilderCard).
+  const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
   const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>(
     draft?.chapterContents ?? {}
   );
@@ -275,13 +271,14 @@ export function CourseCreationWizard({
 
   const addChapter = () => {
     const newChapter: Chapter = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       name: "",
       description: "",
       learning_outcomes: [],
       order_number: chapters.length + 1,
     };
     setChapters([...chapters, newChapter]);
+    setExpandedChapterId(newChapter.id ?? null);
   };
 
   const updateChapter = (index: number, updates: Partial<Chapter>) => {
@@ -290,11 +287,18 @@ export function CourseCreationWizard({
     setChapters(updated);
   };
 
+  const moveChapter = (index: number, direction: 'up' | 'down') => {
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= chapters.length) return;
+    const updated = [...chapters];
+    [updated[index], updated[swapIndex]] = [updated[swapIndex], updated[index]];
+    setChapters(updated.map((ch, i) => ({ ...ch, order_number: i + 1 })));
+  };
+
   const deleteChapter = (index: number) => {
-    const updated = chapters.filter((_, i) => i !== index);
-    updated.forEach((ch, i) => {
-      ch.order_number = i + 1;
-    });
+    const updated = chapters
+      .filter((_, i) => i !== index)
+      .map((ch, i) => ({ ...ch, order_number: i + 1 }));
     setChapters(updated);
     const chapterId = chapters[index].id;
     if (chapterId) {
@@ -304,8 +308,8 @@ export function CourseCreationWizard({
       delete newAssignments[chapterId];
       setChapterContents(newContents);
       setAssignments(newAssignments);
+      if (expandedChapterId === chapterId) setExpandedChapterId(null);
     }
-    setPendingDeleteChapterIndex(null);
   };
 
   const handleSubmit = async () => {
@@ -356,65 +360,78 @@ export function CourseCreationWizard({
     }
   };
 
-  const progress = (currentStep / STEPS.length) * 100;
-
   return (
     <Dialog open={true} onOpenChange={(open) => { if (!open) onCancel(); }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {courseId ? "Edit Course" : "Create New Course"}
-          </DialogTitle>
-          <DialogDescription>
-            Follow the steps to create a comprehensive course
-          </DialogDescription>
-        </DialogHeader>
+      {/* Sized to always fit the viewport (never wider/taller than the frame),
+          with the stepper and nav pinned and only the step body scrolling. */}
+      <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <div className="border-b px-6 pt-6 pb-4">
+          <DialogHeader>
+            <DialogTitle>
+              {courseId ? "Edit Course" : "Create New Course"}
+            </DialogTitle>
+            <DialogDescription>
+              Follow the steps to create a comprehensive course
+            </DialogDescription>
+          </DialogHeader>
 
-        {/* Progress Indicator */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between mb-4">
-            {STEPS.map((step, index) => {
-              const StepIcon = step.icon;
-              const isActive = currentStep === step.id;
-              const isCompleted = currentStep > step.id;
-              const Icon = isCompleted ? CheckCircle2 : isActive ? StepIcon : Circle;
-              
-              const isClickable = step.id < currentStep && !loading;
+        {/* Step indicator — completed steps are clickable to jump back */}
+        <div className="mt-5 flex items-center">
+          {STEPS.map((step, index) => {
+            const StepIcon = step.icon;
+            const isActive = currentStep === step.id;
+            const isCompleted = currentStep > step.id;
+            const isClickable = step.id < currentStep && !loading;
 
-              return (
-                <div key={step.id} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center flex-1">
-                    <button
-                      type="button"
-                      disabled={!isClickable}
-                      onClick={() => goToStep(step.id)}
-                      title={isClickable ? `Go to ${step.title}` : undefined}
-                      className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors ${
-                        isActive
-                          ? "border-blue-500 bg-blue-50 text-blue-600"
-                          : isCompleted
-                          ? "border-green-500 bg-green-50 text-green-600"
-                          : "border-gray-300 bg-white text-gray-400"
-                      } ${isClickable ? "cursor-pointer hover:border-green-600" : "cursor-default"}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </button>
-                    <span className={`text-xs mt-1 ${isActive ? "font-medium text-blue-600" : "text-gray-500"}`}>
-                      {step.title}
-                    </span>
-                  </div>
-                  {index < STEPS.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-2 ${
-                      isCompleted ? "bg-green-500" : "bg-gray-300"
-                    }`} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <Progress value={progress} className="h-2" />
+            return (
+              <div key={step.id} className="flex flex-1 items-center last:flex-none">
+                <button
+                  type="button"
+                  disabled={!isClickable}
+                  onClick={() => goToStep(step.id)}
+                  title={isClickable ? `Go to ${step.title}` : undefined}
+                  className={`flex items-center gap-2.5 rounded-md px-1 py-1 text-left transition-colors ${
+                    isClickable ? "cursor-pointer hover:opacity-80" : "cursor-default"
+                  }`}
+                >
+                  <span
+                    className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm transition-colors ${
+                      isCompleted
+                        ? "bg-blue-600 text-white"
+                        : isActive
+                        ? "bg-white text-blue-600 ring-2 ring-blue-600"
+                        : "bg-gray-100 text-gray-400"
+                    }`}
+                  >
+                    {isCompleted ? <Check className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
+                  </span>
+                  <span
+                    className={`hidden text-sm sm:inline ${
+                      isActive
+                        ? "font-semibold text-gray-900"
+                        : isCompleted
+                        ? "font-medium text-gray-600"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {step.title}
+                  </span>
+                </button>
+                {index < STEPS.length - 1 && (
+                  <div
+                    className={`mx-3 h-px flex-1 transition-colors ${
+                      isCompleted ? "bg-blue-600" : "bg-gray-200"
+                    }`}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
         </div>
 
+        {/* Scrollable step body — the only part that scrolls */}
+        <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
         {restoredFromDraft && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between gap-2">
             <span className="text-sm text-amber-800">
@@ -436,48 +453,67 @@ export function CourseCreationWizard({
         {/* Step Content */}
         <div className="min-h-[400px]">
           {currentStep === 1 && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="course-name">
-                  Course Name <span className="text-red-500">*</span>
+            <div className="max-w-2xl space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="course-name" className="text-sm font-medium">
+                  Course name <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="course-name"
                   value={basicInfo.name}
                   onChange={(e) => setBasicInfo({ ...basicInfo, name: e.target.value })}
-                  placeholder="Enter course name"
+                  placeholder="e.g. Introduction to Block Coding"
                 />
+                <p className="text-xs text-gray-500">
+                  Shown to students in the course catalog.
+                </p>
               </div>
 
-              <div>
-                <Label htmlFor="course-description">Description</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="course-description" className="text-sm font-medium">
+                  Description
+                </Label>
                 <Textarea
                   id="course-description"
                   value={basicInfo.description}
                   onChange={(e) => setBasicInfo({ ...basicInfo, description: e.target.value })}
-                  placeholder="Enter course description"
+                  placeholder="What students will learn in this course"
                   rows={4}
                 />
               </div>
 
-              <div>
-                <Label>Course Thumbnail</Label>
-                <FileUploadZone
-                  type="thumbnail"
-                  courseId={courseId}
-                  onUploadComplete={handleThumbnailUpload}
-                  label="Upload thumbnail image"
-                  description="Recommended: 800x600px, max 5MB"
-                />
-                {basicInfo.thumbnail_url && (
-                  <div className="mt-2 relative h-32 w-48">
-                    <Image
-                      src={basicInfo.thumbnail_url}
-                      alt="Course thumbnail"
-                      fill
-                      className="object-contain rounded border"
-                    />
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Course thumbnail</Label>
+                {basicInfo.thumbnail_url ? (
+                  <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
+                    <div className="relative h-16 w-24 flex-shrink-0 overflow-hidden rounded border bg-gray-50">
+                      <Image
+                        src={basicInfo.thumbnail_url}
+                        alt="Course thumbnail"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900">Thumbnail uploaded</p>
+                      <p className="text-xs text-gray-500">Recommended 800×600px</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBasicInfo({ ...basicInfo, thumbnail_url: "" })}
+                    >
+                      Replace
+                    </Button>
                   </div>
+                ) : (
+                  <FileUploadZone
+                    type="thumbnail"
+                    courseId={courseId}
+                    onUploadComplete={handleThumbnailUpload}
+                    description="PNG or JPG, recommended 800×600px, max 5MB"
+                  />
                 )}
               </div>
             </div>
@@ -485,11 +521,13 @@ export function CourseCreationWizard({
 
           {currentStep === 2 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-medium">Chapters</h3>
+                  <h3 className="font-semibold text-gray-900">Curriculum</h3>
                   <p className="text-sm text-gray-500">
-                    Add chapters and organize course content
+                    {chapters.length === 0
+                      ? "Add chapters and organize course content"
+                      : `${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} • ${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0)} content item${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0) !== 1 ? "s" : ""} • ${Object.keys(assignments).length} assignment${Object.keys(assignments).length !== 1 ? "s" : ""}`}
                   </p>
                 </div>
                 <Button type="button" onClick={addChapter}>
@@ -544,107 +582,59 @@ export function CourseCreationWizard({
               </Card>
 
               {chapters.length === 0 ? (
-                <Card>
-                  <CardContent className="py-8 text-center">
-                    <p className="text-gray-500">No chapters added yet</p>
-                    <Button type="button" onClick={addChapter} className="mt-4">
-                      Add First Chapter
-                    </Button>
-                  </CardContent>
-                </Card>
+                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 px-6 py-12 text-center">
+                  <FileText className="mx-auto mb-3 h-8 w-8 text-gray-300" />
+                  <p className="font-medium text-gray-700">No chapters yet</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Chapters group your videos, readings and assignments.
+                  </p>
+                  <Button type="button" onClick={addChapter} className="mt-4">
+                    <span className="mr-1">+</span> Add First Chapter
+                  </Button>
+                </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {chapters.map((chapter, index) => {
                     // Stable key shared by the React key, the content/assignment
                     // store, and the child managers so nothing desyncs when a
                     // chapter is deleted or reordered.
                     const chapterKey = chapter.id || `temp-${index}`;
                     return (
-                    <Card key={chapterKey}>
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-2">
-                            <Input
-                              value={chapter.name}
-                              onChange={(e) => updateChapter(index, { name: e.target.value })}
-                              placeholder="Chapter name"
-                              className="font-medium"
-                            />
-                            <Textarea
-                              value={chapter.description || ""}
-                              onChange={(e) => updateChapter(index, { description: e.target.value })}
-                              placeholder="Chapter description"
-                              rows={2}
-                            />
-                          </div>
-                          {pendingDeleteChapterIndex === index ? (
-                            <div className="flex gap-1">
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => deleteChapter(index)}
-                              >
-                                Confirm
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setPendingDeleteChapterIndex(null)}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setPendingDeleteChapterIndex(index);
-                              }}
-                              title="Delete chapter"
-                            >
-                              Delete
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <ChapterContentManager
-                          chapterId={chapterKey}
-                          chapterName={chapter.name || `Chapter ${index + 1}`}
-                          contents={chapterContents[chapterKey] || []}
-                          onContentsChange={(contents) => {
-                            setChapterContents({
-                              ...chapterContents,
-                              [chapterKey]: contents,
-                            });
-                          }}
-                          courseId={courseId}
-                        />
-                        <AssignmentBuilder
-                          chapterId={chapterKey}
-                          chapterName={chapter.name || `Chapter ${index + 1}`}
-                          assignment={assignments[chapterKey] || null}
-                          onAssignmentChange={(assignment) => {
-                            if (assignment) {
-                              setAssignments({
-                                ...assignments,
-                                [chapterKey]: assignment,
-                              });
-                            } else {
-                              const updated = { ...assignments };
-                              delete updated[chapterKey];
-                              setAssignments(updated);
-                            }
-                          }}
-                        />
-                      </CardContent>
-                    </Card>
+                    <ChapterBuilderCard
+                      key={chapterKey}
+                      chapter={chapter}
+                      chapterKey={chapterKey}
+                      index={index}
+                      isExpanded={expandedChapterId === chapterKey}
+                      onToggleExpand={() =>
+                        setExpandedChapterId(expandedChapterId === chapterKey ? null : chapterKey)
+                      }
+                      onUpdate={(updates) => updateChapter(index, updates)}
+                      onDelete={() => deleteChapter(index)}
+                      onMoveUp={index === 0 ? undefined : () => moveChapter(index, 'up')}
+                      onMoveDown={index === chapters.length - 1 ? undefined : () => moveChapter(index, 'down')}
+                      contents={chapterContents[chapterKey] || []}
+                      onContentsChange={(contents) => {
+                        setChapterContents({
+                          ...chapterContents,
+                          [chapterKey]: contents,
+                        });
+                      }}
+                      assignment={assignments[chapterKey] || null}
+                      onAssignmentChange={(assignment) => {
+                        if (assignment) {
+                          setAssignments({
+                            ...assignments,
+                            [chapterKey]: assignment,
+                          });
+                        } else {
+                          const updated = { ...assignments };
+                          delete updated[chapterKey];
+                          setAssignments(updated);
+                        }
+                      }}
+                      courseId={courseId}
+                    />
                     );
                   })}
                 </div>
@@ -730,9 +720,10 @@ export function CourseCreationWizard({
             </div>
           )}
         </div>
+        </div>
 
         {/* Navigation */}
-        <DialogFooter className="flex items-center justify-between">
+        <DialogFooter className="flex items-center justify-between border-t px-6 py-4">
           <Button
             type="button"
             variant="outline"

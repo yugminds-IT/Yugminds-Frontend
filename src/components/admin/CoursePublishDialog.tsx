@@ -113,8 +113,8 @@ export function CoursePublishDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="grid max-h-[85vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b px-6 pt-6 pb-4">
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5 text-green-600" />
             Publish to Schools, Grades &amp; Sections
@@ -126,7 +126,7 @@ export function CoursePublishDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <Badge variant={isPublished ? "default" : "secondary"}>{course.status}</Badge>
             {isPublished && (
@@ -167,7 +167,7 @@ export function CoursePublishDialog({
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter className="gap-2 border-t px-6 py-4 sm:gap-2">
           {isPublished && (
             <Button
               type="button"

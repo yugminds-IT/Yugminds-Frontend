@@ -405,7 +405,7 @@ export default function CoursesManagement() {
     },
   });
 
-  // NOTE: buildChapterContentsPayload, handleCreateCourse, and handleEditCourse removed
+  // NOTE: buildChapterContentsPayload and handleCreateCourse removed
   // These functions are no longer used since we're using CourseCreationWizard and CourseEditor components
   // They managed the old form state which has been replaced
 
@@ -414,9 +414,23 @@ export default function CoursesManagement() {
     setIsViewDialogOpen(true);
   };
 
-  // NOTE: handleEditCourse removed - replaced by CourseEditor component
-  // The old edit function is no longer used
-  // NOTE: handleEditCoursePlaceholder removed - it was unused and referenced removed state variables
+  // Shared by both the table-view and grid-view Edit buttons — previously
+  // duplicated verbatim in each render block, which risked the two views
+  // silently drifting apart.
+  const handleEditCourse = async (course: Course) => {
+    try {
+      const { data } = await adminApi.courses.get(course.id);
+      const fullCourse = (data?.course ?? data) as Course;
+      if (!fullCourse || typeof fullCourse !== 'object' || !('id' in fullCourse)) {
+        throw new Error('Course data not found in response');
+      }
+      setEditStartedUpdatedAt(fullCourse.updated_at || course.updated_at || null);
+      setEditingCourse({ ...course, ...fullCourse, name: fullCourse.name || fullCourse.course_name || course.name });
+      setIsEditDialogOpen(true);
+    } catch (error: unknown) {
+      toast.error((error instanceof Error ? error.message : String(error)) || 'Failed to open edit dialog.');
+    }
+  };
 
   const handleDeleteCourse = (course: Course) => {
     setDeletingCourse(course);
@@ -786,53 +800,44 @@ export default function CoursesManagement() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <Button 
+                    <div className="flex items-center gap-0.5">
+                      <Button
                         type="button"
-                        variant="ghost" 
+                        variant="ghost"
                         size="sm"
                         onClick={() => handleViewCourse(course)}
                         title="View course details"
+                        className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button 
+                      <Button
                         type="button"
-                        variant="ghost" 
+                        variant="ghost"
                         size="sm"
-                        onClick={async (e) => {
+                        onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          try {
-                            const { data } = await adminApi.courses.get(course.id);
-                            const fullCourse = (data?.course ?? data) as Course;
-                            if (!fullCourse || typeof fullCourse !== 'object' || !('id' in fullCourse)) {
-                              throw new Error('Course data not found in response');
-                            }
-                            setEditStartedUpdatedAt(fullCourse.updated_at || course.updated_at || null);
-                            setEditingCourse({ ...course, ...fullCourse, name: fullCourse.name || fullCourse.course_name || course.name });
-                            setIsEditDialogOpen(true);
-                          } catch (error: unknown) {
-                            toast.error((error instanceof Error ? error.message : String(error)) || 'Failed to open edit dialog.');
-                          }
+                          void handleEditCourse(course);
                         }}
                         title="Edit course"
+                        className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button 
+                      <Button
                         type="button"
-                        variant="ghost" 
+                        variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteCourse(course)}
                         title="Delete course"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                      <Button 
+                      <Button
                         type="button"
-                        variant="ghost" 
+                        variant="ghost"
                         size="sm"
                         onClick={() => {
                           setPublishCourse(course);
@@ -840,8 +845,8 @@ export default function CoursesManagement() {
                         }}
                         title={course.status === 'Published' ? 'Manage publishing (schools / grades / sections)' : 'Publish to schools, grades & sections'}
                         className={course.status === 'Published'
-                          ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
-                          : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                          ? "h-8 w-8 p-0 text-amber-500 hover:bg-amber-50 hover:text-amber-600"
+                          : "h-8 w-8 p-0 text-green-500 hover:bg-green-50 hover:text-green-600"
                         }
                       >
                         {course.status === 'Published' ? (
@@ -859,7 +864,7 @@ export default function CoursesManagement() {
                           setIsVersionHistoryOpen(true);
                         }}
                         title="View version history (snapshots from saves and publishes)"
-                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        className="h-8 w-8 p-0 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
                       >
                         <History className="h-4 w-4" />
                       </Button>
@@ -870,7 +875,7 @@ export default function CoursesManagement() {
                         onClick={() => handleCloneCourse(course.id)}
                         disabled={isCloningCourse === course.id}
                         title="Clone course"
-                        className="text-gray-500 hover:text-gray-700"
+                        className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
                       >
                         {isCloningCourse === course.id
                           ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -968,8 +973,15 @@ export default function CoursesManagement() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center justify-end gap-1 pt-1">
-                          <Button type="button" variant="ghost" size="sm" onClick={() => handleViewCourse(course)} title="View">
+                        <div className="flex items-center justify-end gap-0.5 pt-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewCourse(course)}
+                            title="View"
+                            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
                           <Button
@@ -977,27 +989,23 @@ export default function CoursesManagement() {
                             variant="ghost"
                             size="sm"
                             title="Edit"
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              try {
-                                const { data } = await adminApi.courses.get(course.id);
-                                const fullCourse = (data?.course ?? data) as Course;
-                                if (!fullCourse || typeof fullCourse !== 'object' || !('id' in fullCourse)) {
-                                  throw new Error('Course data not found in response');
-                                }
-                                setEditStartedUpdatedAt(fullCourse.updated_at || course.updated_at || null);
-                                setEditingCourse({ ...course, ...fullCourse, name: fullCourse.name || fullCourse.course_name || course.name });
-                                setIsEditDialogOpen(true);
-                              } catch (error: unknown) {
-                                const errorMessage = (error instanceof Error ? error.message : String(error)) || 'Failed to open edit dialog.';
-                                toast.error(errorMessage);
-                              }
+                              void handleEditCourse(course);
                             }}
+                            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button type="button" variant="ghost" size="sm" onClick={() => handleDeleteCourse(course)} title="Delete" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteCourse(course)}
+                            title="Delete"
+                            className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                           <Button
@@ -1006,7 +1014,9 @@ export default function CoursesManagement() {
                             size="sm"
                             onClick={() => { setPublishCourse(course); setIsPublishDialogOpen(true); }}
                             title={course.status === 'Published' ? 'Manage publishing (schools / grades / sections)' : 'Publish to schools, grades & sections'}
-                            className={course.status === 'Published' ? "text-yellow-600 hover:bg-yellow-50" : "text-green-600 hover:bg-green-50"}
+                            className={course.status === 'Published'
+                              ? "h-8 w-8 p-0 text-amber-500 hover:bg-amber-50 hover:text-amber-600"
+                              : "h-8 w-8 p-0 text-green-500 hover:bg-green-50 hover:text-green-600"}
                           >
                             {course.status === 'Published' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                           </Button>
@@ -1019,7 +1029,7 @@ export default function CoursesManagement() {
                               setIsVersionHistoryOpen(true);
                             }}
                             title="Version history (snapshots from saves and publishes)"
-                            className="text-blue-600 hover:bg-blue-50"
+                            className="h-8 w-8 p-0 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
                           >
                             <History className="h-4 w-4" />
                           </Button>
@@ -1030,7 +1040,7 @@ export default function CoursesManagement() {
                             onClick={() => handleCloneCourse(course.id)}
                             disabled={isCloningCourse === course.id}
                             title="Clone course"
-                            className="text-gray-500 hover:text-gray-700"
+                            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
                           >
                             {isCloningCourse === course.id
                               ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -1049,67 +1059,64 @@ export default function CoursesManagement() {
 
       {/* View Course Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white">
-          <DialogHeader>
+        <DialogContent className="grid max-h-[85vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b px-6 pt-6 pb-4">
             <DialogTitle>Course Details</DialogTitle>
             <DialogDescription>View complete course information</DialogDescription>
           </DialogHeader>
           {viewingCourse && (
-            <div className="space-y-6">
+            <div className="min-h-0 space-y-5 overflow-y-auto px-6 py-5">
               <div>
-                <Label className="text-sm font-semibold text-gray-700">Course Name</Label>
-                <p className="text-lg font-medium text-gray-900 mt-1">{viewingCourse.name}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-semibold text-gray-700">Description</Label>
-                <p className="text-gray-600 mt-1">{viewingCourse.description || 'No description provided'}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-semibold text-gray-700">Status</Label>
-                <div className="mt-1">
-                  <Badge className={getStatusColor(viewingCourse.status)}>{viewingCourse.status}</Badge>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-lg font-semibold text-gray-900">
+                    {viewingCourse.name || viewingCourse.course_name || 'Unnamed Course'}
+                  </p>
+                  <Badge className={`flex-shrink-0 ${getStatusColor(viewingCourse.status || 'Draft')}`}>
+                    {viewingCourse.status || 'Draft'}
+                  </Badge>
                 </div>
+                <p className="mt-1.5 text-sm text-gray-600">
+                  {viewingCourse.description || 'No description provided'}
+                </p>
               </div>
-              <div>
-                <Label className="text-sm font-semibold text-gray-700">Schools & Grades</Label>
-                <div className="mt-2 space-y-2">
-                  {viewingCourse.course_access && viewingCourse.course_access.length > 0 ? (
-                    viewingCourse.course_access.map((access, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Badge variant="secondary">{access.schools?.name || 'Unknown School'}</Badge>
-                        <Badge variant="outline">{access.grade}</Badge>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { label: 'Chapters', value: viewingCourse.total_chapters || 0, color: 'text-blue-600' },
+                  { label: 'Videos', value: viewingCourse.total_videos || 0, color: 'text-purple-600' },
+                  { label: 'Materials', value: viewingCourse.total_materials || 0, color: 'text-green-600' },
+                  { label: 'Assignments', value: viewingCourse.total_assignments || 0, color: 'text-orange-600' },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 text-center">
+                    <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-500">Schools &amp; grades</Label>
+                {viewingCourse.course_access && viewingCourse.course_access.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {viewingCourse.course_access.map((access, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs">
+                        <span className="font-medium text-gray-700">{access.schools?.name || 'Unknown School'}</span>
+                        <span className="text-gray-300">·</span>
+                        <span className="text-gray-500">{access.grade}</span>
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-500 text-sm">No schools/grades assigned</p>
-                  )}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">Not yet published to any school</p>
+                )}
               </div>
-              <div className="grid grid-cols-4 gap-4">
-                <div>
-                  <Label className="text-sm font-semibold text-gray-700">Chapters</Label>
-                  <p className="text-2xl font-bold text-blue-600 mt-1">{viewingCourse.total_chapters || 0}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-semibold text-gray-700">Videos</Label>
-                  <p className="text-2xl font-bold text-purple-600 mt-1">{viewingCourse.total_videos || 0}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-semibold text-gray-700">Materials</Label>
-                  <p className="text-2xl font-bold text-green-600 mt-1">{viewingCourse.total_materials || 0}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-semibold text-gray-700">Assignments</Label>
-                  <p className="text-2xl font-bold text-orange-600 mt-1">{viewingCourse.total_assignments || 0}</p>
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-semibold text-gray-700">Created At</Label>
-                <p className="text-gray-600 mt-1">{formatCourseDate(viewingCourse.created_at)}</p>
-              </div>
+
+              <p className="text-xs text-gray-400">
+                Created {formatCourseDate(viewingCourse.created_at)}
+              </p>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="border-t px-6 py-4">
             <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
               Close
             </Button>
@@ -1119,20 +1126,21 @@ export default function CoursesManagement() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="bg-white">
+        <DialogContent className="w-[calc(100vw-2rem)] bg-white sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Course</DialogTitle>
+            <DialogTitle>Delete course</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this course? This action cannot be undone.
+              This moves the course to Trash — students immediately lose access, and it
+              can be restored from Trash later if needed.
             </DialogDescription>
           </DialogHeader>
           {deletingCourse && (
-            <div className="py-4">
-              <p className="text-sm text-gray-600">
-                Course: <span className="font-semibold">{deletingCourse.name}</span>
-              </p>
-              <p className="text-sm text-red-600 mt-2">
-                All course data including chapters, videos, materials, and assignments will be permanently deleted.
+            <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+              <p className="text-sm text-gray-700">
+                <span className="text-gray-500">Course: </span>
+                <span className="font-medium text-gray-900">
+                  {deletingCourse.name || deletingCourse.course_name || 'Unnamed Course'}
+                </span>
               </p>
             </div>
           )}
@@ -1143,13 +1151,13 @@ export default function CoursesManagement() {
             }}>
               Cancel
             </Button>
-            <Button 
+            <Button
               variant="destructive"
               onClick={confirmDeleteCourse}
               className="bg-red-600 hover:bg-red-700"
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete Course
+              Move to Trash
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1157,11 +1165,12 @@ export default function CoursesManagement() {
 
       {/* Bulk delete confirmation */}
       <Dialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
-        <DialogContent className="bg-white">
+        <DialogContent className="w-[calc(100vw-2rem)] bg-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete selected courses</DialogTitle>
             <DialogDescription>
-              This will permanently delete {selectedCourseIds.size} course(s) and all related chapters, content, and assignments. This cannot be undone.
+              This moves {selectedCourseIds.size} course{selectedCourseIds.size !== 1 ? 's' : ''} to Trash —
+              students immediately lose access, and they can be restored from Trash later if needed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1177,7 +1186,7 @@ export default function CoursesManagement() {
               onClick={() => void confirmBulkDelete()}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete {selectedCourseIds.size} course(s)
+              Move {selectedCourseIds.size} course(s) to Trash
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1214,11 +1223,11 @@ export default function CoursesManagement() {
       {/* Course Editor */}
       {isEditDialogOpen && editingCourse && (
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader className="sr-only">
+          <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr] gap-0 overflow-hidden p-0 sm:max-w-5xl">
+            <DialogHeader className="border-b px-6 pt-6 pb-4">
               <DialogTitle>Edit Course</DialogTitle>
               <DialogDescription>
-                Update course details, chapters, content, and assignments.
+                {editingCourse.name || editingCourse.course_name || 'Update course details, chapters, content, and assignments.'}
               </DialogDescription>
             </DialogHeader>
             <CourseEditor
@@ -1292,7 +1301,7 @@ export default function CoursesManagement() {
 
       {/* Concurrent Edit Warning */}
       <Dialog open={!!concurrentEditWarning?.show} onOpenChange={(open) => { if (!open) setConcurrentEditWarning(null); }}>
-        <DialogContent className="bg-white max-w-md">
+        <DialogContent className="w-[calc(100vw-2rem)] bg-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-yellow-500" />
@@ -1327,7 +1336,7 @@ export default function CoursesManagement() {
           setIsVersionHistoryOpen(open);
           if (!open) setVersionHistoryCourse(null);
         }}>
-          <DialogContent className="max-w-2xl h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogContent className="flex h-[80vh] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
             <DialogHeader className="sr-only">
               <DialogTitle>Version History</DialogTitle>
               <DialogDescription>View and manage course version history</DialogDescription>
