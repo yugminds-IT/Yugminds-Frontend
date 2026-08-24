@@ -232,7 +232,7 @@ export function ChapterContentManager({
         ? formData.content_url.trim()
         : editingContent?.content_url,
       duration_minutes: finalContentType === 'video_link'
-        ? (formData.duration_minutes ? parseFloat(formData.duration_minutes) : undefined)
+        ? (formData.duration_minutes ? Math.round(parseFloat(formData.duration_minutes)) : undefined)
         : editingContent?.duration_minutes,
       order_index: editingContent?.order_index || (contents.length > 0 ? Math.max(...contents.map((c: ChapterContent) => c.order_index ?? 0)) + 1 : 1),
     };
@@ -247,7 +247,7 @@ export function ChapterContentManager({
         chapter_id: chapterId,
         title: formData.title.trim(),
         video_url: formData.content_url.trim(),
-        duration: formData.duration_minutes ? parseFloat(formData.duration_minutes) : undefined,
+        duration: formData.duration_minutes ? Math.round(parseFloat(formData.duration_minutes)) : undefined,
       });
     }
 
@@ -689,14 +689,17 @@ export function ChapterContentManager({
               {contentType === 'video_link' && (
                 <div>
                   <Label htmlFor="duration">Duration (minutes)</Label>
+                  {/* Whole minutes only — the column is an Int, and the old
+                      step="0.1" / "e.g., 15.5" hint produced Float values
+                      that Prisma rejected, failing the entire course save. */}
                   <Input
                     id="duration"
                     type="number"
                     min="0"
-                    step="0.1"
+                    step="1"
                     value={formData.duration_minutes}
                     onChange={(e) => setFormData({ ...formData, duration_minutes: e.target.value })}
-                    placeholder="e.g., 15.5"
+                    placeholder="e.g., 15"
                   />
                 </div>
               )}

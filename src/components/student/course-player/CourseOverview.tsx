@@ -40,6 +40,8 @@ interface Chapter {
   order_index?: number
   is_completed?: boolean
   is_unlocked?: boolean
+  unlocks_in_days?: number | null
+  lock_reason?: 'time' | 'sequential' | null
   content_count?: number
   completed_count?: number
 }
@@ -425,7 +427,19 @@ function CurriculumModule({
           )}
         </div>
         {locked ? (
-          <span className="text-[11px] text-gray-400 flex-shrink-0">Locked</span>
+          /* Say *why* it's locked, matching CourseSidebar — a bare "Locked"
+             gave the student no idea whether to wait or go finish something. */
+          <span className="flex-shrink-0 text-right text-[11px] leading-tight">
+            {chapter.lock_reason === 'time' ? (
+              <span className="font-medium text-amber-600">
+                Unlocks in {chapter.unlocks_in_days} day{chapter.unlocks_in_days === 1 ? '' : 's'}
+              </span>
+            ) : chapter.lock_reason === 'sequential' ? (
+              <span className="text-gray-400">Finish previous module</span>
+            ) : (
+              <span className="text-gray-400">Locked</span>
+            )}
+          </span>
         ) : open ? (
           <ChevronUp className="h-4 w-4 text-gray-400 flex-shrink-0" />
         ) : (

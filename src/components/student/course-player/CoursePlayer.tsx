@@ -530,12 +530,20 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
             onComplete={handleMarkComplete}
           />
         )
+      // image/audio/link share this viewer: it already owns the explicit
+      // "Mark as Complete" path these types need. Without a case here they
+      // fell to the default branch, which offers no completion control — so
+      // `nextDisabled = !isCompleted` never cleared and a single image lesson
+      // permanently blocked every item after it.
       case 'pdf':
       case 'file':
+      case 'image':
+      case 'audio':
+      case 'link':
         return (
           <PDFContentViewer
             key={currentContent.id}
-            content={currentContent as { id: string; title: string; content_url?: string; chapter_id?: string; course_id?: string }}
+            content={currentContent as { id: string; title: string; content_url?: string; content_type?: string; chapter_id?: string; course_id?: string }}
             courseId={courseId}
             chapterId={chapterId}
             chapterName={chapterDisplayName}
@@ -666,7 +674,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     currentUnlocked &&
     !contentsLoading &&
     !contentsError &&
-    ['video', 'video_link', 'text', 'html', 'pdf', 'file'].includes(lessonTabContentType)
+    ['video', 'video_link', 'text', 'html', 'pdf', 'file', 'image', 'audio', 'link'].includes(lessonTabContentType)
 
   return (
     <ErrorBoundary>

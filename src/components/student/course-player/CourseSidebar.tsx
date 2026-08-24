@@ -13,6 +13,8 @@ import {
   Link as LinkIcon,
   Loader2,
   Lock,
+  Image as ImageIcon,
+  Volume2,
 } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import { useChapterContents } from '../../../hooks/useStudentData'
@@ -60,6 +62,9 @@ function getContentTypeLabel(contentType: string): string {
   if (t === 'video' || t === 'video_link') return 'Video'
   if (t === 'text' || t === 'html') return 'Reading'
   if (t === 'pdf' || t === 'file') return 'File'
+  if (t === 'image') return 'Image'
+  if (t === 'audio') return 'Audio'
+  if (t === 'link') return 'Link'
   if (t === 'quiz') return 'Practice Quiz'
   if (t === 'assignment') return 'Assignment'
   return 'Item'
@@ -70,6 +75,8 @@ function getContentIcon(contentType: string) {
   if (t === 'video' || t === 'video_link') return Video
   if (t === 'quiz' || t === 'assignment') return ClipboardList
   if (t === 'pdf' || t === 'file') return FileText
+  if (t === 'image') return ImageIcon
+  if (t === 'audio') return Volume2
   if (t === 'link') return LinkIcon
   return FileText
 }

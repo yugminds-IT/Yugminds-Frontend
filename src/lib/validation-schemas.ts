@@ -662,14 +662,12 @@ export const createCourseSchema = z.object({
   title: nonEmptyString.max(255).optional(),
   name: nonEmptyString.max(255).optional(), // Accept both name and title
   description: z.string().max(2000).optional().nullable(),
-  duration_weeks: z.number().int().min(1).max(104).optional().nullable(), // 1 week to 2 years
-  prerequisites_course_ids: z.array(uuidSchema).optional().nullable(),
-  prerequisites_text: z.string().max(1000).optional().nullable(),
+  // NOTE: duration_weeks / difficulty_level / prerequisites_* were removed —
+  // no Prisma column ever backed them, so they were silently dropped on save.
   thumbnail_url: z.string().url().optional().nullable().or(z.literal('')),
-  difficulty_level: z.enum(['Beginner', 'Intermediate', 'Advanced']).optional().default('Beginner'),
   school_ids: uuidArraySchema, // Uses transform to filter invalid UUIDs
   grades: gradeArraySchema, // Uses transform to filter empty grades
-}).refine((data) => data.name || data.title, { 
+}).refine((data) => data.name || data.title, {
   message: 'Either name or title is required',
   path: ['name'] // Show error on name field
 }).passthrough();
@@ -679,11 +677,7 @@ export const updateCourseSchema = z.object({
   title: z.string().max(255).optional(),
   name: z.string().max(255).optional(), // Accept both name and title
   description: z.string().max(2000).optional().nullable(),
-  duration_weeks: z.number().int().min(1).max(104).optional().nullable(), // 1 week to 2 years
-  prerequisites_course_ids: z.array(uuidSchema).optional().nullable(),
-  prerequisites_text: z.string().max(1000).optional().nullable(),
   thumbnail_url: z.string().url().optional().nullable().or(z.literal('')),
-  difficulty_level: z.enum(['Beginner', 'Intermediate', 'Advanced']).optional(),
   school_ids: uuidArraySchema, // Uses transform to filter invalid UUIDs
   grades: gradeArraySchema, // Uses transform to filter empty grades
 }).passthrough();

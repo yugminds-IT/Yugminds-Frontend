@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Badge } from '../../ui/badge'
-import { File, CheckCircle, Loader2, ExternalLink, Download } from 'lucide-react'
+import { File, CheckCircle, Loader2, ExternalLink, Download, Volume2, Link as LinkIcon } from 'lucide-react'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 
 interface PDFContentViewerProps {
@@ -10,6 +10,7 @@ interface PDFContentViewerProps {
     id: string
     title: string
     content_url?: string
+    content_type?: string
     chapter_id?: string
     course_id?: string
   }
@@ -18,6 +19,9 @@ interface PDFContentViewerProps {
   chapterName?: string
   onComplete?: () => void
 }
+
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'avif']
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a', 'aac']
 
 // Minimum time the document must be open before completion can be confirmed.
 const MIN_DWELL_SECONDS = 8
@@ -47,10 +51,23 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
   const saving = isSaving(content.id)
 
   const extension = useMemo(() => getExtension(content.content_url), [content.content_url])
-  const isPdf = extension === 'pdf'
+  const declaredType = (content.content_type || '').toLowerCase()
 
-  // Non-PDF files can't be previewed inline, so there's no "loaded"/"dwell"
-  // signal to gate on — the download card itself is the only interaction.
+  // This viewer backs every non-video, non-text content type the admin builder
+  // can author: pdf, file, image, audio and link. Prefer the admin-declared
+  // type and fall back to sniffing the URL extension (uploads are stored under
+  // generated names, so the extension is the only other signal).
+  const isPdf = declaredType === 'pdf' || (declaredType !== 'link' && extension === 'pdf')
+  const isImage =
+    declaredType === 'image' || (declaredType !== 'link' && IMAGE_EXTENSIONS.includes(extension))
+  const isAudio =
+    declaredType === 'audio' || (declaredType !== 'link' && AUDIO_EXTENSIONS.includes(extension))
+  const isLink = declaredType === 'link'
+
+  // Only an inline PDF has a "loaded"/dwell signal to gate on. Everything else
+  // (image, audio, link, downloadable file) is completed by explicit action —
+  // without this, these types had no completion path at all, which left Next
+  // permanently disabled and blocked the rest of the course.
   const canComplete = isPdf ? (pdfLoaded && dwellDone) || isCompleted : true
 
   // Explicit, gated completion only — never silent/auto.
@@ -85,35 +102,71 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
 
         {chapterName && <p className="text-sm text-gray-500 mb-4">{chapterName}</p>}
 
-        {content.content_url ? (
-          <div className="flex flex-col items-center justify-center gap-4 py-16 bg-gray-50 rounded-lg border border-gray-200">
-            <File className="h-14 w-14 text-red-500" />
-            <div className="text-center">
-              <p className="text-sm font-medium text-gray-800">{shortTitle}</p>
-              {extension && <p className="text-xs text-gray-400 uppercase mt-0.5">{extension} file</p>}
-            </div>
-            <div className="flex items-center gap-3">
-              <a
-                href={content.content_url}
-                download
-                className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                <Download className="h-4 w-4" />
-                Download
-              </a>
-              <button
-                onClick={() => window.open(content.content_url!, '_blank', 'noopener,noreferrer')}
-                className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5 transition-colors"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open in new tab
-              </button>
-            </div>
-          </div>
-        ) : (
+        {!content.content_url ? (
           <div className="flex flex-col items-center justify-center py-16 bg-gray-50 rounded-lg border border-dashed border-gray-200 text-gray-400">
             <File className="h-14 w-14 mb-3 opacity-30" />
-            <p>File not available</p>
+            <p>{isLink ? 'Link not available' : 'File not available'}</p>
+          </div>
+        ) : isImage ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={content.content_url}
+              alt={content.title}
+              className="mx-auto max-h-[70vh] w-auto max-w-full rounded object-contain"
+            />
+          </div>
+        ) : isAudio ? (
+          <div className="flex flex-col items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-6 py-10">
+            <Volume2 className="h-12 w-12 text-gray-400" />
+            <audio controls preload="metadata" className="w-full max-w-lg" src={content.content_url}>
+              Your browser does not support audio playback.
+            </audio>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-4 py-16 bg-gray-50 rounded-lg border border-gray-200">
+            {isLink ? (
+              <LinkIcon className="h-14 w-14 text-blue-500" />
+            ) : (
+              <File className="h-14 w-14 text-red-500" />
+            )}
+            <div className="text-center">
+              <p className="text-sm font-medium text-gray-800">{shortTitle}</p>
+              {isLink ? (
+                <p className="mt-0.5 max-w-md truncate text-xs text-gray-400">{content.content_url}</p>
+              ) : (
+                extension && <p className="text-xs text-gray-400 uppercase mt-0.5">{extension} file</p>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {isLink ? (
+                <button
+                  onClick={() => window.open(content.content_url!, '_blank', 'noopener,noreferrer')}
+                  className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open link
+                </button>
+              ) : (
+                <>
+                  <a
+                    href={content.content_url}
+                    download
+                    className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download
+                  </a>
+                  <button
+                    onClick={() => window.open(content.content_url!, '_blank', 'noopener,noreferrer')}
+                    className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5 transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open in new tab
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
 
