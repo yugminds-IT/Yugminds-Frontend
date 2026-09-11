@@ -24,6 +24,8 @@ import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContent } from "./ChapterContentManager";
 import { Assignment } from "./AssignmentBuilder";
 import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
+import { BulkAddChaptersDialog } from "./BulkAddChaptersDialog";
+import { buildChaptersFromNames } from "./bulkChapters";
 import { generateUUID } from "../../lib/uuid-utils";
 
 export type { Chapter };
@@ -46,10 +48,12 @@ interface WizardDraft {
 }
 
 // Self-contained draft persistence so an in-progress course survives an
-// accidental close/refresh. Restores the *complete* wizard state (including
-// chapter content and assignments), unlike the previous write-only helper.
+// accidental close/refresh, session expiry logout, or tab crash. Restores the
+// *complete* wizard state (including chapter content and assignments).
 const DRAFT_KEY = "admin_course_wizard_draft_v1";
-const DRAFT_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+// Long enough to survive session expiry + re-login (access tokens are ~15m;
+// users often take longer to get back). Not indefinite — avoid stale drafts.
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function loadWizardDraft(): WizardDraft | null {
   if (typeof window === "undefined") return null;
@@ -91,6 +95,27 @@ function clearWizardDraft(): void {
 /** Whether an in-progress (non-expired) wizard draft exists. */
 export function hasWizardDraft(): boolean {
   return loadWizardDraft() !== null;
+}
+
+/** Summary for the courses-page “Resume draft” banner. */
+export function getWizardDraftSummary(): {
+  name: string;
+  savedAt: number;
+  currentStep: number;
+} | null {
+  const draft = loadWizardDraft();
+  if (!draft) return null;
+  const name = draft.basicInfo?.name?.trim();
+  return {
+    name: name || "Untitled course",
+    savedAt: draft.savedAt,
+    currentStep: draft.currentStep ?? 1,
+  };
+}
+
+/** Discard a local recovery draft without opening the wizard. */
+export function clearWizardDraftFromStorage(): void {
+  clearWizardDraft();
 }
 
 interface CourseCreationWizardProps {
@@ -149,15 +174,16 @@ export function CourseCreationWizard({
   // builder is ever mounted at a time, so adding more chapters doesn't turn
   // this step into a long scroll (see ChapterBuilderCard).
   const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>(
     draft?.chapterContents ?? {}
   );
   const [assignments, setAssignments] = useState<Record<string, Assignment>>(
     draft?.assignments ?? {}
   );
-  // Auto-save the full wizard state so an accidental close/refresh can be
-  // recovered. Only persist when the form actually has content, and never
-  // while editing an existing course.
+  // Auto-save the full wizard state so an accidental close/refresh / session
+  // logout can be recovered. Only persist when the form actually has content,
+  // and never while editing an existing course.
   useEffect(() => {
     if (courseId) return;
     const hasContent =
@@ -168,13 +194,24 @@ export function CourseCreationWizard({
       clearWizardDraft();
       return;
     }
-    saveWizardDraft({
+    const payload = {
       basicInfo,
       chapters,
       chapterContents,
       assignments,
       currentStep,
-    });
+    };
+    saveWizardDraft(payload);
+
+    // Flush once more if the tab is closing / navigating away (e.g. forced
+    // redirect to /lms/login on session expiry) so the last keystrokes land.
+    const flush = () => saveWizardDraft(payload);
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+    };
   }, [
     courseId,
     basicInfo,
@@ -281,6 +318,13 @@ export function CourseCreationWizard({
     setExpandedChapterId(newChapter.id ?? null);
   };
 
+  const addChaptersFromNames = (names: string[]) => {
+    const newOnes = buildChaptersFromNames(names, chapters.length + 1);
+    setChapters([...chapters, ...newOnes]);
+    // Keep cards collapsed so a large paste does not explode the scroll.
+    setExpandedChapterId(null);
+  };
+
   const updateChapter = (index: number, updates: Partial<Chapter>) => {
     const updated = [...chapters];
     updated[index] = { ...updated[index], ...updates };
@@ -361,6 +405,7 @@ export function CourseCreationWizard({
   };
 
   return (
+    <>
     <Dialog open={true} onOpenChange={(open) => { if (!open) onCancel(); }}>
       {/* Sized to always fit the viewport (never wider/taller than the frame),
           with the stepper and nav pinned and only the step body scrolling. */}
@@ -530,9 +575,14 @@ export function CourseCreationWizard({
                       : `${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} • ${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0)} content item${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0) !== 1 ? "s" : ""} • ${Object.keys(assignments).length} assignment${Object.keys(assignments).length !== 1 ? "s" : ""}`}
                   </p>
                 </div>
-                <Button type="button" onClick={addChapter}>
-                  <span className="mr-1">+</span> Add Chapter
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={() => setBulkAddOpen(true)}>
+                    Add multiple…
+                  </Button>
+                  <Button type="button" onClick={addChapter}>
+                    <span className="mr-1">+</span> Add Chapter
+                  </Button>
+                </div>
               </div>
 
               <Card>
@@ -588,9 +638,14 @@ export function CourseCreationWizard({
                   <p className="mt-1 text-sm text-gray-500">
                     Chapters group your videos, readings and assignments.
                   </p>
-                  <Button type="button" onClick={addChapter} className="mt-4">
-                    <span className="mr-1">+</span> Add First Chapter
-                  </Button>
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                    <Button type="button" onClick={addChapter}>
+                      <span className="mr-1">+</span> Add First Chapter
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setBulkAddOpen(true)}>
+                      Add multiple chapters
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -767,6 +822,13 @@ export function CourseCreationWizard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <BulkAddChaptersDialog
+      open={bulkAddOpen}
+      onOpenChange={setBulkAddOpen}
+      onAdd={addChaptersFromNames}
+    />
+    </>
   );
 }
 

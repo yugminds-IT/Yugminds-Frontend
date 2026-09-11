@@ -8,7 +8,7 @@
  import { SignInPage, type Testimonial } from "@/components/ui/sign-in";
  import { markFreshLogin } from "@/hooks/useSessionValidation";
  import { shortenUserId } from "@/lib/utils";
- import { setStoredSession, waitForSession, consumeLogoutReason } from "@/lib/session-utils";
+ import { setStoredSession, waitForSession, consumeLogoutReason, safeNextPath } from "@/lib/session-utils";
  import { authApi, commonApi } from "@/lib/api";
  
  const sampleTestimonials: Testimonial[] = [
@@ -137,13 +137,19 @@
          teacher: "/lms/teacher",
          student: "/lms/student",
        };
+
+       const next = safeNextPath(
+         typeof window !== "undefined"
+           ? new URLSearchParams(window.location.search).get("next")
+           : null,
+       );
  
        console.log("✅ Login successful:", {
          userId: shortenUserId(String(authRes.user.id)),
          role,
        });
  
-       router.push(roleRoutes[role] || "/lms/login");
+       router.push(next || roleRoutes[role] || "/lms/login");
      } catch (err: unknown) {
        if (loginTimeout) clearTimeout(loginTimeout);
        const apiErr = err as Error & { status?: number };

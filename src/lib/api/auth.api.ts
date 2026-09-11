@@ -1,5 +1,5 @@
 import { apiClient, setAuthToken } from './axios';
-import type { AuthResponse, LoginRequest, SignupRequest, RefreshRequest } from './types';
+import type { AuthResponse, LoginRequest, SignupRequest } from './types';
 
 const AUTH_BASE = '/auth';
 
@@ -68,12 +68,20 @@ export async function signup(data: SignupRequest): Promise<AuthResponse> {
 }
 
 export async function refresh(): Promise<AuthResponse> {
-  const res = await apiClient.post<AuthResponse>(`${AUTH_BASE}/refresh`, {} as RefreshRequest);
-  const { tokens } = res.data;
-  if (tokens?.accessToken) {
-    setAuthToken(tokens.accessToken);
+  const res = await fetch(
+    typeof window !== 'undefined' ? `${window.location.origin}/api/auth/refresh` : '/api/auth/refresh',
+    { method: 'POST', credentials: 'include' },
+  );
+  const data = (await res.json()) as {
+    token?: string;
+    tokens?: { accessToken?: string };
+  };
+  const token = data.token ?? data.tokens?.accessToken;
+  if (!res.ok || !token) {
+    throw new Error('Invalid refresh response');
   }
-  return res.data;
+  setAuthToken(token);
+  return { tokens: { accessToken: token } } as AuthResponse;
 }
 
 export const authApi = {

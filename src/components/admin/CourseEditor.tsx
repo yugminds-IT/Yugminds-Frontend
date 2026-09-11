@@ -20,6 +20,8 @@ import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContent } from "./ChapterContentManager";
 import { Assignment } from "./AssignmentBuilder";
 import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
+import { BulkAddChaptersDialog } from "./BulkAddChaptersDialog";
+import { buildChaptersFromNames } from "./bulkChapters";
 import { generateUUID } from "../../lib/uuid-utils";
 
 export type { Chapter };
@@ -212,6 +214,7 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
   // Collapsed-by-default chapter list — only one chapter's content/assignment
   // builder is ever mounted at a time (see ChapterBuilderCard).
   const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
 
   // Seeded once from the initial `course` prop (CourseEditor is remounted
   // fresh per edit session, see admin/courses/page.tsx). Must NOT be a
@@ -251,6 +254,12 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
     };
     setChapters([...chapters, newChapter]);
     setExpandedChapterId(newChapter.id ?? null);
+  };
+
+  const addChaptersFromNames = (names: string[]) => {
+    const newOnes = buildChaptersFromNames(names, chapters.length + 1);
+    setChapters([...chapters, ...newOnes]);
+    setExpandedChapterId(null);
   };
 
   const updateChapter = (index: number, updates: Partial<Chapter>) => {
@@ -370,6 +379,7 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
   return (
     /* Same pinned-header / scrolling-body / pinned-footer shape as the create
        wizard, so the tab bar and Save button never scroll out of reach. */
+    <>
     <Tabs
       value={activeTab}
       onValueChange={setActiveTab}
@@ -491,9 +501,14 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
                       : `${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} • ${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0)} content item${Object.values(chapterContents).reduce((sum, list) => sum + list.length, 0) !== 1 ? "s" : ""} • ${Object.keys(assignments).length} assignment${Object.keys(assignments).length !== 1 ? "s" : ""}`}
                   </p>
                 </div>
-                <Button type="button" onClick={addChapter}>
-                  <span className="mr-1">+</span> Add Chapter
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={() => setBulkAddOpen(true)}>
+                    Add multiple…
+                  </Button>
+                  <Button type="button" onClick={addChapter}>
+                    <span className="mr-1">+</span> Add Chapter
+                  </Button>
+                </div>
               </div>
               <div className="rounded-md border p-3 space-y-2">
                 <Label htmlFor="edit_chapter_unlock_interval_days" className="text-sm font-medium">
@@ -546,9 +561,14 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
                   <p className="mt-1 text-sm text-gray-500">
                     Chapters group your videos, readings and assignments.
                   </p>
-                  <Button type="button" onClick={addChapter} className="mt-4">
-                    <span className="mr-1">+</span> Add First Chapter
-                  </Button>
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                    <Button type="button" onClick={addChapter}>
+                      <span className="mr-1">+</span> Add First Chapter
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setBulkAddOpen(true)}>
+                      Add multiple chapters
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 chapters.map((chapter, index) => {
@@ -637,5 +657,12 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
         </Button>
       </div>
     </Tabs>
+
+    <BulkAddChaptersDialog
+      open={bulkAddOpen}
+      onOpenChange={setBulkAddOpen}
+      onAdd={addChaptersFromNames}
+    />
+    </>
   );
 }

@@ -31,8 +31,8 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
     const json =
-      typeof window !== 'undefined'
-        ? window.atob(padded)
+      typeof globalThis.atob === 'function'
+        ? globalThis.atob(padded)
         : Buffer.from(padded, 'base64').toString('utf8');
     return JSON.parse(json) as Record<string, unknown>;
   } catch {
@@ -102,29 +102,121 @@ export function subscribeToLogoutBroadcast(): () => void {
   return () => ch.close();
 }
 
-export async function tryRefreshSession(): Promise<boolean> {
-  try {
-    const response = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      credentials: 'include',
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function doRefreshOnce(): Promise<boolean> {
+  const response = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    credentials: 'include',
+  });
+
+  if (!response.ok) return false;
+
+  const data = (await response.json()) as {
+    token?: string;
+    tokens?: { accessToken?: string };
+  };
+  const token = data.token ?? data.tokens?.accessToken;
+  if (!token) return false;
+
+  setInMemoryToken(token);
+  const payload = decodeJwtPayload(token);
+  const sub = payload?.sub;
+  if (sub != null) {
+    writeMeta({
+      id: String(sub),
+      email: typeof payload?.email === 'string' ? payload.email : undefined,
     });
-
-    if (!response.ok) return false;
-
-    const data = (await response.json()) as { token?: string };
-    if (!data?.token) return false;
-
-    setInMemoryToken(data.token);
-    return true;
-  } catch {
-    return false;
   }
+  return true;
+}
+
+export async function tryRefreshSession(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const run = () => doRefreshOnce();
+    if (typeof navigator !== 'undefined' && 'locks' in navigator) {
+      return navigator.locks.request('yugminds-auth-refresh', run);
+    }
+    const ok = await run();
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, 300));
+    return run();
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+
+  return refreshInFlight;
+}
+
+export function isAccessTokenExpiringSoon(skewSeconds = 90): boolean {
+  if (!_inMemoryToken) return true;
+  const payload = decodeJwtPayload(_inMemoryToken);
+  const exp = typeof payload?.exp === 'number' ? payload.exp : null;
+  if (exp == null) return true;
+  return exp * 1000 <= Date.now() + skewSeconds * 1000;
+}
+
+/** Refresh the access token when the tab is visible and the JWT is close to expiry. */
+export function startSessionKeepAlive(): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  const refreshIfNeeded = () => {
+    if (document.visibilityState !== 'visible') return;
+    const path = window.location.pathname;
+    const onLms =
+      path.startsWith('/lms/') &&
+      !path.startsWith('/lms/login') &&
+      !path.startsWith('/lms/signup');
+    if (!onLms) return;
+    if (isAccessTokenExpiringSoon(90)) {
+      void tryRefreshSession().catch(() => {});
+    }
+  };
+
+  document.addEventListener('visibilitychange', refreshIfNeeded);
+  window.addEventListener('focus', refreshIfNeeded);
+  refreshIfNeeded();
+  const intervalId = window.setInterval(refreshIfNeeded, 60_000);
+  return () => {
+    document.removeEventListener('visibilitychange', refreshIfNeeded);
+    window.removeEventListener('focus', refreshIfNeeded);
+    window.clearInterval(intervalId);
+  };
+}
+
+export function loginRedirectUrl(reason: LogoutReason = 'session_expired'): string {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const search = typeof window !== 'undefined' ? window.location.search : '';
+  const next = safeNextPath(path + search);
+  setLogoutReason(reason);
+  return next ? `/lms/login?next=${encodeURIComponent(next)}` : '/lms/login';
+}
+
+/** Allow only in-app LMS paths so login `next` cannot bounce off-site. */
+export function safeNextPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith('/lms/')) return null;
+  if (raw.startsWith('//') || raw.includes('://')) return null;
+  if (raw.startsWith('/lms/login') || raw.startsWith('/lms/signup')) return null;
+  return raw;
 }
 
 export async function waitForSession(
   maxAttempts = 3,
   delayMs = 300,
 ): Promise<{ session: Session | null; error: unknown } | null> {
+  const existing = getStoredSession();
+  if (existing?.access_token) return { session: existing, error: null };
+
+  const refreshed = await tryRefreshSession().catch(() => false);
+  if (refreshed) {
+    const session = getStoredSession();
+    if (session?.access_token) return { session, error: null };
+  }
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       if (attempt === 1 && process.env.NODE_ENV === 'development') {
@@ -137,12 +229,6 @@ export async function waitForSession(
       if (attempt === maxAttempts) return { session: null, error: err };
       await new Promise((r) => setTimeout(r, delayMs));
     }
-  }
-
-  const refreshed = await tryRefreshSession();
-  if (refreshed) {
-    const session = getStoredSession();
-    if (session?.access_token) return { session, error: null };
   }
 
   return null;

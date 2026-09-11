@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { jwtVerify } from 'jose'
+import { jwtVerify, errors as joseErrors } from 'jose'
 import { ensureCsrfToken } from './src/lib/csrf-middleware'
-import { ACCESS_TOKEN_COOKIE } from './src/lib/auth-cookie'
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './src/lib/auth-cookie'
 
 const PUBLIC_PATHS: RegExp[] = [
 	// Root & YugMinds company pages
@@ -74,6 +74,12 @@ export async function middleware(req: NextRequest) {
 	// --- Cryptographic JWT verification ---
 	const token = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value
 	if (!token) {
+		if (req.cookies.get(REFRESH_TOKEN_COOKIE)?.value) {
+			const response = NextResponse.next()
+			addSecurityHeaders(response)
+			ensureCsrfToken(response, req)
+			return response
+		}
 		const loginUrl = new URL('/lms/login', req.url)
 		loginUrl.searchParams.set('next', pathname)
 		return NextResponse.redirect(loginUrl)
@@ -91,8 +97,22 @@ export async function middleware(req: NextRequest) {
 			new TextEncoder().encode(secret),
 		)
 		payload = p as typeof payload
-	} catch {
-		// Expired or tampered token — clear the stale cookie and redirect.
+	} catch (err) {
+		// Access JWT expired (15m) but a refresh cookie can still restore the
+		// session. Let the page load so the client can silently refresh instead
+		// of wiping the form by redirecting to login.
+		const expired =
+			err instanceof joseErrors.JWTExpired ||
+			(typeof err === 'object' &&
+				err !== null &&
+				(err as { code?: string }).code === 'ERR_JWT_EXPIRED')
+		const hasRefresh = Boolean(req.cookies.get(REFRESH_TOKEN_COOKIE)?.value)
+		if (expired && hasRefresh) {
+			const response = NextResponse.next()
+			addSecurityHeaders(response)
+			ensureCsrfToken(response, req)
+			return response
+		}
 		const loginUrl = new URL('/lms/login', req.url)
 		loginUrl.searchParams.set('next', pathname)
 		const res = NextResponse.redirect(loginUrl)

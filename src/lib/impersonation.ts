@@ -68,17 +68,22 @@ export async function startImpersonation(userId: number): Promise<{ role: string
 
 export async function exitImpersonation(): Promise<void> {
   const res = await fetch('/api/admin/impersonate/exit', { method: 'POST' });
-  const data = (await res.json()) as { token?: string; error?: string };
-  if (!res.ok || !data.token) {
+  const data = (await res.json()) as {
+    token?: string;
+    tokens?: { accessToken?: string };
+    error?: string;
+  };
+  const token = data.token ?? data.tokens?.accessToken;
+  if (!res.ok || !token) {
     throw new Error(data?.error || 'Failed to exit impersonation');
   }
 
   const info = getImpersonationInfo();
   sessionStorage.removeItem(IMPERSONATION_KEY);
 
-  setAuthToken(data.token);
+  setAuthToken(token);
   setStoredSession({
-    access_token: data.token,
+    access_token: token,
     user: {
       id: info?.adminUserId ?? '',
       email: info?.adminEmail ?? undefined,

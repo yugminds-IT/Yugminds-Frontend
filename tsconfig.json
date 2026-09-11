@@ -43,6 +43,7 @@
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",
+    "**/*.spec.ts",
     "vitest.config.ts",
     "src/test",
     "scripts"

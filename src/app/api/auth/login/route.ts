@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { attachAccessTokenCookie } from '@/lib/auth-cookie';
+import { getSetCookies } from '@/lib/cookie-parse';
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -33,10 +34,17 @@ export async function POST(request: NextRequest) {
       return Response.json(parsed, { status: backendRes.status });
     }
 
-    // On success attach the httpOnly access-token cookie
+    // Keep backend Set-Cookie so attachAccessTokenCookie can copy the refresh
+    // token onto the frontend origin. Login previously dropped those headers,
+    // so the browser never received a refresh cookie and sessions died at 15m.
+    const headers = new Headers();
+    headers.set('Content-Type', 'application/json');
+    for (const cookie of getSetCookies(backendRes.headers)) {
+      headers.append('set-cookie', cookie);
+    }
     const successRes = new Response(resBody, {
       status: backendRes.status,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
     });
     return attachAccessTokenCookie(successRes);
   } catch (err) {

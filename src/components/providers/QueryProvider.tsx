@@ -4,12 +4,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { ToastProvider } from '../ui/toast'
 import { ConfirmProvider } from '../ui/confirm-dialog'
-import { subscribeToLogoutBroadcast } from '@/lib/session-utils'
+import { subscribeToLogoutBroadcast, startSessionKeepAlive } from '@/lib/session-utils'
 
 export default function QueryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = subscribeToLogoutBroadcast()
-    return unsubscribe
+    const stopKeepAlive = startSessionKeepAlive()
+    return () => {
+      unsubscribe()
+      stopKeepAlive()
+    }
   }, [])
 
   const [queryClient] = useState(

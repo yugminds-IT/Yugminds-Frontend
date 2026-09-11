@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { apiClient } from '../lib/api';
-import { clearStoredSession, getStoredUserId, getSession, setLogoutReason } from '../lib/session-utils';
+import { clearStoredSession, getStoredUserId, getSession, setLogoutReason, tryRefreshSession, loginRedirectUrl } from '../lib/session-utils';
 import { toast } from '../components/ui/toast';
 
 // Key used to mark that a fresh login just happened
@@ -77,7 +76,6 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
   const [isValid, setIsValid] = useState(true);
   const [isChecking, setIsChecking] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
-  const router = useRouter();
   const checkInProgressRef = useRef(false);
   const hasShownAlertRef = useRef(false);
   const isFirstCheckRef = useRef(true);
@@ -111,13 +109,11 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
     }
     
     if (redirectOnInvalid) {
-      // Small delay to ensure alert is shown
       setTimeout(() => {
-        setLogoutReason('session_expired');
-        router.push('/lms/login');
+        window.location.href = loginRedirectUrl('session_expired');
       }, 100);
     }
-  }, [onSessionInvalid, redirectOnInvalid, showAlert, router]);
+  }, [onSessionInvalid, redirectOnInvalid, showAlert]);
 
   const checkSession = useCallback(async (): Promise<boolean> => {
     // Prevent concurrent checks
@@ -139,19 +135,20 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
 
       const userId = getStoredUserId();
       if (!userId) {
-        // No user - but don't show error if we're on login-related pages
         const currentPath = window.location.pathname;
         if (currentPath === '/lms/login' || currentPath === '/lms/signup' || currentPath.startsWith('/lms/auth')) {
-          return true; // It's fine to not have a user on auth pages
+          return true;
         }
-        
-        // No user - redirect to login silently
-        // SECURITY: Can't check session_token cookie client-side (httpOnly), but that's fine
-        // - If user just logged in, Supabase auth state will update soon
-        // - If no valid session, redirect to login
+
+        const refreshed = await tryRefreshSession().catch(() => false);
+        if (refreshed && getStoredUserId()) {
+          setIsValid(true);
+          setLastChecked(new Date());
+          return true;
+        }
+
         if (redirectOnInvalid) {
-          setLogoutReason('session_expired');
-          router.push('/lms/login');
+          window.location.href = loginRedirectUrl('session_expired');
         }
         return false;
       }
@@ -173,7 +170,7 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
       setIsChecking(false);
       checkInProgressRef.current = false;
     }
-  }, [isValid, redirectOnInvalid, router]);
+  }, [isValid, redirectOnInvalid]);
 
   const logout = useCallback(async () => {
     try {

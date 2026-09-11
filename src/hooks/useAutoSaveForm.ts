@@ -272,8 +272,6 @@ export function useAutoSaveForm<T extends object>(
     }
 
     intervalTimerRef.current = setInterval(() => {
-      // Only save if form is dirty and data has changed
-      // Use formDataRef to get current value without causing re-renders
       const currentFormData = formDataRef.current;
       if (formStore.isFormDirty(formId)) {
         const previousData = previousDataRef.current;
@@ -283,10 +281,19 @@ export function useAutoSaveForm<T extends object>(
       }
     }, autoSaveInterval);
 
+    const flush = () => saveForm(formDataRef.current, true);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       if (intervalTimerRef.current) {
         clearInterval(intervalTimerRef.current);
       }
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSave, autoSaveInterval, formId]); // formData accessed via ref, saveForm and formStore are stable

@@ -18,24 +18,29 @@ import {
 import { AssignmentBuilder, type Assignment as BuilderAssignment } from "@/components/admin/AssignmentBuilder";
 import AssignmentAnalyticsPanel, { type AssignmentAnalyticsData } from "@/components/teacher/AssignmentAnalyticsPanel";
 import TeacherRetakeRequestsPanel from "@/components/teacher/TeacherRetakeRequestsPanel";
-import { AssignmentAudiencePicker, type TeacherClass } from "@/components/teacher/AssignmentAudiencePicker";
+import {
+  AssignmentAudiencePicker,
+  audienceFromAssignment,
+  resolveAudiencePayload,
+  type GradeAudienceTarget,
+  type TeacherClass,
+} from "@/components/teacher/AssignmentAudiencePicker";
 import {
   BookOpen,
   ClipboardList,
   Users,
   RotateCcw,
   CheckCircle,
+  CheckSquare,
   Clock,
   Plus,
   AlertCircle,
   BarChart2,
-  Globe,
   Eye,
   EyeOff,
   Trash2,
   RefreshCw,
   Target,
-  Layers,
   Search,
   Send,
   X,
@@ -43,6 +48,9 @@ import {
   FileText,
   Zap,
   ArrowLeft,
+  Edit,
+  HelpCircle,
+  Lock,
 } from "lucide-react";
 
 /* ─── types ─── */
@@ -94,6 +102,50 @@ type StudentRow = {
 // Analytics payload types live with the extracted panel component.
 type AnalyticsData = AssignmentAnalyticsData;
 
+type AssignmentQuestionDetail = {
+  id: string;
+  question_type: string;
+  question_text: string;
+  options?: string[] | null;
+  correct_answer?: string | null;
+  marks: number;
+};
+
+type AssignmentDetail = {
+  id: string;
+  title: string;
+  description?: string | null;
+  due_date?: string | null;
+  total_marks?: number | null;
+  subject?: string | null;
+  school_id?: string | null;
+  is_published?: boolean;
+  academic_year?: string | null;
+  publish_scope?: string | null;
+  published_grade_ids?: string[];
+  published_section_ids?: string[];
+  grade_id?: string | null;
+  submission_count?: number;
+  questions: AssignmentQuestionDetail[];
+};
+
+const emptyCreatePayload = {
+  dueDate: "",
+  schoolId: "",
+  subject: "",
+  isPublished: false,
+  academicYear: "2024-25",
+  entireSchool: true,
+  gradeTargets: [] as GradeAudienceTarget[],
+};
+
+function toDateInputValue(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
 /* ─── tiny helpers ─── */
 function StatusPill({ published }: { published?: boolean }) {
   return published ? (
@@ -134,7 +186,9 @@ export default function TeacherAssignmentsPage() {
   const [courseAssignments, setCourseAssignments] = useState<TeacherAssignment[]>([]);
   const [pendingRetakeRequestCount, setPendingRetakeRequestCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string>("");
-  const [detailTab, setDetailTab] = useState<"submissions" | "retake">("submissions");
+  const [detailTab, setDetailTab] = useState<"submissions" | "questions" | "retake">("submissions");
+  const [assignmentDetail, setAssignmentDetail] = useState<AssignmentDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [grading, setGrading] = useState<Record<string, { score: string; feedback: string }>>({});
   const [grantingStudentId, setGrantingStudentId] = useState<number | null>(null);
@@ -142,7 +196,8 @@ export default function TeacherAssignmentsPage() {
   const [grantFilter, setGrantFilter] = useState<"all" | "graded" | "pending">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
   const [builderAssignment, setBuilderAssignment] = useState<BuilderAssignment | null>(null);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -151,22 +206,33 @@ export default function TeacherAssignmentsPage() {
   const [subSearch, setSubSearch] = useState("");
   const [subFilter, setSubFilter] = useState<"all" | "graded" | "pending">("all");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [createPayload, setCreatePayload] = useState({
-    dueDate: "",
-    schoolId: "",
-    subject: "",
-    isPublished: false,
-    academicYear: "2024-25",
-    publishScope: "grade",
-    gradeIds: [] as string[],
-    sectionIds: [] as string[],
-  });
+  const [createPayload, setCreatePayload] = useState(emptyCreatePayload);
 
   const assignments = tab === "daily" ? dailyAssignments : courseAssignments;
   const selectedAssignment = useMemo(
     () => assignments.find((a) => a.id === selectedId),
     [assignments, selectedId]
   );
+
+  const editSubmissionCount = useMemo(() => {
+    if (editingAssignmentId) {
+      const fromList = assignments.find((a) => a.id === editingAssignmentId)?.submission_count;
+      if (typeof fromList === "number") return fromList;
+    }
+    if (assignmentDetail?.id === (editingAssignmentId || selectedId)) {
+      return assignmentDetail.submission_count ?? 0;
+    }
+    return selectedAssignment?.submission_count ?? 0;
+  }, [assignments, assignmentDetail, editingAssignmentId, selectedId, selectedAssignment]);
+
+  /** Questions are frozen once published or any student has submitted. */
+  const questionsLocked =
+    modalMode === "edit" &&
+    (createPayload.isPublished || editSubmissionCount > 0);
+
+  const questionsLockMessage = editSubmissionCount > 0
+    ? "Questions are locked because students have already submitted. Subject, due date, and audience can still be updated. Create a new assignment if the questions must change — existing scores stay as recorded."
+    : "Questions are locked while published. Unpublish (with no submissions) to edit questions. Subject, due date, and audience can still be updated.";
 
   const filteredAssignments = useMemo(() => {
     if (!searchQuery.trim()) return assignments;
@@ -283,6 +349,37 @@ export default function TeacherAssignmentsPage() {
     setSubmissions((data as { submissions?: Submission[] }).submissions ?? []);
   }, []);
 
+  const loadAssignmentDetail = useCallback(async (assignmentId: string) => {
+    if (!assignmentId) {
+      setAssignmentDetail(null);
+      return;
+    }
+    setDetailLoading(true);
+    try {
+      const { data } = await teacherApi.assignments.get(assignmentId);
+      const raw = (data as { assignment?: AssignmentDetail }).assignment;
+      if (!raw) {
+        setAssignmentDetail(null);
+        return;
+      }
+      setAssignmentDetail({
+        ...raw,
+        submission_count: raw.submission_count ?? 0,
+        questions: (raw.questions ?? []).map((q) => ({
+          ...q,
+          options: Array.isArray(q.options) ? (q.options as string[]) : [],
+          correct_answer: q.correct_answer ?? "",
+          question_type:
+            String(q.question_type).toLowerCase() === "fillblank" ? "FillBlank" : "MCQ",
+        })),
+      });
+    } catch {
+      setAssignmentDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
   const loadClasses = useCallback(async (schoolId: string) => {
     if (!schoolId) return;
     try {
@@ -317,12 +414,27 @@ export default function TeacherAssignmentsPage() {
   useEffect(() => {
     setSelectedId("");
     setSubmissions([]);
+    setAssignmentDetail(null);
     setAnalyticsData(null);
   }, [activeSchoolId]);
 
-  useEffect(() => { if (selectedId) void loadSubmissions(selectedId); else setSubmissions([]); }, [selectedId, loadSubmissions]);
+  useEffect(() => {
+    if (selectedId) {
+      void loadSubmissions(selectedId);
+      void loadAssignmentDetail(selectedId);
+      setDetailTab("submissions");
+    } else {
+      setSubmissions([]);
+      setAssignmentDetail(null);
+    }
+  }, [selectedId, loadSubmissions, loadAssignmentDetail]);
 
-  useEffect(() => { setSelectedId(""); setSubmissions([]); setSearchQuery(""); }, [tab]);
+  useEffect(() => {
+    setSelectedId("");
+    setSubmissions([]);
+    setAssignmentDetail(null);
+    setSearchQuery("");
+  }, [tab]);
 
   useEffect(() => {
     const sid = createPayload.schoolId || activeSchoolId || (Array.isArray(schools) && schools.length > 0 ? String((schools[0] as { id?: string }).id ?? "") : "");
@@ -337,9 +449,92 @@ export default function TeacherAssignmentsPage() {
   // one they're actually looking at, and it then silently doesn't show up
   // in the (activeSchoolId-filtered) list. Seed it from the active school
   // every time the modal opens so the two stay in sync by default.
+  const closeAssignmentModal = () => {
+    setModalMode(null);
+    setEditingAssignmentId(null);
+    setBuilderAssignment(null);
+    setCreatePayload(emptyCreatePayload);
+  };
+
   const openCreateModal = () => {
-    setCreatePayload((p) => ({ ...p, schoolId: activeSchoolId || p.schoolId }));
-    setShowCreateModal(true);
+    setEditingAssignmentId(null);
+    setBuilderAssignment(null);
+    setCreatePayload({
+      ...emptyCreatePayload,
+      schoolId: activeSchoolId || "",
+    });
+    setModalMode("create");
+  };
+
+  const openEditModal = async () => {
+    if (!selectedId || tab !== "daily") return;
+    setLoading(true);
+    setError(null);
+    try {
+      let detail = assignmentDetail;
+      if (!detail || detail.id !== selectedId) {
+        const { data } = await teacherApi.assignments.get(selectedId);
+        detail = (data as { assignment?: AssignmentDetail }).assignment ?? null;
+        if (detail) {
+          detail = {
+            ...detail,
+            questions: (detail.questions ?? []).map((q) => ({
+              ...q,
+              options: Array.isArray(q.options) ? (q.options as string[]) : [],
+              correct_answer: q.correct_answer ?? "",
+              question_type:
+                String(q.question_type).toLowerCase() === "fillblank" ? "FillBlank" : "MCQ",
+            })),
+          };
+          setAssignmentDetail(detail);
+        }
+      }
+      if (!detail) {
+        setError("Failed to load assignment for editing");
+        return;
+      }
+
+      const schoolId = detail.school_id || activeSchoolId || "";
+      let classesForAudience = teacherClasses;
+      if (schoolId) {
+        const { data } = await teacherApi.classes.list(schoolId);
+        classesForAudience = (data as { classes?: TeacherClass[] }).classes ?? [];
+        setTeacherClasses(classesForAudience);
+      }
+
+      const audience = audienceFromAssignment(detail, classesForAudience);
+      setCreatePayload({
+        dueDate: toDateInputValue(detail.due_date),
+        schoolId,
+        subject: detail.subject ?? "",
+        isPublished: !!detail.is_published,
+        academicYear: detail.academic_year || "2024-25",
+        entireSchool: audience.entireSchool,
+        gradeTargets: audience.gradeTargets,
+      });
+      setBuilderAssignment({
+        id: detail.id,
+        chapter_id: schoolId || "daily-school-assignment",
+        title: detail.title,
+        description: detail.description ?? undefined,
+        auto_grading_enabled: true,
+        max_score: (detail.total_marks ?? detail.questions.reduce((sum, q) => sum + (q.marks || 0), 0)) || 100,
+        questions: detail.questions.map((q) => ({
+          id: q.id,
+          question_type: q.question_type === "FillBlank" ? "FillBlank" : "MCQ",
+          question_text: q.question_text,
+          options: Array.isArray(q.options) ? q.options : undefined,
+          correct_answer: q.correct_answer ?? "",
+          marks: q.marks,
+        })),
+      });
+      setEditingAssignmentId(selectedId);
+      setModalMode("edit");
+    } catch {
+      setError("Failed to open assignment editor");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -347,6 +542,15 @@ export default function TeacherAssignmentsPage() {
     try {
       const effectiveSchoolId = createPayload.schoolId || activeSchoolId || (Array.isArray(schools) && schools.length > 0 ? String((schools[0] as { id?: string }).id ?? "") : "");
       if (!effectiveSchoolId) { setError("No school found. Please contact admin."); return; }
+      if (!createPayload.entireSchool && createPayload.gradeTargets.length === 0) {
+        setError("Select Entire school, or at least one grade / section.");
+        return;
+      }
+      const audience = resolveAudiencePayload(
+        createPayload.entireSchool,
+        createPayload.gradeTargets,
+        teacherClasses,
+      );
       await teacherApi.assignments.create({
         title: builderAssignment?.title || "Daily Assignment",
         description: builderAssignment?.description || undefined,
@@ -364,23 +568,68 @@ export default function TeacherAssignmentsPage() {
         isPublished: createPayload.isPublished,
         assignmentType: "DAILY",
         academicYear: createPayload.academicYear,
-        publishScope: createPayload.publishScope,
-        // Legacy singular field, kept in sync for backward-compatible
-        // grade-name display when exactly one grade is targeted.
-        gradeId:
-          createPayload.publishScope === "grade" && createPayload.gradeIds.length === 1
-            ? createPayload.gradeIds[0]
-            : undefined,
-        publishedGradeIds: createPayload.publishScope === "grade" ? createPayload.gradeIds : [],
-        publishedSectionIds: createPayload.publishScope === "section" ? createPayload.sectionIds : [],
+        publishScope: audience.publishScope,
+        gradeId: audience.gradeId,
+        publishedGradeIds: audience.publishedGradeIds,
+        publishedSectionIds: audience.publishedSectionIds,
       });
-      setCreatePayload({ dueDate: "", schoolId: "", subject: "", isPublished: false, academicYear: "2024-25", publishScope: "grade", gradeIds: [], sectionIds: [] });
-      setBuilderAssignment(null);
-      setShowCreateModal(false);
+      closeAssignmentModal();
       await loadAssignments("DAILY");
       setError(null);
     } catch (e: unknown) {
       setError(typeof e === "object" && e !== null && "message" in e ? String((e as { message?: unknown }).message) : "Failed to create assignment");
+    } finally { setLoading(false); }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingAssignmentId) return;
+    const assignmentId = editingAssignmentId;
+    setLoading(true);
+    try {
+      if (!createPayload.entireSchool && createPayload.gradeTargets.length === 0) {
+        setError("Select Entire school, or at least one grade / section.");
+        return;
+      }
+      const audience = resolveAudiencePayload(
+        createPayload.entireSchool,
+        createPayload.gradeTargets,
+        teacherClasses,
+      );
+      const lockQuestions =
+        createPayload.isPublished || editSubmissionCount > 0;
+      await teacherApi.assignments.update(assignmentId, {
+        title: builderAssignment?.title || "Daily Assignment",
+        description: builderAssignment?.description || undefined,
+        dueDate: createPayload.dueDate || undefined,
+        subject: createPayload.subject || undefined,
+        totalMarks: lockQuestions
+          ? undefined
+          : builderAssignment?.max_score
+            ? Number(builderAssignment.max_score)
+            : undefined,
+        ...(lockQuestions
+          ? {}
+          : {
+              questions: (builderAssignment?.questions ?? []).map((q) => ({
+                question_type: q.question_type,
+                question_text: q.question_text,
+                options: q.options ?? [],
+                correct_answer: q.correct_answer,
+                marks: q.marks,
+              })),
+            }),
+        isPublished: createPayload.isPublished,
+        publishScope: audience.publishScope,
+        gradeId: audience.gradeId ?? null,
+        publishedGradeIds: audience.publishedGradeIds,
+        publishedSectionIds: audience.publishedSectionIds,
+      });
+      closeAssignmentModal();
+      await loadAssignments("DAILY");
+      await loadAssignmentDetail(assignmentId);
+      setError(null);
+    } catch (e: unknown) {
+      setError(typeof e === "object" && e !== null && "message" in e ? String((e as { message?: unknown }).message) : "Failed to update assignment");
     } finally { setLoading(false); }
   };
 
@@ -389,6 +638,7 @@ export default function TeacherAssignmentsPage() {
     try {
       await teacherApi.assignments.update(a.id, { isPublished: !a.is_published });
       await loadAssignments(tab === "daily" ? "DAILY" : "COURSE");
+      if (selectedId === a.id) await loadAssignmentDetail(a.id);
       setError(null);
     } catch { setError("Failed to update assignment"); }
     finally { setLoading(false); }
@@ -440,7 +690,11 @@ export default function TeacherAssignmentsPage() {
     setLoading(true);
     try {
       await teacherApi.assignments.delete(assignmentId);
-      if (selectedId === assignmentId) { setSelectedId(""); setSubmissions([]); }
+      if (selectedId === assignmentId) {
+        setSelectedId("");
+        setSubmissions([]);
+        setAssignmentDetail(null);
+      }
       await loadAssignments("DAILY");
     } catch { setError("Failed to delete assignment"); }
     finally { setLoading(false); }
@@ -713,6 +967,15 @@ export default function TeacherAssignmentsPage() {
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-2 shrink-0">
+                      {tab === "daily" && (
+                        <button
+                          onClick={() => void openEditModal()}
+                          disabled={loading}
+                          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                        >
+                          <Edit className="h-3.5 w-3.5" /> Edit
+                        </button>
+                      )}
                       <button
                         onClick={() => void handleTogglePublish(selectedAssignment)}
                         disabled={loading}
@@ -755,6 +1018,7 @@ export default function TeacherAssignmentsPage() {
                 <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit mb-4">
                   {([
                     { key: "submissions", label: "Submissions", icon: Users },
+                    { key: "questions", label: "Questions", icon: HelpCircle },
                     { key: "retake", label: "Retake Settings", icon: RotateCcw },
                   ] as const).map(({ key, label, icon: Icon }) => (
                     <button
@@ -766,6 +1030,9 @@ export default function TeacherAssignmentsPage() {
                     >
                       <Icon className="h-3.5 w-3.5" />
                       {label}
+                      {key === "questions" && assignmentDetail?.questions?.length
+                        ? ` (${assignmentDetail.questions.length})`
+                        : ""}
                     </button>
                   ))}
                 </div>
@@ -982,6 +1249,122 @@ export default function TeacherAssignmentsPage() {
                             })}
                           </tbody>
                         </table>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Questions tab ── */}
+                {detailTab === "questions" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-gray-500">
+                        {detailLoading
+                          ? "Loading questions…"
+                          : `${assignmentDetail?.questions?.length ?? 0} question${(assignmentDetail?.questions?.length ?? 0) !== 1 ? "s" : ""}`}
+                        {assignmentDetail?.description ? (
+                          <span className="block text-xs text-gray-400 mt-0.5">{assignmentDetail.description}</span>
+                        ) : null}
+                        {tab === "daily" &&
+                          !detailLoading &&
+                          (selectedAssignment?.is_published ||
+                            (selectedAssignment?.submission_count ?? 0) > 0 ||
+                            (assignmentDetail?.submission_count ?? 0) > 0) && (
+                          <span className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+                            <Lock className="h-3 w-3" />
+                            Questions are locked
+                            {(selectedAssignment?.submission_count ?? assignmentDetail?.submission_count ?? 0) > 0
+                              ? " because students have submitted"
+                              : " while published"}
+                            .
+                          </span>
+                        )}
+                      </p>
+                      {tab === "daily" && (
+                        <button
+                          onClick={() => void openEditModal()}
+                          disabled={loading || detailLoading}
+                          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                        >
+                          <Edit className="h-3.5 w-3.5" /> Edit Assignment
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      {detailLoading ? (
+                        <div className="text-center py-16 text-gray-400 text-sm">Loading questions…</div>
+                      ) : !assignmentDetail?.questions?.length ? (
+                        <div className="text-center py-16 text-gray-400">
+                          <HelpCircle className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                          <p className="text-sm font-medium text-gray-500">No questions yet</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {tab === "daily"
+                              ? "Edit this assignment to add auto-graded questions."
+                              : "This course assignment has no questions attached."}
+                          </p>
+                          {tab === "daily" && (
+                            <button
+                              onClick={() => void openEditModal()}
+                              className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                            >
+                              <Edit className="h-3.5 w-3.5" /> Add Questions
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-50">
+                          {assignmentDetail.questions.map((question, index) => {
+                            const options = Array.isArray(question.options) ? question.options : [];
+                            const answer = (question.correct_answer || "").trim();
+                            return (
+                              <div key={question.id || index} className="p-4 sm:p-5">
+                                <div className="flex items-start gap-3">
+                                  <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-xs font-semibold text-gray-600">
+                                    {index + 1}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm text-gray-900">{question.question_text}</p>
+                                    <p className="mt-0.5 mb-2 text-xs text-gray-500">
+                                      {question.question_type === "FillBlank" ? "Fill in the blank" : "Multiple choice"}
+                                      <span className="mx-1.5 text-gray-300">•</span>
+                                      {question.marks} mark{question.marks !== 1 ? "s" : ""}
+                                    </p>
+                                    {question.question_type !== "FillBlank" && options.length > 0 && (
+                                      <div className="space-y-0.5">
+                                        {options.map((option, optIndex) => {
+                                          const isCorrect =
+                                            option.trim().toLowerCase() === answer.toLowerCase();
+                                          return (
+                                            <div
+                                              key={optIndex}
+                                              className={`text-xs ${
+                                                isCorrect ? "font-medium text-green-700" : "text-gray-500"
+                                              }`}
+                                            >
+                                              {String.fromCharCode(65 + optIndex)}. {option}
+                                              {isCorrect && (
+                                                <CheckSquare className="ml-1 inline h-3 w-3" />
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    {question.question_type === "FillBlank" && (
+                                      <p className="text-xs text-gray-500">
+                                        Answer:{" "}
+                                        <span className="font-medium text-green-700">
+                                          {answer || "—"}
+                                        </span>
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1204,26 +1587,32 @@ export default function TeacherAssignmentsPage() {
         </div>
       )}
 
-      {/* ══ Create Assignment Modal ══ */}
-      {showCreateModal && (
+      {/* ══ Create / Edit Assignment Modal ══ */}
+      {modalMode && (
         <div className="fixed inset-0 z-50 flex">
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeAssignmentModal} />
 
           {/* Slide-in panel from right */}
           <div className="relative ml-auto w-full max-w-2xl bg-white h-full flex flex-col shadow-2xl overflow-hidden">
             {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/80 shrink-0">
               <div className="flex items-center gap-3">
-                <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <button onClick={closeAssignmentModal} className="text-gray-400 hover:text-gray-600 transition-colors">
                   <ArrowLeft className="h-5 w-5" />
                 </button>
                 <div>
-                  <h2 className="text-sm font-bold text-gray-900">New Daily Assignment</h2>
-                  <p className="text-xs text-gray-400">Fill in the details and build your questions</p>
+                  <h2 className="text-sm font-bold text-gray-900">
+                    {modalMode === "edit" ? "Edit Daily Assignment" : "New Daily Assignment"}
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    {modalMode === "edit"
+                      ? "Update details, audience, and questions"
+                      : "Fill in the details and build your questions"}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={closeAssignmentModal} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1254,7 +1643,11 @@ export default function TeacherAssignmentsPage() {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-medium text-gray-600">School</Label>
-                    <Select value={createPayload.schoolId} onValueChange={(v) => setCreatePayload((p) => ({ ...p, schoolId: v }))}>
+                    <Select
+                      value={createPayload.schoolId}
+                      onValueChange={(v) => setCreatePayload((p) => ({ ...p, schoolId: v }))}
+                      disabled={modalMode === "edit"}
+                    >
                       <SelectTrigger className="h-9 text-sm">
                         <SelectValue placeholder="Select school" />
                       </SelectTrigger>
@@ -1272,50 +1665,34 @@ export default function TeacherAssignmentsPage() {
               <div className="bg-blue-50/60 rounded-xl border border-blue-100 p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Target className="h-4 w-4 text-blue-500" />
-                  <h3 className="text-xs font-semibold text-gray-700">Audience Targeting</h3>
+                  <h3 className="text-xs font-semibold text-gray-700">Targeted School</h3>
                 </div>
-                <div className="space-y-1 mb-3">
-                  <Label className="text-xs font-medium text-gray-600">Publish Scope</Label>
-                  <Select
-                    value={createPayload.publishScope}
-                    onValueChange={(v) => setCreatePayload((p) => ({ ...p, publishScope: v, gradeIds: [], sectionIds: [] }))}
-                  >
-                    <SelectTrigger className="h-9 text-sm bg-white w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="grade">
-                        <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" /> All School / By Grade</span>
-                      </SelectItem>
-                      <SelectItem value="section">
-                        <span className="flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /> By Section</span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium text-gray-600">
-                    {createPayload.publishScope === "section" ? "Target Sections" : "Target Grades"}
-                  </Label>
-                  <AssignmentAudiencePicker
-                    classes={teacherClasses}
-                    scope={createPayload.publishScope === "section" ? "section" : "grade"}
-                    gradeIds={createPayload.gradeIds}
-                    sectionIds={createPayload.sectionIds}
-                    onChangeGradeIds={(ids) => setCreatePayload((p) => ({ ...p, gradeIds: ids }))}
-                    onChangeSectionIds={(ids) => setCreatePayload((p) => ({ ...p, sectionIds: ids }))}
-                  />
-                </div>
+                <AssignmentAudiencePicker
+                  classes={teacherClasses}
+                  entireSchool={createPayload.entireSchool}
+                  onChangeEntireSchool={(value) =>
+                    setCreatePayload((p) => ({ ...p, entireSchool: value, gradeTargets: value ? [] : p.gradeTargets }))
+                  }
+                  targets={createPayload.gradeTargets}
+                  onChangeTargets={(targets) =>
+                    setCreatePayload((p) => ({ ...p, gradeTargets: targets, entireSchool: false }))
+                  }
+                />
               </div>
 
               {/* Assignment builder */}
               <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Questions</h3>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  Questions
+                  {questionsLocked && <Lock className="h-3.5 w-3.5 text-amber-600" />}
+                </h3>
                 <AssignmentBuilder
                   chapterId={createPayload.schoolId || "daily-school-assignment"}
                   chapterName="Daily Assignment"
                   assignment={builderAssignment}
                   onAssignmentChange={setBuilderAssignment}
+                  disabled={questionsLocked}
+                  lockMessage={questionsLocked ? questionsLockMessage : undefined}
                 />
               </div>
             </div>
@@ -1329,19 +1706,30 @@ export default function TeacherAssignmentsPage() {
                   onChange={(e) => setCreatePayload((p) => ({ ...p, isPublished: e.target.checked }))}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                 />
-                <span className="text-sm text-gray-700 font-medium">Publish immediately</span>
+                <span className="text-sm text-gray-700 font-medium">
+                  {modalMode === "edit" ? "Published" : "Publish immediately"}
+                </span>
               </label>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowCreateModal(false)}>
+                <Button variant="outline" size="sm" onClick={closeAssignmentModal}>
                   Cancel
                 </Button>
                 <button
-                  onClick={() => void handleCreate()}
+                  onClick={() => void (modalMode === "edit" ? handleUpdate() : handleCreate())}
                   disabled={loading || !builderAssignment?.title}
                   className="flex items-center gap-1.5 text-sm font-semibold px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
                 >
-                  <Send className="h-3.5 w-3.5" />
-                  {loading ? "Creating…" : "Create Assignment"}
+                  {modalMode === "edit" ? (
+                    <>
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      {loading ? "Saving…" : "Save Changes"}
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-3.5 w-3.5" />
+                      {loading ? "Creating…" : "Create Assignment"}
+                    </>
+                  )}
                 </button>
               </div>
             </div>

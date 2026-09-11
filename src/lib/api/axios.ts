@@ -7,12 +7,11 @@ import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
 import {
   clearStoredSession,
   getInMemoryToken,
-  getStoredSession,
   getStoredUser,
   setInMemoryToken,
   setStoredSession,
   tryRefreshSession,
-  setLogoutReason,
+  loginRedirectUrl,
 } from '../session-utils';
 
 type RefreshableAxiosRequestConfig = AxiosRequestConfig & {
@@ -47,39 +46,23 @@ function rejectRefreshSubscribers(err: unknown) {
 }
 
 function performLogout(): void {
-  clearStoredSession();
+  // Don't broadcast — a refresh failure in this tab must not sign out a
+  // tab that just rotated the refresh cookie successfully.
+  const redirect = loginRedirectUrl('session_expired');
+  clearStoredSession(false);
   setAuthToken(null);
   if (typeof window !== 'undefined') {
-    setLogoutReason('session_expired');
-    window.location.href = '/lms/login';
+    window.location.href = redirect;
   }
 }
 
 async function refreshAccessToken(): Promise<string> {
-  const session = getStoredSession();
-
-  const REFRESH_TIMEOUT_MS = 10000;
-
-  const refreshPromise = apiClient.post(
-    '/auth/refresh',
-    {},
-    { skipAuthRefresh: true } as RefreshableAxiosRequestConfig,
-  );
-
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Token refresh timed out')), REFRESH_TIMEOUT_MS),
-  );
-
-  const res = await Promise.race([refreshPromise, timeoutPromise]);
-
-  const { tokens } = res.data as { tokens?: { accessToken?: string } };
-  const newAccessToken = tokens?.accessToken;
-
-  if (!newAccessToken) throw new Error('Invalid refresh response');
+  const ok = await tryRefreshSession();
+  const newAccessToken = getInMemoryToken();
+  if (!ok || !newAccessToken) throw new Error('Invalid refresh response');
 
   setAuthToken(newAccessToken);
-  setStoredSession({ access_token: newAccessToken, user: session?.user });
-
+  setStoredSession({ access_token: newAccessToken, user: getStoredUser() ?? undefined });
   return newAccessToken;
 }
 
@@ -195,7 +178,13 @@ apiClient.interceptors.response.use(
           .catch((refreshErr) => {
             isRefreshing = false;
             rejectRefreshSubscribers(refreshErr);
-            performLogout();
+            const msg =
+              refreshErr instanceof Error ? refreshErr.message : String(refreshErr ?? '');
+            const isRefreshNetworkError =
+              refreshErr instanceof TypeError ||
+              msg.includes('Failed to fetch') ||
+              msg.includes('Network');
+            if (!isRefreshNetworkError) performLogout();
           });
       }
 

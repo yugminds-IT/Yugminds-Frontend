@@ -44,6 +44,8 @@ interface AssignmentBuilderProps {
   assignment: Assignment | null;
   onAssignmentChange: (assignment: Assignment | null) => void;
   disabled?: boolean;
+  /** Shown when questions are locked (e.g. published or has submissions). */
+  lockMessage?: string;
   /** Renders without its own outer Card/title chrome when nested inside a parent
    * that already shows the chapter name (e.g. ChapterBuilderCard). */
   embedded?: boolean;
@@ -55,6 +57,7 @@ export function AssignmentBuilder({
   assignment,
   onAssignmentChange,
   disabled = false,
+  lockMessage,
   embedded = false,
 }: AssignmentBuilderProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -71,6 +74,8 @@ export function AssignmentBuilder({
     question_text: '',
     options: ['', '', '', ''] as string[],
     correct_answer: '',
+    /** Stable MCQ selection index — survives option text edits. -1 = none. */
+    correct_option_index: -1,
     marks: '1',
   });
   // NOTE: Previous versions included extensive console debugging that treated
@@ -106,12 +111,24 @@ export function AssignmentBuilder({
 
   const openQuestionDialog = (question?: AssignmentQuestion) => {
     if (question) {
+      const options = question.options?.length
+        ? [...question.options]
+        : question.question_type === 'MCQ'
+          ? ['', '', '', '']
+          : [];
+      const answer = question.correct_answer || '';
+      const answerNorm = answer.trim().toLowerCase();
+      const matchedIndex =
+        question.question_type === 'MCQ'
+          ? options.findIndex((o) => o.trim().toLowerCase() === answerNorm)
+          : -1;
       setEditingQuestion(question);
       setQuestionFormData({
         question_type: question.question_type,
         question_text: question.question_text || '',
-        options: question.options || ['', '', '', ''],
-        correct_answer: question.correct_answer || '',
+        options,
+        correct_answer: answer,
+        correct_option_index: matchedIndex,
         marks: question.marks?.toString() || '1',
       });
     } else {
@@ -121,6 +138,7 @@ export function AssignmentBuilder({
         question_text: '',
         options: ['', '', '', ''],
         correct_answer: '',
+        correct_option_index: -1,
         marks: '1',
       });
     }
@@ -178,22 +196,32 @@ export function AssignmentBuilder({
       return;
     }
 
+    let resolvedCorrectAnswer = questionFormData.correct_answer.trim();
+    let resolvedOptions: string[] | undefined;
+
     if (questionFormData.question_type === 'MCQ') {
-      const validOptions = questionFormData.options.filter((opt: string) => opt.trim());
+      const validOptions = questionFormData.options.map((opt: string) => opt.trim()).filter(Boolean);
       if (validOptions.length < 2) {
         toast.warning('MCQ questions must have at least 2 options.');
         return;
       }
-      if (!questionFormData.correct_answer.trim()) {
+      const idx = questionFormData.correct_option_index;
+      if (idx < 0 || idx >= questionFormData.options.length || !questionFormData.options[idx]?.trim()) {
         toast.warning('Please select a correct answer.');
         return;
       }
-      if (!validOptions.includes(questionFormData.correct_answer)) {
+      // Always persist the live option text at the selected index so edits
+      // to option labels never leave a stale / orphaned correct_answer.
+      resolvedCorrectAnswer = questionFormData.options[idx].trim();
+      resolvedOptions = validOptions;
+      // If the teacher typed blanks between options, remap the answer onto
+      // the trimmed list so stored options and correct_answer stay aligned.
+      if (!resolvedOptions.includes(resolvedCorrectAnswer)) {
         toast.warning('Correct answer must be one of the options.');
         return;
       }
     } else {
-      if (!questionFormData.correct_answer.trim()) {
+      if (!resolvedCorrectAnswer) {
         toast.warning('Correct answer is required for fill-in-the-blank questions.');
         return;
       }
@@ -210,8 +238,8 @@ export function AssignmentBuilder({
       assignment_id: assignment?.id,
       question_type: questionFormData.question_type,
       question_text: questionFormData.question_text.trim(),
-      options: questionFormData.question_type === 'MCQ' ? questionFormData.options.filter((opt: string) => opt.trim()) : undefined,
-      correct_answer: questionFormData.correct_answer.trim(),
+      options: questionFormData.question_type === 'MCQ' ? resolvedOptions : undefined,
+      correct_answer: resolvedCorrectAnswer,
       marks,
     };
 
@@ -262,7 +290,11 @@ export function AssignmentBuilder({
   const updateOption = (index: number, value: string) => {
     const newOptions = [...questionFormData.options];
     newOptions[index] = value;
-    setQuestionFormData({ ...questionFormData, options: newOptions });
+    const next = { ...questionFormData, options: newOptions };
+    if (questionFormData.correct_option_index === index) {
+      next.correct_answer = value;
+    }
+    setQuestionFormData(next);
   };
 
   const addOption = () => {
@@ -274,7 +306,20 @@ export function AssignmentBuilder({
 
   const removeOption = (index: number) => {
     const newOptions = questionFormData.options.filter((_, i) => i !== index);
-    setQuestionFormData({ ...questionFormData, options: newOptions });
+    let correctIndex = questionFormData.correct_option_index;
+    let correctAnswer = questionFormData.correct_answer;
+    if (correctIndex === index) {
+      correctIndex = -1;
+      correctAnswer = '';
+    } else if (correctIndex > index) {
+      correctIndex -= 1;
+    }
+    setQuestionFormData({
+      ...questionFormData,
+      options: newOptions,
+      correct_option_index: correctIndex,
+      correct_answer: correctAnswer,
+    });
   };
 
   // CRITICAL: Ensure questions is an array before calculating total marks
@@ -355,6 +400,11 @@ export function AssignmentBuilder({
 
   const bodyAndDialogs = (
     <>
+      {disabled && lockMessage && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {lockMessage}
+        </div>
+      )}
       {assignment ? (
           <>
             <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-3">
@@ -412,21 +462,26 @@ export function AssignmentBuilder({
                         </p>
                         {question.question_type === 'MCQ' && question.options && (
                           <div className="space-y-0.5">
-                            {question.options.map((option, optIndex) => (
+                            {question.options.map((option, optIndex) => {
+                              const isCorrect =
+                                option.trim().toLowerCase() ===
+                                (question.correct_answer || '').trim().toLowerCase();
+                              return (
                               <div
                                 key={optIndex}
                                 className={`text-xs ${
-                                  option === question.correct_answer
+                                  isCorrect
                                     ? 'font-medium text-green-700'
                                     : 'text-gray-500'
                                 }`}
                               >
                                 {String.fromCharCode(65 + optIndex)}. {option}
-                                {option === question.correct_answer && (
+                                {isCorrect && (
                                   <CheckSquare className="ml-1 inline h-3 w-3" />
                                 )}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                         {question.question_type === 'FillBlank' && (
@@ -599,7 +654,13 @@ export function AssignmentBuilder({
                 <Select
                   value={questionFormData.question_type}
                   onValueChange={(value: 'MCQ' | 'FillBlank') =>
-                    setQuestionFormData({ ...questionFormData, question_type: value, options: value === 'MCQ' ? ['', '', '', ''] : [] })
+                    setQuestionFormData({
+                      ...questionFormData,
+                      question_type: value,
+                      options: value === 'MCQ' ? ['', '', '', ''] : [],
+                      correct_answer: '',
+                      correct_option_index: -1,
+                    })
                   }
                 >
                   <SelectTrigger>
@@ -671,29 +732,38 @@ export function AssignmentBuilder({
                 </Label>
                 {questionFormData.question_type === 'MCQ' ? (
                   <Select
-                    value={questionFormData.correct_answer}
-                    onValueChange={(value) =>
-                      setQuestionFormData({ ...questionFormData, correct_answer: value })
+                    value={
+                      questionFormData.correct_option_index >= 0
+                        ? String(questionFormData.correct_option_index)
+                        : undefined
                     }
+                    onValueChange={(value) => {
+                      const idx = parseInt(value, 10);
+                      setQuestionFormData({
+                        ...questionFormData,
+                        correct_option_index: idx,
+                        correct_answer: questionFormData.options[idx] ?? '',
+                      });
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select correct answer" />
                     </SelectTrigger>
                     <SelectContent>
-                      {questionFormData.options
-                        .filter((opt: string) => opt.trim())
-                        .map((option, index) => (
-                          <SelectItem key={index} value={option}>
+                      {questionFormData.options.map((option, index) =>
+                        option.trim() ? (
+                          <SelectItem key={index} value={String(index)}>
                             {String.fromCharCode(65 + index)}. {option}
                           </SelectItem>
-                        ))}
+                        ) : null,
+                      )}
                     </SelectContent>
                   </Select>
                 ) : (
                   <Input
                     id="correct-answer"
                     value={questionFormData.correct_answer}
-                    onChange={(e) => setQuestionFormData({ ...questionFormData, correct_answer: e.target.value })}
+                    onChange={(e) => setQuestionFormData({ ...questionFormData, correct_answer: e.target.value, correct_option_index: -1 })}
                     placeholder="Enter correct answer"
                   />
                 )}

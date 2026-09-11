@@ -35,7 +35,12 @@ import {
 } from "@/components/ui/table";
 import { adminApi } from '@/lib/api/admin.api';
 import { toast } from '@/components/ui/toast';
-import { CourseCreationWizard, hasWizardDraft } from '@/components/admin/CourseCreationWizard';
+import {
+  CourseCreationWizard,
+  hasWizardDraft,
+  getWizardDraftSummary,
+  clearWizardDraftFromStorage,
+} from '@/components/admin/CourseCreationWizard';
 import { CourseEditor, type Chapter as EditorChapter, type AssignmentFromAPI as EditorAssignmentFromAPI } from '@/components/admin/CourseEditor';
 import { CoursePublishDialog } from '@/components/admin/CoursePublishDialog';
 import { CourseVersionHistory } from '@/components/admin/CourseVersionHistory';
@@ -237,6 +242,9 @@ export default function CoursesManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Published'>('All');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [wizardDraftSummary, setWizardDraftSummary] = useState<ReturnType<
+    typeof getWizardDraftSummary
+  >>(null);
    
   const [_isChapterDialogOpen, _setIsChapterDialogOpen] = useState(false);
   const [_isResourceDialogOpen, _setIsResourceDialogOpen] = useState(false);
@@ -275,6 +283,22 @@ export default function CoursesManagement() {
   const [_textContentChapterId, _setTextContentChapterId] = useState<string | null>(null);
   const [_editingTextContentId, _setEditingTextContentId] = useState<string | null>(null);
   const [_editingTextContentIndex, _setEditingTextContentIndex] = useState<number | null>(null);
+
+  const refreshWizardDraftSummary = () => {
+    setWizardDraftSummary(getWizardDraftSummary());
+  };
+
+  // Surface local recovery drafts after session expiry / refresh — they are not
+  // saved courses, so they never appear in the table until the wizard is resumed.
+  useEffect(() => {
+    refreshWizardDraftSummary();
+  }, []);
+
+  useEffect(() => {
+    if (!isCreateDialogOpen) {
+      refreshWizardDraftSummary();
+    }
+  }, [isCreateDialogOpen]);
 
   // State for editing content
   const gradeOptions = [
@@ -602,6 +626,45 @@ export default function CoursesManagement() {
         <h1 className="text-3xl font-bold text-gray-900">Course Management</h1>
         <p className="text-gray-600 mt-2">Create and manage courses with comprehensive content</p>
       </div>
+
+      {wizardDraftSummary && !isCreateDialogOpen && (
+        <div className="mb-6 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-amber-900">
+              Unfinished course draft: {wizardDraftSummary.name}
+            </p>
+            <p className="mt-0.5 text-sm text-amber-800">
+              Saved locally (step {wizardDraftSummary.currentStep} of 3). Resume after logout or
+              refresh — this is not in the course list until you finish creating it.
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+              onClick={() => {
+                clearWizardDraftFromStorage();
+                setWizardDraftSummary(null);
+              }}
+            >
+              Discard
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-amber-700 hover:bg-amber-800"
+              onClick={() => {
+                setEditingCourse(null);
+                setIsCreateDialogOpen(true);
+              }}
+            >
+              Resume draft
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Search and Filters */}
       <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -1202,6 +1265,7 @@ export default function CoursesManagement() {
                 status: 'Draft',
               });
               setIsCreateDialogOpen(false);
+              setWizardDraftSummary(null);
               setStatusFilter('Draft'); // Show Draft courses to see the new one
               loadData();
               toast.success('Course created successfully.');
@@ -1216,6 +1280,7 @@ export default function CoursesManagement() {
           onCancel={() => {
             setIsCreateDialogOpen(false);
             setEditingCourse(null);
+            refreshWizardDraftSummary();
           }}
         />
       )}

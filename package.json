@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
+    "test:unit": "node --experimental-strip-types --test src/lib/session-utils.spec.ts src/lib/auth-cookie.spec.ts",
     "db:migrate": "node scripts/apply-migrations.cjs",
     "postinstall": "node scripts/patch-baseline-warning.cjs",
     "test:e2e": "playwright test",

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookieValue, getSetCookies } from './cookie-parse';
 
 export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const REFRESH_TOKEN_COOKIE = 'refresh_token';
@@ -28,9 +29,9 @@ function refreshCookieOptions() {
 }
 
 /**
- * Intercepts a successful backend auth response, parses the accessToken from
- * the JSON body, and sets it as an httpOnly cookie so the Next.js middleware
- * can verify it cryptographically on every protected-route request.
+ * Intercepts a successful backend auth response, copies access + refresh tokens
+ * onto same-origin httpOnly cookies, and strips the refresh token from JSON so
+ * it never reaches JavaScript.
  */
 export async function attachAccessTokenCookie(backendRes: Response): Promise<Response> {
   if (!backendRes.ok) return backendRes;
@@ -42,14 +43,26 @@ export async function attachAccessTokenCookie(backendRes: Response): Promise<Res
     return backendRes;
   }
 
-  const accessToken =
-    (body?.tokens as Record<string, unknown> | undefined)?.accessToken as string | undefined;
+  const tokens = body?.tokens as Record<string, unknown> | undefined;
+  const accessToken = tokens?.accessToken as string | undefined;
   const refreshToken =
-    (body?.tokens as Record<string, unknown> | undefined)?.refreshToken as string | undefined;
+    (tokens?.refreshToken as string | undefined) ||
+    cookieValue(getSetCookies(backendRes.headers), REFRESH_TOKEN_COOKIE);
+
+  if (tokens && 'refreshToken' in tokens) {
+    const rest = { ...tokens };
+    delete rest.refreshToken;
+    body = { ...body, tokens: rest };
+  }
+
+  const headers = new Headers(backendRes.headers);
+  headers.delete('set-cookie');
+  headers.delete('content-encoding');
+  headers.delete('content-length');
 
   const res = NextResponse.json(body, {
     status: backendRes.status,
-    headers: backendRes.headers,
+    headers,
   });
 
   if (accessToken) {
