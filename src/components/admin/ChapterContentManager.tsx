@@ -22,6 +22,7 @@ import { FileUploadZone } from "./FileUploadZone";
 import { toast } from "../ui/toast";
 import { confirmDialog } from "../ui/confirm-dialog";
 import { generateUUID } from "../../lib/uuid-utils";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 export interface ChapterContent {
   id?: string;
@@ -174,6 +175,12 @@ export function ChapterContentManager({
       content_url: '',
       duration_minutes: '',
     });
+  };
+
+  const contentFormDirty = useDirtySnapshot(isDialogOpen, formData);
+
+  const requestCloseContentDialog = () => {
+    void requestClose(contentFormDirty, closeDialog);
   };
 
   const handleSave = () => {
@@ -569,7 +576,16 @@ export function ChapterContentManager({
         )}
 
         {/* Add Content Dialog */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setIsDialogOpen(true);
+              return;
+            }
+            requestCloseContentDialog();
+          }}
+        >
           <DialogContent className="grid max-h-[85vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
             <DialogHeader className="border-b px-6 pt-6 pb-4">
               <DialogTitle>
@@ -727,7 +743,7 @@ export function ChapterContentManager({
             </div>
 
             <DialogFooter className="border-t px-6 py-4">
-              <Button type="button" variant="outline" onClick={closeDialog}>
+              <Button type="button" variant="outline" onClick={requestCloseContentDialog}>
                 Cancel
               </Button>
               <Button type="button" onClick={handleSave}>

@@ -17,17 +17,19 @@ import {
   useTeacherReports, 
   useSubmitReport,
   useTeacherPeriods,
-  useTeacherSchedules
+  useTeacherSchedules,
+  formatGradeSection,
 } from "@/hooks/useTeacherData";
 import { FileText, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import { toast } from "@/components/ui/toast";
+import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
 
-type ScheduleRow = { day_of_week?: string; period_id?: string; start_time?: string; end_time?: string; grade?: string; subject?: string };
-type PeriodRow = { id: string; period_number?: number; grade?: string; subject?: string; start_time?: string; end_time?: string; class_name?: string };
-type ReportRow = { id?: string; grade?: string; date?: string; report_status?: string; topics_taught?: string; classes?: Array<{ grade?: string }>; period_id?: string };
+type ScheduleRow = { day_of_week?: string; period_id?: string; start_time?: string; end_time?: string; grade?: string; section?: string | null; subject?: string };
+type PeriodRow = { id: string; period_number?: number; grade?: string; section?: string | null; subject?: string; start_time?: string; end_time?: string; class_name?: string };
+type ReportRow = { id?: string; grade?: string; section?: string | null; date?: string; report_status?: string; topics_taught?: string; classes?: Array<{ grade?: string; section?: string | null }>; period_id?: string };
 
 /**
  * Submit Daily Teaching Report Page
@@ -45,6 +47,7 @@ export default function SubmitReportPage() {
   const initialFormData = {
     period_id: '',
     grade: '', // Use grade instead of class_id
+    section: '',
     date: new Date().toLocaleDateString('en-CA'), // Local YYYY-MM-DD
     start_time: '',
     end_time: '',
@@ -87,6 +90,9 @@ export default function SubmitReportPage() {
       formData.notes !== ''
     );
   };
+
+  const reportIsDirty = hasUnsavedData();
+  useBeforeUnloadWhenDirty(reportIsDirty);
 
   // Prefill the period when arriving via a "Today's Classes" row click on the
   // dashboard (?period_id=...) — previously this page always opened blank,
@@ -140,18 +146,23 @@ export default function SubmitReportPage() {
     }
   }, [selectedSchool?.id, todayDayName, refetchPeriods]);
 
-  // Prefill from a "My Classes" card click (?grade=...) — since a period
+  // Prefill from a "My Classes" card click (?grade=&section=) — since a period
   // (not a bare grade) is the actual selectable field, find one of today's
-  // periods teaching that grade and select it. Prefers a period that hasn't
-  // already been reported today — a teacher can teach the same grade in two
-  // different periods the same day, and blindly picking the first match
-  // could select an already-submitted one instead of the one they actually
-  // meant to report. No-op if the grade isn't scheduled today or a draft is
-  // already in progress.
+  // periods teaching that grade/section and select it. Prefers a period that
+  // hasn't already been reported today — a teacher can teach the same grade
+  // in two different periods the same day, and blindly picking the first
+  // match could select an already-submitted one instead of the one they
+  // actually meant to report. No-op if the grade isn't scheduled today or a
+  // draft is already in progress.
   useEffect(() => {
     const gradeParam = searchParams.get('grade');
     if (!gradeParam || periodsLoading || !periods || savedFormData?.period_id) return;
-    const candidates = (periods as PeriodRow[]).filter((p) => p.grade === gradeParam);
+    const sectionParam = searchParams.get('section');
+    const candidates = (periods as PeriodRow[]).filter((p) => {
+      if (p.grade !== gradeParam) return false;
+      if (sectionParam == null || sectionParam === '') return true;
+      return (p.section ?? '') === sectionParam;
+    });
     if (candidates.length === 0) return;
     const reportedPeriodIds = new Set(
       (reports as ReportRow[] | undefined ?? [])
@@ -233,19 +244,21 @@ export default function SubmitReportPage() {
       return;
     }
     
-    // Get grade directly from the selected period
+    // Get grade/section directly from the selected period
     // The period gets this information from the schedule (as assigned when period was scheduled)
     const periodGrade = period.grade; // Grade from the schedule
+    const periodSection = period.section ?? '';
     
     // Auto-populate form fields from period
     // IMPORTANT: Use grade as the primary identifier (same as scheduling)
     if (periodGrade && periodGrade.trim() !== '') {
       setFormData(prev => {
-        // Only update if the grade is different to avoid unnecessary re-renders
-        if (prev.grade !== periodGrade) {
+        // Only update if the grade/section is different to avoid unnecessary re-renders
+        if (prev.grade !== periodGrade || (prev.section ?? '') !== periodSection) {
           return {
             ...prev,
             grade: periodGrade, // Always set from period
+            section: periodSection,
             start_time: period.start_time || prev.start_time,
             end_time: period.end_time || prev.end_time,
           };
@@ -257,6 +270,7 @@ export default function SubmitReportPage() {
       setFormData(prev => ({
         ...prev,
         grade: '', // Clear if period doesn't have grade
+        section: '',
         start_time: period.start_time || prev.start_time,
         end_time: period.end_time || prev.end_time,
       }));
@@ -295,11 +309,16 @@ export default function SubmitReportPage() {
       return;
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'A',location:'teacher/reports/page.tsx:handleSubmit',message:'submit attempt',data:{periodId:formData.period_id,date:formData.date,grade:finalGrade,section:formData.section||selectedPeriod?.section||null,hasExistingReport:!!existingReport,availableCount:availablePeriods?.length??null,submittedCount:submittedPeriods?.length??null,existingStatus:existingReport?.report_status??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
     try {
       const result = await submitReport.mutateAsync({
         school_id: selectedSchool.id!,
         period_id: formData.period_id,
         grade: finalGrade,
+        section: formData.section || selectedPeriod?.section || undefined,
         date: formData.date,
         start_time: formData.start_time || undefined,
         end_time: formData.end_time || undefined,
@@ -309,6 +328,10 @@ export default function SubmitReportPage() {
         student_count: formData.student_count.trim() ? Number(formData.student_count) : undefined
       });
 
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'C',location:'teacher/reports/page.tsx:handleSubmit:success',message:'submit success',data:{attendanceMarked:(result as {attendance_marked_present?:boolean})?.attendance_marked_present??null,reportId:(result as {id?:string})?.id??null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       // Refetch reports to update the UI
       await Promise.all([refetchReports(), refetchRecentReports()]);
 
@@ -316,6 +339,7 @@ export default function SubmitReportPage() {
       setFormData({
         period_id: '',
         grade: '', // Use grade instead of class_id
+        section: '',
         date: new Date().toLocaleDateString('en-CA'),
         start_time: '',
         end_time: '',
@@ -338,6 +362,9 @@ export default function SubmitReportPage() {
      
     } catch (error: unknown) {
       const err = error as { message?: string; response?: { json: () => Promise<{ details?: string; error?: string }> }; data?: { details?: string; error?: string }; details?: string; hint?: string };
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'A',location:'teacher/reports/page.tsx:handleSubmit:error',message:'submit error',data:{errMessage:err?.message??null,periodId:formData.period_id,date:formData.date,hadExistingReport:!!existingReport},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       console.error('❌ Error submitting report:', {
         error,
         message: err?.message,
@@ -366,7 +393,10 @@ export default function SubmitReportPage() {
   };
 
   const handleCancel = () => {
-    router.push('/lms/teacher');
+    void requestClose(reportIsDirty, () => {
+      clearSavedData();
+      router.push('/lms/teacher');
+    });
   };
 
   // Calculate final grade from the selected period
@@ -399,11 +429,17 @@ export default function SubmitReportPage() {
     return null;
   }, [formData.grade, formData.period_id, periods, selectedPeriod]);
 
-   
-  const existingReport = (reports as ReportRow[] | undefined)?.find((r) => 
-    r.grade === finalGrade && 
-    (formData.period_id ? r.period_id === formData.period_id : true)
-  );
+  // Uniqueness is period+date (not grade) — grade mismatch used to leave Submit enabled.
+  // Rejected reports are resubmittable (backend updates the row), so they do not block.
+  const existingReport = useMemo(() => {
+    if (!formData.period_id || !reports) return undefined;
+    return (reports as ReportRow[]).find(
+      (r) =>
+        r.date === formData.date &&
+        r.period_id === formData.period_id &&
+        String(r.report_status ?? '').toLowerCase() !== 'rejected',
+    );
+  }, [reports, formData.date, formData.period_id]);
 
   // Separate periods into available and already submitted
   const { availablePeriods, submittedPeriods } = useMemo(() => {
@@ -415,9 +451,16 @@ export default function SubmitReportPage() {
     // unique (a teacher can teach the same grade in two different periods
     // the same day), so grouping by grade only used to hide a second,
     // never-reported period as "Already Submitted" once the first one was.
+    // Rejected reports stay selectable so the teacher can resubmit.
     const reportsToday = (reports as ReportRow[]).filter((r: ReportRow) => r.date === formData.date);
     const submittedByPeriodId = new Map(
-      reportsToday.filter((r) => r.period_id).map((r) => [r.period_id as string, r]),
+      reportsToday
+        .filter(
+          (r) =>
+            r.period_id &&
+            String(r.report_status ?? '').toLowerCase() !== 'rejected',
+        )
+        .map((r) => [r.period_id as string, r]),
     );
 
     const available: PeriodRow[] = [];
@@ -434,6 +477,22 @@ export default function SubmitReportPage() {
 
     return { availablePeriods: available, submittedPeriods: submitted };
   }, [periods, reports, formData.date]);
+
+  // Autosave / URL can restore a period_id that was already submitted — clear it
+  // so the Select is not stuck on an orphan value that still enables submit.
+  useEffect(() => {
+    if (!formData.period_id || submittedPeriods.length === 0) return;
+    const alreadySubmitted = submittedPeriods.some((p) => p.id === formData.period_id);
+    if (!alreadySubmitted) return;
+    setFormData((prev) => ({
+      ...prev,
+      period_id: '',
+      grade: '',
+      section: '',
+      start_time: '',
+      end_time: '',
+    }));
+  }, [submittedPeriods, formData.period_id]);
 
 
   if (!selectedSchool) {
@@ -516,7 +575,9 @@ export default function SubmitReportPage() {
                           
                           // Display period with grade information from schedule
                           // Grade is the primary identifier
-                          const gradeInfo = period.grade ? ` [${period.grade}]` : '';
+                          const gradeInfo = period.grade
+                            ? ` [${formatGradeSection(period.grade, period.section)}]`
+                            : '';
                           const subjectInfo = period.subject ? ` (${period.subject})` : '';
                           
                           return (
@@ -538,15 +599,15 @@ export default function SubmitReportPage() {
                       {/* Grade from schedule - displayed prominently */}
                       {selectedPeriod.grade && (
                         <p className="text-xs text-blue-700 mb-1">
-                          <strong>Grade:</strong> {selectedPeriod.grade} <span className="text-blue-600">(from schedule)</span>
+                          <strong>Grade:</strong> {formatGradeSection(selectedPeriod.grade, selectedPeriod.section)} <span className="text-blue-600">(from schedule)</span>
                         </p>
                       )}
                       <p className="text-xs text-blue-700">
                         <strong>Class:</strong> {
                           selectedPeriod.class_name || 
                           (selectedPeriod.subject && selectedPeriod.grade 
-                            ? `${selectedPeriod.subject} - ${selectedPeriod.grade}` 
-                            : selectedPeriod.subject || selectedPeriod.grade || 'N/A')
+                            ? `${selectedPeriod.subject} - ${formatGradeSection(selectedPeriod.grade, selectedPeriod.section)}` 
+                            : selectedPeriod.subject || formatGradeSection(selectedPeriod.grade, selectedPeriod.section) || 'N/A')
                         }
                       </p>
                       {selectedPeriod.subject && (
@@ -575,7 +636,9 @@ export default function SubmitReportPage() {
                             return `${displayHour}:${minutes} ${ampm}`;
                           };
                           
-                          const gradeInfo = periodWithReport.grade ? ` [${periodWithReport.grade}]` : '';
+                          const gradeInfo = periodWithReport.grade
+                            ? ` [${formatGradeSection(periodWithReport.grade, periodWithReport.section)}]`
+                            : '';
                           const subjectInfo = periodWithReport.subject ? ` (${periodWithReport.subject})` : '';
                           
                           return (
@@ -609,7 +672,7 @@ export default function SubmitReportPage() {
                       {/* Display grade */}
                       <p className="text-sm font-medium text-gray-900">
                         <span className="text-gray-600">Grade:</span> {
-                          selectedPeriod.grade || 'N/A'
+                          formatGradeSection(selectedPeriod.grade, selectedPeriod.section) || 'N/A'
                         }
                         {selectedPeriod.subject && selectedPeriod.grade && (
                           <span className="text-gray-500"> • {selectedPeriod.subject}</span>
@@ -725,7 +788,7 @@ export default function SubmitReportPage() {
                           <li>Grade information is missing (try selecting the period again or refresh the page)</li>
                         )}
                         {!formData.topics_taught?.trim() && <li>Enter topics taught</li>}
-                        {existingReport && <li>You have already submitted a report for this grade today</li>}
+                        {existingReport && <li>You have already submitted a report for this period today</li>}
                       </ul>
                     </div>
                   )}
@@ -773,7 +836,10 @@ export default function SubmitReportPage() {
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1">
                           <p className="font-medium text-sm">
-                            {report.grade || report.classes?.[0]?.grade || 'N/A'}
+                            {formatGradeSection(
+                              report.grade || report.classes?.[0]?.grade,
+                              report.section ?? report.classes?.[0]?.section,
+                            ) || 'N/A'}
                           </p>
                           <p className="text-xs text-gray-600">
                             {report.date ? new Date(report.date + 'T00:00:00').toLocaleDateString() : 'N/A'}

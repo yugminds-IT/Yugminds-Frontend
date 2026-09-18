@@ -16,8 +16,10 @@ import {
   EyeOff,
   XCircle,
   Loader2,
-  Lock
+  Lock,
+  Bell,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { adminApi, commonApi, authApi, setAuthToken } from "@/lib/api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 
@@ -41,6 +43,10 @@ export default function AdminSettings() {
     current_password: "",
     new_password: "",
     confirm_password: ""
+  });
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    system_alerts: true,
+    teacher_leave_requests: true,
   });
   const [showPassword, setShowPassword] = useState<PasswordVisibility>({
     current: false,
@@ -85,6 +91,14 @@ export default function AdminSettings() {
         current_password: "",
         new_password: "",
         confirm_password: ""
+      });
+      const p = profile as {
+        system_alerts?: boolean;
+        teacher_leave_requests?: boolean;
+      };
+      setNotificationPrefs({
+        system_alerts: p?.system_alerts ?? true,
+        teacher_leave_requests: p?.teacher_leave_requests ?? true,
       });
       setCurrentPasswordStatus(null);
     } catch (error) {
@@ -165,6 +179,7 @@ export default function AdminSettings() {
     try {
       await adminApi.profile.update({
         full_name: profileData.full_name.trim(),
+        ...notificationPrefs,
       });
       nameSaved = true;
 
@@ -381,6 +396,48 @@ export default function AdminSettings() {
                   <p className="text-xs text-green-600">Passwords match</p>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-medium flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                In-app Notification Preferences
+              </h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Choose which in-app notifications you receive. Email delivery is not used.
+              </p>
+            </div>
+            <div className="space-y-3">
+              {(
+                [
+                  {
+                    key: "system_alerts" as const,
+                    label: "System Alerts",
+                    description: "Weekly platform digests and system announcements",
+                  },
+                  {
+                    key: "teacher_leave_requests" as const,
+                    label: "Teacher Leave Requests",
+                    description: "Alerts when teachers submit leave requests",
+                  },
+                ]
+              ).map((item) => (
+                <div key={item.key} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={item.key}>{item.label}</Label>
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <Switch
+                    id={item.key}
+                    checked={notificationPrefs[item.key]}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs((prev) => ({ ...prev, [item.key]: checked }))
+                    }
+                  />
+                </div>
+              ))}
             </div>
           </div>
 

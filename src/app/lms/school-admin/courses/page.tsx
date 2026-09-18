@@ -28,6 +28,7 @@ interface Course {
   school_id: string;
   grade: string;
   grades: string[];
+  grade_access: Array<{ grade: string; sections: string[] }>;
   course_name: string;
   description: string;
   num_chapters: number;
@@ -153,6 +154,7 @@ export default function CoursesManagement() {
         school_id?: string;
         grades?: string[];
         grade?: string;
+        grade_access?: Array<{ grade: string; sections?: string[] }>;
         title?: string;
         course_name?: string;
         description?: string;
@@ -178,6 +180,12 @@ export default function CoursesManagement() {
       const mappedCourses: Course[] = (apiCourses || []).map((c: ApiCourse) => {
         // API provides grades as array, but we also support comma-separated string for backward compatibility
         const grades = Array.isArray(c.grades) ? c.grades : (c.grade ? c.grade.split(',').map((g: string) => g.trim()) : []);
+        const grade_access = Array.isArray(c.grade_access)
+          ? c.grade_access.map((g) => ({
+              grade: g.grade,
+              sections: Array.isArray(g.sections) ? g.sections : [],
+            }))
+          : grades.map((grade) => ({ grade, sections: [] as string[] }));
         
         // Map chapters from API response
         type ApiChapterItem = NonNullable<ApiCourse['chapters']>[number];
@@ -211,6 +219,7 @@ export default function CoursesManagement() {
           school_id: c.school_id,
           grade: grades.join(', '), // Comma-separated string for display
           grades, // Individual grade names, for filtering
+          grade_access,
           course_name: c.title || c.course_name || 'Untitled Course',
           description: c.description || '',
           num_chapters: c.num_chapters !== undefined ? c.num_chapters : chapters.length,
@@ -321,6 +330,25 @@ export default function CoursesManagement() {
     if (!g) return 'N/A';
     const m = (g || '').toString().toLowerCase().match(/(grade\s*|g\s*)?(\d{1,2})/);
     return m ? `Grade ${m[2]}` : g.replace(/^(.)/, (s) => s.toUpperCase());
+  };
+
+  /** Expand grade_access into display labels (Grade 4 or Grade 4-A). */
+  const courseAccessLabels = (course: Course): string[] => {
+    if (course.grade_access?.length) {
+      const labels: string[] = [];
+      for (const ga of course.grade_access) {
+        const gLabel = formatGrade(ga.grade);
+        if (ga.sections?.length) {
+          for (const sec of ga.sections) {
+            labels.push(`${gLabel}-${sec}`);
+          }
+        } else {
+          labels.push(gLabel);
+        }
+      }
+      return labels;
+    }
+    return (course.grades || []).map(formatGrade);
   };
 
 
@@ -576,7 +604,7 @@ export default function CoursesManagement() {
                 <TableBody>
                   {filteredCourses.map((course) => {
                     const rowKey = course.id;
-                    const grades: string[] = Array.isArray(course.grades) ? course.grades : [];
+                    const accessLabels = courseAccessLabels(course);
                     return (
                       <TableRow
                         key={rowKey}
@@ -593,9 +621,9 @@ export default function CoursesManagement() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
-                            {grades.length > 0 ? (
-                              grades.map((grade: string, idx: number) => (
-                                <Badge key={idx} variant="outline">{formatGrade(grade)}</Badge>
+                            {accessLabels.length > 0 ? (
+                              accessLabels.map((label: string, idx: number) => (
+                                <Badge key={idx} variant="outline">{label}</Badge>
                               ))
                             ) : (
                               <Badge variant="outline">N/A</Badge>
@@ -659,8 +687,8 @@ export default function CoursesManagement() {
                     <p className="font-medium">{selectedCourse.course_name}</p>
                   </div>
                   <div>
-                    <Label className="text-sm text-gray-500">Grade</Label>
-                    <p className="font-medium">{formatGrade(selectedCourse.grade)}</p>
+                    <Label className="text-sm text-gray-500">Class access</Label>
+                    <p className="font-medium">{courseAccessLabels(selectedCourse).join(', ') || 'N/A'}</p>
                   </div>
                   <div>
                     <Label className="text-sm text-gray-500">Status</Label>

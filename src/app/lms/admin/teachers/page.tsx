@@ -62,6 +62,7 @@ import {
 import { adminApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 import {
   TeacherManagementTable,
   type TeacherManagementRow,
@@ -1411,6 +1412,25 @@ export default function TeachersManagement() {
     });
   };
 
+  const isEditTeacherDirty = useDirtySnapshot(showEditDialog, {
+    formData,
+    newPassword,
+  });
+
+  const discardEditTeacherDialog = () => {
+    setShowEditDialog(false);
+    setEditingTeacher(null);
+    resetForm();
+    setShowPassword(false);
+    setNewPassword("");
+    setShowNewPassword(false);
+    setCustomSubjectInputs({});
+  };
+
+  const requestCloseEditTeacher = () => {
+    void requestClose(isEditTeacherDirty, discardEditTeacherDialog);
+  };
+
   // Handle input change
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
@@ -2456,12 +2476,16 @@ export default function TeachersManagement() {
       </Dialog>
 
       {/* Edit Teacher Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={(open: boolean) => {
-        setShowEditDialog(open);
-        if (!open) {
-          setShowPassword(false); // Reset password visibility when closing
-        }
-      }}>
+      <Dialog
+        open={showEditDialog}
+        onOpenChange={(open: boolean) => {
+          if (open) {
+            setShowEditDialog(true);
+            return;
+          }
+          requestCloseEditTeacher();
+        }}
+      >
         <DialogContent className="max-w-2xl bg-white max-h-[90vh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit Teacher</DialogTitle>
@@ -3177,10 +3201,7 @@ export default function TeachersManagement() {
             </div>
           </div>
           <DialogFooter className="flex-shrink-0 border-t pt-4 mt-4">
-            <Button variant="outline" onClick={() => {
-              setShowEditDialog(false);
-              setCustomSubjectInputs({});
-            }}>
+            <Button variant="outline" onClick={requestCloseEditTeacher}>
               Cancel
             </Button>
             <Button 

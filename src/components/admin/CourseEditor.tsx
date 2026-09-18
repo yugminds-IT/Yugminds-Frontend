@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -23,6 +23,7 @@ import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
 import { BulkAddChaptersDialog } from "./BulkAddChaptersDialog";
 import { buildChaptersFromNames } from "./bulkChapters";
 import { generateUUID } from "../../lib/uuid-utils";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 
 export type { Chapter };
 
@@ -97,6 +98,7 @@ interface CourseEditorProps {
   course: CourseFromAPI;
   onSave: (courseData: CourseData) => void | Promise<void>;
   onCancel?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function normalizeContent(
@@ -195,7 +197,7 @@ function dedupeChapters(chapters: Chapter[]): Chapter[] {
   }, []);
 }
 
-export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
+export function CourseEditor({ course, onSave, onCancel, onDirtyChange }: CourseEditorProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -230,6 +232,37 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
   const [videos, setVideos] = useState<
     Array<{ chapter_id: string; title: string; video_url: string; duration?: number }>
   >([]);
+
+  const initialSnapshot = useRef({
+    basicInfo: {
+      name: course.name || "",
+      description: course.description || "",
+      thumbnail_url: course.thumbnail_url || "",
+      chapter_unlock_interval_days: course.chapter_unlock_interval_days?.toString() || "",
+    },
+    chapters: dedupeChapters(course.chapters || []),
+    chapterContents: computeInitialChapterContents(course),
+    assignments: computeInitialAssignments(course),
+  });
+
+  const isDirty = useMemo(() => {
+    const snap = initialSnapshot.current;
+    return (
+      JSON.stringify(basicInfo) !== JSON.stringify(snap.basicInfo) ||
+      JSON.stringify(chapters) !== JSON.stringify(snap.chapters) ||
+      JSON.stringify(chapterContents) !== JSON.stringify(snap.chapterContents) ||
+      JSON.stringify(assignments) !== JSON.stringify(snap.assignments)
+    );
+  }, [basicInfo, chapters, chapterContents, assignments]);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  const handleCancel = () => {
+    if (!onCancel) return;
+    void requestClose(isDirty, onCancel);
+  };
 
   useEffect(() => {
     if (course.videos && Array.isArray(course.videos)) {
@@ -638,7 +671,7 @@ export function CourseEditor({ course, onSave, onCancel }: CourseEditorProps) {
 
       <div className="flex items-center justify-end gap-2 border-t px-6 py-4">
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
         )}

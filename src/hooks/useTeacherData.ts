@@ -33,6 +33,7 @@ export interface TeacherScheduleRow {
   id?: string;
   day_of_week?: string;
   grade?: string;
+  section?: string | null;
   subject?: string;
   school_id?: string;
   period?: string | number | { start_time?: string; end_time?: string };
@@ -44,15 +45,27 @@ export interface TeacherScheduleRow {
   [key: string]: unknown;
 }
 
+/** Display label for a schedule grade + optional section (e.g. "Grade 4-A"). */
+export function formatGradeSection(
+  grade?: string | null,
+  section?: string | null,
+): string {
+  const g = (grade ?? '').trim();
+  const s = (section ?? '').trim();
+  if (!g) return s || '';
+  return s ? `${g}-${s}` : g;
+}
+
 export interface TeacherReport {
   id?: string;
   date?: string;
   grade?: string;
+  section?: string | null;
   status?: string;
   report_status?: string;
   topics_taught?: string;
   created_at?: string;
-  classes?: Array<{ grade?: string }> | { grade?: string };
+  classes?: Array<{ grade?: string; section?: string | null }> | { grade?: string; section?: string | null };
   [key: string]: unknown;
 }
 
@@ -393,6 +406,7 @@ export function useTodaysClasses(schoolId?: string) {
       interface ClassItem {
         id?: string;
         grade?: string;
+        section?: string | null;
         subject?: string;
         class_name?: string;
         school_id?: string;
@@ -406,6 +420,7 @@ export function useTodaysClasses(schoolId?: string) {
       type TodayPeriod = {
         period_id?: string;
         grade?: string;
+        section?: string | null;
         subject?: string;
         start_time?: string;
         end_time?: string;
@@ -420,8 +435,9 @@ export function useTodaysClasses(schoolId?: string) {
       const toClassItem = (p: TodayPeriod, hasReport: boolean): ClassItem => ({
         id: p.period_id || '',
         grade: p.grade,
+        section: p.section ?? null,
         subject: p.subject,
-        class_name: p.grade,
+        class_name: formatGradeSection(p.grade, p.section) || p.grade,
         school_id: schoolId,
         schedule_id: p.period_id,
         period_id: p.period_id,
@@ -481,6 +497,7 @@ export function useSubmitReport() {
       school_id: string;
       period_id: string;
       grade: string;
+      section?: string | null;
       date: string;
       start_time?: string;
       end_time?: string;
@@ -498,6 +515,7 @@ export function useSubmitReport() {
           school_id: reportData.school_id,
           period_id: reportData.period_id,
           grade: reportData.grade,
+          section: reportData.section ?? undefined,
           date: reportData.date,
           start_time: reportData.start_time,
           end_time: reportData.end_time,

@@ -48,6 +48,7 @@ import WeekdayPicker from "./WeekdayPicker";
 import { useAdminSchools } from "../hooks/useAdminSchools";
 import { toast } from "./ui/toast";
 import { isAxiosError } from "axios";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 
 function todayStr(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
@@ -573,11 +574,27 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     onClose();
   };
 
+  const isDirty =
+    formData.full_name.trim() !== "" ||
+    formData.email.trim() !== "" ||
+    formData.phone.trim() !== "" ||
+    formData.address.trim() !== "" ||
+    formData.qualification.trim() !== "" ||
+    formData.specialization.trim() !== "" ||
+    formData.temp_password.trim() !== "" ||
+    formData.experience_years > 0 ||
+    formData.selected_schools.length > 0 ||
+    formData.school_assignments.length > 0;
+
+  const handleRequestClose = () => {
+    void requestClose(isDirty, handleClose);
+  };
+
         return (
     <Dialog open={isOpen} onOpenChange={(open) => {
       // Only reset when closing, not when opening
       if (!open) {
-        handleClose();
+        handleRequestClose();
       }
     }}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white">
@@ -1110,9 +1127,9 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                   </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={loading}>
+          <Button variant="outline" onClick={handleRequestClose} disabled={loading}>
                   Cancel
-                </Button>
+          </Button>
                 <Button onClick={handleSubmit} disabled={loading}>
             {loading ? 'Adding Teacher...' : 'Add Teacher'}
                 </Button>

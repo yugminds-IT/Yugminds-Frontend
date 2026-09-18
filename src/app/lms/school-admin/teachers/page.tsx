@@ -59,10 +59,20 @@ function mapTeacherToTableRow(teacher: Teacher): SchoolAdminTeacherTableRow {
   const grades = school?.grades_assigned ?? [];
   const sections = school?.sections_assigned ?? [];
   const subjects = school?.subjects ?? [];
-  const classesDisplay =
-    grades.length || sections.length
-      ? `${grades.join(", ") || "—"}${sections.length ? ` (${sections.join(", ")})` : ""}`
-      : "—";
+  const gsa = (() => {
+    const raw = (school as { grade_sections_assigned?: Array<{ grade: string; sections?: string[] }> } | undefined)
+      ?.grade_sections_assigned;
+    return Array.isArray(raw) ? raw : [];
+  })();
+  const classesDisplay = gsa.length
+    ? gsa
+        .map((gs) =>
+          gs.sections?.length ? `${gs.grade} (${gs.sections.join(', ')})` : gs.grade,
+        )
+        .join(', ')
+    : grades.length || sections.length
+      ? `${grades.join(', ') || '—'}${sections.length ? ` (${sections.join(', ')})` : ''}`
+      : '—';
   const subjectsDisplay = subjects.join(", ") || "—";
   return {
     id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { adminApi } from "@/lib/api/admin.api";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
+import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
 import {
   Award,
   Search,
@@ -147,6 +148,21 @@ export default function AdminCertificatesPage() {
     },
     enabled: templateTab,
   });
+
+  const savedTemplate = templateData?.template ?? "";
+  const templateIsDirty = useMemo(() => {
+    if (!templateTab) return false;
+    // Dirty once the editor has local edits that differ from the last saved template.
+    return templateContent !== "" && templateContent !== savedTemplate;
+  }, [templateTab, templateContent, savedTemplate]);
+  useBeforeUnloadWhenDirty(templateIsDirty);
+
+  const leaveTemplateTab = () => {
+    void requestClose(templateIsDirty, () => {
+      setTemplateContent("");
+      setTemplateTab(false);
+    });
+  };
 
   const certs = data?.certificates ?? [];
   const total = data?.total ?? 0;
@@ -319,7 +335,7 @@ export default function AdminCertificatesPage() {
     try {
       await adminApi.certificates.saveTemplate(templateContent);
       toast.success("Template saved — new certificates will use this design");
-      queryClient.invalidateQueries({ queryKey: ["adminCertTemplate"] });
+      await queryClient.invalidateQueries({ queryKey: ["adminCertTemplate"] });
     } catch {
       toast.error("Failed to save template");
     } finally {
@@ -361,14 +377,24 @@ export default function AdminCertificatesPage() {
           <p className="text-gray-500 text-sm mt-1">View, regenerate, revoke, and manage all student certificates</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => { setTemplateTab(false); queryClient.invalidateQueries({ queryKey: ["adminCertificates"] }); }}>
+          <Button variant="outline" size="sm" onClick={() => { queryClient.invalidateQueries({ queryKey: ["adminCertificates"] }); }}>
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>
           <Button variant="outline" size="sm" onClick={handleVerify} disabled={verifying || certs.length === 0}>
             {verifying ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-1" />}
             Verify
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setTemplateTab((v) => !v)}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              if (templateTab) {
+                leaveTemplateTab();
+              } else {
+                setTemplateTab(true);
+              }
+            }}
+          >
             <FileText className="h-4 w-4 mr-1" />
             {templateTab ? "View Certificates" : "Manage Template"}
           </Button>

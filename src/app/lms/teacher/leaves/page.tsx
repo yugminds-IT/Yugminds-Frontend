@@ -18,6 +18,7 @@ import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import { Calendar, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { toast } from "@/components/ui/toast";
+import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
 
 /**
  * Leave Application Page
@@ -49,7 +50,7 @@ export default function LeavesPage() {
   });
 
   // Auto-save leave form
-  const { isDirty: _isLeaveFormDirty, clearSavedData } = useAutoSaveForm({
+  const { isDirty: isLeaveFormDirty, clearSavedData } = useAutoSaveForm({
     formId: selectedSchool?.id ? `teacher-leave-form-${selectedSchool.id}` : 'temp-leave-form',
     formData,
     autoSave: !!selectedSchool?.id,
@@ -63,6 +64,21 @@ export default function LeavesPage() {
     },
     markDirty: true,
   });
+
+  const leaveIsDirty =
+    isLeaveFormDirty &&
+    (!!formData.start_date ||
+      !!formData.end_date ||
+      !!formData.reason.trim() ||
+      formData.substitute_required);
+  useBeforeUnloadWhenDirty(leaveIsDirty);
+
+  const handleCancel = () => {
+    void requestClose(leaveIsDirty, () => {
+      clearSavedData();
+      router.back();
+    });
+  };
 
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
   const applyLeave = useApplyLeave();
@@ -258,7 +274,7 @@ export default function LeavesPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => router.back()}
+                    onClick={handleCancel}
                   >
                     Cancel
                   </Button>

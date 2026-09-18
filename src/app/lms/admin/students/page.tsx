@@ -6,6 +6,7 @@ import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import ViewStudentDialog from "@/components/admin/ViewStudentDialog";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -322,6 +323,65 @@ export default function StudentsManagement() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [sectionInputMode, setSectionInputMode] = useState<'predefined' | 'custom'>('predefined');
   const [customSection, setCustomSection] = useState("");
+
+  const emptyStudentForm = {
+    full_name: "",
+    email: "",
+    password: "",
+    school_id: "",
+    grade: "",
+    section: "",
+    parent_name: "",
+    parent_phone: "",
+  };
+
+  const isAddStudentDirty =
+    formData.full_name.trim() !== "" ||
+    formData.email.trim() !== "" ||
+    formData.password.trim() !== "" ||
+    formData.school_id !== "" ||
+    formData.grade !== "" ||
+    formData.section !== "" ||
+    formData.parent_name.trim() !== "" ||
+    formData.parent_phone.trim() !== "";
+
+  const isEditStudentDirty = useDirtySnapshot(isEditDialogOpen, {
+    full_name: formData.full_name,
+    email: formData.email,
+    school_id: formData.school_id,
+    grade: formData.grade,
+    section: formData.section,
+    parent_name: formData.parent_name,
+    parent_phone: formData.parent_phone,
+    newPassword,
+  });
+
+  const discardAddStudentDialog = () => {
+    setIsDialogOpen(false);
+    setAddStudentError(null);
+    setFormData(emptyStudentForm);
+    setSectionInputMode("predefined");
+    setCustomSection("");
+  };
+
+  const discardEditStudentDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingStudent(null);
+    setFormData(emptyStudentForm);
+    setSectionInputMode("predefined");
+    setCustomSection("");
+    setNewPassword("");
+    setShowNewPassword(false);
+    setUpdateStudentError(null);
+  };
+
+  const requestCloseAddStudent = () => {
+    void requestClose(isAddStudentDirty, discardAddStudentDialog);
+  };
+
+  const requestCloseEditStudent = () => {
+    void requestClose(isEditStudentDirty, discardEditStudentDialog);
+  };
 
   // Standard available grades from Pre-K to Grade 12
   const availableGrades = [
@@ -2240,12 +2300,21 @@ export default function StudentsManagement() {
               <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap gap-4 items-center">
                   <div className="flex space-x-2 shrink-0">
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <Dialog
+                      open={isDialogOpen}
+                      onOpenChange={(open) => {
+                        if (open) {
+                          setIsDialogOpen(true);
+                          return;
+                        }
+                        requestCloseAddStudent();
+                      }}
+                    >
                       <DialogTrigger asChild>
                         <Button 
                           onClick={() => {
                             setEditingStudent(null);
-                            setFormData({ full_name: "", email: "", password: "", school_id: "", grade: "", section: "", parent_name: "", parent_phone: "" });
+                            setFormData(emptyStudentForm);
                             setSectionInputMode('predefined');
                             setCustomSection("");
                           }}
@@ -2419,13 +2488,7 @@ export default function StudentsManagement() {
                       <DialogFooter className="flex-shrink-0 border-t pt-4 mt-4">
                         <Button 
                           variant="outline" 
-                          onClick={() => {
-                            setIsDialogOpen(false);
-                            setAddStudentError(null);
-                            setFormData({ full_name: "", email: "", password: "", school_id: "", grade: "", section: "", parent_name: "", parent_phone: "" });
-                            setSectionInputMode('predefined');
-                            setCustomSection("");
-                          }}
+                          onClick={requestCloseAddStudent}
                           disabled={isAddingStudent}
                         >
                           Cancel
@@ -2763,18 +2826,16 @@ export default function StudentsManagement() {
             />
 
             {/* Edit Student Dialog */}
-            <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
-              setIsEditDialogOpen(open);
-              if (!open) {
-                setEditingStudent(null);
-                setFormData({ full_name: "", email: "", password: "", school_id: "", grade: "", section: "", parent_name: "", parent_phone: "" });
-                setSectionInputMode('predefined');
-                setCustomSection("");
-                setNewPassword(""); // Reset new password
-                setShowNewPassword(false); // Reset new password visibility
-                setUpdateStudentError(null);
-              }
-            }}>
+            <Dialog
+              open={isEditDialogOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  setIsEditDialogOpen(true);
+                  return;
+                }
+                requestCloseEditStudent();
+              }}
+            >
               <DialogContent className="sm:max-w-[425px] bg-white max-h-[90vh] flex flex-col">
                 <DialogHeader className="flex-shrink-0">
                   <DialogTitle>Edit Student</DialogTitle>
@@ -2993,12 +3054,7 @@ export default function StudentsManagement() {
                 <DialogFooter className="flex-shrink-0 border-t pt-4 mt-4">
                   <Button 
                     variant="outline" 
-                    onClick={() => {
-                      setIsEditDialogOpen(false);
-                      setEditingStudent(null);
-                      setFormData({ full_name: "", email: "", password: "", school_id: "", grade: "", section: "", parent_name: "", parent_phone: "" });
-                      setUpdateStudentError(null);
-                    }}
+                    onClick={requestCloseEditStudent}
                     disabled={isUpdatingStudent}
                   >
                     Cancel

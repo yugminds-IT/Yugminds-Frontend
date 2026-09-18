@@ -40,6 +40,7 @@ import { loadFormData } from '@/lib/form-persistence';
 import { useAdminSchools } from '@/hooks/useAdminSchools';
 import { toast } from "@/components/ui/toast";
 import { validatePasswordClient } from "@/lib/password-validation";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 import {
   SchoolAdminManagementTable,
   type SchoolAdminManagementRow,
@@ -205,6 +206,45 @@ export default function SchoolAdminManagement() {
     () => schoolAdmins.map(mapSchoolAdminToRow),
     [schoolAdmins],
   );
+
+  const isAddAdminDirty =
+    formData.full_name.trim() !== "" ||
+    formData.email.trim() !== "" ||
+    formData.phone.trim() !== "" ||
+    formData.school_id !== "" ||
+    formData.temp_password.trim() !== "";
+
+  const isEditAdminDirty = useDirtySnapshot(isEditDialogOpen, {
+    full_name: formData.full_name,
+    email: formData.email,
+    phone: formData.phone,
+    school_id: formData.school_id,
+    newPassword,
+  });
+
+  const discardAddAdminDialog = () => {
+    setIsAddDialogOpen(false);
+    setFormErrors({});
+    setFormData(DEFAULT_FORM_DATA);
+    setShowTempPassword(false);
+  };
+
+  const discardEditAdminDialog = () => {
+    setIsEditDialogOpen(false);
+    setEditingAdmin(null);
+    setFormErrors({});
+    setFormData(DEFAULT_FORM_DATA);
+    setNewPassword("");
+    setShowNewPassword(false);
+  };
+
+  const requestCloseAddAdmin = () => {
+    void requestClose(isAddAdminDirty, discardAddAdminDialog);
+  };
+
+  const requestCloseEditAdmin = () => {
+    void requestClose(isEditAdminDirty, discardEditAdminDialog);
+  };
 
   // Handle add admin
   const validateAdminForm = (isEdit: boolean): boolean => {
@@ -549,7 +589,16 @@ export default function SchoolAdminManagement() {
       </Card>
 
       {/* Add Admin Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+      <Dialog
+        open={isAddDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsAddDialogOpen(true);
+            return;
+          }
+          requestCloseAddAdmin();
+        }}
+      >
         <DialogContent className="max-w-md bg-white">
           <DialogHeader>
             <DialogTitle>Add School Admin</DialogTitle>
@@ -629,7 +678,7 @@ export default function SchoolAdminManagement() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+            <Button variant="outline" onClick={requestCloseAddAdmin}>
               Cancel
             </Button>
             <Button 
@@ -643,7 +692,16 @@ export default function SchoolAdminManagement() {
       </Dialog>
 
       {/* Edit Admin Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsEditDialogOpen(true);
+            return;
+          }
+          requestCloseEditAdmin();
+        }}
+      >
         <DialogContent className="max-w-md bg-white">
           <DialogHeader>
             <DialogTitle>Edit School Admin</DialogTitle>
@@ -770,7 +828,7 @@ export default function SchoolAdminManagement() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <Button variant="outline" onClick={requestCloseEditAdmin}>
               Cancel
             </Button>
             <Button 

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { FileText } from "lucide-react";
-import { useTeacherReports, type TeacherReport } from "../../hooks/useTeacherData";
+import { useTeacherReports, type TeacherReport, formatGradeSection } from "../../hooks/useTeacherData";
 import { SkeletonTable } from "../ui/skeleton-table";
 
 interface TeacherReportsTabProps {
@@ -47,7 +47,7 @@ export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTa
                       const classData = Array.isArray(report.classes) ? report.classes[0] : report.classes;
                       return (
                         <>
-                          <p className="font-medium">{report.grade || classData?.grade || 'N/A'}</p>
+                          <p className="font-medium">{formatGradeSection(report.grade || classData?.grade, report.section ?? classData?.section) || 'N/A'}</p>
                           <p className="text-sm text-gray-600">
                             {report.topics_taught?.substring(0, 100) || 'No topics listed'}
                           </p>

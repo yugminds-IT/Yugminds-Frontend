@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { BULK_CHAPTER_MAX, parseChapterNames } from "./bulkChapters";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 
 interface BulkAddChaptersDialogProps {
   open: boolean;
@@ -32,13 +33,16 @@ export function BulkAddChaptersDialog({
   const names = useMemo(() => parseChapterNames(text), [text]);
   const count = names.length;
   const overMax = count > BULK_CHAPTER_MAX;
+  const isDirty = text.trim() !== "";
 
-  const handleOpenChange = (next: boolean) => {
-    if (!next) {
-      setText("");
-      setError(null);
-    }
-    onOpenChange(next);
+  const discardAndClose = () => {
+    setText("");
+    setError(null);
+    onOpenChange(false);
+  };
+
+  const handleRequestClose = () => {
+    void requestClose(isDirty, discardAndClose);
   };
 
   const handleSubmit = () => {
@@ -57,7 +61,16 @@ export function BulkAddChaptersDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          onOpenChange(true);
+          return;
+        }
+        handleRequestClose();
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add multiple chapters</DialogTitle>
@@ -88,7 +101,7 @@ export function BulkAddChaptersDialog({
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={handleRequestClose}>
             Cancel
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={count === 0 || overMax}>

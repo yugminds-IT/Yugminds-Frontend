@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
+import { formatGradeSection } from "@/hooks/useTeacherData";
 
 const SUBJECT_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#FF6B6B', '#4ECDC4', '#95E1D3', '#F38181', '#AA96DA'];
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import { Select as UISelect, SelectContent as UISelectContent, SelectItem as UISelectItem, SelectTrigger as UISelectTrigger, SelectValue as UISelectValue } from "@/components/ui/select";
 import { 
   Table, 
@@ -59,6 +61,7 @@ interface TeacherReport {
   school_id: string;
   date: string;
   grade: string;
+  section?: string | null;
   topics_taught: string;
   activities?: string;
   student_count: number;
@@ -148,6 +151,15 @@ export default function TeacherReports() {
   const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [avgAttendanceRate, setAvgAttendanceRate] = useState<number | null>(null);
+
+  const isReviewDirty =
+    !!reviewingReport &&
+    (reviewNotes.trim() !== (reviewingReport.admin_notes || "").trim() ||
+      reviewStatus !== (reviewingReport.status || "submitted"));
+
+  const requestCloseReview = () => {
+    void requestClose(isReviewDirty, () => setReviewingReport(null));
+  };
 
   const handleUpdateReportStatus = async () => {
     if (!reviewingReport || !reviewStatus) return;
@@ -281,7 +293,7 @@ export default function TeacherReports() {
       } else if (topics.includes('physical') || topics.includes('pe') || topics.includes('sport')) {
         subject = 'Physical Education';
       } else if (report.grade) {
-        subject = report.grade;
+        subject = formatGradeSection(report.grade, report.section) || report.grade;
       }
       subjectMap.set(subject, (subjectMap.get(subject) || 0) + 1);
     });
@@ -319,19 +331,29 @@ export default function TeacherReports() {
       const params: Record<string, string> = { limit: '500' };
       if (dateFilter) params.date = dateFilter;
       if (schoolFilter) params.school_id = schoolFilter;
-      if (gradeFilter) params.grade = gradeFilter;
       if (teacherFilter) params.teacher_id = teacherFilter;
       if (searchTerm) params.search = searchTerm;
       if (statusFilter) params.status = statusFilter;
 
       const { data: result } = await adminApi.teacherReports.list(params);
-      const reportsData = result?.reports || result || [];
+      let reportsData = (result?.reports || result || []) as TeacherReport[];
+      if (gradeFilter) {
+        reportsData = reportsData.filter(
+          (r) =>
+            formatGradeSection(r.grade, r.section) === gradeFilter ||
+            r.grade === gradeFilter,
+        );
+      }
       setReports(reportsData);
       const stats = (result as { stats?: { total: number; submitted: number; reviewed: number; approved: number; rejected: number } })?.stats;
       setReportStats(stats ?? { total: 0, submitted: 0, reviewed: 0, approved: 0, rejected: 0 });
 
-      // Extract unique grades from reports for filter dropdown
-      const uniqueGrades = [...new Set(reportsData.map((r: TeacherReport) => r.grade).filter(Boolean) as string[])].sort() as string[];
+      // Extract unique class labels (grade-section) for filter dropdown
+      const uniqueGrades = [...new Set(
+        ((result?.reports || result || []) as TeacherReport[])
+          .map((r) => formatGradeSection(r.grade, r.section))
+          .filter(Boolean),
+      )].sort() as string[];
       if (uniqueGrades.length > 0) {
         setGrades(uniqueGrades);
       }
@@ -447,7 +469,7 @@ export default function TeacherReports() {
     }
 
     // CSV headers
-    const headers = ['Teacher Name', 'Teacher Email', 'School', 'Date', 'Grade', 'Topics Taught', 'Students', 'Duration (Hours)', 'Notes'];
+    const headers = ['Teacher Name', 'Teacher Email', 'School', 'Date', 'Class', 'Topics Taught', 'Students', 'Duration (Hours)', 'Notes'];
     
     // CSV rows
     const rows = filteredReports.map((report: TeacherReport) => [
@@ -455,7 +477,7 @@ export default function TeacherReports() {
       report.profiles?.email || report.teacher_email || '',
       report.schools?.name || report.school_name || 'Unknown',
       new Date(report.date).toLocaleDateString(),
-      report.grade || 'N/A',
+      formatGradeSection(report.grade, report.section) || 'N/A',
       report.topics_taught || '',
       report.student_count || 0,
       report.duration_hours || 0,
@@ -635,14 +657,14 @@ export default function TeacherReports() {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="grade">Grade</Label>
+                      <Label htmlFor="grade">Class</Label>
                       <select
                         id="grade"
                         value={gradeFilter}
                         onChange={(e) => setGradeFilter(e.target.value)}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
-                        <option value="">All Grades</option>
+                        <option value="">All Classes</option>
                         {grades.length > 0 ? (
                           grades.map((grade) => (
                             <option key={grade} value={grade}>
@@ -776,7 +798,7 @@ export default function TeacherReports() {
                             <TableCell>
                               <div>
                                 <Badge variant="outline" className="text-sm font-medium">
-                                  {report.grade || 'N/A'}
+                                  {formatGradeSection(report.grade, report.section) || 'N/A'}
                                   </Badge>
                               </div>
                             </TableCell>
@@ -1054,7 +1076,12 @@ export default function TeacherReports() {
           </Tabs>
 
       {/* Report Review Dialog */}
-      <Dialog open={!!reviewingReport} onOpenChange={(o) => { if (!o) setReviewingReport(null); }}>
+      <Dialog
+        open={!!reviewingReport}
+        onOpenChange={(o) => {
+          if (!o) requestCloseReview();
+        }}
+      >
         <DialogContent className="max-w-md bg-white">
           <DialogHeader>
             <DialogTitle>Review Report</DialogTitle>
@@ -1096,7 +1123,7 @@ export default function TeacherReports() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReviewingReport(null)} disabled={isReviewSaving}>Cancel</Button>
+            <Button variant="outline" onClick={requestCloseReview} disabled={isReviewSaving}>Cancel</Button>
             <Button onClick={handleUpdateReportStatus} disabled={isReviewSaving || !reviewStatus} className="bg-blue-600 hover:bg-blue-700 text-white">
               {isReviewSaving ? 'Saving…' : 'Save Review'}
             </Button>

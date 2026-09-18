@@ -2,11 +2,9 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { 
   BookOpen, 
   FileText,
@@ -15,15 +13,13 @@ import {
   AlertCircle,
   CheckCircle,
   Plus,
-  RefreshCw
 } from "lucide-react";
 import {
   useTeacherReports,
   useTeacherLeaves,
   useTodaysClasses,
-  useTeacherSchedules,
+  formatGradeSection,
   type TeacherReport,
-  type TeacherScheduleRow,
 } from "../../hooks/useTeacherData";
 import { Skeleton } from "../ui/skeleton";
 
@@ -43,14 +39,13 @@ interface ClassItem {
   id?: string;
   schedule_id?: string;
   grade?: string;
+  section?: string | null;
   class_name?: string;
   subject?: string;
   start_time?: string;
   end_time?: string;
   hasReport?: boolean;
 }
-
-type Schedule = TeacherScheduleRow;
 
 function formatTime(time?: string) {
   if (!time) return '';
@@ -72,12 +67,20 @@ function CardSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
+function TodayClassesSkeleton() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {[...Array(6)].map((_, i) => (
+        <Skeleton key={i} className="h-[7.5rem] w-full rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
 export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverviewTabProps) {
-  const queryClient = useQueryClient();
   const { data: todaysClasses, isLoading: todaysClassesLoading } = useTodaysClasses(selectedSchoolId);
   const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchoolId, { limit: 5 });
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchoolId);
-  const { data: schedules, isLoading: schedulesLoading, error: schedulesError } = useTeacherSchedules(selectedSchoolId);
 
   const recentActivity = useMemo(() => {
     const activity: RecentActivity[] = [];
@@ -91,7 +94,7 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
       activity.push({
         id: `report-${report.id}`,
         title: 'Report Submitted',
-        message: `Submitted report for ${report.grade || classData?.grade || 'grade'} on ${report.date ? new Date(report.date).toLocaleDateString() : 'unknown date'}`,
+        message: `Submitted report for ${formatGradeSection(report.grade || classData?.grade, report.section ?? classData?.section) || 'grade'} on ${report.date ? new Date(report.date).toLocaleDateString() : 'unknown date'}`,
         created_at: String(when),
         type: report.report_status === 'Approved' ? 'success' : 'info'
       });
@@ -139,36 +142,73 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
         </CardHeader>
         <CardContent>
           {todaysClassesLoading ? (
-            <CardSkeleton rows={3} />
+            <TodayClassesSkeleton />
           ) : todaysClasses && todaysClasses.length > 0 ? (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {todaysClasses.map((classItem: ClassItem) => {
                 const periodId = classItem.schedule_id || classItem.id;
-                const row = (
-                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors">
-                    <div>
-                      <p className="font-medium">{classItem.grade || classItem.class_name || 'N/A'}</p>
-                      <p className="text-sm text-gray-600">
+                const gradeLabel =
+                  formatGradeSection(classItem.grade, classItem.section) ||
+                  classItem.class_name ||
+                  'Class';
+                const timeLabel =
+                  classItem.start_time
+                    ? `${formatTime(classItem.start_time)}${
+                        classItem.end_time ? ` – ${formatTime(classItem.end_time)}` : ''
+                      }`
+                    : null;
+                const tile = (
+                  <div
+                    className={`h-full rounded-lg border border-l-[3px] p-3.5 transition-colors ${
+                      classItem.hasReport
+                        ? 'border-l-emerald-500 border-gray-200 bg-emerald-50/40 hover:border-emerald-300 hover:bg-emerald-50'
+                        : 'border-l-amber-500 border-gray-200 bg-white hover:border-amber-300 hover:bg-amber-50/50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
                         {classItem.subject || 'General'}
-                        {classItem.start_time && (
-                          <span className="text-gray-400">
-                            {' '}· {formatTime(classItem.start_time)}
-                            {classItem.end_time ? ` – ${formatTime(classItem.end_time)}` : ''}
-                          </span>
-                        )}
                       </p>
+                      <Badge
+                        variant={classItem.hasReport ? 'default' : 'outline'}
+                        className={`shrink-0 text-[10px] ${
+                          classItem.hasReport
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                            : 'bg-amber-50 text-amber-800 border-amber-200'
+                        }`}
+                      >
+                        {classItem.hasReport ? 'Reported' : 'Pending'}
+                      </Badge>
                     </div>
-                    <Badge variant={classItem.hasReport ? "default" : "outline"}>
-                      {classItem.hasReport ? "Reported" : "Pending"}
-                    </Badge>
+                    <p className="text-xs font-medium text-gray-600 truncate">{gradeLabel}</p>
+                    {timeLabel && (
+                      <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{timeLabel}</span>
+                      </p>
+                    )}
                   </div>
                 );
                 return periodId ? (
-                  <Link key={periodId} href={`/lms/teacher/reports?period_id=${periodId}`} className="block">
-                    {row}
+                  <Link
+                    key={periodId}
+                    href={`/lms/teacher/reports?period_id=${periodId}`}
+                    className="block h-full"
+                    title={
+                      classItem.hasReport
+                        ? 'View or update report'
+                        : 'Submit report for this class'
+                    }
+                  >
+                    {tile}
                   </Link>
                 ) : (
-                  <div key={classItem.id}>{row}</div>
+                  <div
+                    key={`${gradeLabel}-${classItem.start_time ?? ''}-${classItem.subject ?? ''}`}
+                    className="h-full"
+                  >
+                    {tile}
+                  </div>
                 );
               })}
             </div>
@@ -275,108 +315,6 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
               </Card>
             </Link>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* My Schedule */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <div>
-            <CardTitle>My Schedule</CardTitle>
-            <CardDescription>Your complete class schedule for the week</CardDescription>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => {
-              if (selectedSchoolId) {
-                queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchoolId] });
-                queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchoolId] });
-              }
-            }}
-            title="Refresh schedule"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {schedulesLoading ? (
-            <CardSkeleton rows={4} />
-          ) : schedulesError ? (
-            <div className="text-center py-8 text-red-500">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
-              <p className="font-medium">Error loading schedule</p>
-              <p className="text-sm mt-1">{(schedulesError as Error)?.message || 'Failed to load schedule'}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => window.location.reload()}
-              >
-                Retry
-              </Button>
-            </div>
-          ) : schedules && schedules.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Day</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Grade</TableHead>
-                    <TableHead>Room</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {schedules.map((schedule: Schedule) => {
-                    const periodObj =
-                      typeof schedule.period === 'object' && schedule.period !== null
-                        ? schedule.period
-                        : null;
-
-                    return (
-                      <TableRow key={schedule.id}>
-                        <TableCell>
-                          <Badge variant="outline">{schedule.day_of_week}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {periodObj ? (
-                            <span className="text-sm">
-                              {formatTime(periodObj.start_time)} - {formatTime(periodObj.end_time)}
-                            </span>
-                          ) : schedule.start_time && schedule.end_time ? (
-                            <span className="text-sm">
-                              {formatTime(schedule.start_time ?? '')} - {formatTime(schedule.end_time ?? '')}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-gray-400">N/A</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">{schedule.subject ?? ''}</TableCell>
-                        <TableCell>{schedule.grade ?? ''}</TableCell>
-                        <TableCell>
-                          {schedule.room && typeof schedule.room === 'object' && 'room_number' in schedule.room ? (
-                            <span>{schedule.room.room_number ?? ''} {schedule.room.room_name && `- ${schedule.room.room_name}`}</span>
-                          ) : schedule.room ? (
-                            <span>{String(schedule.room)}</span>
-                          ) : (
-                            <span className="text-gray-400">N/A</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No classes scheduled</p>
-              <p className="text-sm mt-1">Your schedule will appear here once classes are assigned.</p>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>

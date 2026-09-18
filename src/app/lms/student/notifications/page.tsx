@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import {
   Bell,
   CheckCircle,
@@ -147,6 +148,23 @@ export default function NotificationsPage() {
     } finally {
       setLoadingRecipients(false);
     }
+  };
+
+  const isSendDirty =
+    sendTitle.trim() !== "" ||
+    sendMessage.trim() !== "" ||
+    sendRecipientType !== "role" ||
+    selectedRecipients.join(",") !== "role:teacher";
+
+  const requestCloseSendDialog = () => {
+    void requestClose(isSendDirty, () => setSendDialogOpen(false));
+  };
+
+  const requestCloseReplyDialog = () => {
+    void requestClose(replyText.trim() !== "", () => {
+      setReplyDialogOpen(false);
+      setReplyText("");
+    });
   };
 
   const handleSend = async () => {
@@ -366,7 +384,16 @@ export default function NotificationsPage() {
       </Tabs>
 
       {/* Send message dialog */}
-      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+      <Dialog
+        open={sendDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setSendDialogOpen(true);
+            return;
+          }
+          requestCloseSendDialog();
+        }}
+      >
         <DialogContent className="max-w-lg bg-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -460,7 +487,7 @@ export default function NotificationsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setSendDialogOpen(false)}>
+              <Button variant="outline" size="sm" onClick={requestCloseSendDialog}>
                 Cancel
               </Button>
               <Button
@@ -478,7 +505,16 @@ export default function NotificationsPage() {
       </Dialog>
 
       {/* Reply thread dialog */}
-      <Dialog open={replyDialogOpen} onOpenChange={setReplyDialogOpen}>
+      <Dialog
+        open={replyDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setReplyDialogOpen(true);
+            return;
+          }
+          requestCloseReplyDialog();
+        }}
+      >
         <DialogContent className="max-w-2xl bg-white flex flex-col max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -535,7 +571,7 @@ export default function NotificationsPage() {
                 <AlertCircle className="h-3.5 w-3.5" />
                 Replies are disabled for this notification.
               </p>
-              <Button variant="outline" size="sm" onClick={() => setReplyDialogOpen(false)}>Close</Button>
+              <Button variant="outline" size="sm" onClick={requestCloseReplyDialog}>Close</Button>
             </div>
           ) : (
             <div className="border-t pt-3 space-y-2">
@@ -550,7 +586,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Ctrl+Enter to send</span>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setReplyDialogOpen(false)}>Close</Button>
+                  <Button variant="outline" size="sm" onClick={requestCloseReplyDialog}>Close</Button>
                   <Button
                     size="sm"
                     onClick={handleSendReply}

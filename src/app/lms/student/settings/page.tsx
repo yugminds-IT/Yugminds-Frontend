@@ -36,7 +36,6 @@ function StudentSettingsInner() {
   const [profileData, setProfileData] = useState({ full_name: "", email: "" });
   const [extraInfo, setExtraInfo] = useState<{ school?: string; grade?: string; section?: string; joining_code?: string }>({});
   const [notificationPrefs, setNotificationPrefs] = useState({
-    email_notifications: true,
     assignment_reminders: true,
     grade_notifications: true,
     course_updates: true,
@@ -72,7 +71,6 @@ function StudentSettingsInner() {
 
       const p = profile as {
         students?: Array<{ schools?: Array<{ name?: string }>; grade?: string; section?: string; joining_code?: string }>;
-        email_notifications?: boolean;
         assignment_reminders?: boolean;
         grade_notifications?: boolean;
         course_updates?: boolean;
@@ -84,7 +82,6 @@ function StudentSettingsInner() {
         joining_code: p?.students?.[0]?.joining_code,
       });
       setNotificationPrefs({
-        email_notifications: p?.email_notifications ?? true,
         assignment_reminders: p?.assignment_reminders ?? true,
         grade_notifications: p?.grade_notifications ?? true,
         course_updates: p?.course_updates ?? true,
@@ -396,17 +393,30 @@ function StudentSettingsInner() {
             <div>
               <h3 className="text-lg font-medium flex items-center gap-2">
                 <Bell className="h-4 w-4" />
-                Notification Preferences
+                In-app Notification Preferences
               </h3>
-              <p className="text-sm text-gray-500 mt-0.5">Choose what you get notified about</p>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Choose which in-app notifications you receive. Email delivery is not used.
+              </p>
             </div>
             <div className="space-y-3">
               {(
                 [
-                  { key: "email_notifications" as const, label: "Email Notifications", description: "Receive notifications by email" },
-                  { key: "assignment_reminders" as const, label: "Assignment Reminders", description: "Reminders about upcoming assignment deadlines" },
-                  { key: "grade_notifications" as const, label: "Grade Notifications", description: "Updates when grades are posted or changed" },
-                  { key: "course_updates" as const, label: "Course Updates", description: "Announcements about course content changes" },
+                  {
+                    key: "assignment_reminders" as const,
+                    label: "Assignment Alerts",
+                    description: "New assignments, retakes, and related updates",
+                  },
+                  {
+                    key: "grade_notifications" as const,
+                    label: "Grade Notifications",
+                    description: "Updates when your assignments are graded",
+                  },
+                  {
+                    key: "course_updates" as const,
+                    label: "Course Updates",
+                    description: "Certificates and course-related announcements",
+                  },
                 ]
               ).map((item) => (
                 <div key={item.key} className="flex items-center justify-between rounded-lg border px-4 py-3">

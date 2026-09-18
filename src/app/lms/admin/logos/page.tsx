@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Edit, Trash2, Upload, RefreshCw, Image as ImageIcon, AlertTriangle, CheckCircle, AlertCircle, X, Search, Pencil } from "lucide-react";
 import { adminApi } from "@/lib/api/admin.api";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 
 interface LogoItem {
   id: string;
@@ -271,6 +272,15 @@ export default function LogoManagementPage() {
     setEditDescription(logo.description ?? '');
   };
 
+  const isEditDirty =
+    !!editDialog &&
+    (editSchoolId !== (editDialog.logo.school_id ?? "") ||
+      editDescription !== (editDialog.logo.description ?? ""));
+
+  const requestCloseEditDialog = () => {
+    void requestClose(isEditDirty, () => setEditDialog(null));
+  };
+
   const handleEditSave = async () => {
     if (!editDialog) return;
     try {
@@ -494,7 +504,12 @@ export default function LogoManagementPage() {
       </Dialog>
 
       {/* ── Edit Dialog ── */}
-      <Dialog open={!!editDialog?.open} onOpenChange={(o) => { if (!o) setEditDialog(null); }}>
+      <Dialog
+        open={!!editDialog?.open}
+        onOpenChange={(o) => {
+          if (!o) requestCloseEditDialog();
+        }}
+      >
         <DialogContent className="max-w-md bg-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5" /> Edit Logo</DialogTitle>
@@ -539,7 +554,7 @@ export default function LogoManagementPage() {
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setEditDialog(null)}>Cancel</Button>
+            <Button variant="outline" onClick={requestCloseEditDialog}>Cancel</Button>
             <Button onClick={handleEditSave} disabled={editSaving}>
               {editSaving ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Saving…</> : 'Save changes'}
             </Button>

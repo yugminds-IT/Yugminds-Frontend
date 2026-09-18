@@ -44,6 +44,8 @@ type GradeBreakdown = {
   avg_overall: number;
 };
 
+type SectionBreakdown = GradeBreakdown & { section: string | null };
+
 type SubjectBreakdown = {
   subject: string;
   avg_score: number;
@@ -74,6 +76,7 @@ type LeaderboardData = {
   summary: LeaderboardSummary;
   leaderboard: LeaderboardStudent[];
   grade_breakdown: GradeBreakdown[];
+  section_breakdown: SectionBreakdown[];
   subject_breakdown: SubjectBreakdown[];
   assignment_table: AssignmentRow[];
 };
@@ -171,6 +174,7 @@ export default function SchoolAdminLeaderboardPage() {
   };
   const leaderboard = useMemo(() => data?.leaderboard ?? [], [data]);
   const gradeBreakdown = data?.grade_breakdown ?? [];
+  const sectionBreakdown = data?.section_breakdown ?? [];
   const subjectBreakdown = data?.subject_breakdown ?? [];
   const assignmentTable = data?.assignment_table ?? [];
 
@@ -447,23 +451,49 @@ export default function SchoolAdminLeaderboardPage() {
           </Card>
         )}
 
-        {/* Grade breakdown */}
+        {/* Grade / section breakdown */}
         {tab === "grade" && (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="px-5 py-3 border-b border-gray-100">
               <CardTitle className="text-sm font-semibold text-gray-800">
-                Grade-wise Performance
+                Class-wise Performance
               </CardTitle>
             </CardHeader>
             <CardContent className="p-5 space-y-5">
-              {gradeBreakdown.length === 0 ? (
+              {(sectionBreakdown.length > 0 ? sectionBreakdown : gradeBreakdown).length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6">No data yet</p>
+              ) : sectionBreakdown.length > 0 ? (
+                sectionBreakdown.map((row) => {
+                  const label = row.section ? `${row.grade}-${row.section}` : row.grade;
+                  return (
+                  <div key={`${row.grade}\0${row.section ?? ''}`} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {label.startsWith('Grade') ? label : `Grade ${label}`}
+                      </span>
+                      <Badge className="bg-gray-100 text-gray-700 border-0 text-xs font-semibold">
+                        Overall {row.avg_overall.toFixed(1)}%
+                      </Badge>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className="w-14 shrink-0">Course</span>
+                        <ScoreBar value={row.avg_course_score} color="bg-indigo-500" />
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className="w-14 shrink-0">Daily</span>
+                        <ScoreBar value={row.avg_daily_score} color="bg-blue-400" />
+                      </div>
+                    </div>
+                  </div>
+                  );
+                })
               ) : (
                 gradeBreakdown.map((row) => (
                   <div key={row.grade} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-gray-800">
-                        Grade {row.grade}
+                        {row.grade.startsWith('Grade') ? row.grade : `Grade ${row.grade}`}
                       </span>
                       <Badge className="bg-gray-100 text-gray-700 border-0 text-xs font-semibold">
                         Overall {row.avg_overall.toFixed(1)}%

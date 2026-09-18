@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -23,6 +23,7 @@ import {
 import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContent } from "./ChapterContentManager";
 import { Assignment } from "./AssignmentBuilder";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
 import { BulkAddChaptersDialog } from "./BulkAddChaptersDialog";
 import { buildChaptersFromNames } from "./bulkChapters";
@@ -184,6 +185,25 @@ export function CourseCreationWizard({
   // Auto-save the full wizard state so an accidental close/refresh / session
   // logout can be recovered. Only persist when the form actually has content,
   // and never while editing an existing course.
+  const isDirty = useMemo(() => {
+    if (courseId) {
+      const nameChanged = basicInfo.name.trim() !== (initialData?.name || "").trim();
+      const descChanged =
+        basicInfo.description.trim() !== (initialData?.description || "").trim();
+      return nameChanged || descChanged || chapters.length > 0;
+    }
+    return (
+      basicInfo.name.trim() !== "" ||
+      basicInfo.description.trim() !== "" ||
+      chapters.length > 0 ||
+      Object.keys(chapterContents).length > 0
+    );
+  }, [courseId, basicInfo, chapters, chapterContents, initialData?.name, initialData?.description]);
+
+  const handleRequestCancel = () => {
+    void requestClose(isDirty, onCancel);
+  };
+
   useEffect(() => {
     if (courseId) return;
     const hasContent =
@@ -406,7 +426,7 @@ export function CourseCreationWizard({
 
   return (
     <>
-    <Dialog open={true} onOpenChange={(open) => { if (!open) onCancel(); }}>
+    <Dialog open={true} onOpenChange={(open) => { if (!open) handleRequestCancel(); }}>
       {/* Sized to always fit the viewport (never wider/taller than the frame),
           with the stepper and nav pinned and only the step body scrolling. */}
       <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl">
@@ -782,7 +802,7 @@ export function CourseCreationWizard({
           <Button
             type="button"
             variant="outline"
-            onClick={currentStep === 1 ? onCancel : handlePrevious}
+            onClick={currentStep === 1 ? handleRequestCancel : handlePrevious}
             disabled={loading}
           >
             <ArrowLeft className="h-4 w-4 mr-1" />

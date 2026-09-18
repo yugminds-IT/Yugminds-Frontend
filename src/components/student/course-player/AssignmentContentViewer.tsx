@@ -17,6 +17,7 @@ import { useStudentAssignment, useSubmitAssignment } from '../../../hooks/useStu
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 import { useToast } from '../../ui/toast'
 import { confirmDialog } from '../../ui/confirm-dialog'
+import { requestClose, useBeforeUnloadWhenDirty } from '@/hooks/useUnsavedCloseGuard'
 import MCQQuestion from '../assignments/questions/MCQQuestion'
 import EssayQuestion from '../assignments/questions/EssayQuestion'
 import FillBlankQuestion from '../assignments/questions/FillBlankQuestion'
@@ -159,6 +160,13 @@ export default function AssignmentContentViewer({
     if (a.type === 'fill_blank') return Array.isArray(a.value) && (a.value as string[]).some(v => v?.trim().length > 0)
     return false
   }).length, [answers, questions])
+
+  const takingIsDirty = mode === 'taking' && Object.keys(answers).length > 0
+  useBeforeUnloadWhenDirty(takingIsDirty)
+
+  const leaveTaking = () => {
+    void requestClose(takingIsDirty, () => setMode('overview'))
+  }
 
   /* ── Submit ── */
   const handleSubmit = async () => {
@@ -324,7 +332,7 @@ export default function AssignmentContentViewer({
       <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Back link */}
         <button
-          onClick={() => setMode('overview')}
+          onClick={leaveTaking}
           className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium mb-6"
         >
           <ArrowLeft className="h-4 w-4" />

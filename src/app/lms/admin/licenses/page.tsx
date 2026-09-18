@@ -5,6 +5,7 @@ import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { adminApi } from "@/lib/api/admin.api";
 import { useToast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -400,6 +401,19 @@ export default function LicensesPage() {
       durationDays: lic.duration_days,
       startDate: lic.start_date,
     });
+  };
+
+  const isEditDirty =
+    !!editLic &&
+    (editForm.systemLabel !== editLic.system_label ||
+      editForm.notes !== (editLic.notes ?? "") ||
+      editForm.isActive !== editLic.is_active ||
+      editForm.machineId !== editLic.machine_id ||
+      Number(editForm.durationDays) !== editLic.duration_days ||
+      editForm.startDate !== editLic.start_date);
+
+  const requestCloseEdit = () => {
+    void requestClose(isEditDirty, () => setEditLic(null));
   };
 
   const saveEdit = async (opts?: { regenerate?: boolean }) => {
@@ -1035,7 +1049,13 @@ export default function LicensesPage() {
       </Tabs>
 
       {/* ── Edit license dialog ── */}
-      <Dialog open={!!editLic} onOpenChange={(open) => !open && setEditLic(null)}>
+      <Dialog
+        open={!!editLic}
+        onOpenChange={(open) => {
+          if (open) return;
+          requestCloseEdit();
+        }}
+      >
         <DialogContent className="bg-white max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1158,7 +1178,7 @@ export default function LicensesPage() {
               Regenerate key
             </Button>
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setEditLic(null)} disabled={savingEdit}>
+              <Button variant="ghost" onClick={requestCloseEdit} disabled={savingEdit}>
                 Cancel
               </Button>
               <Button onClick={() => saveEdit()} disabled={savingEdit}>

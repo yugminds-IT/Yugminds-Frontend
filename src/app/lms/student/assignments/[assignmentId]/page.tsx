@@ -19,6 +19,7 @@ import { getStoredUserId } from "@/lib/session-utils";
 import { useToast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { studentApi } from "@/lib/api/student.api";
+import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
 
 interface Question {
   id: string;
@@ -163,6 +164,17 @@ export default function AssignmentDetailPage(props: PageProps) {
     },
     markDirty: true,
   });
+
+  // Warn on browser refresh/close while answering (SPA Link leave is limited in App Router).
+  const takingIsDirty =
+    mode === "taking" &&
+    !isSubmitted &&
+    (Object.keys(answers).length > 0 || !!fileUpload || !!fileUploadName);
+  useBeforeUnloadWhenDirty(takingIsDirty);
+
+  const leaveTaking = () => {
+    void requestClose(takingIsDirty, () => setMode("overview"));
+  };
 
   // Populate answers from existing submission
   useEffect(() => {
@@ -374,7 +386,7 @@ export default function AssignmentDetailPage(props: PageProps) {
           <div className="flex items-center justify-between px-5 h-14">
             <div className="flex items-center gap-3 min-w-0">
               <button
-                onClick={() => setMode("overview")}
+                onClick={leaveTaking}
                 className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-md transition-colors flex-shrink-0"
               >
                 <ArrowLeft className="h-4 w-4" />

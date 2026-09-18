@@ -17,7 +17,9 @@ import {
   XCircle,
   Loader2,
   Lock,
+  Bell,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { commonApi, authApi, setAuthToken } from "@/lib/api";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
@@ -30,6 +32,10 @@ export default function SchoolAdminSettings() {
 
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [profileData, setProfileData] = useState({ full_name: "", email: "" });
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    system_alerts: true,
+    teacher_leave_requests: true,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -55,13 +61,22 @@ export default function SchoolAdminSettings() {
       if (role !== "school_admin") { router.push("/lms/redirect"); return; }
 
       const { data: profileResp } = await schoolAdminApi.profile.get();
-      const profileData = profileResp as { full_name?: string; profile?: { full_name?: string } };
-      const fullName = profileData?.full_name ?? profileData?.profile?.full_name ?? "";
+      const profileDataResp = profileResp as {
+        full_name?: string;
+        profile?: { full_name?: string };
+        system_alerts?: boolean;
+        teacher_leave_requests?: boolean;
+      };
+      const fullName = profileDataResp?.full_name ?? profileDataResp?.profile?.full_name ?? "";
 
       setUser(authUser);
       setProfileData({
         full_name: fullName,
         email: authUser.email || "",
+      });
+      setNotificationPrefs({
+        system_alerts: profileDataResp?.system_alerts ?? true,
+        teacher_leave_requests: profileDataResp?.teacher_leave_requests ?? true,
       });
 
       setPasswordFields({ current_password: "", new_password: "", confirm_password: "" });
@@ -113,7 +128,10 @@ export default function SchoolAdminSettings() {
 
     let nameSaved = false;
     try {
-      await schoolAdminApi.profile.update({ full_name: profileData.full_name.trim() });
+      await schoolAdminApi.profile.update({
+        full_name: profileData.full_name.trim(),
+        ...notificationPrefs,
+      });
       nameSaved = true;
 
       if (passwordFields.new_password && currentPasswordStatus === "valid") {
@@ -308,6 +326,48 @@ export default function SchoolAdminSettings() {
                   <p className="text-xs text-green-600">Passwords match</p>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-medium flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                In-app Notification Preferences
+              </h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Choose which in-app notifications you receive. Email delivery is not used.
+              </p>
+            </div>
+            <div className="space-y-3">
+              {(
+                [
+                  {
+                    key: "system_alerts" as const,
+                    label: "System Alerts",
+                    description: "Platform announcements and system notices",
+                  },
+                  {
+                    key: "teacher_leave_requests" as const,
+                    label: "Teacher Leave Requests",
+                    description: "Alerts when teachers at your school submit leave requests",
+                  },
+                ]
+              ).map((item) => (
+                <div key={item.key} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={item.key}>{item.label}</Label>
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <Switch
+                    id={item.key}
+                    checked={notificationPrefs[item.key]}
+                    onCheckedChange={(checked) =>
+                      setNotificationPrefs((prev) => ({ ...prev, [item.key]: checked }))
+                    }
+                  />
+                </div>
+              ))}
             </div>
           </div>
 

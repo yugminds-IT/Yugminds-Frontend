@@ -23,6 +23,7 @@ interface ValidationResult {
   school_id?: string;
   school_name?: string;
   grade?: string;
+  section?: string;
   expires_at?: string;
   error?: string;
 }
@@ -98,6 +99,7 @@ export default function StudentRegistration() {
         school_id: (result as { school_id?: string })?.school_id,
         school_name: (result as { school_name?: string })?.school_name,
         grade: (result as { grade?: string })?.grade,
+        section: (result as { section?: string })?.section,
         expires_at: (result as { expires_at?: string })?.expires_at,
         error: (result as { message?: string })?.message,
       });
@@ -244,7 +246,8 @@ export default function StudentRegistration() {
                       <div className="font-semibold">Valid Joining Code!</div>
                       <div className="text-sm mt-1">
                         School: {validationResult.school_name}<br />
-                        Grade: {validationResult.grade}
+                        Class: {validationResult.grade}
+                        {validationResult.section ? `-${validationResult.section}` : ''}
                       </div>
                     </>
                   ) : (

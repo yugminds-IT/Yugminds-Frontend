@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +46,6 @@ import {
   FileText,
   FileSpreadsheet,
   Printer,
-  History,
   Activity,
   ExternalLink,
   CheckCircle2,
@@ -64,6 +64,7 @@ interface Schedule {
   teacher_id?: string;
   subject: string;
   grade: string;
+  section?: string | null;
   day_of_week: string;
   period_id?: string;
   room_id?: string;
@@ -125,6 +126,7 @@ interface Teacher {
   phone: string;
   subjects: string[];
   grades_assigned: string[];
+  grade_sections_assigned?: Array<{ grade: string; sections: string[] }>;
   teacher_schools?: Array<{
     grades_assigned: string[];
     subjects: string[];
@@ -135,6 +137,8 @@ interface Teacher {
     assigned_from?: string | null;
     assigned_until?: string | null;
     max_students_per_session: number;
+    grade_sections_assigned?: Array<{ grade: string; sections: string[] }>;
+    sections_assigned?: string[];
   }>;
 }
 
@@ -158,6 +162,16 @@ const DAY_NAME_TO_NUMBER: Record<string, number> = {
   Friday: 5,
   Saturday: 6,
 };
+
+/** Academic year string matching backend `currentAcademicYear` (starts in June). */
+function currentAcademicYear(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const start = now.getMonth() < 5 ? year - 1 : year;
+  return `${start}-${String(start + 1).slice(-2)}`;
+}
+
+const CURRENT_ACADEMIC_YEAR = currentAcademicYear();
 
 /**
  * Expands a single "starting" room number into `count` sequential room
@@ -205,9 +219,13 @@ export default function ClassSchedulingPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolGrades, setSchoolGrades] = useState<string[]>([]);
+  const [schoolGradesDetailed, setSchoolGradesDetailed] = useState<
+    Array<{ id: string; name: string; sections: Array<{ id: string; name: string }> }>
+  >([]);
   /** Which weekdays the school holds classes — 0=Sun..6=Sat. Constrains the day-of-week picker below. */
   const [schoolOperatingDays, setSchoolOperatingDays] = useState<number[]>(DEFAULT_OPERATING_DAYS);
   const [selectedGrade, setSelectedGrade] = useState<string>('all');
+  const [selectedSection, setSelectedSection] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Dialog states
@@ -233,12 +251,13 @@ export default function ClassSchedulingPage() {
     teacher_id: '',
     subject: '',
     grade: '',
+    section: '',
     day_of_week: 'Monday',
     period_id: '',
     room_id: '',
     start_time: '',
     end_time: '',
-    academic_year: '2024-25',
+    academic_year: CURRENT_ACADEMIC_YEAR,
     notes: ''
   };
 
@@ -287,10 +306,7 @@ export default function ClassSchedulingPage() {
   // Section 9, 10 & 11 State
   const [validationModalOpen, setValidationModalOpen] = useState(false);
   const [validationResults, setValidationResults] = useState<{ errors: string[]; warnings: string[]; info: string[] } | null>(null);
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-25');
   const [selectedTeacherWorkload, setSelectedTeacherWorkload] = useState<Teacher | null>(null);
-  
-  const ACADEMIC_YEARS = ['2023-24', '2024-25', '2025-26'];
 
   const SUBJECT_COLORS: Record<string, string> = {
     'Mathematics': 'blue',
@@ -349,13 +365,20 @@ export default function ClassSchedulingPage() {
       try {
         const schoolResponse = await schoolAdminApi.school.get();
         const schoolData = schoolResponse.data ?? {};
-        const school = (schoolData as { school?: { grades_offered?: string[]; operating_days?: number[] } }).school;
+        const school = (schoolData as {
+          school?: {
+            grades_offered?: string[];
+            operating_days?: number[];
+            grades?: Array<{ id: string; name: string; sections: Array<{ id: string; name: string }> }>;
+          };
+        }).school;
 
         if (school?.grades_offered && Array.isArray(school.grades_offered)) {
           setSchoolGrades(school.grades_offered);
         } else {
           setSchoolGrades(AVAILABLE_GRADES);
         }
+        setSchoolGradesDetailed(Array.isArray(school?.grades) ? school.grades : []);
         setSchoolOperatingDays(
           Array.isArray(school?.operating_days) && school.operating_days.length > 0
             ? school.operating_days
@@ -363,6 +386,7 @@ export default function ClassSchedulingPage() {
         );
       } catch {
         setSchoolGrades(AVAILABLE_GRADES);
+        setSchoolGradesDetailed([]);
         setSchoolOperatingDays(DEFAULT_OPERATING_DAYS);
       }
 
@@ -432,13 +456,20 @@ export default function ClassSchedulingPage() {
               return null;
             }
 
+            const schoolRow = ((ts as any).teacher_schools || [])[0] ?? {};
             const transformed: Teacher = {
               id: profileId,
               full_name: ts.full_name ?? profile.full_name ?? profile.fullName ?? teacher.full_name ?? 'Unknown',
               email: ts.email ?? teacher.email ?? profile.email ?? '',
               phone: (ts.phone ?? teacher.phone ?? profile.phone ?? '') as string,
-              subjects: ts.subjects || [],
-              grades_assigned: ts.grades_assigned || [],
+              subjects: ts.subjects?.length ? ts.subjects : (schoolRow.subjects || []),
+              grades_assigned: ts.grades_assigned?.length
+                ? ts.grades_assigned
+                : (schoolRow.grades_assigned || []),
+              grade_sections_assigned:
+                (ts as any).grade_sections_assigned ||
+                schoolRow.grade_sections_assigned ||
+                [],
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               teacher_schools: (ts as any).teacher_schools || []
             };
@@ -471,19 +502,42 @@ export default function ClassSchedulingPage() {
   // Filter schedules
   const filteredSchedules = schedules.filter((schedule: Schedule) => {
     const matchesGrade = selectedGrade === 'all' || schedule.grade === selectedGrade;
+    const matchesSection =
+      selectedSection === 'all' ||
+      (schedule.section ?? '') === selectedSection ||
+      (!schedule.section && selectedSection === 'none');
     const matchesSearch = searchTerm === '' || 
       schedule.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
       schedule.teacher?.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       schedule.room?.room_number.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesYear = !schedule.academic_year || schedule.academic_year === selectedAcademicYear;
+    const matchesYear = !schedule.academic_year || schedule.academic_year === CURRENT_ACADEMIC_YEAR;
     
-    return matchesGrade && matchesSearch && matchesYear && schedule.is_active;
+    return matchesGrade && matchesSection && matchesSearch && matchesYear && schedule.is_active;
   });
 
   // Section 5: Add Schedule Modal Derivatives
   const uniqueSubjects = [...new Set(schedules.map((s: Schedule) => s.subject))].filter(Boolean).sort();
-  
-  const sectionsForGrade = classes.filter(c => c.grade === scheduleForm.grade && c.class_name);
+
+  const sectionsForSelectedGrade = (() => {
+    if (!scheduleForm.grade) return [] as string[];
+    const g = schoolGradesDetailed.find((x) => x.name === scheduleForm.grade);
+    if (!g) return [] as string[];
+    return g.sections.map((s) => s.name).filter(Boolean);
+  })();
+
+  const filterSectionsForGrade = (() => {
+    if (selectedGrade === 'all') {
+      return [...new Set(schedules.map((s) => s.section).filter(Boolean) as string[])].sort();
+    }
+    const g = schoolGradesDetailed.find((x) => x.name === selectedGrade);
+    if (g?.sections?.length) return g.sections.map((s) => s.name);
+    return [...new Set(
+      schedules.filter((s) => s.grade === selectedGrade).map((s) => s.section).filter(Boolean) as string[],
+    )].sort();
+  })();
+
+  const gradeSectionLabel = (schedule: Schedule) =>
+    schedule.section ? `${schedule.grade}-${schedule.section}` : schedule.grade;
   
   const calculateDuration = (p: Period | undefined | null) => {
     if (!p) return 0;
@@ -501,31 +555,34 @@ export default function ClassSchedulingPage() {
       }, 0);
   };
   
-  const isTeacherAssigned = (t: Teacher, sub: string, gr: string) => {
+  const isTeacherAssigned = (t: Teacher, sub: string, gr: string, sec?: string) => {
     if (!sub || !gr) return true;
-    
+
     const normalizeGrade = (g: string) => g.toLowerCase().replace(/grade\s+/g, '').trim();
     const normGr = normalizeGrade(gr);
     const normSub = sub.toLowerCase().trim();
+    const normSec = (sec ?? '').toLowerCase().trim();
 
-    // Check direct properties if they exist (preferred for this dashboard)
-    const subjects = t.subjects || [];
-    const grades = t.grades_assigned || [];
-    
+    const subjects = t.subjects || t.teacher_schools?.[0]?.subjects || [];
     const hasSubject = subjects.some((s: string) => s.toLowerCase().trim() === normSub);
-    const hasGrade = grades.some((g: string) => normalizeGrade(g) === normGr);
-    
-    if (hasSubject && hasGrade) return true;
+    if (!hasSubject) return false;
 
-    // Fallback: Check teacher_schools array
-    const schoolData = t.teacher_schools?.[0];
-    if (schoolData) {
-      const tsHasSub = schoolData.subjects.some((s: string) => s.toLowerCase().trim() === normSub);
-      const tsHasGr = schoolData.grades_assigned.some((g: string) => normalizeGrade(g) === normGr);
-      if (tsHasSub && tsHasGr) return true;
+    const gsa =
+      t.grade_sections_assigned ??
+      t.teacher_schools?.[0]?.grade_sections_assigned ??
+      [];
+
+    if (gsa.length) {
+      const row = gsa.find((g) => normalizeGrade(g.grade) === normGr);
+      if (!row) return false;
+      if (normSec && row.sections?.length) {
+        return row.sections.some((s) => s.toLowerCase().trim() === normSec);
+      }
+      return true;
     }
-    
-    return false;
+
+    const grades = t.grades_assigned || t.teacher_schools?.[0]?.grades_assigned || [];
+    return grades.some((g: string) => normalizeGrade(g) === normGr);
   };
 
   // Client-side hints only — the backend (assertTeacherSchedulable in
@@ -551,7 +608,7 @@ export default function ClassSchedulingPage() {
   };
 
   const filteredTeachers = teachers
-    .filter(t => (scheduleForm.subject && scheduleForm.grade) ? isTeacherAssigned(t, scheduleForm.subject, scheduleForm.grade) : true)
+    .filter(t => (scheduleForm.subject && scheduleForm.grade) ? isTeacherAssigned(t, scheduleForm.subject, scheduleForm.grade, scheduleForm.section) : true)
     .filter(t => isTeacherWorkingOnDay(t, scheduleForm.day_of_week))
     .filter(t => isTeacherCurrentlyAssigned(t));
     
@@ -583,19 +640,23 @@ export default function ClassSchedulingPage() {
     if (conflict) {
       const t = teachers.find(t => t.id === scheduleForm.teacher_id);
       const p = periods.find(p => p.id === scheduleForm.period_id);
-      conflictWarning = `${t?.full_name} is already assigned to ${conflict.subject} – ${conflict.grade} on ${conflict.day_of_week} Period ${p?.period_number}. Please choose a different teacher or period.`;
+      conflictWarning = `${t?.full_name} is already assigned to ${conflict.subject} – ${gradeSectionLabel(conflict)} on ${conflict.day_of_week} Period ${p?.period_number}. Please choose a different teacher or period.`;
     }
   } else if (scheduleForm.room_id && !isRoomAvailable(scheduleForm.room_id, scheduleForm.day_of_week, scheduleForm.period_id)) {
     const conflict = schedules.find(s => s.room_id === scheduleForm.room_id && s.day_of_week === scheduleForm.day_of_week && s.period_id === scheduleForm.period_id && s.id !== editingSchedule?.id);
     if (conflict) {
       const r = rooms.find(r => r.id === scheduleForm.room_id);
       const p = periods.find(p => p.id === scheduleForm.period_id);
-      conflictWarning = `Room ${r?.room_number} is already booked for ${conflict.subject} – ${conflict.grade} on ${conflict.day_of_week} Period ${p?.period_number}. Please choose a different room.`;
+      conflictWarning = `Room ${r?.room_number} is already booked for ${conflict.subject} – ${gradeSectionLabel(conflict)} on ${conflict.day_of_week} Period ${p?.period_number}. Please choose a different room.`;
     }
   }
 
   // Handle schedule operations
   const handleCreateSchedule = async () => {
+    if (sectionsForSelectedGrade.length > 0 && !scheduleForm.section.trim()) {
+      toast.error('Please select a section for this grade.');
+      return;
+    }
     // Prepare request body - convert empty strings to null for optional fields
     const requestBody = {
       ...scheduleForm,
@@ -603,6 +664,7 @@ export default function ClassSchedulingPage() {
       period_id: scheduleForm.period_id || null,
       room_id: scheduleForm.room_id || null,
       class_id: scheduleForm.class_id || null,
+      section: scheduleForm.section || null,
       notes: scheduleForm.notes || null
     };
     
@@ -637,6 +699,10 @@ export default function ClassSchedulingPage() {
 
   const handleUpdateSchedule = async () => {
     if (!editingSchedule) return;
+    if (sectionsForSelectedGrade.length > 0 && !scheduleForm.section.trim()) {
+      toast.error('Please select a section for this grade.');
+      return;
+    }
 
     try {
       const requestBody = {
@@ -645,6 +711,7 @@ export default function ClassSchedulingPage() {
         period_id: scheduleForm.period_id || null,
         room_id: scheduleForm.room_id || null,
         class_id: scheduleForm.class_id || null,
+        section: scheduleForm.section || null,
         notes: scheduleForm.notes || null
       };
 
@@ -684,6 +751,7 @@ export default function ClassSchedulingPage() {
       teacher_id: schedule.teacher_id || '',
       subject: schedule.subject,
       grade: schedule.grade,
+      section: schedule.section || '',
       day_of_week: schedule.day_of_week,
       period_id: schedule.period_id || '',
       room_id: schedule.room_id || '',
@@ -701,16 +769,48 @@ export default function ClassSchedulingPage() {
       teacher_id: '',
       subject: '',
       grade: '',
+      section: '',
       day_of_week: 'Monday',
       period_id: '',
       room_id: '',
       start_time: '',
       end_time: '',
-      academic_year: '2024-25',
+      academic_year: CURRENT_ACADEMIC_YEAR,
       notes: ''
     });
     setEditingSchedule(null);
     setLockedFields({});
+  };
+
+  const isScheduleFormDirty = () => {
+    if (editingSchedule) {
+      return (
+        scheduleForm.teacher_id !== (editingSchedule.teacher_id || '') ||
+        scheduleForm.subject !== (editingSchedule.subject || '') ||
+        scheduleForm.grade !== (editingSchedule.grade || '') ||
+        scheduleForm.section !== (editingSchedule.section || '') ||
+        scheduleForm.day_of_week !== (editingSchedule.day_of_week || 'Monday') ||
+        scheduleForm.period_id !== (editingSchedule.period_id || '') ||
+        scheduleForm.room_id !== (editingSchedule.room_id || '') ||
+        scheduleForm.notes !== (editingSchedule.notes || '')
+      );
+    }
+    return !!(
+      scheduleForm.teacher_id ||
+      scheduleForm.subject ||
+      scheduleForm.grade ||
+      scheduleForm.section ||
+      scheduleForm.period_id ||
+      scheduleForm.room_id ||
+      scheduleForm.notes
+    );
+  };
+
+  const closeScheduleDialog = () => {
+    void requestClose(isScheduleFormDirty(), () => {
+      setScheduleDialogOpen(false);
+      resetScheduleForm();
+    });
   };
 
   const handleAddScheduleGrid = (day: string, periodId: string) => {
@@ -720,13 +820,14 @@ export default function ClassSchedulingPage() {
       class_id: '',
       teacher_id: '',
       subject: '',
-      grade: '',
+      grade: selectedGrade !== 'all' ? selectedGrade : '',
+      section: selectedSection !== 'all' ? selectedSection : '',
       day_of_week: day,
       period_id: periodId,
       room_id: '',
       start_time: period ? period.start_time : '',
       end_time: period ? period.end_time : '',
-      academic_year: '2024-25',
+      academic_year: CURRENT_ACADEMIC_YEAR,
       notes: ''
     });
     setLockedFields({ day_of_week: true, period_id: true });
@@ -1043,6 +1144,7 @@ export default function ClassSchedulingPage() {
       await schoolAdminApi.schedules.create({
         subject: scheduleToCopy.subject,
         grade: scheduleToCopy.grade,
+        section: scheduleToCopy.section || null,
         day_of_week: targetDay,
         period_id: scheduleToCopy.period_id,
         teacher_id: scheduleToCopy.teacher_id,
@@ -1098,6 +1200,7 @@ export default function ClassSchedulingPage() {
         await schoolAdminApi.schedules.create({
           subject: schedule.subject,
           grade: schedule.grade,
+          section: schedule.section || null,
           day_of_week: day,
           period_id: schedule.period_id,
           teacher_id: schedule.teacher_id,
@@ -1154,6 +1257,7 @@ export default function ClassSchedulingPage() {
           await schoolAdminApi.schedules.create({
             subject: schedule.subject,
             grade: schedule.grade,
+            section: schedule.section || null,
             day_of_week: targetDay,
             period_id: schedule.period_id,
             teacher_id: schedule.teacher_id,
@@ -1211,6 +1315,34 @@ export default function ClassSchedulingPage() {
     setEditingRoom(null);
   };
 
+  const isRoomFormDirty = () => {
+    if (editingRoom) {
+      return (
+        roomForm.room_number !== (editingRoom.room_number || '') ||
+        roomForm.room_name !== (editingRoom.room_name || '') ||
+        roomForm.room_type !== (editingRoom.room_type || 'Regular Classroom') ||
+        roomForm.capacity !== (editingRoom.capacity ? String(editingRoom.capacity) : '') ||
+        roomForm.location !== (editingRoom.location || '')
+      );
+    }
+    return !!(
+      roomForm.room_number ||
+      roomForm.room_name ||
+      roomForm.capacity ||
+      roomForm.location ||
+      (roomForm.facilities && roomForm.facilities.length > 0)
+    );
+  };
+
+  const closeRoomDialog = () => {
+    void requestClose(isRoomFormDirty(), () => {
+      setRoomDialogOpen(false);
+      resetRoomForm();
+      setBulkRoomMode(false);
+      setBulkRoomCount('5');
+    });
+  };
+
   // Get available grades - filter to only show school's assigned grades
   const getAvailableGrades = () => {
     if (schoolGrades.length > 0) {
@@ -1244,18 +1376,34 @@ export default function ClassSchedulingPage() {
   const operatingGridDaysCount = GRID_DAYS.filter(d => schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).length;
   const totalPossibleSlots = (periods.length || 1) * (operatingGridDaysCount || 1);
   const uniqueGrades = [...new Set(schedules.map((s: Schedule) => s.grade))].filter(Boolean).sort();
-  const completionStats = uniqueGrades.map(grade => {
+  const uniqueAudiences = [
+    ...new Map(
+      schedules
+        .filter((s: Schedule) => s.grade)
+        .map((s: Schedule) => {
+          const key = s.section ? `${s.grade}::${s.section}` : s.grade;
+          return [key, { grade: s.grade, section: s.section ?? null, label: gradeSectionLabel(s) }];
+        }),
+    ).values(),
+  ].sort((a, b) => a.label.localeCompare(b.label));
+  const completionStats = uniqueAudiences.map(({ grade, section, label }) => {
     const filledSlots = new Set(
       schedules
-        .filter((s: Schedule) => s.grade === grade && s.is_active)
-        .map((s: Schedule) => `${s.day_of_week}-${s.period_id}`)
+        .filter((s: Schedule) =>
+          s.grade === grade &&
+          (section ? s.section === section : !s.section) &&
+          s.is_active,
+        )
+        .map((s: Schedule) => `${s.day_of_week}-${s.period_id}`),
     ).size;
-    
+
     return {
       grade,
+      section,
+      label,
       filled: filledSlots,
       total: totalPossibleSlots,
-      percentage: Math.round((filledSlots / (totalPossibleSlots || 1)) * 100)
+      percentage: Math.round((filledSlots / (totalPossibleSlots || 1)) * 100),
     };
   });
 
@@ -1282,7 +1430,7 @@ export default function ClassSchedulingPage() {
         currentDay = s.day_of_week;
         text += `${currentDay}:\n`;
       }
-      text += `  • ${s.subject} - ${s.grade}, ${formatTime(s.start_time)} - ${formatTime(s.end_time)}\n`;
+      text += `  • ${s.subject} - ${gradeSectionLabel(s)}, ${formatTime(s.start_time)} - ${formatTime(s.end_time)}\n`;
     });
     return text;
   };
@@ -1316,8 +1464,13 @@ export default function ClassSchedulingPage() {
     const warnings: string[] = [];
     const info: string[] = [];
 
-    const activeSchedules = schedules.filter(s => s.is_active && s.academic_year === selectedAcademicYear);
+    const activeSchedules = schedules.filter(
+      (s) => s.is_active && (!s.academic_year || s.academic_year === CURRENT_ACADEMIC_YEAR),
+    );
     const sortedPeriods = [...periods].sort((a, b) => a.period_number - b.period_number);
+    const operatingDayNames = GRID_DAYS.filter((d) =>
+      schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d]),
+    );
 
     // Errors: Teacher/Room double-booked
     const teacherUsage: Record<string, string[]> = {};
@@ -1327,7 +1480,7 @@ export default function ClassSchedulingPage() {
       if (s.teacher_id) {
         const key = `${s.day_of_week}-${s.period_id}-${s.teacher_id}`;
         if (!teacherUsage[key]) teacherUsage[key] = [];
-        teacherUsage[key].push(`${s.subject} (${s.grade})`);
+        teacherUsage[key].push(`${s.subject} (${gradeSectionLabel(s)})`);
         if (teacherUsage[key].length > 1) {
           const p = sortedPeriods.find(p => p.id === s.period_id);
           errors.push(`Teacher ${s.teacher?.full_name} is double-booked on ${s.day_of_week} Period ${p?.period_number}`);
@@ -1336,7 +1489,7 @@ export default function ClassSchedulingPage() {
       if (s.room_id) {
         const key = `${s.day_of_week}-${s.period_id}-${s.room_id}`;
         if (!roomUsage[key]) roomUsage[key] = [];
-        roomUsage[key].push(`${s.subject} (${s.grade})`);
+        roomUsage[key].push(`${s.subject} (${gradeSectionLabel(s)})`);
         if (roomUsage[key].length > 1) {
           const p = sortedPeriods.find(p => p.id === s.period_id);
           errors.push(`Room ${s.room?.room_number} is double-booked on ${s.day_of_week} Period ${p?.period_number}`);
@@ -1369,7 +1522,7 @@ export default function ClassSchedulingPage() {
       const dayNum = DAY_NAME_TO_NUMBER[s.day_of_week];
       const workingDays = schoolData.working_days;
       if (dayNum !== undefined && workingDays && workingDays.length > 0 && !workingDays.includes(dayNum)) {
-        errors.push(`${teacherName} doesn't work at your school on ${s.day_of_week}s, but is scheduled for ${s.subject} (${s.grade})`);
+        errors.push(`${teacherName} doesn't work at your school on ${s.day_of_week}s, but is scheduled for ${s.subject} (${gradeSectionLabel(s)})`);
       }
     });
 
@@ -1379,16 +1532,47 @@ export default function ClassSchedulingPage() {
     activeSchedules.forEach(s => {
       const dayNum = DAY_NAME_TO_NUMBER[s.day_of_week];
       if (dayNum !== undefined && !schoolOperatingDays.includes(dayNum)) {
-        errors.push(`${s.subject} (${s.grade}) is scheduled on ${s.day_of_week}, but your school doesn't operate that day`);
+        errors.push(`${s.subject} (${gradeSectionLabel(s)}) is scheduled on ${s.day_of_week}, but your school doesn't operate that day`);
       }
     });
 
-    // Warnings: Empty days, Overloaded teachers, Empty period slots
-    uniqueGrades.forEach(grade => {
-      GRID_DAYS.forEach(day => {
-        const hasClass = activeSchedules.some(s => s.grade === grade && s.day_of_week === day);
+    // Warnings: empty operating days per grade/section (no "Grade Grade" prefix)
+    type Audience = { grade: string; section: string | null; label: string };
+    const audiences: Audience[] = [];
+    if (schoolGradesDetailed.length > 0) {
+      for (const g of schoolGradesDetailed) {
+        if (g.sections?.length) {
+          for (const sec of g.sections) {
+            audiences.push({ grade: g.name, section: sec.name, label: `${g.name}-${sec.name}` });
+          }
+        } else {
+          audiences.push({ grade: g.name, section: null, label: g.name });
+        }
+      }
+    } else {
+      const seen = new Set<string>();
+      for (const s of activeSchedules) {
+        const label = s.section ? `${s.grade}-${s.section}` : s.grade;
+        if (seen.has(label)) continue;
+        seen.add(label);
+        audiences.push({ grade: s.grade, section: s.section ?? null, label });
+      }
+      for (const grade of uniqueGrades) {
+        if ([...seen].some((l) => l === grade || l.startsWith(`${grade}-`))) continue;
+        audiences.push({ grade, section: null, label: grade });
+      }
+    }
+
+    audiences.forEach(({ grade, section, label }) => {
+      operatingDayNames.forEach((day) => {
+        const hasClass = activeSchedules.some(
+          (s) =>
+            s.grade === grade &&
+            s.day_of_week === day &&
+            (section == null || s.section === section),
+        );
         if (!hasClass) {
-          warnings.push(`Grade ${grade} has no classes scheduled on ${day}`);
+          warnings.push(`${label} has no classes scheduled on ${day}`);
         }
       });
     });
@@ -1401,7 +1585,7 @@ export default function ClassSchedulingPage() {
     });
 
     sortedPeriods.forEach(period => {
-      GRID_DAYS.forEach(day => {
+      operatingDayNames.forEach(day => {
         const isUsed = activeSchedules.some(s => s.day_of_week === day && s.period_id === period.id);
         if (!isUsed) {
           warnings.push(`No classes scheduled for any grade on ${day} Period ${period.period_number}`);
@@ -1410,7 +1594,7 @@ export default function ClassSchedulingPage() {
     });
 
     // Info: Stats, Unused teachers/rooms
-    info.push(`Total active schedules for ${selectedAcademicYear}: ${activeSchedules.length}`);
+    info.push(`Total active schedules for ${CURRENT_ACADEMIC_YEAR}: ${activeSchedules.length}`);
     const unusedTeachers = teachers.filter(t => !activeSchedules.some(s => s.teacher_id === t.id));
     if (unusedTeachers.length > 0) info.push(`${unusedTeachers.length} teachers have no classes assigned this week.`);
     
@@ -1432,7 +1616,7 @@ export default function ClassSchedulingPage() {
       const { default: autoTable } = await import('jspdf-autotable');
       
       const doc = new jsPDF('l', 'mm', 'a4');
-      doc.text(`School Timetable - ${selectedAcademicYear}`, 14, 15);
+      doc.text(`School Timetable - ${CURRENT_ACADEMIC_YEAR}`, 14, 15);
       doc.setFontSize(10);
       doc.text(`Grade: ${selectedGrade === 'all' ? 'All Grades' : selectedGrade}`, 14, 22);
 
@@ -1442,7 +1626,7 @@ export default function ClassSchedulingPage() {
         const row = [day];
         sortedPeriods.forEach(period => {
           const cellSchedules = filteredSchedules.filter(s => s.day_of_week === day && s.period_id === period.id);
-          row.push(cellSchedules.map(s => `${s.subject}\n(${s.grade})`).join('\n---\n'));
+          row.push(cellSchedules.map(s => `${s.subject}\n(${s.section ? `${s.grade}-${s.section}` : s.grade})`).join('\n---\n'));
         });
         return row;
       });
@@ -1456,7 +1640,7 @@ export default function ClassSchedulingPage() {
         headStyles: { fillColor: [59, 130, 246] }
       });
 
-      doc.save(`timetable-${selectedGrade}-${selectedAcademicYear}.pdf`);
+      doc.save(`timetable-${selectedGrade}-${CURRENT_ACADEMIC_YEAR}.pdf`);
     } catch (error) {
       console.error('PDF Export Error:', error);
       toast.error('Failed to generate PDF');
@@ -1475,6 +1659,7 @@ export default function ClassSchedulingPage() {
         { header: 'End Time', key: 'end', width: 12 },
         { header: 'Subject', key: 'subject', width: 20 },
         { header: 'Grade', key: 'grade', width: 15 },
+        { header: 'Section', key: 'section', width: 12 },
         { header: 'Teacher', key: 'teacher', width: 25 },
         { header: 'Room', key: 'room', width: 15 },
       ];
@@ -1486,6 +1671,7 @@ export default function ClassSchedulingPage() {
           end: s.end_time,
           subject: s.subject,
           grade: s.grade,
+          section: s.section || '',
           teacher: s.teacher?.full_name || 'N/A',
           room: s.room?.room_number || 'N/A'
         });
@@ -1496,7 +1682,7 @@ export default function ClassSchedulingPage() {
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `schedule-${selectedAcademicYear}.xlsx`;
+      anchor.download = `schedule-${CURRENT_ACADEMIC_YEAR}.xlsx`;
       anchor.click();
       window.URL.revokeObjectURL(url);
     } catch (error) {
@@ -1533,20 +1719,6 @@ export default function ClassSchedulingPage() {
 
           {/* Right: utilities */}
           <div className="flex items-center gap-2">
-            <Select value={selectedAcademicYear} onValueChange={setSelectedAcademicYear}>
-              <SelectTrigger className="w-[120px] h-9 text-sm border-gray-200 bg-gray-50 hover:bg-gray-100">
-                <History className="h-3.5 w-3.5 mr-1.5 text-gray-400" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ACADEMIC_YEARS.map(year => (
-                  <SelectItem key={year} value={year}>{year}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="h-6 w-px bg-gray-200" />
-
             <Button variant="ghost" size="sm" onClick={runValidation} className="h-9 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm gap-1.5">
               <ShieldCheck className="h-4 w-4" />
               Validate
@@ -1658,7 +1830,13 @@ export default function ClassSchedulingPage() {
 
           {/* Inline filters */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Select value={selectedGrade} onValueChange={setSelectedGrade}>
+            <Select
+              value={selectedGrade}
+              onValueChange={(value) => {
+                setSelectedGrade(value);
+                setSelectedSection('all');
+              }}
+            >
               <SelectTrigger className="w-[150px] h-9 text-sm bg-white border-gray-200 shadow-sm">
                 <SelectValue placeholder="All Grades" />
               </SelectTrigger>
@@ -1666,6 +1844,17 @@ export default function ClassSchedulingPage() {
                 <SelectItem value="all">All Grades</SelectItem>
                 {uniqueGradesFromSchedules.map((grade: string) => (
                   <SelectItem key={grade} value={grade}>{grade}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedSection} onValueChange={setSelectedSection}>
+              <SelectTrigger className="w-[140px] h-9 text-sm bg-white border-gray-200 shadow-sm">
+                <SelectValue placeholder="All Sections" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sections</SelectItem>
+                {filterSectionsForGrade.map((sectionName) => (
+                  <SelectItem key={sectionName} value={sectionName}>{sectionName}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1693,7 +1882,7 @@ export default function ClassSchedulingPage() {
                 <LayoutDashboard className="h-4 w-4 text-blue-500" />
                 <span className="text-sm font-semibold text-gray-800">Completion Tracker</span>
                 <span className="text-xs bg-blue-50 text-blue-600 border border-blue-100 rounded-full px-2 py-0.5 font-medium">
-                  {completionStats.length} grades
+                  {completionStats.length} classes
                 </span>
               </div>
               {showCompletionTracker ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
@@ -1703,15 +1892,16 @@ export default function ClassSchedulingPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mt-3">
                   {completionStats.map(stat => (
                     <button
-                      key={stat.grade}
+                      key={stat.label}
                       className="text-left group p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/40 transition-all"
                       onClick={() => {
                         setSelectedGrade(stat.grade);
+                        setSelectedSection(stat.section ?? 'all');
                         window.scrollTo({ top: document.getElementById('grid-card')?.offsetTop || 0, behavior: 'smooth' });
                       }}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-gray-700 group-hover:text-blue-700 truncate">{stat.grade}</span>
+                        <span className="text-xs font-bold text-gray-700 group-hover:text-blue-700 truncate">{stat.label}</span>
                         <span className={`text-xs font-bold tabular-nums ${stat.percentage === 100 ? 'text-green-600' : 'text-gray-400'}`}>{stat.percentage}%</span>
                       </div>
                       <Progress value={stat.percentage} className="h-1.5" />
@@ -1826,7 +2016,7 @@ export default function ClassSchedulingPage() {
                                           <div className="mt-1.5 space-y-1">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                               <span className="text-[10px] font-semibold bg-white/70 text-gray-600 rounded px-1.5 py-0.5 border border-white/50">
-                                                {schedule.grade}
+                                                {gradeSectionLabel(schedule)}
                                               </span>
                                               {schedule.room?.room_number && (
                                                 <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
@@ -1887,7 +2077,7 @@ export default function ClassSchedulingPage() {
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">All Schedules</h3>
-                <p className="text-xs text-gray-400 mt-0.5">{filteredSchedules.length} entries for {selectedAcademicYear}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{filteredSchedules.length} entries for {CURRENT_ACADEMIC_YEAR}</p>
               </div>
             </div>
             {filteredSchedules.length === 0 ? (
@@ -1935,7 +2125,7 @@ export default function ClassSchedulingPage() {
                             </div>
                           </TableCell>
                           <TableCell className="py-3">
-                            <span className="text-xs bg-blue-50 text-blue-700 font-medium rounded px-2 py-0.5">{schedule.grade}</span>
+                            <span className="text-xs bg-blue-50 text-blue-700 font-medium rounded px-2 py-0.5">{gradeSectionLabel(schedule)}</span>
                           </TableCell>
                           <TableCell className="py-3 text-sm text-gray-600">{schedule.teacher?.full_name || <span className="text-gray-300 italic text-xs">Unassigned</span>}</TableCell>
                           <TableCell className="py-3 text-sm text-gray-500">{schedule.room?.room_number || <span className="text-gray-300">—</span>}</TableCell>
@@ -1963,7 +2153,7 @@ export default function ClassSchedulingPage() {
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
               <h3 className="font-semibold text-gray-900 text-sm">Teacher Workload</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Weekly periods and hours — {selectedAcademicYear}</p>
+              <p className="text-xs text-gray-400 mt-0.5">Weekly periods and hours — {CURRENT_ACADEMIC_YEAR}</p>
             </div>
             <Table>
               <TableHeader>
@@ -1983,11 +2173,11 @@ export default function ClassSchedulingPage() {
                     <td colSpan={7} className="py-12 text-center text-sm text-gray-400">No teachers found</td>
                   </TableRow>
                 ) : teachers.map((teacher: Teacher) => {
-                  const teacherSchedules = schedules.filter(s => s.teacher_id === teacher.id && s.is_active && (!s.academic_year || s.academic_year === selectedAcademicYear));
+                  const teacherSchedules = schedules.filter(s => s.teacher_id === teacher.id && s.is_active && (!s.academic_year || s.academic_year === CURRENT_ACADEMIC_YEAR));
                   const hours = getTeacherLoad(teacher.id);
                   const periodsCount = teacherSchedules.length;
                   const teacherSubjects = [...new Set(teacherSchedules.map(s => s.subject))];
-                  const teacherGrades = [...new Set(teacherSchedules.map(s => s.grade))];
+                  const teacherGrades = [...new Set(teacherSchedules.map(s => gradeSectionLabel(s)).filter(Boolean))];
                   const isOverloaded = hours > 30;
                   const isHigh = hours > 24;
 
@@ -2059,10 +2249,11 @@ export default function ClassSchedulingPage() {
 
       {/* Add/Edit Schedule Dialog */}
       <Dialog open={scheduleDialogOpen} onOpenChange={(open) => {
-        setScheduleDialogOpen(open);
-        if (!open) {
-          resetScheduleForm();
+        if (open) {
+          setScheduleDialogOpen(true);
+          return;
         }
+        closeScheduleDialog();
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0">
           <DialogTitle className="sr-only">{editingSchedule ? 'Edit Schedule' : 'Add New Schedule'}</DialogTitle>
@@ -2166,7 +2357,10 @@ export default function ClassSchedulingPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium text-gray-700">Grade <span className="text-red-400">*</span></Label>
-                    <Select value={scheduleForm.grade || ''} onValueChange={(value) => setScheduleForm({ ...scheduleForm, grade: value, class_id: '' })}>
+                    <Select
+                      value={scheduleForm.grade || ''}
+                      onValueChange={(value) => setScheduleForm({ ...scheduleForm, grade: value, section: '', class_id: '' })}
+                    >
                       <SelectTrigger className="h-10">
                         <SelectValue placeholder="Grade" />
                       </SelectTrigger>
@@ -2177,21 +2371,26 @@ export default function ClassSchedulingPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  {sectionsForGrade.length > 0 && (
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-medium text-gray-700">Section</Label>
-                      <Select value={scheduleForm.class_id || ''} onValueChange={(val) => setScheduleForm({ ...scheduleForm, class_id: val === 'none' ? '' : val })}>
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Section" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sectionsForGrade.map(c => (
-                            <SelectItem key={c.id} value={c.id}>{c.class_name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-gray-700">
+                      Section
+                      {sectionsForSelectedGrade.length > 0 && <span className="text-red-400"> *</span>}
+                    </Label>
+                    <Select
+                      value={scheduleForm.section || ''}
+                      onValueChange={(val) => setScheduleForm({ ...scheduleForm, section: val === 'none' ? '' : val })}
+                      disabled={!scheduleForm.grade || sectionsForSelectedGrade.length === 0}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue placeholder={sectionsForSelectedGrade.length ? 'Section' : 'No sections'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sectionsForSelectedGrade.map((sectionName) => (
+                          <SelectItem key={sectionName} value={sectionName}>{sectionName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2210,7 +2409,7 @@ export default function ClassSchedulingPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {displayTeachers.length > 0 ? displayTeachers.map((teacher: Teacher) => {
-                        const isMatch = (scheduleForm.subject && scheduleForm.grade) ? isTeacherAssigned(teacher, scheduleForm.subject, scheduleForm.grade) : true;
+                        const isMatch = (scheduleForm.subject && scheduleForm.grade) ? isTeacherAssigned(teacher, scheduleForm.subject, scheduleForm.grade, scheduleForm.section) : true;
                         return (
                           <SelectItem key={teacher.id} value={teacher.id}>
                             <div className="flex justify-between items-center w-full min-w-[150px]">
@@ -2298,7 +2497,7 @@ export default function ClassSchedulingPage() {
           </div>
 
           <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end gap-3">
-            <Button variant="outline" className="h-9" onClick={() => { setScheduleDialogOpen(false); resetScheduleForm(); }}>
+            <Button variant="outline" className="h-9" onClick={closeScheduleDialog}>
               Cancel
             </Button>
             <Button className="h-9 bg-blue-600 hover:bg-blue-700" onClick={editingSchedule ? handleUpdateSchedule : handleCreateSchedule} disabled={!!conflictWarning}>
@@ -2485,12 +2684,11 @@ export default function ClassSchedulingPage() {
       <Dialog
         open={roomDialogOpen}
         onOpenChange={(open) => {
-          setRoomDialogOpen(open);
-          if (!open) {
-            resetRoomForm();
-            setBulkRoomMode(false);
-            setBulkRoomCount('5');
+          if (open) {
+            setRoomDialogOpen(true);
+            return;
           }
+          closeRoomDialog();
         }}
       >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0">
@@ -2699,7 +2897,7 @@ export default function ClassSchedulingPage() {
 
               <div className="flex gap-2 mt-5">
                 {editingRoom && (
-                  <Button variant="outline" onClick={resetRoomForm} className="flex-1 h-9">Cancel</Button>
+                  <Button variant="outline" onClick={closeRoomDialog} className="flex-1 h-9">Cancel</Button>
                 )}
                 <Button
                   onClick={editingRoom ? handleUpdateRoom : handleCreateRoom}
@@ -2958,7 +3156,7 @@ export default function ClassSchedulingPage() {
               </div>
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Timetable Validation</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Analysis for Academic Year {selectedAcademicYear}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Analysis for Academic Year {CURRENT_ACADEMIC_YEAR}</p>
               </div>
             </div>
           </div>
@@ -3047,7 +3245,7 @@ export default function ClassSchedulingPage() {
               </div>
               <div>
                 <h2 className="text-base font-semibold text-gray-900">{selectedTeacherWorkload?.full_name}</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Weekly Schedule · {selectedAcademicYear}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Weekly Schedule · {CURRENT_ACADEMIC_YEAR}</p>
               </div>
             </div>
           </div>
@@ -3063,7 +3261,7 @@ export default function ClassSchedulingPage() {
                         s.day_of_week === day &&
                         s.period_id === period.id &&
                         s.is_active &&
-                        s.academic_year === selectedAcademicYear
+                        (!s.academic_year || s.academic_year === CURRENT_ACADEMIC_YEAR)
                       );
                       if (!schedule) return (
                         <div key={period.id} className="h-14 rounded-lg border-2 border-dashed border-gray-100 bg-gray-50/30" />
@@ -3072,7 +3270,7 @@ export default function ClassSchedulingPage() {
                       return (
                         <div key={period.id} className={`h-14 rounded-lg border-l-[3px] px-2 py-1.5 flex flex-col justify-center shadow-sm ${colorClasses.border} ${colorClasses.bg}`}>
                           <p className={`text-[10px] font-bold truncate leading-tight ${colorClasses.text}`}>{schedule.subject}</p>
-                          <p className="text-[9px] text-gray-600 font-medium">{schedule.grade}</p>
+                          <p className="text-[9px] text-gray-600 font-medium">{gradeSectionLabel(schedule)}</p>
                           <p className="text-[9px] text-gray-400 mt-0.5">P{period.period_number}</p>
                         </div>
                       );

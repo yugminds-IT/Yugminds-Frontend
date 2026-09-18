@@ -45,6 +45,7 @@ import {
 import { adminApi } from "@/lib/api/admin.api";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { toast } from "@/components/ui/toast";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 interface CalendarEntry {
   id: string;
@@ -230,6 +231,12 @@ export default function AdminCalendarPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const calendarFormDirty = useDirtySnapshot(isFormOpen, form);
+
+  const requestCloseCalendarForm = () => {
+    void requestClose(calendarFormDirty, () => setIsFormOpen(false));
+  };
 
   const [isMarkTodayOpen, setIsMarkTodayOpen] = useState(false);
   const [markTodayScope, setMarkTodayScope] = useState<"school" | "all">("all");
@@ -797,7 +804,16 @@ export default function AdminCalendarPage() {
       )}
 
       {/* Add / Edit entry dialog */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+      <Dialog
+        open={isFormOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsFormOpen(true);
+            return;
+          }
+          requestCloseCalendarForm();
+        }}
+      >
         <DialogContent className="bg-white max-w-md">
           <DialogHeader>
             <DialogTitle>{editingId ? "Edit calendar entry" : "Add calendar entry"}</DialogTitle>
@@ -922,7 +938,7 @@ export default function AdminCalendarPage() {
             {formError && <p className="text-sm text-red-600">{formError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsFormOpen(false)} disabled={saving}>
+            <Button variant="outline" onClick={requestCloseCalendarForm} disabled={saving}>
               Cancel
             </Button>
             <Button onClick={submitForm} disabled={saving}>

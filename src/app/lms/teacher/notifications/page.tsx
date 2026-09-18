@@ -48,6 +48,7 @@ import { useTeacherSchool } from "../context";
 import { commonApi, teacherApi } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
 import { formatNotificationType } from "@/lib/notification-format";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 
 interface Reply {
   id: string;
@@ -134,6 +135,13 @@ export default function TeacherNotifications() {
   const [replyDialogOpen, setReplyDialogOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+
+  const requestCloseReplyDialog = () => {
+    void requestClose(replyText.trim() !== "", () => {
+      setReplyDialogOpen(false);
+      setReplyText("");
+    });
+  };
 
   useDashboardRealtime('teacher', {
     enabled: !!selectedSchool?.id,
@@ -828,7 +836,16 @@ export default function TeacherNotifications() {
       </Tabs>
 
       {/* Replies Dialog */}
-      <Dialog open={replyDialogOpen} onOpenChange={setReplyDialogOpen}>
+      <Dialog
+        open={replyDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setReplyDialogOpen(true);
+            return;
+          }
+          requestCloseReplyDialog();
+        }}
+      >
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -884,7 +901,7 @@ export default function TeacherNotifications() {
                 <AlertCircle className="h-4 w-4" />
                 Replies are disabled for this notification.
               </p>
-              <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
+              <Button variant="outline" onClick={requestCloseReplyDialog}>
                 Close
               </Button>
             </div>
@@ -903,7 +920,7 @@ export default function TeacherNotifications() {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Ctrl+Enter to send</span>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setReplyDialogOpen(false)}>
+                  <Button variant="outline" onClick={requestCloseReplyDialog}>
                     Close
                   </Button>
                   <Button

@@ -48,6 +48,7 @@ async function seedTodaysScheduleAndReport(request: APIRequestContext): Promise<
       teacher_id: fixture.teachers[0].id,
       subject: 'QA E2E Attendance Subject',
       grade: fixture.grade,
+      section: fixture.section,
       day_of_week: todayDayName,
       period_id: periodId,
     },

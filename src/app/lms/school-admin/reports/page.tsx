@@ -28,6 +28,7 @@ import {
   FileText,
   AlertTriangle
 } from "lucide-react";
+import { formatGradeSection } from "@/hooks/useTeacherData";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { toast } from "@/components/ui/toast";
 
@@ -37,6 +38,7 @@ interface TeacherReport {
   school_id: string;
   date: string;
   grade: string;
+  section?: string | null;
   topics_taught: string;
   activities?: string;
   student_count: number;
@@ -202,12 +204,12 @@ export default function ReportsManagement() {
       toast.warning('No reports to export');
       return;
     }
-    const headers = ['Teacher Name', 'Teacher Email', 'Date', 'Grade', 'Topics Taught', 'Activities', 'Students', 'Duration (Hours)', 'Status', 'Notes'];
+    const headers = ['Teacher Name', 'Teacher Email', 'Date', 'Class', 'Topics Taught', 'Activities', 'Students', 'Duration (Hours)', 'Status', 'Notes'];
     const rows = filteredReports.map((report: TeacherReport) => [
       report.teacher.full_name || 'Unknown',
       report.teacher.email || '',
       new Date(report.date).toLocaleDateString(),
-      report.grade || 'N/A',
+      formatGradeSection(report.grade, report.section) || 'N/A',
       report.topics_taught || '',
       report.activities || '',
       report.student_count || 0,
@@ -254,10 +256,12 @@ export default function ReportsManagement() {
   const filteredReports = reports.filter((report: TeacherReport) => {
     const matchesSearch = report.teacher.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          report.topics_taught.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (report.grade || '').toLowerCase().includes(searchTerm.toLowerCase());
+                         (report.grade || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (report.section || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || report.status.toLowerCase() === statusFilter;
     const matchesTeacher = teacherFilter === "all" || report.teacher_id === teacherFilter;
-    const matchesGrade = gradeFilter === "all" || report.grade === gradeFilter;
+    const classLabel = formatGradeSection(report.grade, report.section);
+    const matchesGrade = gradeFilter === "all" || classLabel === gradeFilter || report.grade === gradeFilter;
     
     const matchesDateRange = (!dateRange.start || new Date(report.date) >= new Date(dateRange.start)) &&
                            (!dateRange.end || new Date(report.date) <= new Date(dateRange.end));
@@ -277,7 +281,11 @@ export default function ReportsManagement() {
   };
 
   const getGrades = () => {
-    return [...new Set(reports.map((r: TeacherReport) => r.grade))].sort();
+    return [...new Set(
+      reports
+        .map((r: TeacherReport) => formatGradeSection(r.grade, r.section))
+        .filter(Boolean),
+    )].sort();
   };
 
   const calculateDuration = (p: any) => {
@@ -438,16 +446,16 @@ export default function ReportsManagement() {
             </div>
 
             <div>
-              <Label htmlFor="grade">Grade</Label>
+              <Label htmlFor="grade">Class</Label>
               <Select value={gradeFilter} onValueChange={setGradeFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Filter by grade" />
+                  <SelectValue placeholder="Filter by class" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Grades</SelectItem>
+                  <SelectItem value="all">All Classes</SelectItem>
                   {getGrades().map((grade: string) => (
                     <SelectItem key={grade} value={grade}>
-                      Grade {grade}
+                      {grade}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -609,7 +617,7 @@ export default function ReportsManagement() {
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-sm font-medium">
-                      {report.grade || 'N/A'}
+                      {formatGradeSection(report.grade, report.section) || 'N/A'}
                     </Badge>
                   </TableCell>
                   <TableCell>

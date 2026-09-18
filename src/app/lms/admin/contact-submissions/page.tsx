@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import {
   RefreshCw,
   Search,
@@ -206,6 +207,14 @@ export default function ContactSubmissionsPage() {
         // non-critical, ignore
       }
     }
+  };
+
+  const isContactEditDirty =
+    !!selected &&
+    (adminNotes !== (selected.admin_notes ?? "") || statusEdit !== selected.status);
+
+  const requestCloseView = () => {
+    void requestClose(isContactEditDirty, () => setViewOpen(false));
   };
 
   const saveChanges = async () => {
@@ -510,7 +519,16 @@ export default function ContactSubmissionsPage() {
       )}
 
       {/* View / Edit Dialog */}
-      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+      <Dialog
+        open={viewOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setViewOpen(true);
+            return;
+          }
+          requestCloseView();
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -600,7 +618,7 @@ export default function ContactSubmissionsPage() {
           )}
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setViewOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={requestCloseView}>Cancel</Button>
             <Button onClick={saveChanges} disabled={saving} className="gap-2 bg-slate-900 hover:bg-slate-800">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
               Save Changes

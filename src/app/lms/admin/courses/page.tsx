@@ -2,9 +2,10 @@
  
 "use client"
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +114,7 @@ interface CourseAccess {
   course_id: string;
   school_id: string;
   grade: string;
+  sections?: string[];
   schools?: { name: string };
  
 }
@@ -256,6 +258,7 @@ export default function CoursesManagement() {
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const courseEditorDirtyRef = useRef(false);
   const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(new Set());
   const [isCloningCourse, setIsCloningCourse] = useState<string | null>(null);
   const [editStartedUpdatedAt, setEditStartedUpdatedAt] = useState<string | null>(null);
@@ -600,7 +603,10 @@ export default function CoursesManagement() {
       courseDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
       course.course_access?.some((access: CourseAccess) => 
         access.schools?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        access.grade?.toLowerCase().includes(searchTerm.toLowerCase())
+        access.grade?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        access.sections?.some((sec) =>
+          sec.toLowerCase().includes(searchTerm.toLowerCase()),
+        )
       )
     );
     return matches;
@@ -801,11 +807,17 @@ export default function CoursesManagement() {
                     .filter(Boolean) || [];
                   const uniqueSchoolNames = [...new Set(schoolNames)];
                   
-                  // Get unique grades from course_access
-                  const grades = course.course_access
-                    ?.map((access: CourseAccess) => access.grade)
-                    .filter(Boolean) || [];
-                  const uniqueGrades = [...new Set(grades)];
+                  // Get unique grade/section labels from course_access
+                  const gradeLabels = (course.course_access || []).flatMap((access: CourseAccess) => {
+                    const gradeLabel =
+                      gradeOptions.find((go: GradeOption) => go.value === access.grade)?.label ||
+                      access.grade;
+                    if (access.sections?.length) {
+                      return access.sections.map((sec) => `${gradeLabel}-${sec}`);
+                    }
+                    return gradeLabel ? [gradeLabel] : [];
+                  });
+                  const uniqueGrades = [...new Set(gradeLabels)];
                   
                   return (
                   <TableRow key={course.id} className={selectedCourseIds.has(course.id) ? 'bg-blue-50' : ''}>
@@ -832,7 +844,7 @@ export default function CoursesManagement() {
                         <div className="flex flex-wrap gap-1">
                           {uniqueGrades.map((grade: string, idx: number) => (
                             <Badge key={`${course.id}-${grade}-${idx}`} variant="secondary" className="text-xs">
-                              {gradeOptions.find((go: GradeOption) => go.value === grade)?.label || grade}
+                              {grade}
                             </Badge>
                           ))}
                         </div>
@@ -970,7 +982,15 @@ export default function CoursesManagement() {
                     .filter(Boolean) || [];
                   const uniqueSchoolNames = [...new Set(schoolNames)];
                   const grades = course.course_access
-                    ?.map((access: CourseAccess) => access.grade)
+                    ?.flatMap((access: CourseAccess) => {
+                      const gradeLabel =
+                        gradeOptions.find((go: GradeOption) => go.value === access.grade)?.label ||
+                        access.grade;
+                      if (access.sections?.length) {
+                        return access.sections.map((sec) => `${gradeLabel}-${sec}`);
+                      }
+                      return gradeLabel ? [gradeLabel] : [];
+                    })
                     .filter(Boolean) || [];
                   const uniqueGrades = [...new Set(grades)];
 
@@ -1011,7 +1031,7 @@ export default function CoursesManagement() {
                           <div className="flex flex-wrap gap-1">
                             {uniqueGrades.map((grade: string, idx: number) => (
                               <Badge key={`${course.id}-${grade}-${idx}`} variant="secondary" className="text-xs">
-                                {gradeOptions.find((go: GradeOption) => go.value === grade)?.label || grade}
+                                {grade}
                               </Badge>
                             ))}
                           </div>
@@ -1158,16 +1178,24 @@ export default function CoursesManagement() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-500">Schools &amp; grades</Label>
+                <Label className="text-xs font-medium text-gray-500">Schools &amp; classes</Label>
                 {viewingCourse.course_access && viewingCourse.course_access.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    {viewingCourse.course_access.map((access, idx) => (
+                    {viewingCourse.course_access.map((access, idx) => {
+                      const gradeLabel =
+                        gradeOptions.find((go: GradeOption) => go.value === access.grade)?.label ||
+                        access.grade;
+                      const classLabel = access.sections?.length
+                        ? access.sections.map((s) => `${gradeLabel}-${s}`).join(', ')
+                        : gradeLabel;
+                      return (
                       <div key={idx} className="flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs">
                         <span className="font-medium text-gray-700">{access.schools?.name || 'Unknown School'}</span>
                         <span className="text-gray-300">·</span>
-                        <span className="text-gray-500">{access.grade}</span>
+                        <span className="text-gray-500">{classLabel}</span>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-sm text-gray-500">Not yet published to any school</p>
@@ -1287,7 +1315,19 @@ export default function CoursesManagement() {
 
       {/* Course Editor */}
       {isEditDialogOpen && editingCourse && (
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <Dialog
+          open={isEditDialogOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setIsEditDialogOpen(true);
+              return;
+            }
+            void requestClose(courseEditorDirtyRef.current, () => {
+              setIsEditDialogOpen(false);
+              setEditingCourse(null);
+            });
+          }}
+        >
           <DialogContent className="grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr] gap-0 overflow-hidden p-0 sm:max-w-5xl">
             <DialogHeader className="border-b px-6 pt-6 pb-4">
               <DialogTitle>Edit Course</DialogTitle>
@@ -1305,6 +1345,9 @@ export default function CoursesManagement() {
                 status: editingCourse.status || 'Draft',
                 chapters: (editingCourse.chapters || []) as unknown as EditorChapter[],
                 assignments: (editingCourse.assignments || []) as unknown as EditorAssignmentFromAPI[],
+              }}
+              onDirtyChange={(dirty) => {
+                courseEditorDirtyRef.current = dirty;
               }}
               onSave={async (courseData) => {
                 const doSave = async () => {

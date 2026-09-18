@@ -84,19 +84,28 @@ export default function StudentProgressTab() {
   }, [students, search, section, sortKey, sortDir]);
 
   const gradeRows = useMemo(() => {
-    const gradeSet = [...new Set(students.map((s: any) => s.grade).filter(Boolean))].sort() as string[];
-    return gradeSet.map((g) => {
-      const gs = students.filter((s: any) => s.grade === g);
-      const avg = gs.length
-        ? Math.round(gs.reduce((sum: number, s: any) => sum + (s.average_progress ?? 0), 0) / gs.length)
-        : 0;
-      return {
-        grade: g,
-        students: gs.length,
-        completed: gs.filter((s: any) => s.average_progress === 100).length,
-        avgProgress: avg,
-      };
-    });
+    type Acc = { grade: string; section: string; students: number; completed: number; sum: number };
+    const map = new Map<string, Acc>();
+    for (const s of students as Array<{ grade?: string; section?: string; average_progress?: number }>) {
+      if (!s.grade) continue;
+      const section = s.section ?? '';
+      const key = `${s.grade}\0${section}`;
+      const row = map.get(key) ?? { grade: s.grade, section, students: 0, completed: 0, sum: 0 };
+      row.students += 1;
+      row.sum += s.average_progress ?? 0;
+      if (s.average_progress === 100) row.completed += 1;
+      map.set(key, row);
+    }
+    return [...map.values()]
+      .map((r) => ({
+        grade: r.grade,
+        section: r.section,
+        label: r.section ? `${r.grade}-${r.section}` : r.grade,
+        students: r.students,
+        completed: r.completed,
+        avgProgress: r.students ? Math.round(r.sum / r.students) : 0,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [students]);
 
   const sort = (key: StudentSortKey) => {
@@ -399,7 +408,7 @@ export default function StudentProgressTab() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/80">
-                    {["Grade", "Total Students", "Completed", "Remaining", "Avg Progress"].map((h) => (
+                    {["Class", "Total Students", "Completed", "Remaining", "Avg Progress"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
@@ -413,8 +422,8 @@ export default function StudentProgressTab() {
                       </td>
                     </tr>
                   ) : gradeRows.map((g, idx) => (
-                    <tr key={g.grade} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
-                      <td className="px-4 py-3 font-semibold text-gray-900">{g.grade}</td>
+                    <tr key={g.label} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
+                      <td className="px-4 py-3 font-semibold text-gray-900">{g.label}</td>
                       <td className="px-4 py-3 text-gray-700 font-medium">{g.students}</td>
                       <td className="px-4 py-3 text-emerald-600 font-semibold">{g.completed}</td>
                       <td className="px-4 py-3 text-gray-500">{g.students - g.completed}</td>

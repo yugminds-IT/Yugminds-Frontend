@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { teacherApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, RotateCcw, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
 
 interface RetakeRequestRow {
   id: string;
@@ -76,21 +76,27 @@ export default function TeacherRetakeRequestsPanel() {
   const requests = data ?? [];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center bg-gray-100 rounded-lg p-0.5 w-fit">
+    <div className="space-y-5">
+      <div className="flex items-center gap-1 border-b border-gray-100">
         {TABS.map((t) => (
           <button
             key={t.key}
+            type="button"
             onClick={() => setStatusFilter(t.key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              statusFilter === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors ${
+              statusFilter === t.key
+                ? "text-gray-900"
+                : "text-gray-500 hover:text-gray-800"
             }`}
           >
             {t.label}
             {t.key === "pending" && !!pendingCount && (
-              <span className="bg-amber-500 text-white rounded-full text-[10px] px-1.5 py-0.5 leading-none">
+              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold">
                 {pendingCount}
               </span>
+            )}
+            {statusFilter === t.key && (
+              <span className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-600 rounded-full" />
             )}
           </button>
         ))}
@@ -103,8 +109,9 @@ export default function TeacherRetakeRequestsPanel() {
         </div>
       ) : requests.length === 0 ? (
         <div className="py-16 text-center text-gray-400">
-          <RotateCcw className="h-10 w-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No {statusFilter} retake requests.</p>
+          <p className="text-sm font-medium text-gray-500">
+            No {statusFilter} retake requests
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -121,7 +128,7 @@ export default function TeacherRetakeRequestsPanel() {
                     )}
                   </p>
                   {r.reason && (
-                    <p className="text-sm text-gray-600 mt-2 bg-gray-50 border border-gray-100 rounded px-2.5 py-1.5">
+                    <p className="text-sm text-gray-600 mt-2 text-left">
                       &ldquo;{r.reason}&rdquo;
                     </p>
                   )}
@@ -143,17 +150,19 @@ export default function TeacherRetakeRequestsPanel() {
                   />
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => handleDecide(r.id, "approve")}
                       disabled={decidingId === r.id}
-                      className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
                     >
                       {decidingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                       Approve
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDecide(r.id, "reject")}
                       disabled={decidingId === r.id}
-                      className="inline-flex items-center gap-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 text-xs font-medium px-3 py-1.5 rounded-md transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
                     >
                       <XCircle className="h-3.5 w-3.5" />
                       Reject

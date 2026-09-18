@@ -52,6 +52,7 @@ import { useAutoSaveForm } from "../hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "../lib/form-persistence";
 import { adminApi } from "../lib/api/admin.api";
 import { toast } from "./ui/toast";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 interface AddSchoolDialogProps {
   isOpen: boolean;
@@ -588,9 +589,54 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess, editingSch
     { id: 'codes', label: 'Joining Codes', icon: Key }
   ];
 
+  const createDirty =
+    formData.name.trim() !== "" ||
+    formData.contact_email.trim() !== "" ||
+    formData.contact_phone.trim() !== "" ||
+    formData.address.trim() !== "" ||
+    formData.city.trim() !== "" ||
+    formData.state.trim() !== "" ||
+    formData.pincode.trim() !== "" ||
+    formData.affiliation_type.trim() !== "" ||
+    formData.school_type.trim() !== "" ||
+    formData.school_admin_name.trim() !== "" ||
+    formData.school_admin_email.trim() !== "" ||
+    formData.school_admin_phone.trim() !== "" ||
+    formData.school_admin_temp_password.trim() !== "" ||
+    formData.principal_name.trim() !== "" ||
+    formData.principal_phone.trim() !== "" ||
+    formData.grades_offered.length > 0 ||
+    formData.total_students_estimate > 0 ||
+    formData.total_teachers_estimate > 0;
+
+  const editDirty = useDirtySnapshot(isOpen && isEditMode && !editLoading, formData);
+  const isDirty = isEditMode ? editDirty : createDirty;
+
+  const handleDiscardClose = () => {
+    if (!isEditMode) {
+      clearFormData("add-school-dialog-form");
+      clearSavedData();
+    }
+    setFormData(initialFormData);
+    setErrors({});
+    setGeneratedCodes({});
+    setCurrentTab("basic");
+    onClose();
+  };
+
+  const handleRequestClose = () => {
+    void requestClose(isDirty, handleDiscardClose);
+  };
+
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (open) return;
+        handleRequestClose();
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -1342,7 +1388,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess, editingSch
               )}
             </div>
             <div className="flex gap-3">
-              <Button variant="outline" onClick={onClose} disabled={loading}>
+              <Button variant="outline" onClick={handleRequestClose} disabled={loading}>
                 Cancel
               </Button>
               {currentTab !== tabs[0].id && (

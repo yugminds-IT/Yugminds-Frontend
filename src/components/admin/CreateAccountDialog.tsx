@@ -39,6 +39,7 @@ import {
   GraduationCap,
   Shield,
 } from "lucide-react";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 
 interface School {
   id: string;
@@ -312,8 +313,38 @@ export default function CreateAccountDialog({
     }
   };
 
+  const isDirty =
+    formData.full_name.trim() !== "" ||
+    formData.email.trim() !== "" ||
+    formData.password !== "" ||
+    formData.phone.trim() !== "" ||
+    formData.address.trim() !== "" ||
+    formData.school_id !== "" ||
+    formData.grade !== "" ||
+    formData.parent_name.trim() !== "" ||
+    formData.parent_phone.trim() !== "" ||
+    formData.qualification.trim() !== "" ||
+    formData.experience_years > 0 ||
+    formData.specialization.trim() !== "" ||
+    formData.school_assignments.length > 0 ||
+    formData.is_super_admin ||
+    role !== "student";
+
+  const handleRequestClose = () => {
+    void requestClose(isDirty, () => {
+      resetForm();
+      onClose();
+    });
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (open) return;
+        handleRequestClose();
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -730,7 +761,7 @@ export default function CreateAccountDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+            <Button type="button" variant="outline" onClick={handleRequestClose} disabled={loading}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>

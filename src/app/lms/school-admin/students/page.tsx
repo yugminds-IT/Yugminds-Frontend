@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 import {
   SchoolAdminStudentManagementTable,
   type SchoolAdminStudentTableRow,
@@ -196,6 +197,23 @@ export default function StudentsManagement() {
     parent_name: "",
     parent_phone: ""
   });
+
+  const addStudentDirty = useDirtySnapshot(isAddDialogOpen, formData);
+  const editStudentDirty =
+    useDirtySnapshot(isEditDialogOpen, formData) || newPassword.trim() !== "";
+
+  const requestCloseAddStudent = () => {
+    void requestClose(addStudentDirty, () => setIsAddDialogOpen(false));
+  };
+
+  const requestCloseEditStudent = () => {
+    void requestClose(editStudentDirty, () => {
+      setIsEditDialogOpen(false);
+      setSelectedStudent(null);
+      setNewPassword("");
+      setShowNewPassword(false);
+    });
+  };
 
   // The Edit form's Select only renders options scoped to the selected
   // grade, so a student's real section that isn't in that grade's *current*
@@ -1001,10 +1019,12 @@ export default function StudentsManagement() {
             <Dialog
               open={isAddDialogOpen}
               onOpenChange={(open) => {
-                setIsAddDialogOpen(open);
                 if (open) {
+                  setIsAddDialogOpen(true);
                   setFormData(getEmptyStudentForm());
+                  return;
                 }
+                requestCloseAddStudent();
               }}
             >
               <DialogTrigger asChild>
@@ -1127,7 +1147,7 @@ export default function StudentsManagement() {
                 <DialogFooter>
                   <Button 
                     variant="outline" 
-                    onClick={() => setIsAddDialogOpen(false)}
+                    onClick={requestCloseAddStudent}
                     disabled={isAddingStudent}
                   >
                     Cancel
@@ -1323,14 +1343,16 @@ export default function StudentsManagement() {
       </Dialog>
 
       {/* Edit Student Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
-        setIsEditDialogOpen(open);
-        if (!open) {
-          setSelectedStudent(null);
-          setNewPassword(""); // Reset new password
-          setShowNewPassword(false); // Reset new password visibility
-        }
-      }}>
+      <Dialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsEditDialogOpen(true);
+            return;
+          }
+          requestCloseEditStudent();
+        }}
+      >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Edit Student</DialogTitle>
@@ -1513,7 +1535,7 @@ export default function StudentsManagement() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <Button variant="outline" onClick={requestCloseEditStudent}>
               Cancel
             </Button>
             <Button 

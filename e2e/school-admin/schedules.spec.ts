@@ -73,6 +73,10 @@ test.describe('School Admin — Schedules', () => {
     await page.getByText('Grade', { exact: true }).click();
     await page.getByRole('option', { name: fixture.grade, exact: true }).click();
 
+    // Section is required when the grade has configured sections.
+    await page.getByText('Section', { exact: true }).click();
+    await page.getByRole('option', { name: fixture.section, exact: true }).click();
+
     // Period select (placeholder "Select period").
     await page.getByText('Select period').click();
     await page.getByRole('option', { name: /Period 1/ }).click();
@@ -106,10 +110,11 @@ test.describe('School Admin — Schedules', () => {
     const teacherSchedulesBody = await teacherSchedulesRes.json();
     const teacherSchedules = (teacherSchedulesBody?.schedules ?? teacherSchedulesBody ?? []) as Array<{
       subject?: string;
+      section?: string | null;
     }>;
     expect(
-      teacherSchedules.some((s) => s.subject === 'QA E2E Subject'),
-      'the newly-created schedule slot should be visible on the assigned teacher\'s own schedule endpoint',
+      teacherSchedules.some((s) => s.subject === 'QA E2E Subject' && s.section === fixture.section),
+      'the newly-created schedule slot should be visible on the assigned teacher\'s own schedule endpoint with section',
     ).toBeTruthy();
 
     // Step 5: exercise "Push to Teachers" — this fires a real-time notification

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTeacherSchool } from "../context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTeacherAttendance, useTeacherMonthlyAttendance, useTeacherMonthlyAttendanceLog, useTodayAttendanceStatus, currentMonthKey, type TeacherMonthlyLog } from "@/hooks/useTeacherData";
+import { useTeacherAttendance, useTeacherMonthlyAttendance, useTeacherMonthlyAttendanceLog, useTodayAttendanceStatus, currentMonthKey, formatGradeSection, type TeacherMonthlyLog } from "@/hooks/useTeacherData";
 import { Calendar, CheckCircle, XCircle, Clock, AlertCircle, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress as ProgressBar } from "@/components/ui/progress";
@@ -13,12 +13,30 @@ import { Button } from "@/components/ui/button";
 interface Period {
   period_id?: string;
   grade?: string;
+  section?: string | null;
   subject?: string;
   start_time?: string;
   end_time?: string;
 }
 
 type MonthlyLog = TeacherMonthlyLog;
+
+function sortPeriodsByStartTime(periods: Period[] | undefined): Period[] {
+  if (!periods?.length) return [];
+  return [...periods].sort((a, b) =>
+    String(a.start_time ?? '').localeCompare(String(b.start_time ?? '')),
+  );
+}
+
+function formatPeriodTime(time?: string) {
+  if (!time) return '';
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours, 10);
+  if (Number.isNaN(hour)) return time;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${(minutes || '00').slice(0, 2)} ${ampm}`;
+}
 
 /**
  * Attendance Page
@@ -53,6 +71,15 @@ export default function AttendancePage() {
   const { data: todayStatus, isLoading: _todayLoading } = useTodayAttendanceStatus(
     selectedSchool?.id,
     today
+  );
+
+  const submittedPeriods = useMemo(
+    () => sortPeriodsByStartTime(todayStatus?.submittedPeriods as Period[] | undefined),
+    [todayStatus?.submittedPeriods],
+  );
+  const pendingPeriods = useMemo(
+    () => sortPeriodsByStartTime(todayStatus?.pendingPeriods as Period[] | undefined),
+    [todayStatus?.pendingPeriods],
   );
 
   const getStatusBadge = (status: string) => {
@@ -226,75 +253,53 @@ export default function AttendancePage() {
                 </div>
 
                 {/* Submitted Periods List */}
-                {todayStatus.submittedPeriods && todayStatus.submittedPeriods.length > 0 && (
+                {submittedPeriods.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-gray-700">
-                      Submitted Reports ({todayStatus.submittedPeriods.length})
+                      Submitted Reports ({submittedPeriods.length})
                     </p>
                     <div className="space-y-1">
-                      {todayStatus.submittedPeriods.map((period: Period, index: number) => {
-                        const formatTime = (time: string) => {
-                          if (!time) return '';
-                          const [hours, minutes] = time.split(':');
-                          const hour = parseInt(hours);
-                          const ampm = hour >= 12 ? 'PM' : 'AM';
-                          const displayHour = hour % 12 || 12;
-                          return `${displayHour}:${minutes} ${ampm}`;
-                        };
-                        
-                        return (
+                      {submittedPeriods.map((period: Period, index: number) => (
                           <div key={period.period_id || index} className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-md">
                             <div className="flex items-center gap-2">
                               <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
                               <span className="text-sm text-green-800">
-                                {period.grade && `Grade ${period.grade}`}
+                                {period.grade && formatGradeSection(period.grade, period.section)}
                                 {period.subject && ` - ${period.subject}`}
-                                {period.start_time && period.end_time && ` (${formatTime(period.start_time)} - ${formatTime(period.end_time)})`}
+                                {period.start_time && period.end_time && ` (${formatPeriodTime(period.start_time)} - ${formatPeriodTime(period.end_time)})`}
                               </span>
                             </div>
                             <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 text-xs">
                               Submitted
                             </Badge>
                           </div>
-                        );
-                      })}
+                      ))}
                     </div>
                   </div>
                 )}
 
                 {/* Pending Periods List */}
-                {todayStatus.pendingPeriods && todayStatus.pendingPeriods.length > 0 && (
+                {pendingPeriods.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-gray-700">
-                      Pending Reports ({todayStatus.pendingPeriods.length})
+                      Pending Reports ({pendingPeriods.length})
                     </p>
                     <div className="space-y-1">
-                      {todayStatus.pendingPeriods.map((period: Period, index: number) => {
-                        const formatTime = (time: string) => {
-                          if (!time) return '';
-                          const [hours, minutes] = time.split(':');
-                          const hour = parseInt(hours);
-                          const ampm = hour >= 12 ? 'PM' : 'AM';
-                          const displayHour = hour % 12 || 12;
-                          return `${displayHour}:${minutes} ${ampm}`;
-                        };
-                        
-                        return (
+                      {pendingPeriods.map((period: Period, index: number) => (
                           <div key={period.period_id || index} className="flex items-center justify-between p-2 bg-yellow-50 border border-yellow-200 rounded-md">
                             <div className="flex items-center gap-2">
                               <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
                               <span className="text-sm text-yellow-800">
-                                {period.grade && `Grade ${period.grade}`}
+                                {period.grade && formatGradeSection(period.grade, period.section)}
                                 {period.subject && ` - ${period.subject}`}
-                                {period.start_time && period.end_time && ` (${formatTime(period.start_time)} - ${formatTime(period.end_time)})`}
+                                {period.start_time && period.end_time && ` (${formatPeriodTime(period.start_time)} - ${formatPeriodTime(period.end_time)})`}
                               </span>
                             </div>
                             <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300 text-xs">
                               Pending
                             </Badge>
                           </div>
-                        );
-                      })}
+                      ))}
                     </div>
                   </div>
                 )}

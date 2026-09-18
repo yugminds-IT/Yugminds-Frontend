@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import { RefreshCw, CheckCircle, XCircle, Clock, Search, Eye, Trash2, AlertCircle, KeyRound, X, Loader2, EyeOff } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 
@@ -166,6 +167,14 @@ export default function PasswordResetRequestsPage() {
   };
 
   const closeDialog = () => setDialog((d) => ({ ...d, open: false }));
+
+  const isPasswordActionDirty =
+    (dialog.type === "approve" || dialog.type === "reject") &&
+    (notes.trim() !== "" || tempPassword.trim() !== "");
+
+  const requestClosePasswordDialog = () => {
+    void requestClose(isPasswordActionDirty, closeDialog);
+  };
 
   const confirmAction = async () => {
     const { type, request } = dialog;
@@ -394,7 +403,12 @@ export default function PasswordResetRequestsPage() {
       </div>
 
       {/* Dialog */}
-      <Dialog open={dialog.open} onOpenChange={(o) => { if (!o) closeDialog(); }}>
+      <Dialog
+        open={dialog.open}
+        onOpenChange={(o) => {
+          if (!o) requestClosePasswordDialog();
+        }}
+      >
         <DialogContent className="max-w-lg bg-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -476,7 +490,7 @@ export default function PasswordResetRequestsPage() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog} disabled={actionLoading}>Cancel</Button>
+            <Button variant="outline" onClick={requestClosePasswordDialog} disabled={actionLoading}>Cancel</Button>
             {dialog.type !== "view" && (
               <Button
                 onClick={confirmAction}
