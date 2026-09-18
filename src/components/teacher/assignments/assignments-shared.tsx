@@ -45,6 +45,9 @@ export type StudentRow = {
   attempts: Submission[];
   best: Submission | null;
   latest: Submission;
+  retake_granted: boolean;
+  retake_grant_count: number;
+  retake_granted_at: string | null;
 };
 
 export type AssignmentQuestionDetail = {

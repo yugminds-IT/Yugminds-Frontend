@@ -46,6 +46,7 @@ type Props = {
   onDelete: () => void;
   onOpenRetakeForAll: () => void;
   onGrantRetake: (studentId: number) => void;
+  onRevokeRetake: (studentId: number) => void;
   grantingStudentId: number | null;
   // submissions
   studentRows: StudentRow[];
@@ -120,6 +121,7 @@ export default function AssignmentDetailPane(props: Props) {
     onDelete,
     onOpenRetakeForAll,
     onGrantRetake,
+    onRevokeRetake,
     grantingStudentId,
     studentRows,
     filteredStudentRows,
@@ -780,6 +782,9 @@ export default function AssignmentDetailPane(props: Props) {
                         <th className="px-3 py-2.5 text-center font-semibold">
                           {retakeRuleLabel}
                         </th>
+                        <th className="px-3 py-2.5 text-center font-semibold">
+                          Access
+                        </th>
                         <th className="px-4 py-2.5 text-right font-semibold">
                           Action
                         </th>
@@ -789,7 +794,7 @@ export default function AssignmentDetailPane(props: Props) {
                       {filteredGrantRows.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={6}
                             className="px-4 py-10 text-center text-xs text-gray-400"
                           >
                             No students match your search
@@ -848,24 +853,62 @@ export default function AssignmentDetailPane(props: Props) {
                                 </span>
                               )}
                             </td>
+                            <td className="px-3 py-3 text-center">
+                              {row.retake_granted ? (
+                                <div className="inline-flex flex-col items-center gap-0.5">
+                                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                    Granted
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">
+                                    ×{row.retake_grant_count || 1}
+                                  </span>
+                                </div>
+                              ) : row.retake_grant_count > 0 ? (
+                                <span className="text-[11px] text-gray-400">
+                                  Revoked (×{row.retake_grant_count})
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-gray-400">
+                                  —
+                                </span>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => onGrantRetake(row.student_id)}
-                                disabled={loading}
-                                className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-                              >
-                                {isGranting ? (
-                                  <>
-                                    <RefreshCw className="h-3 w-3 animate-spin" />{" "}
-                                    Granting…
-                                  </>
-                                ) : (
-                                  <>
-                                    <RotateCcw className="h-3 w-3" /> Grant
-                                  </>
-                                )}
-                              </button>
+                              {row.retake_granted ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onRevokeRetake(row.student_id)}
+                                  disabled={loading || isGranting}
+                                  className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg disabled:opacity-50"
+                                >
+                                  {isGranting ? (
+                                    <>
+                                      <RefreshCw className="h-3 w-3 animate-spin" />{" "}
+                                      Updating…
+                                    </>
+                                  ) : (
+                                    "Revoke"
+                                  )}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => onGrantRetake(row.student_id)}
+                                  disabled={loading || isGranting}
+                                  className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+                                >
+                                  {isGranting ? (
+                                    <>
+                                      <RefreshCw className="h-3 w-3 animate-spin" />{" "}
+                                      Granting…
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RotateCcw className="h-3 w-3" /> Grant
+                                    </>
+                                  )}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );

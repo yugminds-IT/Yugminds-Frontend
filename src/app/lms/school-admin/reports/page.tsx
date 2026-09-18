@@ -153,9 +153,21 @@ export default function ReportsManagement() {
 
   const handleApproveReport = async (reportId: string) => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'A',location:'school-admin/reports/page.tsx:handleApproveReport',message:'approve start',data:{reportId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       await schoolAdminApi.reports.update(reportId, { action: 'approve' });
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'B',location:'school-admin/reports/page.tsx:handleApproveReport',message:'approve api ok, reloading',data:{reportId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       await loadReports();
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'B',location:'school-admin/reports/page.tsx:handleApproveReport',message:'approve+reload done',data:{reportId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'A',location:'school-admin/reports/page.tsx:handleApproveReport',message:'approve error',data:{reportId,errMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       console.error('Error approving report:', error);
       toast.error(`Failed to approve report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

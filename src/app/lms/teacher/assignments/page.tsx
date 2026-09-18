@@ -31,6 +31,14 @@ import {
   type DetailTab,
 } from "@/components/teacher/assignments/assignments-shared";
 import { AlertCircle, X } from "lucide-react";
+import { toast } from "@/components/ui/toast";
+
+type RetakeGrantInfo = {
+  student_id: number;
+  is_active: boolean;
+  granted_at: string | null;
+  grant_count: number;
+};
 
 function titlesMatch(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -83,6 +91,7 @@ export default function TeacherAssignmentsPage() {
   const [assignmentDetail, setAssignmentDetail] = useState<AssignmentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [retakeGrants, setRetakeGrants] = useState<RetakeGrantInfo[]>([]);
   const [grading, setGrading] = useState<Record<string, { score: string; feedback: string }>>({});
   const [grantingStudentId, setGrantingStudentId] = useState<number | null>(null);
   const [grantSearch, setGrantSearch] = useState("");
@@ -153,9 +162,15 @@ export default function TeacherAssignmentsPage() {
   // while the Analytics tab correctly showed the real latest score for the
   // identical student+assignment.
   const retakeRule = (selectedAssignment?.retake_rule ?? "latest").toLowerCase();
+  const grantByStudentId = useMemo(() => {
+    const map = new Map<number, RetakeGrantInfo>();
+    for (const g of retakeGrants) map.set(g.student_id, g);
+    return map;
+  }, [retakeGrants]);
   const studentRows = useMemo((): StudentRow[] => {
     const map = new Map<number, StudentRow>();
     for (const s of submissions) {
+      const grant = grantByStudentId.get(s.student_id);
       const row = map.get(s.student_id) ?? {
         student_id: s.student_id,
         student_name: s.student_name,
@@ -165,6 +180,9 @@ export default function TeacherAssignmentsPage() {
         attempts: [],
         best: null,
         latest: s,
+        retake_granted: !!grant?.is_active,
+        retake_grant_count: grant?.grant_count ?? 0,
+        retake_granted_at: grant?.granted_at ?? null,
       };
       row.attempts.push(s);
       // latest = highest attempt_number
@@ -180,10 +198,17 @@ export default function TeacherAssignmentsPage() {
       }
       map.set(s.student_id, row);
     }
+    // Keep grant fields in sync if grants reload after submissions.
+    for (const row of map.values()) {
+      const grant = grantByStudentId.get(row.student_id);
+      row.retake_granted = !!grant?.is_active;
+      row.retake_grant_count = grant?.grant_count ?? 0;
+      row.retake_granted_at = grant?.granted_at ?? null;
+    }
     return Array.from(map.values()).sort((a, b) =>
       a.student_name.localeCompare(b.student_name)
     );
-  }, [submissions, retakeRule]);
+  }, [submissions, retakeRule, grantByStudentId]);
 
   const filteredStudentRows = useMemo(() => {
     let rows = studentRows;
@@ -241,7 +266,12 @@ export default function TeacherAssignmentsPage() {
   const loadSubmissions = useCallback(async (assignmentId: string) => {
     if (!assignmentId) return;
     const { data } = await teacherApi.assignments.submissions(assignmentId);
-    setSubmissions((data as { submissions?: Submission[] }).submissions ?? []);
+    const payload = data as {
+      submissions?: Submission[];
+      retake_grants?: RetakeGrantInfo[];
+    };
+    setSubmissions(payload.submissions ?? []);
+    setRetakeGrants(payload.retake_grants ?? []);
   }, []);
 
   const loadAssignmentDetail = useCallback(async (assignmentId: string) => {
@@ -874,17 +904,51 @@ export default function TeacherAssignmentsPage() {
     setGrantingStudentId(studentId);
     setLoading(true);
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'post-fix',hypothesisId:'G',location:'teacher/assignments/page.tsx:handleGrantRetake',message:'grant start',data:{assignmentId:selectedId,studentId,activate:true},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       await teacherApi.assignments.grantRetake(selectedId, {
         studentIds: [studentId],
-        additionalAttempts: 1,
+        isActive: true,
       });
-      await loadSubmissions(selectedId);
+      await Promise.all([
+        loadSubmissions(selectedId),
+        loadAssignmentDetail(selectedId),
+      ]);
       setError(null);
+      toast.success("Retake access granted");
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'post-fix',hypothesisId:'G',location:'teacher/assignments/page.tsx:handleGrantRetake',message:'grant ok',data:{assignmentId:selectedId,studentId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } catch (e: unknown) {
       setError(
         typeof e === "object" && e !== null && "message" in e
           ? String((e as { message?: unknown }).message)
           : "Failed to grant retake",
+      );
+    } finally {
+      setLoading(false);
+      setGrantingStudentId(null);
+    }
+  };
+
+  const handleRevokeRetake = async (studentId: number) => {
+    if (!selectedId) return;
+    setGrantingStudentId(studentId);
+    setLoading(true);
+    try {
+      await teacherApi.assignments.grantRetake(selectedId, {
+        studentIds: [studentId],
+        isActive: false,
+      });
+      await loadSubmissions(selectedId);
+      setError(null);
+      toast.success("Retake access revoked");
+    } catch (e: unknown) {
+      setError(
+        typeof e === "object" && e !== null && "message" in e
+          ? String((e as { message?: unknown }).message)
+          : "Failed to revoke retake",
       );
     } finally {
       setLoading(false);
@@ -971,6 +1035,7 @@ export default function TeacherAssignmentsPage() {
               }
               onOpenRetakeForAll={() => void handleOpenRetakeForAll()}
               onGrantRetake={(id) => void handleGrantRetake(id)}
+              onRevokeRetake={(id) => void handleRevokeRetake(id)}
               grantingStudentId={grantingStudentId}
               studentRows={studentRows}
               filteredStudentRows={filteredStudentRows}
