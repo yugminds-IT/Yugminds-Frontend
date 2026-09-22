@@ -8,6 +8,7 @@ import {
   getStoredUserId,
   tryRefreshSession,
   getStoredSession,
+  clearStoredSession,
 } from './session-utils.ts';
 
 function jwtWith(payload: Record<string, unknown>): string {
@@ -95,6 +96,102 @@ describe('getStoredUserId', () => {
   it('reads numeric JWT sub (backend encodes sub as a number)', () => {
     setInMemoryToken(jwtWith({ sub: 42, email: 'a@b.c' }));
     assert.equal(getStoredUserId(), '42');
+  });
+});
+
+describe('clearStoredSession — shared lab draft wipe', () => {
+  const originalWindow = globalThis.window;
+  let store: Record<string, string>;
+  let localStore: Record<string, string>;
+
+  function makeStorage(backing: Record<string, string>) {
+    return {
+      get length() {
+        return Object.keys(backing).length;
+      },
+      key(i: number) {
+        return Object.keys(backing)[i] ?? null;
+      },
+      getItem: (k: string) => backing[k] ?? null,
+      setItem: (k: string, v: string) => {
+        backing[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete backing[k];
+      },
+      clear: () => {
+        for (const k of Object.keys(backing)) delete backing[k];
+      },
+    };
+  }
+
+  beforeEach(() => {
+    setInMemoryToken(jwtWith({ sub: 111 }));
+    store = {};
+    localStore = {};
+    const sessionStorage = makeStorage(store);
+    const localStorage = makeStorage(localStore);
+    (globalThis as { window?: unknown }).window = {
+      location: { pathname: '/lms/student/assignments/asg-1', search: '' },
+      sessionStorage,
+      localStorage,
+    };
+    (globalThis as { sessionStorage?: typeof sessionStorage }).sessionStorage =
+      sessionStorage;
+    (globalThis as { localStorage?: typeof localStorage }).localStorage =
+      localStorage;
+  });
+
+  afterEach(() => {
+    setInMemoryToken(null);
+    (globalThis as { window?: unknown }).window = originalWindow;
+  });
+
+  it('wipes assignment autosave drafts so the next student cannot restore them', () => {
+    const assignmentId = 'asg-shared-lab';
+    // Legacy unscoped key (pre-fix) + student-A scoped key
+    store[`session_form_data_student-assignment-${assignmentId}`] = JSON.stringify({
+      data: { answers: { q1: { type: 'mcq', value: 2 } } },
+      timestamp: Date.now(),
+    });
+    store[`session_form_data_student-assignment-111-${assignmentId}`] =
+      JSON.stringify({
+        data: { answers: { q1: { type: 'mcq', value: 2 } } },
+        timestamp: Date.now(),
+      });
+    store['form-store'] = JSON.stringify({
+      state: {
+        formData: {
+          [`student-assignment-111-${assignmentId}`]: {
+            answers: { q1: { type: 'mcq', value: 2 } },
+          },
+        },
+      },
+    });
+    localStore[`form_data_student-assignment-${assignmentId}`] = 'legacy-local';
+
+    // Student B would use a different key — must not see A's draft even before logout
+    assert.equal(
+      store[`session_form_data_student-assignment-222-${assignmentId}`],
+      undefined,
+    );
+
+    clearStoredSession(false);
+
+    assert.equal(
+      store[`session_form_data_student-assignment-${assignmentId}`],
+      undefined,
+    );
+    assert.equal(
+      store[`session_form_data_student-assignment-111-${assignmentId}`],
+      undefined,
+    );
+    assert.equal(store['form-store'], undefined);
+    assert.equal(
+      localStore[`form_data_student-assignment-${assignmentId}`],
+      undefined,
+    );
+    assert.equal(getStoredSession(), null);
   });
 });
 

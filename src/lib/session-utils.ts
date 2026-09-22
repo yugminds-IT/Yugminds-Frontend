@@ -71,6 +71,13 @@ export function clearStoredSession(broadcast = true, reason: LogoutReason = 'log
   void import('../store/course-progress-store')
     .then((m) => m.resetCourseProgressStore())
     .catch(() => {});
+  // Wipe autosaved form drafts synchronously BEFORE any logout redirect so the
+  // next student on a shared lab machine cannot restore prior answers from
+  // sessionStorage (which survives same-tab navigations to /lms/login).
+  wipeFormDraftStorage();
+  void import('../store/form-store')
+    .then((m) => m.resetFormStore())
+    .catch(() => {});
   if (broadcast && typeof window !== 'undefined' && 'BroadcastChannel' in window) {
     try {
       const ch = new BroadcastChannel(LOGOUT_CHANNEL);
@@ -287,6 +294,37 @@ function removeMeta(): void {
   if (typeof window === 'undefined') return;
   try {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** Remove assignment/form autosave keys from session + local storage. */
+function wipeFormDraftStorage(): void {
+  if (typeof window === 'undefined') return;
+  const prefixes = ['session_form_data_', 'form_data_', 'form-store'];
+  const wipe = (storage: Storage) => {
+    const toRemove: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key) continue;
+      if (prefixes.some((p) => key === p || key.startsWith(p))) toRemove.push(key);
+    }
+    for (const key of toRemove) {
+      try {
+        storage.removeItem(key);
+      } catch {
+        // ignore
+      }
+    }
+  };
+  try {
+    wipe(sessionStorage);
+  } catch {
+    // ignore
+  }
+  try {
+    wipe(localStorage);
   } catch {
     // ignore
   }

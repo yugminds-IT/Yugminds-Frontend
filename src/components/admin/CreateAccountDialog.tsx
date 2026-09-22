@@ -39,7 +39,7 @@ import {
   GraduationCap,
   Shield,
 } from "lucide-react";
-import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 interface School {
   id: string;
@@ -313,22 +313,8 @@ export default function CreateAccountDialog({
     }
   };
 
-  const isDirty =
-    formData.full_name.trim() !== "" ||
-    formData.email.trim() !== "" ||
-    formData.password !== "" ||
-    formData.phone.trim() !== "" ||
-    formData.address.trim() !== "" ||
-    formData.school_id !== "" ||
-    formData.grade !== "" ||
-    formData.parent_name.trim() !== "" ||
-    formData.parent_phone.trim() !== "" ||
-    formData.qualification.trim() !== "" ||
-    formData.experience_years > 0 ||
-    formData.specialization.trim() !== "" ||
-    formData.school_assignments.length > 0 ||
-    formData.is_super_admin ||
-    role !== "student";
+  // Snapshot at open — defaults (role=student, empty fields) must not count as dirty.
+  const isDirty = useDirtySnapshot(isOpen, { role, ...formData });
 
   const handleRequestClose = () => {
     void requestClose(isDirty, () => {

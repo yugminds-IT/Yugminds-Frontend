@@ -221,4 +221,23 @@ export const useFormStore = create<FormState>()(
   )
 );
 
+/**
+ * Imperative reset for non-React callers (e.g. logout in session-utils).
+ * Clears in-memory form drafts AND the persisted sessionStorage entry.
+ */
+export function resetFormStore(): void {
+  try {
+    useFormStore.getState().clearAllForms();
+  } catch {
+    // store may not be initialised yet
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.removeItem('form-store');
+    } catch {
+      // ignore storage errors
+    }
+  }
+}
+
 

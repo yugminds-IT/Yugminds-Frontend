@@ -49,22 +49,35 @@ export function isStateDirty<T>(current: T, snapshot: T | null): boolean {
 }
 
 /**
- * Capture a snapshot when `active` becomes true; report dirty vs current.
+ * Capture a baseline when `active` becomes true; report dirty vs that baseline.
+ *
+ * Prefer this over hand-rolled "any field non-empty" checks — dialogs often
+ * open with defaults or grid-prefilled values (day, period, academic year).
+ * Those must NOT count as unsaved work until the user changes something.
+ *
+ * Snapshot is deferred one macrotask so setState that opens the dialog and
+ * seeds the form in the same click handler is included in the baseline.
  */
 export function useDirtySnapshot<T>(active: boolean, current: T): boolean {
   const [snapshot, setSnapshot] = useState<T | null>(null);
+  const currentRef = useRef(current);
+  currentRef.current = current;
   const wasActive = useRef(false);
 
   useEffect(() => {
     if (active && !wasActive.current) {
-      setSnapshot(structuredCloneSafe(current));
+      wasActive.current = true;
+      const timer = window.setTimeout(() => {
+        setSnapshot(structuredCloneSafe(currentRef.current));
+      }, 0);
+      return () => {
+        window.clearTimeout(timer);
+      };
     }
     if (!active) {
+      wasActive.current = false;
       setSnapshot(null);
     }
-    wasActive.current = active;
-    // Only re-snapshot on open transition, not on every current change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [active]);
 
   return isStateDirty(current, snapshot);

@@ -112,6 +112,11 @@ export function useAutoSaveForm<T extends object>(
   const previousDataRef = useRef<T | null>(null);
   const isInitialLoadRef = useRef(true);
   const formDataRef = useRef<T>(formData);
+  // After clearSavedData(), block saves until the user edits again — otherwise
+  // the next formData effect / pagehide flush rewrites the just-cleared draft
+  // (shared lab machines were restoring prior students' answers this way).
+  const suppressSaveRef = useRef(false);
+  const autoSaveRef = useRef(autoSave);
   const formStore = useFormStore();
   
   // Use refs for callbacks to prevent saveForm from being recreated
@@ -125,6 +130,10 @@ export function useAutoSaveForm<T extends object>(
     onErrorRef.current = onError;
     hasChangesRef.current = hasChanges;
   }, [onSave, onError, hasChanges]);
+
+  useEffect(() => {
+    autoSaveRef.current = autoSave;
+  }, [autoSave]);
 
   // Keep formDataRef in sync with formData
   useEffect(() => {
@@ -186,6 +195,10 @@ export function useAutoSaveForm<T extends object>(
   // Debounced save function
   const saveForm = useCallback(
     (data: T, immediate = false) => {
+      if (suppressSaveRef.current || !autoSaveRef.current) {
+        return;
+      }
+
       // Clear existing debounce timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -193,6 +206,9 @@ export function useAutoSaveForm<T extends object>(
       }
 
       const performSave = () => {
+        if (suppressSaveRef.current || !autoSaveRef.current) {
+          return;
+        }
         try {
           // Check if form has changes worth saving
           if (hasChangesRef.current && !hasChangesRef.current(data)) {
@@ -261,6 +277,18 @@ export function useAutoSaveForm<T extends object>(
       return;
     }
 
+    // Stay suppressed while React state still matches the cleared snapshot
+    // (e.g. submission hydration). Only resume when the user actually edits.
+    if (suppressSaveRef.current) {
+      if (
+        previousDataRef.current &&
+        JSON.stringify(previousDataRef.current) === JSON.stringify(formData)
+      ) {
+        return;
+      }
+      suppressSaveRef.current = false;
+    }
+
     // Debounced save
     saveForm(formData, false);
   }, [formData, autoSave, saveForm]);
@@ -272,6 +300,7 @@ export function useAutoSaveForm<T extends object>(
     }
 
     intervalTimerRef.current = setInterval(() => {
+      if (suppressSaveRef.current || !autoSaveRef.current) return;
       const currentFormData = formDataRef.current;
       if (formStore.isFormDirty(formId)) {
         const previousData = previousDataRef.current;
@@ -281,7 +310,10 @@ export function useAutoSaveForm<T extends object>(
       }
     }, autoSaveInterval);
 
-    const flush = () => saveForm(formDataRef.current, true);
+    const flush = () => {
+      if (suppressSaveRef.current || !autoSaveRef.current) return;
+      saveForm(formDataRef.current, true);
+    };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flush();
     };
@@ -300,6 +332,7 @@ export function useAutoSaveForm<T extends object>(
 
   // Manual save function
   const manualSave = useCallback(() => {
+    suppressSaveRef.current = false;
     saveForm(formData, true);
   }, [formData, saveForm]);
 
@@ -311,10 +344,13 @@ export function useAutoSaveForm<T extends object>(
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
+    suppressSaveRef.current = true;
     clearFormData(formId, useSession);
     useFormStore.getState().clearFormData(formId);
     useFormStore.getState().setDirty(formId, false);
-    previousDataRef.current = null;
+    // Lock current snapshot as "already synced" so the next effect does not
+    // treat answers still in React state as a new draft to persist.
+    previousDataRef.current = formDataRef.current;
   }, [formId, useSession]);
 
   // Get auto-save status

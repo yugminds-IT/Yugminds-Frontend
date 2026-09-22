@@ -144,4 +144,61 @@ test.describe('School Admin — Schedules', () => {
       'pushing to teachers should create a real notification containing the word "schedule" in the teacher\'s own feed',
     ).toBeTruthy();
   });
+
+  test('custom template: period count + duration + lunch gap between teaching periods', async ({
+    page,
+  }) => {
+    await page.goto('/lms/school-admin/schedules');
+
+    // Wizard (empty school) or main toolbar — both open the same Manage Periods dialog.
+    const addPeriods = page.getByRole('button', { name: 'Add Periods' });
+    const managePeriods = page.getByRole('button', { name: 'Manage Periods' });
+    await expect(addPeriods.or(managePeriods).first()).toBeVisible({ timeout: 15000 });
+    if (await addPeriods.isVisible()) {
+      await addPeriods.click();
+    } else {
+      await managePeriods.click();
+    }
+    await expect(page.getByRole('heading', { name: 'Manage Periods' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Custom', exact: true }).click();
+    const customPanel = page.locator('.rounded-xl.border.border-violet-100');
+    await expect(customPanel.getByText('Custom day template')).toBeVisible();
+
+    // 4 periods × 40 min from 08:30, lunch after period 2.
+    await customPanel.locator('input[type="time"]').fill('08:30');
+    const numberInputs = customPanel.locator('input[type="number"]');
+    await numberInputs.nth(0).fill('4');
+    await numberInputs.nth(1).fill('40');
+
+    await customPanel.getByRole('button', { name: '+ Lunch' }).click();
+    await expect(customPanel.getByText('Lunch · 30 min')).toBeVisible();
+
+    let periodPostCount = 0;
+    const onResponse = (res: { url: () => string; request: () => { method: () => string } }) => {
+      if (res.url().includes('/school-admin/periods') && res.request().method() === 'POST') {
+        periodPostCount += 1;
+      }
+    };
+    page.on('response', onResponse);
+
+    await customPanel.getByRole('button', { name: 'Apply custom template' }).click();
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+
+    await expect(page.getByText(/Created 4 periods/i)).toBeVisible({ timeout: 15000 });
+    page.off('response', onResponse);
+    expect(periodPostCount).toBe(4);
+
+    // Four teaching period rows; lunch gap (30m after P2) shown in Current Periods.
+    await expect(page.getByText('Lunch · 30 min')).toBeVisible();
+    for (const n of [1, 2, 3, 4]) {
+      await expect(
+        page.locator('span.text-xs.font-bold.text-violet-600', { hasText: String(n) }),
+      ).toBeVisible();
+    }
+
+    // P1 starts 8:30 AM; after P2 lunch, P3 starts 10:20 AM.
+    await expect(page.getByText('8:30 AM').first()).toBeVisible();
+    await expect(page.getByText('10:20 AM').first()).toBeVisible();
+  });
 });

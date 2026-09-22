@@ -48,7 +48,7 @@ import WeekdayPicker from "./WeekdayPicker";
 import { useAdminSchools } from "../hooks/useAdminSchools";
 import { toast } from "./ui/toast";
 import { isAxiosError } from "axios";
-import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 function todayStr(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
@@ -574,17 +574,8 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     onClose();
   };
 
-  const isDirty =
-    formData.full_name.trim() !== "" ||
-    formData.email.trim() !== "" ||
-    formData.phone.trim() !== "" ||
-    formData.address.trim() !== "" ||
-    formData.qualification.trim() !== "" ||
-    formData.specialization.trim() !== "" ||
-    formData.temp_password.trim() !== "" ||
-    formData.experience_years > 0 ||
-    formData.selected_schools.length > 0 ||
-    formData.school_assignments.length > 0;
+  // Snapshot at open (after draft clear) — empty defaults are not dirty.
+  const isDirty = useDirtySnapshot(isOpen, formData);
 
   const handleRequestClose = () => {
     void requestClose(isDirty, handleClose);

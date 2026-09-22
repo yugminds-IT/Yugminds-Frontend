@@ -274,6 +274,54 @@ export function clearFormData(formId: string, useSession = false): void {
 }
 
 /**
+ * Wipe every persisted form draft (session + local + Zustand form-store).
+ * Used on logout so the next user on a shared lab machine cannot restore
+ * another student's assignment answers (or any other autosaved form).
+ */
+export function clearAllPersistedForms(): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    useFormStore.getState().clearAllForms();
+  } catch {
+    // store may not be initialised yet
+  }
+
+  const wipeMatching = (storage: Storage, prefixes: string[]) => {
+    const toRemove: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key) continue;
+      if (prefixes.some((p) => key === p || key.startsWith(p))) {
+        toRemove.push(key);
+      }
+    }
+    for (const key of toRemove) {
+      try {
+        storage.removeItem(key);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  try {
+    wipeMatching(sessionStorage, [
+      SESSION_STORAGE_PREFIX,
+      STORAGE_PREFIX,
+      'form-store',
+    ]);
+  } catch {
+    // ignore
+  }
+  try {
+    wipeMatching(localStorage, [STORAGE_PREFIX, SESSION_STORAGE_PREFIX, 'form-store']);
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Check if form has saved data (checks store, sessionStorage, and localStorage)
  */
 export function hasFormData(formId: string): boolean {

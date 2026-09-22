@@ -58,9 +58,19 @@ export default function AssignmentDetailPage(props: PageProps) {
   const submitAssignment = useSubmitAssignment();
   const requestRetake = useRequestRetake();
 
+  // Scope drafts by student so a shared lab PC cannot restore the previous
+  // student's answers after logout/login in the same browser tab.
+  const userId = typeof window !== "undefined" ? getStoredUserId() : null;
+  const draftFormId = userId
+    ? `student-assignment-${userId}-${assignmentId}`
+    : `student-assignment-pending-${assignmentId}`;
+
   const savedData =
-    typeof window !== "undefined"
-      ? loadFormData<{ answers: Record<string, AnswerValue>; fileName?: string }>(`student-assignment-${assignmentId}`)
+    typeof window !== "undefined" && userId
+      ? loadFormData<{ answers: Record<string, AnswerValue>; fileName?: string }>(
+          draftFormId,
+          true,
+        )
       : null;
 
   const [mode, setMode] = useState<"overview" | "taking">("overview");
@@ -150,9 +160,11 @@ export default function AssignmentDetailPage(props: PageProps) {
   }, [isSubmitted, canRetake, retake, attempts.length, assignment?.retake_access_scope]);
 
   const { clearSavedData, isSaving, lastSaved } = useAutoSaveForm({
-    formId: `student-assignment-${assignmentId}`,
+    formId: draftFormId,
     formData: { answers, fileName: fileUploadName || fileUpload?.name || undefined },
-    autoSave: true,
+    // Only while actively answering — stops post-submit / overview rewrites
+    // of drafts on shared lab machines.
+    autoSave: !!userId && mode === "taking" && (!isSubmitted || canRetake),
     autoSaveInterval: 2000,
     debounceDelay: 500,
     useSession: true,
@@ -164,6 +176,13 @@ export default function AssignmentDetailPage(props: PageProps) {
     },
     markDirty: true,
   });
+
+  // Drop legacy unscoped drafts (`student-assignment-{assignmentId}`) left by
+  // older builds — those keys are shared across every student on this browser.
+  useEffect(() => {
+    clearFormData(`student-assignment-${assignmentId}`, true);
+    clearFormData(`student-assignment-${assignmentId}`, false);
+  }, [assignmentId]);
 
   // Warn on browser refresh/close while answering (SPA Link leave is limited in App Router).
   const takingIsDirty =
@@ -195,10 +214,10 @@ export default function AssignmentDetailPage(props: PageProps) {
       const eq = questions.find(q => q.question_type?.toLowerCase() === "essay" && !map[q.id]);
       if (eq) map[eq.id] = { type: "essay", value: submission.text_content };
     }
-    if (Object.keys(map).length) setAnswers(map);
-    clearFormData(`student-assignment-${assignmentId}`);
+    clearFormData(draftFormId, true);
     clearSavedData();
-  }, [submission, questions, assignmentId, clearSavedData]);
+    if (Object.keys(map).length) setAnswers(map);
+  }, [submission, questions, assignmentId, clearSavedData, draftFormId]);
 
   const uploadFile = async (file: File): Promise<string> => {
     const userId = getStoredUserId();
@@ -250,7 +269,7 @@ export default function AssignmentDetailPage(props: PageProps) {
       });
 
       await submitAssignment.mutateAsync({ assignmentId, answers: finalAnswers, fileUrl, textContent: essayContent });
-      clearFormData(`student-assignment-${assignmentId}`);
+      clearFormData(draftFormId, true);
       clearSavedData();
       toast.success("Assignment submitted!");
       const courseId = assignment?.course_id;
@@ -614,7 +633,13 @@ export default function AssignmentDetailPage(props: PageProps) {
 
             {isSubmitted && canRetake && (
               <button
-                onClick={() => { setAnswers({}); setMode("taking"); }}
+                onClick={() => {
+                  setAnswers({});
+                  setFileUpload(null);
+                  setFileUploadName(null);
+                  clearSavedData();
+                  setMode("taking");
+                }}
                 className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
               >
                 <RotateCcw className="h-4 w-4" />

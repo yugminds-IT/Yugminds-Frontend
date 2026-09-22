@@ -676,8 +676,20 @@ function TeachersContent() {
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <CheckCircle className="h-12 w-12 mx-auto mb-4" />
-                  <p className="text-lg font-medium">No pending leave requests</p>
-                  <p className="text-sm">All leave requests have been processed</p>
+                  <p className="text-lg font-medium">
+                    {leaveStatusFilter === 'all'
+                      ? 'No leave requests yet'
+                      : leaveStatusFilter === 'Pending'
+                        ? 'No pending leave requests'
+                        : leaveStatusFilter === 'Approved'
+                          ? 'No approved leave requests'
+                          : 'No rejected leave requests'}
+                  </p>
+                  <p className="text-sm">
+                    {leaveStatusFilter === 'Pending'
+                      ? 'All leave requests have been processed'
+                      : 'Teacher leave applications will appear here'}
+                  </p>
                 </div>
               )}
             </CardContent>

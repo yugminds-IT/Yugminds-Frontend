@@ -9,7 +9,6 @@ const fixture: QaFixture = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '.fixture.json'), 'utf8'),
 );
 
-
 async function login(request: APIRequestContext, email: string, password: string): Promise<string> {
   const res = await request.post(`${BACKEND_URL}/auth/login`, { data: { email, password } });
   expect(res.ok(), await res.text()).toBeTruthy();
@@ -57,9 +56,7 @@ async function seedReport(request: APIRequestContext): Promise<string> {
 }
 
 test.describe('School Admin — Reports', () => {
-  test('empty state renders correctly when no reports exist yet', async ({ page }) => {
-    // Runs before any report is seeded in this file (test order within a
-    // describe block is declaration order under the default serial config).
+  test('empty inbox renders correctly when no reports need review', async ({ page }) => {
     const reportsResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/reports') && res.request().method() === 'GET',
     );
@@ -67,12 +64,11 @@ test.describe('School Admin — Reports', () => {
     const res = await reportsResponse;
     expect(res.ok()).toBeTruthy();
 
-    await expect(page.getByText('No reports found')).toBeVisible();
-    const totalCard = page.locator('text=Total Reports').locator('..').locator('..');
-    await expect(totalCard.getByText('0', { exact: true })).toBeVisible();
+    await expect(page.getByText('All caught up')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Needs review/i })).toBeVisible();
   });
 
-  test('a real submitted report shows as Pending and can be approved through the UI', async ({
+  test('a real submitted report shows in the review queue and can be approved', async ({
     page,
     request,
   }) => {
@@ -84,28 +80,30 @@ test.describe('School Admin — Reports', () => {
     await page.goto('/lms/school-admin/reports');
     await reportsResponse;
 
-    const reportRow = page.getByRole('row', { name: /QA e2e report topic/ });
-    await expect(reportRow).toBeVisible();
-    await expect(reportRow.getByText('Pending')).toBeVisible();
+    await expect(page.getByText('QA e2e report topic')).toBeVisible();
+
+    const reportCard = page
+      .locator('div.rounded-lg.border')
+      .filter({ hasText: 'QA e2e report topic' });
 
     const approveResponse = page.waitForResponse(
       (res) =>
         /\/school-admin\/reports\/[^/]+$/.test(res.url()) && res.request().method() === 'PATCH',
     );
-    await reportRow.getByRole('button', { name: /Approve/i }).click();
+    await reportCard.getByRole('button', { name: /^Approve$/ }).click();
     const approveRes = await approveResponse;
     expect(approveRes.ok(), await approveRes.text()).toBeTruthy();
 
-    await expect(page.getByRole('row', { name: /QA e2e report topic/ }).getByText('Approved')).toBeVisible({
-      timeout: 10000,
-    });
+    // Approved items leave the default inbox — open History to confirm.
+    await page.getByRole('button', { name: /History/i }).click();
+    await expect(page.getByText('QA e2e report topic')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Approved').first()).toBeVisible();
   });
 
   test('bulk-approve regression guard: PATCH /school-admin/reports/bulk is not shadowed by /reports/:id route ordering', async ({
     page,
     request,
   }) => {
-    // Seed a second, still-pending report so there's something real to bulk-select.
     await seedReport(request);
 
     const reportsResponse = page.waitForResponse(
@@ -114,22 +112,20 @@ test.describe('School Admin — Reports', () => {
     await page.goto('/lms/school-admin/reports');
     await reportsResponse;
 
-    // Select-all toggles every currently-Pending row (handleSelectAll in reports/page.tsx).
-    const selectAllButton = page.locator('thead button').first();
-    await selectAllButton.click();
+    await page.getByRole('button', { name: /Select day/i }).first().click();
 
-    await page.getByRole('button', { name: /Bulk Approve/i }).click();
-    const bulkDialog = page.getByRole('dialog', { name: /Bulk Approve Reports/i });
+    const stickyBar = page.locator('.fixed.bottom-6');
+    await expect(stickyBar).toBeVisible();
+    await stickyBar.getByRole('button', { name: /^Approve$/ }).click();
+
+    const bulkDialog = page.getByRole('dialog', { name: /Approve selected reports/i });
     await expect(bulkDialog).toBeVisible();
 
     const bulkResponse = page.waitForResponse(
       (res) => res.url().endsWith('/school-admin/reports/bulk') && res.request().method() === 'PATCH',
     );
-    await bulkDialog.getByRole('button', { name: /^Approve All$/ }).click();
+    await bulkDialog.getByRole('button', { name: /^Approve all$/i }).click();
     const bulkRes = await bulkResponse;
-    // A regression where /reports/bulk got shadowed by /reports/:id would surface
-    // here as a 400/404 (":id" being the literal string "bulk", not a UUID) —
-    // this assertion is the actual regression guard the project plan asked for.
     expect(bulkRes.ok(), await bulkRes.text()).toBeTruthy();
 
     await expect(page.getByText(/Successfully approved/i)).toBeVisible({ timeout: 10000 });

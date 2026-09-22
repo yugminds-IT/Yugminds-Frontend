@@ -30,7 +30,7 @@ import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseG
  */
 export default function LeavesPage() {
   const router = useRouter();
-  const { selectedSchool } = useTeacherSchool();
+  const { selectedSchool, schools } = useTeacherSchool();
   
   // Load saved leave form data
   const savedFormData = typeof window !== 'undefined' && selectedSchool?.id
@@ -80,8 +80,15 @@ export default function LeavesPage() {
     });
   };
 
-  const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
+  // History across all assigned schools — create always pins to the active
+  // school, but older requests may have been stored under a different school.
+  const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves();
   const applyLeave = useApplyLeave();
+
+  const schoolNameById = new Map<string, string>();
+  for (const s of schools) {
+    if (s.id) schoolNameById.set(s.id, s.name || s.school_code || 'School');
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -299,7 +306,7 @@ export default function LeavesPage() {
                 </div>
               ) : leaves && leaves.length > 0 ? (
                 <div className="space-y-3">
-                  {leaves.slice(0, 5).map((leave: { id: string; start_date: string; end_date: string; status: string; reason?: string }) => {
+                  {leaves.slice(0, 5).map((leave: { id: string; school_id?: string; start_date: string; end_date: string; status: string; reason?: string }) => {
                     // Parse as UTC date-only to avoid timezone shifts
                     const [sy, sm, sd] = leave.start_date.split('-').map(Number);
                     const [ey, em, ed] = leave.end_date.split('-').map(Number);
@@ -308,6 +315,9 @@ export default function LeavesPage() {
                     const totalDays = Math.max(1, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1);
                     const start = new Date(leave.start_date + 'T00:00:00');
                     const end = new Date(leave.end_date + 'T00:00:00');
+                    const schoolLabel = leave.school_id
+                      ? schoolNameById.get(leave.school_id)
+                      : undefined;
                     return (
                     <div
                       key={leave.id}
@@ -320,6 +330,7 @@ export default function LeavesPage() {
                           </p>
                           <p className="text-xs text-gray-600 mt-1">
                             {totalDays} day(s)
+                            {schoolLabel ? ` · ${schoolLabel}` : ''}
                           </p>
                         </div>
                         {getStatusBadge(leave.status)}

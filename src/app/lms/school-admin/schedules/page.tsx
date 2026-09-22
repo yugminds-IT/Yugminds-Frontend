@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { DEFAULT_OPERATING_DAYS, WEEKDAY_NAMES_MON_FIRST } from "@/lib/weekday-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +27,6 @@ import {
   Trash2,
   Search,
   Building2,
-  MapPin,
   Send,
   Loader2,
   ArrowRight,
@@ -163,6 +162,30 @@ const DAY_NAME_TO_NUMBER: Record<string, number> = {
   Saturday: 6,
 };
 
+const NUMBER_TO_DAY_NAME: Record<number, string> = {
+  0: 'Sunday',
+  1: 'Monday',
+  2: 'Tuesday',
+  3: 'Wednesday',
+  4: 'Thursday',
+  5: 'Friday',
+  6: 'Saturday',
+};
+
+/** Next school operating day after `day` (wraps within the week). */
+function getNextOperatingDay(day: string, operatingDays: number[]): string | null {
+  if (!operatingDays.length) return null;
+  const start = DAY_NAME_TO_NUMBER[day];
+  if (start === undefined) return null;
+  for (let step = 1; step <= 7; step++) {
+    const candidate = (start + step) % 7;
+    if (operatingDays.includes(candidate)) {
+      return NUMBER_TO_DAY_NAME[candidate] ?? null;
+    }
+  }
+  return null;
+}
+
 /** Academic year string matching backend `currentAcademicYear` (starts in June). */
 function currentAcademicYear(): string {
   const now = new Date();
@@ -191,6 +214,97 @@ function generateBulkRoomNumbers(base: string, count: number): string[] {
     );
   }
   return Array.from({ length: count }, (_, i) => `${trimmed}-${i + 1}`);
+}
+
+/** Breaks are time gaps between teaching periods — never stored as Period rows. */
+type TemplateBreakType = 'short' | 'lunch';
+
+interface TemplateBreak {
+  id: string;
+  type: TemplateBreakType;
+  afterPeriod: number;
+  durationMin: number;
+}
+
+function msToHHMM(ms: number): string {
+  return new Date(ms).toTimeString().substring(0, 5);
+}
+
+/** Heuristic for amber gap rows: ≥25 min → Lunch, else Short break. */
+function breakLabelForGap(diffMin: number): string {
+  return diffMin >= 25 ? `Lunch · ${diffMin} min` : `Short break · ${diffMin} min`;
+}
+
+function buildPeriodTimeline(opts: {
+  startTime: string;
+  count: number;
+  durationMin: number;
+  breaks?: Array<{ afterPeriod: number; durationMin: number }>;
+}): Array<{ period_number: number; start_time: string; end_time: string; is_active: boolean }> {
+  const gapAfter = new Map<number, number>();
+  for (const b of opts.breaks ?? []) {
+    if (b.afterPeriod < 1 || b.afterPeriod >= opts.count || b.durationMin <= 0) continue;
+    gapAfter.set(b.afterPeriod, (gapAfter.get(b.afterPeriod) ?? 0) + b.durationMin);
+  }
+  let currentMs = new Date(`2000-01-01T${opts.startTime}`).getTime();
+  const config: Array<{
+    period_number: number;
+    start_time: string;
+    end_time: string;
+    is_active: boolean;
+  }> = [];
+  for (let i = 1; i <= opts.count; i++) {
+    const endMs = currentMs + opts.durationMin * 60000;
+    config.push({
+      period_number: i,
+      start_time: msToHHMM(currentMs),
+      end_time: msToHHMM(endMs),
+      is_active: true,
+    });
+    currentMs = endMs;
+    const gap = gapAfter.get(i);
+    if (gap) currentMs += gap * 60000;
+  }
+  return config;
+}
+
+type DayPreviewItem =
+  | { kind: 'period'; label: string; range: string }
+  | { kind: 'break'; label: string; range: string };
+
+function buildDayPreview(opts: {
+  startTime: string;
+  count: number;
+  durationMin: number;
+  breaks: TemplateBreak[];
+}): DayPreviewItem[] {
+  const items: DayPreviewItem[] = [];
+  const gapAfter = new Map<number, TemplateBreak[]>();
+  for (const b of opts.breaks) {
+    if (b.afterPeriod < 1 || b.afterPeriod >= opts.count || b.durationMin <= 0) continue;
+    if (!gapAfter.has(b.afterPeriod)) gapAfter.set(b.afterPeriod, []);
+    gapAfter.get(b.afterPeriod)!.push(b);
+  }
+  let currentMs = new Date(`2000-01-01T${opts.startTime}`).getTime();
+  for (let i = 1; i <= opts.count; i++) {
+    const endMs = currentMs + opts.durationMin * 60000;
+    items.push({
+      kind: 'period',
+      label: `Period ${i}`,
+      range: `${msToHHMM(currentMs)} – ${msToHHMM(endMs)}`,
+    });
+    currentMs = endMs;
+    for (const b of gapAfter.get(i) ?? []) {
+      const breakEnd = currentMs + b.durationMin * 60000;
+      items.push({
+        kind: 'break',
+        label: b.type === 'lunch' ? `Lunch · ${b.durationMin} min` : `Short break · ${b.durationMin} min`,
+        range: `${msToHHMM(currentMs)} – ${msToHHMM(breakEnd)}`,
+      });
+      currentMs = breakEnd;
+    }
+  }
+  return items;
 }
 
 const AVAILABLE_GRADES = [
@@ -239,6 +353,11 @@ export default function ClassSchedulingPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showWizard, setShowWizard] = useState<boolean | null>(null);
   const [breakDuration, setBreakDuration] = useState<Record<string, string>>({});
+  const [showCustomTemplate, setShowCustomTemplate] = useState(false);
+  const [customStartTime, setCustomStartTime] = useState('09:00');
+  const [customPeriodCount, setCustomPeriodCount] = useState(8);
+  const [customDurationMin, setCustomDurationMin] = useState(45);
+  const [customBreaks, setCustomBreaks] = useState<TemplateBreak[]>([]);
 
   useEffect(() => {
     if (!loading && showWizard === null) {
@@ -299,6 +418,7 @@ export default function ClassSchedulingPage() {
   // Section 7 & 8 State
   const [showCompletionTracker, setShowCompletionTracker] = useState(false);
   const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const [selectedTeachersToPush, setSelectedTeachersToPush] = useState<string[]>([]);
   const [lastPushTimestamp, setLastPushTimestamp] = useState<string | null>(null);
   const [pushSuccessSummary, setPushSuccessSummary] = useState<string | null>(null);
@@ -395,7 +515,7 @@ export default function ClassSchedulingPage() {
         schoolAdminApi.schedules.list(),
         schoolAdminApi.periods.list(),
         schoolAdminApi.rooms.list(),
-        schoolAdminApi.teachers.list(),
+        schoolAdminApi.teachers.list({ limit: 500 }),
       ]);
 
       // Schedules
@@ -449,16 +569,21 @@ export default function ClassSchedulingPage() {
           .map((ts): Teacher | null => {
             const teacher = ts.teacher ?? {};
             const profile = ts.profile ?? {};
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const profileId = ts.id ?? profile.id ?? ts.teacher_id ?? (teacher as any).profile_id;
-            
-            if (!profileId) {
+            // Prefer the backend's user id (`id`). Never use display codes like
+            // `TCH-…` or Profile UUIDs — ClassSchedule.teacherId is User.id, and
+            // Push-to-Teachers matches schedule.teacher_id === teacher.id.
+            const userId = String(
+              (ts as { id?: string | number }).id ??
+                (teacher as { id?: string | number }).id ??
+                '',
+            ).trim();
+            if (!userId || userId.startsWith('TCH-')) {
               return null;
             }
 
             const schoolRow = ((ts as any).teacher_schools || [])[0] ?? {};
             const transformed: Teacher = {
-              id: profileId,
+              id: userId,
               full_name: ts.full_name ?? profile.full_name ?? profile.fullName ?? teacher.full_name ?? 'Unknown',
               email: ts.email ?? teacher.email ?? profile.email ?? '',
               phone: (ts.phone ?? teacher.phone ?? profile.phone ?? '') as string,
@@ -474,7 +599,9 @@ export default function ClassSchedulingPage() {
               teacher_schools: (ts as any).teacher_schools || []
             };
 
-            if (transformed.full_name === 'Unknown' || !transformed.email) {
+            // Keep teachers even without email — Teachers Management can show them
+            // and schedules need the same roster. Only drop rows with no usable id/name.
+            if (!transformed.id || transformed.full_name === 'Unknown') {
               return null;
             }
             return transformed;
@@ -556,16 +683,22 @@ export default function ClassSchedulingPage() {
   };
   
   const isTeacherAssigned = (t: Teacher, sub: string, gr: string, sec?: string) => {
-    if (!sub || !gr) return true;
+    if (!gr) return true;
 
     const normalizeGrade = (g: string) => g.toLowerCase().replace(/grade\s+/g, '').trim();
+    const normalizeSection = (s: string) =>
+      s.toLowerCase().replace(/^section\s+/i, '').trim();
     const normGr = normalizeGrade(gr);
     const normSub = sub.toLowerCase().trim();
-    const normSec = (sec ?? '').toLowerCase().trim();
+    const normSec = normalizeSection(sec ?? '');
 
     const subjects = t.subjects || t.teacher_schools?.[0]?.subjects || [];
-    const hasSubject = subjects.some((s: string) => s.toLowerCase().trim() === normSub);
-    if (!hasSubject) return false;
+    // Subject list is often empty on TeacherSchool — don't block grade/section matches.
+    // When the form subject is blank, skip the subject check entirely.
+    if (normSub && subjects.length > 0) {
+      const hasSubject = subjects.some((s: string) => s.toLowerCase().trim() === normSub);
+      if (!hasSubject) return false;
+    }
 
     const gsa =
       t.grade_sections_assigned ??
@@ -576,7 +709,7 @@ export default function ClassSchedulingPage() {
       const row = gsa.find((g) => normalizeGrade(g.grade) === normGr);
       if (!row) return false;
       if (normSec && row.sections?.length) {
-        return row.sections.some((s) => s.toLowerCase().trim() === normSec);
+        return row.sections.some((s) => normalizeSection(s) === normSec);
       }
       return true;
     }
@@ -607,13 +740,34 @@ export default function ClassSchedulingPage() {
     return true;
   };
 
-  const filteredTeachers = teachers
-    .filter(t => (scheduleForm.subject && scheduleForm.grade) ? isTeacherAssigned(t, scheduleForm.subject, scheduleForm.grade, scheduleForm.section) : true)
-    .filter(t => isTeacherWorkingOnDay(t, scheduleForm.day_of_week))
-    .filter(t => isTeacherCurrentlyAssigned(t));
-    
-  // Final safety: If no teachers match the specific filter, show all teachers 
-  // but sorted by load, so the user isn't stuck with an empty list.
+  const filteredTeachers = useMemo(
+    () =>
+      teachers
+        .filter((t) =>
+          scheduleForm.grade
+            ? isTeacherAssigned(
+                t,
+                scheduleForm.subject,
+                scheduleForm.grade,
+                scheduleForm.section,
+              )
+            : true,
+        )
+        .filter((t) => isTeacherWorkingOnDay(t, scheduleForm.day_of_week))
+        .filter((t) => isTeacherCurrentlyAssigned(t)),
+    // isTeacherAssigned / day helpers are stable closures over scheduleForm + teachers
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      teachers,
+      scheduleForm.grade,
+      scheduleForm.subject,
+      scheduleForm.section,
+      scheduleForm.day_of_week,
+    ],
+  );
+
+  // Prefer grade/section matches; if none, fall back to the full roster so the
+  // admin is never stuck with an empty dropdown when teachers exist.
   const displayTeachers = filteredTeachers.length > 0 ? filteredTeachers : teachers;
     
   const isTeacherAvailable = (tId: string | null | undefined, day: string, periodId: string) => {
@@ -627,12 +781,42 @@ export default function ClassSchedulingPage() {
   };
   
   let suggestedTeacher: Teacher | null = null;
-  if (scheduleForm.subject && scheduleForm.grade && scheduleForm.day_of_week && scheduleForm.period_id) {
-    const availableFiltered = filteredTeachers.filter(t => isTeacherAvailable(t.id, scheduleForm.day_of_week, scheduleForm.period_id));
+  if (scheduleForm.grade && scheduleForm.day_of_week && scheduleForm.period_id) {
+    const availableFiltered = filteredTeachers.filter((t) =>
+      isTeacherAvailable(t.id, scheduleForm.day_of_week, scheduleForm.period_id),
+    );
     if (availableFiltered.length > 0) {
-      suggestedTeacher = availableFiltered.sort((a, b) => getTeacherLoad(a.id) - getTeacherLoad(b.id))[0];
+      suggestedTeacher = availableFiltered.sort(
+        (a, b) => getTeacherLoad(a.id) - getTeacherLoad(b.id),
+      )[0];
     }
   }
+
+  // When exactly one teacher matches grade/section, pre-select them so Create isn't blocked.
+  useEffect(() => {
+    if (!scheduleDialogOpen || editingSchedule) return;
+    if (!scheduleForm.grade) return;
+    if (sectionsForSelectedGrade.length > 0 && !scheduleForm.section) return;
+    if (filteredTeachers.length !== 1) return;
+    const only = filteredTeachers[0];
+    if (!only?.id) return;
+    if (scheduleForm.teacher_id === only.id) return;
+    if (
+      scheduleForm.teacher_id &&
+      filteredTeachers.some((t) => t.id === scheduleForm.teacher_id)
+    ) {
+      return;
+    }
+    setScheduleForm((prev) => ({ ...prev, teacher_id: only.id }));
+  }, [
+    scheduleDialogOpen,
+    editingSchedule,
+    scheduleForm.grade,
+    scheduleForm.section,
+    scheduleForm.teacher_id,
+    filteredTeachers,
+    sectionsForSelectedGrade.length,
+  ]);
   
   let conflictWarning: string | null = null;
   if (scheduleForm.teacher_id && !isTeacherAvailable(scheduleForm.teacher_id, scheduleForm.day_of_week, scheduleForm.period_id)) {
@@ -653,8 +837,24 @@ export default function ClassSchedulingPage() {
 
   // Handle schedule operations
   const handleCreateSchedule = async () => {
+    if (!scheduleForm.subject.trim()) {
+      toast.error('Please enter a subject before saving.');
+      return;
+    }
     if (sectionsForSelectedGrade.length > 0 && !scheduleForm.section.trim()) {
       toast.error('Please select a section for this grade.');
+      return;
+    }
+    if (!scheduleForm.teacher_id) {
+      if (teachers.length === 0) {
+        toast.error(
+          'No teachers found for this school. Add a teacher under Teachers Management first.',
+        );
+      } else if (displayTeachers.length === 0) {
+        toast.error('No teachers available to assign. Check working days and assignments.');
+      } else {
+        toast.error('Select a teacher from the Teacher dropdown before saving.');
+      }
       return;
     }
     // Prepare request body - convert empty strings to null for optional fields
@@ -699,8 +899,22 @@ export default function ClassSchedulingPage() {
 
   const handleUpdateSchedule = async () => {
     if (!editingSchedule) return;
+    if (!scheduleForm.subject.trim()) {
+      toast.error('Please enter a subject before saving.');
+      return;
+    }
     if (sectionsForSelectedGrade.length > 0 && !scheduleForm.section.trim()) {
       toast.error('Please select a section for this grade.');
+      return;
+    }
+    if (!scheduleForm.teacher_id) {
+      if (teachers.length === 0) {
+        toast.error(
+          'No teachers found for this school. Add a teacher under Teachers Management first.',
+        );
+      } else {
+        toast.error('Select a teacher from the Teacher dropdown before saving.');
+      }
       return;
     }
 
@@ -782,35 +996,20 @@ export default function ClassSchedulingPage() {
     setLockedFields({});
   };
 
-  const isScheduleFormDirty = () => {
-    if (editingSchedule) {
-      return (
-        scheduleForm.teacher_id !== (editingSchedule.teacher_id || '') ||
-        scheduleForm.subject !== (editingSchedule.subject || '') ||
-        scheduleForm.grade !== (editingSchedule.grade || '') ||
-        scheduleForm.section !== (editingSchedule.section || '') ||
-        scheduleForm.day_of_week !== (editingSchedule.day_of_week || 'Monday') ||
-        scheduleForm.period_id !== (editingSchedule.period_id || '') ||
-        scheduleForm.room_id !== (editingSchedule.room_id || '') ||
-        scheduleForm.notes !== (editingSchedule.notes || '')
-      );
-    }
-    return !!(
-      scheduleForm.teacher_id ||
-      scheduleForm.subject ||
-      scheduleForm.grade ||
-      scheduleForm.section ||
-      scheduleForm.period_id ||
-      scheduleForm.room_id ||
-      scheduleForm.notes
-    );
-  };
+  // Baseline = form state at open (includes grid-prefilled day/period). Closing
+  // without further edits must not prompt — only real user changes do.
+  const scheduleFormDirty = useDirtySnapshot(scheduleDialogOpen, scheduleForm);
 
   const closeScheduleDialog = () => {
-    void requestClose(isScheduleFormDirty(), () => {
+    void requestClose(scheduleFormDirty, () => {
       setScheduleDialogOpen(false);
       resetScheduleForm();
     });
+  };
+
+  const openBlankScheduleDialog = () => {
+    resetScheduleForm();
+    setScheduleDialogOpen(true);
   };
 
   const handleAddScheduleGrid = (day: string, periodId: string) => {
@@ -954,46 +1153,35 @@ export default function ClassSchedulingPage() {
     }
   };
 
-  const handleUseTemplate = async (template: 'standard' | 'extended' | 'halfday') => {
+  const applyPeriodTemplate = async (opts: {
+    startTime: string;
+    count: number;
+    durationMin: number;
+    breaks?: Array<{ afterPeriod: number; durationMin: number }>;
+    label?: string;
+  }) => {
+    const count = Math.min(12, Math.max(1, opts.count));
+    const durationMin = Math.min(90, Math.max(20, opts.durationMin));
     if (!(await confirmDialog({
-      title: 'Apply this template?',
-      description: 'This will delete all existing periods.',
+      title: opts.label ? `Apply ${opts.label}?` : 'Apply this template?',
+      description: 'This will delete all existing periods and recreate the school day.',
       confirmText: 'Apply',
       variant: 'danger',
     }))) return;
     try {
       setLoading(true);
-      await Promise.all(periods.map(p => schoolAdminApi.periods.delete(p.id)));
-      
-      const config = [];
-      let currentMs = new Date('2000-01-01T09:00').getTime();
-      let count = 8;
-      let durationMin = 45;
-      
-      if (template === 'extended') {
-        count = 6;
-        durationMin = 60;
-      } else if (template === 'halfday') {
-        currentMs = new Date('2000-01-01T08:00').getTime();
-        count = 5;
-        durationMin = 40;
-      }
-
-      for (let i = 1; i <= count; i++) {
-        const endMs = currentMs + durationMin * 60000;
-        config.push({
-          period_number: i,
-          start_time: new Date(currentMs).toTimeString().substring(0,5),
-          end_time: new Date(endMs).toTimeString().substring(0,5),
-          is_active: true
-        });
-        currentMs = endMs;
-      }
-
+      await Promise.all(periods.map((p) => schoolAdminApi.periods.delete(p.id)));
+      const config = buildPeriodTimeline({
+        startTime: opts.startTime,
+        count,
+        durationMin,
+        breaks: opts.breaks,
+      });
       for (const p of config) {
         await schoolAdminApi.periods.create(p);
       }
       await loadData();
+      toast.success(`Created ${config.length} periods`);
     } catch (err) {
       console.error(err);
       toast.error('Error applying template');
@@ -1001,6 +1189,83 @@ export default function ClassSchedulingPage() {
       setLoading(false);
     }
   };
+
+  const handleUseTemplate = async (template: 'standard' | 'extended' | 'halfday') => {
+    if (template === 'extended') {
+      await applyPeriodTemplate({
+        startTime: '09:00',
+        count: 6,
+        durationMin: 60,
+        label: '6×60m',
+      });
+    } else if (template === 'halfday') {
+      await applyPeriodTemplate({
+        startTime: '08:00',
+        count: 5,
+        durationMin: 40,
+        label: '5×40m',
+      });
+    } else {
+      await applyPeriodTemplate({
+        startTime: '09:00',
+        count: 8,
+        durationMin: 45,
+        label: '8×45m',
+      });
+    }
+  };
+
+  const handleApplyCustomTemplate = async () => {
+    await applyPeriodTemplate({
+      startTime: customStartTime || '09:00',
+      count: customPeriodCount,
+      durationMin: customDurationMin,
+      breaks: customBreaks.map((b) => ({
+        afterPeriod: b.afterPeriod,
+        durationMin: b.durationMin,
+      })),
+      label: 'custom template',
+    });
+  };
+
+  const customDayPreview = useMemo(
+    () =>
+      buildDayPreview({
+        startTime: customStartTime || '09:00',
+        count: Math.min(12, Math.max(1, customPeriodCount || 1)),
+        durationMin: Math.min(90, Math.max(20, customDurationMin || 20)),
+        breaks: customBreaks,
+      }),
+    [customStartTime, customPeriodCount, customDurationMin, customBreaks],
+  );
+
+  const addCustomBreak = (type: TemplateBreakType) => {
+    const maxAfter = Math.max(1, Math.min(12, customPeriodCount) - 1);
+    setCustomBreaks((prev) => [
+      ...prev,
+      {
+        id: `brk-${Date.now()}-${prev.length}`,
+        type,
+        afterPeriod: Math.min(Math.max(1, Math.floor(customPeriodCount / 2)), maxAfter) || 1,
+        durationMin: type === 'lunch' ? 30 : 10,
+      },
+    ]);
+  };
+
+  // Keep break "after period" values valid when period count shrinks.
+  useEffect(() => {
+    const maxAfter = Math.max(1, customPeriodCount - 1);
+    setCustomBreaks((prev) => {
+      if (customPeriodCount < 2) return [];
+      const next = prev.map((b) =>
+        b.afterPeriod > maxAfter ? { ...b, afterPeriod: maxAfter } : b,
+      );
+      return next.every((b, i) => b.afterPeriod === prev[i]?.afterPeriod) &&
+        next.length === prev.length
+        ? prev
+        : next;
+    });
+  }, [customPeriodCount]);
 
   const validatePeriodTimes = (start: string, end: string) => {
     if (!start || !end) return 'Required';
@@ -1160,6 +1425,7 @@ export default function ClassSchedulingPage() {
       setCopyScheduleDialogOpen(false);
       setScheduleToCopy(null);
       setTargetDay('');
+      toast.success(`Copied to ${targetDay}`);
     } catch (error) {
       console.error('Error copying schedule:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to copy schedule');
@@ -1315,27 +1581,14 @@ export default function ClassSchedulingPage() {
     setEditingRoom(null);
   };
 
-  const isRoomFormDirty = () => {
-    if (editingRoom) {
-      return (
-        roomForm.room_number !== (editingRoom.room_number || '') ||
-        roomForm.room_name !== (editingRoom.room_name || '') ||
-        roomForm.room_type !== (editingRoom.room_type || 'Regular Classroom') ||
-        roomForm.capacity !== (editingRoom.capacity ? String(editingRoom.capacity) : '') ||
-        roomForm.location !== (editingRoom.location || '')
-      );
-    }
-    return !!(
-      roomForm.room_number ||
-      roomForm.room_name ||
-      roomForm.capacity ||
-      roomForm.location ||
-      (roomForm.facilities && roomForm.facilities.length > 0)
-    );
-  };
+  const roomFormDirty = useDirtySnapshot(roomDialogOpen, {
+    ...roomForm,
+    bulkRoomMode,
+    bulkRoomCount,
+  });
 
   const closeRoomDialog = () => {
-    void requestClose(isRoomFormDirty(), () => {
+    void requestClose(roomFormDirty, () => {
       setRoomDialogOpen(false);
       resetRoomForm();
       setBulkRoomMode(false);
@@ -1411,6 +1664,97 @@ export default function ClassSchedulingPage() {
   const teachersWithSchedules = teachers.filter(t => 
     schedules.some(s => s.teacher_id === t.id && s.is_active)
   );
+
+  const unassignedActiveSchedules = schedules.filter(
+    (s) =>
+      s.is_active &&
+      !s.teacher_id &&
+      (!s.academic_year || s.academic_year === CURRENT_ACADEMIC_YEAR),
+  );
+
+  const pickTeacherForSlot = (s: {
+    subject: string;
+    grade: string;
+    section?: string | null;
+    day_of_week: string;
+    period_id?: string;
+    id?: string;
+    /** Extra teacher ids already claimed in this auto-assign pass */
+    reservedTeacherSlots?: Set<string>;
+  }) => {
+    if (!s.period_id) return null;
+    const slotKey = (teacherId: string) =>
+      `${s.day_of_week}|${s.period_id}|${teacherId}`;
+    const available = teachers.filter((t) => {
+      if (!isTeacherCurrentlyAssigned(t)) return false;
+      if (!isTeacherWorkingOnDay(t, s.day_of_week)) return false;
+      if (!isTeacherAvailable(t.id, s.day_of_week, s.period_id!)) return false;
+      if (s.reservedTeacherSlots?.has(slotKey(t.id))) return false;
+      return true;
+    });
+    const matched = available.filter((t) =>
+      isTeacherAssigned(t, s.subject, s.grade, s.section ?? undefined),
+    );
+    const pool =
+      matched.length > 0 ? matched : available.length === 1 ? available : [];
+    if (pool.length === 0) return null;
+    return pool.sort((a, b) => getTeacherLoad(a.id) - getTeacherLoad(b.id))[0];
+  };
+
+  const handleAutoAssignTeachers = async () => {
+    if (unassignedActiveSchedules.length === 0) {
+      toast.error('All active classes already have a teacher assigned.');
+      return;
+    }
+    setIsAutoAssigning(true);
+    let assigned = 0;
+    let skipped = 0;
+    const reserved = new Set<string>();
+    const assignedTeacherIds = new Set<string>();
+    try {
+      for (const s of unassignedActiveSchedules) {
+        const teacher = pickTeacherForSlot({
+          ...s,
+          reservedTeacherSlots: reserved,
+        });
+        if (!teacher || !s.period_id) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          await schoolAdminApi.schedules.update(s.id, {
+            teacher_id: teacher.id,
+            period_id: s.period_id,
+            day_of_week: s.day_of_week,
+            subject: s.subject,
+            grade: s.grade,
+            section: s.section ?? null,
+            room_id: s.room_id ?? null,
+            academic_year: s.academic_year,
+            is_active: true,
+          });
+          reserved.add(`${s.day_of_week}|${s.period_id}|${teacher.id}`);
+          assignedTeacherIds.add(teacher.id);
+          assigned += 1;
+        } catch {
+          skipped += 1;
+        }
+      }
+      await loadData();
+      if (assigned > 0) {
+        setSelectedTeachersToPush([...assignedTeacherIds]);
+        toast.success(
+          `Assigned teachers to ${assigned} class${assigned === 1 ? '' : 'es'}${skipped ? ` (${skipped} still need a manual pick)` : ''}.`,
+        );
+      } else {
+        toast.error(
+          'Could not auto-assign teachers. Edit each class and pick a teacher, then try Push again.',
+        );
+      }
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
 
   const generatePushPreview = (teacherId: string) => {
     const teacherSchedules = schedules
@@ -1768,7 +2112,7 @@ export default function ClassSchedulingPage() {
 
       {/* Action bar */}
       <div className="bg-white border-b border-gray-100 px-8 py-3 flex items-center gap-2">
-        <Button size="sm" onClick={() => setScheduleDialogOpen(true)} className="h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm text-sm gap-1.5">
+        <Button size="sm" onClick={openBlankScheduleDialog} className="h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm text-sm gap-1.5">
           <Plus className="h-3.5 w-3.5" />Add Schedule
         </Button>
         <div className="h-5 w-px bg-gray-200 mx-1" />
@@ -1918,156 +2262,233 @@ export default function ClassSchedulingPage() {
             )}
           </div>
 
-          {/* Grid View */}
+          {/* Grid View — days across, periods down (same layout as teacher Class Schedule) */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" id="grid-card">
-            <div className="overflow-x-auto w-full">
-              <div className="min-w-max">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50/80 hover:bg-gray-50/80 border-b border-gray-100">
-                        <TableHead className="w-28 sticky left-0 bg-gray-50/80 z-20 border-r border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider shadow-[1px_0_0_0_#f3f4f6]">
-                          Day
-                        </TableHead>
-                        {[...periods].sort((a, b) => a.period_number - b.period_number).map((period) => (
-                          <TableHead key={period.id} className="min-w-[200px] text-center border-r border-gray-100 py-3 px-3">
-                            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Period {period.period_number}</div>
-                            <div className="text-xs text-gray-400 font-normal mt-0.5">
-                              {formatTime(period.start_time)} – {formatTime(period.end_time)}
-                            </div>
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {GRID_DAYS.map((day, dayIdx) => {
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="font-semibold text-gray-900 text-sm">Weekly timetable</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {filteredSchedules.length} class{filteredSchedules.length === 1 ? '' : 'es'}
+                  {' · '}
+                  {periods.length} period{periods.length === 1 ? '' : 's'}
+                </p>
+              </div>
+            </div>
+            {periods.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Clock className="h-8 w-8 text-gray-300 mb-2" />
+                <p className="text-sm font-medium text-gray-600">No periods yet</p>
+                <p className="text-xs text-gray-400 mt-1">Add periods to build the timetable</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-gray-50/90">
+                      <th className="sticky left-0 z-20 bg-gray-50/90 border-b border-r border-gray-100 px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 w-28 min-w-[7rem]">
+                        Period
+                      </th>
+                      {GRID_DAYS.map((day) => {
                         const dayIsOpen = schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[day]);
+                        const dayCount = filteredSchedules.filter((s) => s.day_of_week === day).length;
                         return (
-                        <TableRow key={day} className={`hover:bg-transparent ${dayIdx < GRID_DAYS.length - 1 ? 'border-b border-gray-50' : ''} ${!dayIsOpen ? 'bg-gray-50/60' : ''}`}>
-                          <TableCell className="sticky left-0 bg-white z-10 border-r border-gray-100 align-middle shadow-[1px_0_0_0_#f3f4f6] group/row py-3 px-3">
-                            <div className="flex items-center justify-between gap-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-xs font-bold uppercase tracking-wider ${dayIsOpen ? 'text-gray-600' : 'text-gray-400'}`}>{day.slice(0,3)}</span>
-                                {!dayIsOpen && (
-                                  <span className="text-[9px] font-medium text-gray-400 bg-gray-100 rounded px-1 py-0.5" title="Your school doesn't operate on this day">Closed</span>
-                                )}
-                              </div>
+                          <th
+                            key={day}
+                            className={`border-b border-r border-gray-100 last:border-r-0 px-2 py-2.5 text-center min-w-[150px] align-top ${
+                              !dayIsOpen ? 'bg-gray-50/80' : ''
+                            }`}
+                          >
+                            <div className={`text-xs font-bold uppercase tracking-wider ${dayIsOpen ? 'text-gray-600' : 'text-gray-400'}`}>
+                              {day.slice(0, 3)}
+                            </div>
+                            <div className="text-[10px] font-medium text-gray-400 mt-0.5">{day}</div>
+                            {!dayIsOpen ? (
+                              <span className="inline-block mt-1 text-[9px] font-medium text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">
+                                Closed
+                              </span>
+                            ) : dayCount > 0 ? (
                               <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-md"
+                                variant="outline"
+                                size="sm"
+                                className="mt-1.5 h-6 px-1.5 text-[10px] font-medium text-indigo-700 border-indigo-200 hover:bg-indigo-50 gap-1"
                                 onClick={() => {
                                   setSourceDayToCopy(day);
-                                  setTargetDays([]);
+                                  const next = getNextOperatingDay(day, schoolOperatingDays);
+                                  setTargetDays(next && next !== day ? [next] : []);
                                   setCopyResults(null);
                                   setCopyDayDialogOpen(true);
                                 }}
-                                title="Copy entire day"
+                                disabled={isCopying}
+                                title="Copy all periods on this day to another day"
                               >
                                 <ClipboardCopy className="h-3 w-3" />
+                                Copy day…
                               </Button>
-                            </div>
-                          </TableCell>
-                          {[...periods].sort((a, b) => a.period_number - b.period_number).map(period => {
-                            const cellSchedules = filteredSchedules.filter(s => s.day_of_week === day && s.period_id === period.id);
-                            return (
-                              <TableCell key={`${day}-${period.id}`} className="border-r border-gray-50 p-2 align-top min-h-28 relative group bg-white">
-                                {cellSchedules.length > 0 ? (
-                                  <div className="space-y-2 flex flex-col min-h-24">
-                                    {cellSchedules.map(schedule => {
-                                      const colorClasses = getColorClasses(getSubjectColor(schedule.subject));
-                                      return (
-                                        <div
-                                          key={schedule.id}
-                                          className={`rounded-lg p-2.5 transition-all group/card relative border-l-[3px] shadow-sm hover:shadow-md cursor-pointer ${colorClasses.border} ${colorClasses.bg}`}
-                                          onClick={() => handleEditSchedule(schedule)}
-                                        >
-                                          <div className="flex justify-between items-start gap-1">
-                                            <span className={`font-semibold text-xs leading-tight ${colorClasses.text}`}>
-                                              {schedule.subject}
-                                            </span>
-                                            <DropdownMenu>
-                                              <DropdownMenuTrigger asChild>
-                                                <Button
-                                                  variant="ghost"
-                                                  size="icon"
-                                                  className="h-5 w-5 -mt-0.5 -mr-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity rounded hover:bg-white/80 flex-shrink-0"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                >
-                                                  <MoreVertical className="h-3 w-3 text-gray-500" />
-                                                </Button>
-                                              </DropdownMenuTrigger>
-                                              <DropdownMenuContent align="end" className="w-44 shadow-lg">
-                                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setScheduleToCopy(schedule); setTargetDay(''); setCopyScheduleDialogOpen(true); }}>
-                                                  <Copy className="h-3.5 w-3.5 mr-2" />Copy to day
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleRepeatAcrossWeek(schedule); }}>
-                                                  <Repeat className="h-3.5 w-3.5 mr-2" />Repeat across week
-                                                </DropdownMenuItem>
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditSchedule(schedule); }}>
-                                                  <Edit className="h-3.5 w-3.5 mr-2" />Edit
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={(e) => { e.stopPropagation(); handleDeleteSchedule(schedule.id); }}>
-                                                  <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
-                                                </DropdownMenuItem>
-                                              </DropdownMenuContent>
-                                            </DropdownMenu>
-                                          </div>
-                                          <div className="mt-1.5 space-y-1">
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                              <span className="text-[10px] font-semibold bg-white/70 text-gray-600 rounded px-1.5 py-0.5 border border-white/50">
-                                                {gradeSectionLabel(schedule)}
-                                              </span>
-                                              {schedule.room?.room_number && (
-                                                <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
-                                                  <MapPin className="h-2.5 w-2.5" />{schedule.room.room_number}
-                                                </span>
-                                              )}
+                            ) : null}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...periods]
+                      .sort((a, b) => a.period_number - b.period_number)
+                      .map((period, pIdx, sortedPeriods) => (
+                          <tr key={period.id} className="group/row">
+                            <td
+                              className={`sticky left-0 z-10 border-r border-gray-100 bg-white px-3 py-2 align-top shadow-[1px_0_0_0_#f3f4f6] ${
+                                pIdx < sortedPeriods.length - 1 ? 'border-b border-gray-50' : ''
+                              }`}
+                            >
+                              <div className="text-xs font-bold text-gray-700 tabular-nums">
+                                P{period.period_number}
+                              </div>
+                              <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">
+                                {formatTime(period.start_time)} – {formatTime(period.end_time)}
+                              </div>
+                            </td>
+                            {GRID_DAYS.map((day) => {
+                              const dayIsOpen = schoolOperatingDays.includes(
+                                DAY_NAME_TO_NUMBER[day],
+                              );
+                              const cellSchedules = filteredSchedules.filter(
+                                (s) => s.day_of_week === day && s.period_id === period.id,
+                              );
+                              return (
+                                <td
+                                  key={`${day}-${period.id}`}
+                                  className={`border-r border-gray-50 last:border-r-0 px-1.5 py-1.5 align-top min-h-[4.5rem] relative group/cell ${
+                                    pIdx < sortedPeriods.length - 1 ? 'border-b border-gray-50' : ''
+                                  } ${
+                                    !dayIsOpen
+                                      ? 'bg-gray-50/60'
+                                      : cellSchedules.length === 0
+                                        ? 'bg-gray-50/40'
+                                        : 'bg-white'
+                                  }`}
+                                >
+                                  {!dayIsOpen ? (
+                                    <div className="min-h-[3.25rem] flex items-center justify-center text-[10px] text-gray-300">
+                                      —
+                                    </div>
+                                  ) : cellSchedules.length === 0 ? (
+                                    <button
+                                      type="button"
+                                      className="min-h-[3.25rem] w-full rounded-md border border-dashed border-gray-100 hover:border-blue-300 hover:bg-blue-50/40 text-gray-300 hover:text-blue-500 opacity-0 group-hover/cell:opacity-100 transition-all flex flex-col items-center justify-center gap-0.5"
+                                      onClick={() => handleAddScheduleGrid(day, period.id)}
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      <span className="text-[10px] font-medium">Add</span>
+                                    </button>
+                                  ) : (
+                                    <div className="flex flex-col gap-1">
+                                      {cellSchedules.map((schedule) => {
+                                        const colorClasses = getColorClasses(
+                                          getSubjectColor(schedule.subject),
+                                        );
+                                        return (
+                                          <div
+                                            key={schedule.id}
+                                            className={`rounded-md border border-gray-100 border-l-[3px] px-2 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow group/card relative ${colorClasses.border} ${colorClasses.bg}`}
+                                            onClick={() => handleEditSchedule(schedule)}
+                                          >
+                                            <div className="flex justify-between items-start gap-1">
+                                              <p
+                                                className={`text-xs font-bold truncate leading-tight ${colorClasses.text}`}
+                                              >
+                                                {schedule.subject || 'Class'}
+                                              </p>
+                                              <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-5 w-5 -mt-0.5 -mr-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity rounded hover:bg-white/80 flex-shrink-0"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                    <MoreVertical className="h-3 w-3 text-gray-500" />
+                                                  </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-48 shadow-lg">
+                                                  <DropdownMenuItem
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setScheduleToCopy(schedule);
+                                                      setTargetDay('');
+                                                      setCopyScheduleDialogOpen(true);
+                                                    }}
+                                                  >
+                                                    <Copy className="h-3.5 w-3.5 mr-2" />
+                                                    Copy class to day…
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleRepeatAcrossWeek(schedule);
+                                                    }}
+                                                  >
+                                                    <Repeat className="h-3.5 w-3.5 mr-2" />
+                                                    Repeat across week
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuSeparator />
+                                                  <DropdownMenuItem
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleEditSchedule(schedule);
+                                                    }}
+                                                  >
+                                                    <Edit className="h-3.5 w-3.5 mr-2" />
+                                                    Edit
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                    className="text-red-600 focus:text-red-600"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleDeleteSchedule(schedule.id);
+                                                    }}
+                                                  >
+                                                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                                    Delete
+                                                  </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                              </DropdownMenu>
                                             </div>
-                                            {schedule.teacher?.full_name && (
-                                              <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                                <div className="w-4 h-4 rounded-full bg-white/80 border border-white flex items-center justify-center text-[8px] font-bold text-gray-600 flex-shrink-0">
-                                                  {schedule.teacher.full_name.charAt(0).toUpperCase()}
-                                                </div>
-                                                <span className="truncate">{schedule.teacher.full_name}</span>
-                                              </div>
+                                            <p className="text-[10px] text-gray-600 font-medium truncate mt-0.5">
+                                              {gradeSectionLabel(schedule)}
+                                            </p>
+                                            {schedule.teacher?.full_name ? (
+                                              <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                                                {schedule.teacher.full_name}
+                                                {schedule.room?.room_number
+                                                  ? ` · ${schedule.room.room_number}`
+                                                  : ''}
+                                              </p>
+                                            ) : (
+                                              <p className="text-[10px] font-medium text-amber-700 mt-0.5">
+                                                Unassigned
+                                              </p>
                                             )}
                                           </div>
-                                        </div>
-                                      );
-                                    })}
-                                    {dayIsOpen && (
+                                        );
+                                      })}
                                       <button
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-gray-400 hover:text-blue-600 py-1 px-2 rounded border border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 w-full mt-auto flex items-center justify-center gap-1"
+                                        type="button"
+                                        className="opacity-0 group-hover/cell:opacity-100 transition-opacity text-[10px] text-gray-400 hover:text-blue-600 py-0.5 rounded border border-dashed border-transparent hover:border-blue-200 w-full flex items-center justify-center gap-0.5"
                                         onClick={() => handleAddScheduleGrid(day, period.id)}
                                       >
                                         <Plus className="h-3 w-3" /> Add
                                       </button>
-                                    )}
-                                  </div>
-                                ) : dayIsOpen ? (
-                                  <button
-                                    className="opacity-0 group-hover:opacity-100 transition-all w-full min-h-24 flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/40 text-gray-300 hover:text-blue-500"
-                                    onClick={() => handleAddScheduleGrid(day, period.id)}
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                    <span className="text-[10px] font-medium">Add class</span>
-                                  </button>
-                                ) : (
-                                  <div className="w-full min-h-24 flex items-center justify-center text-[10px] text-gray-300">
-                                    School closed
-                                  </div>
-                                )}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                  </tbody>
+                </table>
               </div>
+            )}
           </div>
         </TabsContent>
 
@@ -2402,30 +2823,73 @@ export default function ClassSchedulingPage() {
               <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Who & Where</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Teacher</Label>
-                  <Select value={scheduleForm.teacher_id || ''} onValueChange={(value) => setScheduleForm({ ...scheduleForm, teacher_id: value === 'none' ? '' : value })}>
+                  <Label className="text-sm font-medium text-gray-700">Teacher *</Label>
+                  <Select
+                    value={scheduleForm.teacher_id || undefined}
+                    onValueChange={(value) =>
+                      setScheduleForm({
+                        ...scheduleForm,
+                        teacher_id: value === 'none' ? '' : value,
+                      })
+                    }
+                  >
                     <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select teacher (optional)" />
+                      <SelectValue placeholder="Select teacher" />
                     </SelectTrigger>
                     <SelectContent>
-                      {displayTeachers.length > 0 ? displayTeachers.map((teacher: Teacher) => {
-                        const isMatch = (scheduleForm.subject && scheduleForm.grade) ? isTeacherAssigned(teacher, scheduleForm.subject, scheduleForm.grade, scheduleForm.section) : true;
-                        return (
-                          <SelectItem key={teacher.id} value={teacher.id}>
-                            <div className="flex justify-between items-center w-full min-w-[150px]">
-                              <div className="flex items-center gap-2">
-                                <span>{teacher.full_name}</span>
-                                {!isMatch && <Badge variant="outline" className="text-[8px] h-4 py-0 opacity-70">No Match</Badge>}
+                      {displayTeachers.length > 0 ? (
+                        displayTeachers.map((teacher: Teacher) => {
+                          const isMatch = scheduleForm.grade
+                            ? isTeacherAssigned(
+                                teacher,
+                                scheduleForm.subject,
+                                scheduleForm.grade,
+                                scheduleForm.section,
+                              )
+                            : true;
+                          return (
+                            <SelectItem key={teacher.id} value={String(teacher.id)}>
+                              <div className="flex justify-between items-center w-full min-w-[150px]">
+                                <div className="flex items-center gap-2">
+                                  <span>{teacher.full_name}</span>
+                                  {!isMatch && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[8px] h-4 py-0 opacity-70"
+                                    >
+                                      No Match
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-gray-400 text-xs ml-2 tabular-nums">
+                                  {getTeacherLoad(teacher.id).toFixed(1)}h/wk
+                                </span>
                               </div>
-                              <span className="text-gray-400 text-xs ml-2 tabular-nums">{getTeacherLoad(teacher.id).toFixed(1)}h/wk</span>
-                            </div>
-                          </SelectItem>
-                        );
-                      }) : (
-                        <SelectItem value="none" disabled>No teachers available</SelectItem>
+                            </SelectItem>
+                          );
+                        })
+                      ) : (
+                        <SelectItem value="none" disabled>
+                          No teachers available
+                        </SelectItem>
                       )}
                     </SelectContent>
                   </Select>
+                  {teachers.length === 0 ? (
+                    <p className="text-[11px] text-amber-700">
+                      No teachers loaded. Open Teachers Management and confirm this school has teachers.
+                    </p>
+                  ) : filteredTeachers.length === 0 ? (
+                    <p className="text-[11px] text-amber-700">
+                      No exact grade/section match — showing all {teachers.length} teacher
+                      {teachers.length === 1 ? '' : 's'}. Pick one to continue.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-gray-500">
+                      {filteredTeachers.length} matching teacher
+                      {filteredTeachers.length === 1 ? '' : 's'} for this class
+                    </p>
+                  )}
                   {suggestedTeacher && scheduleForm.teacher_id !== suggestedTeacher.id && (
                     <div className="mt-2 p-2.5 border border-green-200 bg-green-50 rounded-lg flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-xs text-green-800 font-medium">
@@ -2436,7 +2900,12 @@ export default function ClassSchedulingPage() {
                         size="sm"
                         variant="outline"
                         className="h-6 text-[11px] px-2 border-green-300 text-green-700 hover:bg-green-100 whitespace-nowrap"
-                        onClick={() => setScheduleForm({...scheduleForm, teacher_id: suggestedTeacher.id})}
+                        onClick={() =>
+                          setScheduleForm({
+                            ...scheduleForm,
+                            teacher_id: suggestedTeacher.id,
+                          })
+                        }
                       >
                         Use
                       </Button>
@@ -2512,7 +2981,7 @@ export default function ClassSchedulingPage() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0">
           <DialogTitle className="sr-only">Manage Periods</DialogTitle>
           <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-violet-600 flex items-center justify-center flex-shrink-0">
                   <Clock className="h-5 w-5 text-white" />
@@ -2522,16 +2991,244 @@ export default function ClassSchedulingPage() {
                   <p className="text-xs text-gray-500 mt-0.5">Define time slots and breaks for your school day</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-gray-400 font-medium">Templates:</span>
                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleUseTemplate('standard')}>8×45m</Button>
                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleUseTemplate('extended')}>6×60m</Button>
                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleUseTemplate('halfday')}>5×40m</Button>
+                <Button
+                  variant={showCustomTemplate ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowCustomTemplate((v) => !v)}
+                >
+                  Custom
+                </Button>
               </div>
             </div>
           </div>
 
           <div className="px-6 py-5 space-y-6">
+            {showCustomTemplate && (
+              <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-4 space-y-4">
+                <p className="text-[11px] font-semibold text-violet-700 uppercase tracking-wider">
+                  Custom day template
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-gray-700">Day start</Label>
+                    <Input
+                      type="time"
+                      value={customStartTime}
+                      onChange={(e) => setCustomStartTime(e.target.value)}
+                      className="h-10 bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-gray-700">No. of periods</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={customPeriodCount}
+                      onChange={(e) =>
+                        setCustomPeriodCount(
+                          Math.min(12, Math.max(1, parseInt(e.target.value, 10) || 1)),
+                        )
+                      }
+                      className="h-10 bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-gray-700">Class duration (min)</Label>
+                    <Input
+                      type="number"
+                      min={20}
+                      max={90}
+                      value={customDurationMin}
+                      onChange={(e) =>
+                        setCustomDurationMin(
+                          Math.min(90, Math.max(20, parseInt(e.target.value, 10) || 20)),
+                        )
+                      }
+                      className="h-10 bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label className="text-sm font-medium text-gray-700">Breaks</Label>
+                    <div className="flex gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={customPeriodCount < 2}
+                        onClick={() => addCustomBreak('short')}
+                      >
+                        + Short break
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={customPeriodCount < 2}
+                        onClick={() => addCustomBreak('lunch')}
+                      >
+                        + Lunch
+                      </Button>
+                    </div>
+                  </div>
+                  {customBreaks.length === 0 ? (
+                    <p className="text-xs text-gray-500">
+                      Optional. Add short breaks or lunch between periods — they become time gaps, not schedule columns.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {customBreaks.map((b) => (
+                        <div
+                          key={b.id}
+                          className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-white p-2.5"
+                        >
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 uppercase">Type</span>
+                            <Select
+                              value={b.type}
+                              onValueChange={(v) =>
+                                setCustomBreaks((prev) =>
+                                  prev.map((x) =>
+                                    x.id === b.id
+                                      ? {
+                                          ...x,
+                                          type: v as TemplateBreakType,
+                                          durationMin:
+                                            v === 'lunch' && x.durationMin < 25
+                                              ? 30
+                                              : v === 'short' && x.durationMin >= 25
+                                                ? 10
+                                                : x.durationMin,
+                                        }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-[120px] text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="short">Short break</SelectItem>
+                                <SelectItem value="lunch">Lunch</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 uppercase">After period</span>
+                            <Select
+                              value={String(b.afterPeriod)}
+                              onValueChange={(v) =>
+                                setCustomBreaks((prev) =>
+                                  prev.map((x) =>
+                                    x.id === b.id
+                                      ? { ...x, afterPeriod: parseInt(v, 10) }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-[90px] text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Array.from(
+                                  { length: Math.max(0, customPeriodCount - 1) },
+                                  (_, i) => i + 1,
+                                ).map((n) => (
+                                  <SelectItem key={n} value={String(n)}>
+                                    {n}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 uppercase">Minutes</span>
+                            <Input
+                              type="number"
+                              min={5}
+                              max={120}
+                              className="h-8 w-20 text-xs"
+                              value={b.durationMin}
+                              onChange={(e) =>
+                                setCustomBreaks((prev) =>
+                                  prev.map((x) =>
+                                    x.id === b.id
+                                      ? {
+                                          ...x,
+                                          durationMin: Math.min(
+                                            120,
+                                            Math.max(5, parseInt(e.target.value, 10) || 5),
+                                          ),
+                                        }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:bg-red-50"
+                            onClick={() =>
+                              setCustomBreaks((prev) => prev.filter((x) => x.id !== b.id))
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-gray-100 bg-white p-3">
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Day preview
+                  </p>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {customDayPreview.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center justify-between text-xs px-2 py-1 rounded ${
+                          item.kind === 'break'
+                            ? 'bg-amber-50 text-amber-800'
+                            : 'text-gray-700'
+                        }`}
+                      >
+                        <span className="font-medium flex items-center gap-1.5">
+                          {item.kind === 'break' && <Coffee className="h-3 w-3" />}
+                          {item.label}
+                        </span>
+                        <span className="font-mono tabular-nums text-gray-500">{item.range}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  className="w-full h-9 bg-violet-600 hover:bg-violet-700"
+                  onClick={handleApplyCustomTemplate}
+                >
+                  Apply custom template
+                </Button>
+              </div>
+            )}
+
             {/* Existing Periods */}
             <div>
               <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Current Periods</p>
@@ -2556,7 +3253,7 @@ export default function ClassSchedulingPage() {
                             <div key={`break-${i}`} className="flex items-center justify-between px-4 py-2 bg-amber-50/60">
                               <div className="flex items-center gap-2 text-amber-700">
                                 <Coffee className="h-3.5 w-3.5" />
-                                <span className="text-xs font-medium">Break · {diffMin} min</span>
+                                <span className="text-xs font-medium">{breakLabelForGap(diffMin)}</span>
                               </div>
                               <span className="text-xs font-mono text-amber-600">
                                 {formatTime(sorted[i-1].end_time)} – {formatTime(sorted[i].start_time)}
@@ -2580,7 +3277,32 @@ export default function ClassSchedulingPage() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1.5 border-r border-gray-200 pr-3 mr-1">
+                            <div className="flex flex-wrap items-center gap-1.5 border-r border-gray-200 pr-3 mr-1">
+                              {[
+                                { label: '10', min: 10 },
+                                { label: '15', min: 15 },
+                                { label: '30', min: 30 },
+                                { label: '40', min: 40 },
+                              ].map((chip) => (
+                                <Button
+                                  key={chip.min}
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className={`h-7 text-[10px] px-1.5 ${
+                                    chip.min >= 25
+                                      ? 'text-amber-700 border-amber-200 hover:bg-amber-50'
+                                      : 'text-gray-600'
+                                  }`}
+                                  title={chip.min >= 25 ? `Lunch ${chip.min}m` : `Short ${chip.min}m`}
+                                  onClick={() => handleInsertBreak(period.id, chip.min)}
+                                  disabled={
+                                    !sorted.some((p) => p.period_number > period.period_number)
+                                  }
+                                >
+                                  {chip.min >= 25 ? `L${chip.min}` : `S${chip.min}`}
+                                </Button>
+                              ))}
                               <Input
                                 type="number"
                                 placeholder="min"
@@ -2974,14 +3696,42 @@ export default function ClassSchedulingPage() {
                 <ClipboardCopy className="h-4 w-4 text-indigo-600" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">Copy Entire Day</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Clone all of <span className="font-medium text-gray-700">{sourceDayToCopy}</span>&apos;s schedules to other days</p>
+                <h2 className="text-sm font-semibold text-gray-900">Copy entire day</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Copy all periods from{' '}
+                  <span className="font-medium text-gray-700">{sourceDayToCopy}</span>
+                  {' '}(
+                  {schedules.filter((s) => s.day_of_week === sourceDayToCopy && s.is_active).length}{' '}
+                  class
+                  {schedules.filter((s) => s.day_of_week === sourceDayToCopy && s.is_active).length === 1
+                    ? ''
+                    : 'es'}
+                  ) to the day(s) you select
+                </p>
               </div>
             </div>
           </div>
 
           <div className="px-6 py-5 space-y-4">
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Select Target Days</p>
+            {(() => {
+              const next = sourceDayToCopy
+                ? getNextOperatingDay(sourceDayToCopy, schoolOperatingDays)
+                : null;
+              return next && next !== sourceDayToCopy ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                  onClick={() => setTargetDays([next])}
+                >
+                  <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
+                  Use next day ({next})
+                </Button>
+              ) : null;
+            })()}
+
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Select target day(s)</p>
             <div className="grid grid-cols-2 gap-2">
               {DAYS_OF_WEEK.filter(d => d !== sourceDayToCopy && schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).map(day => {
                 const selected = targetDays.includes(day);
@@ -3033,7 +3783,11 @@ export default function ClassSchedulingPage() {
             <Button variant="outline" className="h-9" onClick={() => setCopyDayDialogOpen(false)}>Cancel</Button>
             <Button className="h-9 bg-indigo-600 hover:bg-indigo-700" onClick={handleCopyEntireDay} disabled={targetDays.length === 0 || isCopying}>
               {isCopying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ClipboardCopy className="h-4 w-4 mr-2" />}
-              {copyResults ? 'Clone Again' : `Clone to ${targetDays.length || '?'} Day${targetDays.length !== 1 ? 's' : ''}`}
+              {copyResults
+                ? 'Copy again'
+                : targetDays.length === 1
+                  ? `Copy all to ${targetDays[0]}`
+                  : `Copy all to ${targetDays.length || '?'} days`}
             </Button>
           </div>
         </DialogContent>
@@ -3082,7 +3836,31 @@ export default function ClassSchedulingPage() {
                 )}
                 <div className="rounded-xl border border-gray-100 overflow-hidden divide-y divide-gray-50 max-h-72 overflow-y-auto">
                   {teachersWithSchedules.length === 0 ? (
-                    <div className="py-10 text-center text-sm text-gray-400">No teachers with active schedules</div>
+                    <div className="py-8 px-4 text-center space-y-3">
+                      <p className="text-sm text-gray-600 font-medium">
+                        {unassignedActiveSchedules.length > 0
+                          ? `${unassignedActiveSchedules.length} class${unassignedActiveSchedules.length === 1 ? '' : 'es'} have no teacher assigned`
+                          : 'No teachers with active schedules'}
+                      </p>
+                      <p className="text-xs text-gray-400 leading-relaxed">
+                        {unassignedActiveSchedules.length > 0
+                          ? 'Push only notifies teachers linked to a class. Assign teachers on the grid (or use auto-assign), then try again.'
+                          : 'Add classes with a teacher selected, then push their weekly schedule.'}
+                      </p>
+                      {unassignedActiveSchedules.length > 0 && teachers.length > 0 && (
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                          disabled={isAutoAssigning}
+                          onClick={() => void handleAutoAssignTeachers()}
+                        >
+                          {isAutoAssigning ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                          ) : null}
+                          Auto-assign teachers
+                        </Button>
+                      )}
+                    </div>
                   ) : teachersWithSchedules.map((teacher: Teacher) => {
                     const count = schedules.filter(s => s.teacher_id === teacher.id && s.is_active).length;
                     const selected = selectedTeachersToPush.includes(teacher.id);
