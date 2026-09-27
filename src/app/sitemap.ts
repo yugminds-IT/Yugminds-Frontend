@@ -67,12 +67,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   if (brand === "robocoders") return mapRoutes(origin, ROBOCODERS_ROUTES);
   if (brand === "lms") return mapRoutes(origin, LMS_ROUTES);
-
-  // yugminds.org is the master sitemap: all three brands at their canonical hosts.
-  // Cross-host URLs are accepted once the yugminds.org Domain property is verified in Search Console.
-  return [
-    ...mapRoutes(origin, YUGMINDS_ROUTES),
-    ...mapRoutes(BRAND_ORIGINS.robocoders, ROBOCODERS_ROUTES),
-    ...mapRoutes(BRAND_ORIGINS.lms, LMS_ROUTES),
-  ];
+  return mapRoutes(origin, YUGMINDS_ROUTES);
 }
