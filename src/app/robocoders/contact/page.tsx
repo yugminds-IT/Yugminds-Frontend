@@ -11,6 +11,8 @@ import { Textarea } from "../../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import Footer from "../../../components/Footer";
 import { Reveal, HoverLift } from "../../../components/public/robo-motion";
+import { RoboBreadcrumbs } from "../../../components/seo/JsonLd";
+import Link from "next/link";
 import { commonApi } from "../../../lib/api";
 import { toast } from "../../../components/ui/toast";
 import { 
@@ -95,10 +97,15 @@ export default function ContactPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Top Navigation */}
+      <RoboBreadcrumbs
+        crumbs={[
+          { name: "RoboCoders", path: "/" },
+          { name: "Contact", path: "/contact" },
+        ]}
+      />
 
       {/* Combined Get in Touch & Find Us Section */}
-      <section className="min-h-screen flex flex-col m-0">
+      <section className="min-h-screen flex flex-col m-0 pt-2">
         {/* Get in Touch Section */}
         <div className="flex-1 flex items-start justify-center bg-gray-50 flex-shrink-0 py-8 md:py-12 min-h-0">
           <div className="container w-full py-4 md:py-6">
@@ -107,7 +114,16 @@ export default function ContactPage() {
                 Get in <span className="text-blue-600">Touch</span>
               </h1>
               <p className="text-sm md:text-base lg:text-lg text-gray-700 mb-4 md:mb-6 max-w-2xl mx-auto leading-relaxed text-center">
-                Have questions? We&apos;d love to hear from you. Send us a message and we&apos;ll respond as soon as possible.
+                Have questions about school partnerships, parent enrollment, or our programs?
+                Send us a message and we&apos;ll respond as soon as possible. You can also explore{" "}
+                <Link href="/robocoders/programs" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                  our programs
+                </Link>{" "}
+                or{" "}
+                <Link href="/robocoders/for-schools" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                  school partnerships
+                </Link>
+                .
               </p>
             </Reveal>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">

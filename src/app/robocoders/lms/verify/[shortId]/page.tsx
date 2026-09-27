@@ -16,6 +16,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import { BRAND_ORIGINS, getVerifyCertUrl } from "@/lib/brand-host";
 
 interface CertInfo {
   id: string;
@@ -126,7 +127,7 @@ export default function RobocodersVerifyCertificatePage() {
             </div>
 
             <div className="px-6 pb-6">
-              <Link href="https://yugminds.com/robocoders" target="_blank" rel="noopener noreferrer">
+              <Link href={BRAND_ORIGINS.robocoders} target="_blank" rel="noopener noreferrer">
                 <button className="w-full py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors">
                   <ExternalLink className="h-4 w-4" /> Visit Robocoders
                 </button>
@@ -154,7 +155,7 @@ export default function RobocodersVerifyCertificatePage() {
               {errorMsg && <p className="text-xs text-gray-400">{errorMsg}</p>}
             </div>
             <div className="px-6 pb-6">
-              <Link href={`/robocoders/lms/verify/${shortId}`}>
+              <Link href={getVerifyCertUrl(shortId)}>
                 <button className="w-full py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium transition-colors">
                   Try again
                 </button>
@@ -233,7 +234,7 @@ export default function RobocodersVerifyCertificatePage() {
             </div>
 
             <div className="px-6 pb-6">
-              <Link href="/robocoders/lms/verify">
+              <Link href={getVerifyCertUrl()}>
                 <button className="w-full py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium transition-colors">
                   Try another certificate
                 </button>
@@ -245,7 +246,7 @@ export default function RobocodersVerifyCertificatePage() {
         {/* Footer */}
         <p className="text-center text-xs text-gray-400 mt-6">
           Certificates issued by Robocoders · Yugminds Education Platform ·{" "}
-          <Link href="/lms/login" className="underline hover:text-gray-600">Sign in</Link>
+          <Link href={`${BRAND_ORIGINS.lms}/lms/login`} className="underline hover:text-gray-600">Sign in</Link>
         </p>
       </div>
     </div>

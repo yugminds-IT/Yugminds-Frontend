@@ -1,5 +1,6 @@
 import Footer from "@/components/Footer";
 import { CommunityPageContent } from "@/components/public/community/CommunityPageContent";
+import { RoboBreadcrumbs } from "@/components/seo/JsonLd";
 import { apiClient } from "@/lib/api";
 import type { CommunityPageData } from "@/lib/community-types";
 
@@ -43,6 +44,12 @@ export default async function CommunityPage() {
 
   return (
     <div className="min-h-screen bg-white">
+      <RoboBreadcrumbs
+        crumbs={[
+          { name: "RoboCoders", path: "/" },
+          { name: "Community", path: "/community" },
+        ]}
+      />
       <CommunityPageContent data={data} />
       <Footer />
     </div>

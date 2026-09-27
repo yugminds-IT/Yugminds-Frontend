@@ -19,8 +19,23 @@ type RefreshableAxiosRequestConfig = AxiosRequestConfig & {
   _retry?: boolean;
 };
 
-const getBaseURL = (): string => {
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+/**
+ * In the browser, a base pointing at this app's own `/api` proxy is rewritten to
+ * the current origin, so yugminds.org / robocoders.* / lms.* each call their own
+ * host and keep host-scoped auth cookies. Server-side keeps the absolute URL.
+ */
+export const getBaseURL = (): string => {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+  if (typeof window === 'undefined') return base;
+  try {
+    const { pathname } = new URL(base, window.location.origin);
+    if (pathname === '/api' || pathname.startsWith('/api/')) {
+      return `${window.location.origin}${pathname.replace(/\/$/, '')}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  return base;
 };
 
 export const apiClient: AxiosInstance = axios.create({

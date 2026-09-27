@@ -4,46 +4,48 @@ import "./globals.css";
 import QueryProvider from "../components/providers/QueryProvider";
 import SuppressPromiseWarnings from "../components/SuppressPromiseWarnings";
 import { StructuredData } from "../components/StructuredData";
+import {
+  buildBrandMetadata,
+  metadataBaseForRequest,
+  readInternalPathname,
+  resolveRequestBrand,
+} from "../lib/brand-metadata";
 
 const abeezee = ABeeZee({
   weight: ["400"],
   subsets: ["latin"],
   variable: "--font-abeezee",
+  display: "swap",
+  preload: true,
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_APP_URL ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-  "https://website-lms-seven.vercel.app";
-
-export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl ?? "https://website-lms-seven.vercel.app"),
-  title: "Robo Coders™ - Empowering the Next Generation with STEM Education",
-  description:
-    "Join Robo Coders™ and discover the exciting world of AI, robotics, and programming. An EdTech initiative by YugMinds, empowering students with cutting-edge STEM education.",
-  keywords: ["Robo Coders", "STEM education", "YugMinds", "robotics", "coding", "programming", "students", "EdTech"],
-  openGraph: {
-    title: "Robo Coders™ - Empowering the Next Generation with STEM Education",
-    description:
-      "Join Robo Coders™ and discover the exciting world of AI, robotics, and programming. An EdTech initiative by YugMinds.",
-    url: "/",
-    siteName: "Robo Coders™",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Robo Coders™ - STEM Education by YugMinds",
-    description: "Empowering students with AI, robotics, and programming.",
-  },
-  alternates: { canonical: "/" },
-  icons: {
-    icon: [
-      { url: "/icon.png", type: "image/png", sizes: "32x32" },
-      { url: "/favicon.ico", sizes: "any" },
-    ],
-    apple: "/apple-icon.png",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await resolveRequestBrand();
+  const pathname = await readInternalPathname();
+  if (brand !== "yugminds") {
+    return {
+      metadataBase: await metadataBaseForRequest(),
+      icons: {
+        icon: [
+          { url: "/icon.png", type: "image/png", sizes: "32x32" },
+          { url: "/favicon.ico", sizes: "any" },
+        ],
+        apple: "/apple-icon.png",
+      },
+    };
+  }
+  const meta = await buildBrandMetadata("yugminds", pathname === "/" ? "/" : pathname);
+  return {
+    ...meta,
+    icons: {
+      icon: [
+        { url: "/icon.png", type: "image/png", sizes: "32x32" },
+        { url: "/favicon.ico", sizes: "any" },
+      ],
+      apple: "/apple-icon.png",
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -65,9 +67,7 @@ export default function RootLayout({
       >
         <StructuredData />
         <SuppressPromiseWarnings />
-        <QueryProvider>
-          {children}
-        </QueryProvider>
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
   );

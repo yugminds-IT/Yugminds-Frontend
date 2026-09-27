@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Megaphone, X } from "lucide-react";
+import { getBaseURL } from "@/lib/api/axios";
 
 interface Announcement {
   enabled: boolean;
@@ -28,8 +29,7 @@ export default function AnnouncementBanner() {
 
   useEffect(() => {
     let cancelled = false;
-    const base = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001").replace(/\/$/, "");
-    fetch(`${base}/system-status`)
+    fetch(`${getBaseURL().replace(/\/$/, "")}/system-status`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { announcement?: Announcement } | null) => {
         if (cancelled || !data?.announcement?.enabled || !data.announcement.text) return;

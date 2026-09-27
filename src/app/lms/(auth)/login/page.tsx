@@ -226,6 +226,16 @@
          </div>
        )}
        <SignInPage
+         title={
+           <span className="font-semibold text-foreground tracking-tight">
+             Welcome to RoboCoders LMS
+           </span>
+         }
+         description={
+           <span className="text-muted-foreground">
+             Sign in to access your courses, assignments, and certificates.
+           </span>
+         }
          onSignIn={handleSignIn}
          testimonials={sampleTestimonials}
          onResetPassword={handleResetPassword}

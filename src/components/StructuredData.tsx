@@ -1,55 +1,145 @@
 /**
- * JSON-LD structured data for search engines (Google sitelinks, rich results).
- * WebSite + Organization help Google show your site name, logo, and sitelinks.
+ * JSON-LD structured data — host/path aware per brand.
  */
 
-const siteName = "Robo Coders™";
-const siteDescription =
-  "Empowering the Next Generation with STEM Education. An EdTech initiative by YugMinds – AI, robotics, and programming for students.";
+import {
+  BRAND_ORIGINS,
+  resolveBrand,
+} from "../lib/brand-host";
+import {
+  readInternalPathname,
+  readRequestHost,
+} from "../lib/brand-metadata";
 
-function getBaseUrl(): string {
-  const url =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-    "https://website-lms-seven.vercel.app";
-  return url.replace(/\/$/, "");
-}
+export async function StructuredData() {
+  const hostname = await readRequestHost();
+  const pathname = await readInternalPathname();
+  const brand = resolveBrand(hostname, pathname);
 
-export function StructuredData() {
-  const cleanBase = getBaseUrl();
+  if (brand === "yugminds") {
+    const url = BRAND_ORIGINS.yugminds;
+    const organization = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "YugMinds",
+      url,
+      logo: `${url}/icon.png`,
+      description:
+        "YugMinds builds software, electronics, and machines under one roof — and teaches the next generation through RoboCoders STEM programs.",
+    };
+    const website = {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "YugMinds",
+      url,
+      publisher: { "@type": "Organization", name: "YugMinds", url },
+    };
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organization) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }}
+        />
+      </>
+    );
+  }
 
-  const website = {
+  if (brand === "robocoders") {
+    const url = BRAND_ORIGINS.robocoders;
+    const organization = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "RoboCoders",
+      url,
+      logo: `${url}/icon.png`,
+      description:
+        "RoboCoders — STEM education in AI, robotics, and programming. An EdTech initiative by YugMinds.",
+      parentOrganization: {
+        "@type": "Organization",
+        name: "YugMinds",
+        url: BRAND_ORIGINS.yugminds,
+      },
+    };
+    const website = {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "RoboCoders",
+      url,
+      description:
+        "Empowering the next generation with STEM education — AI, robotics, and programming.",
+      publisher: organization,
+    };
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organization) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }}
+        />
+      </>
+    );
+  }
+
+  // LMS — WebApplication on login (and siblings under LMS host / path)
+  const loginUrl = `${BRAND_ORIGINS.lms}/lms/login`;
+  const webApp = {
     "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: siteName,
-    description: siteDescription,
-    url: cleanBase,
-    potentialAction: {
-      "@type": "SearchAction",
-      target: { "@type": "EntryPoint", urlTemplate: `${cleanBase}/programs?q={search_term_string}` },
-      "query-input": "required name=search_term_string",
+    "@type": "WebApplication",
+    name: "RoboCoders LMS",
+    url: loginUrl,
+    applicationCategory: "EducationalApplication",
+    operatingSystem: "Web",
+    description:
+      "RoboCoders LMS — the learning platform for RoboCoders courses, used by schools, teachers, and students.",
+    provider: {
+      "@type": "Organization",
+      name: "RoboCoders",
+      url: BRAND_ORIGINS.robocoders,
+      parentOrganization: {
+        "@type": "Organization",
+        name: "YugMinds",
+        url: BRAND_ORIGINS.yugminds,
+      },
+    },
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "INR",
     },
   };
 
-  const organization = {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    name: "YugMinds",
-    url: cleanBase,
-    logo: `${cleanBase}/icon.png`,
-    description: siteDescription,
-  };
+  if (pathname === "/lms/login" || pathname.endsWith("/login")) {
+    return (
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(webApp) }}
+      />
+    );
+  }
 
+  // Other LMS pages: light WebPage only (dashboards are noindex)
+  const webPage = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: "RoboCoders LMS",
+    url: BRAND_ORIGINS.lms,
+    isPartOf: {
+      "@type": "WebApplication",
+      name: "RoboCoders LMS",
+      url: loginUrl,
+    },
+  };
   return (
-    <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(organization) }}
-      />
-    </>
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(webPage) }}
+    />
   );
 }

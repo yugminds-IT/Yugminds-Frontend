@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { BRAND_ORIGINS, ROBOCODERS_HOST, brandFromHostname, normalizeHost } from "../lib/brand-host";
 
 /* `editorial` matches the public landing page's cream/ink/blue theme.
    Everything else (Robocoders pages) keeps the original blue pill. */
@@ -15,13 +16,20 @@ export default function BrandSwitcherBar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [onRobocodersHost, setOnRobocodersHost] = useState(false);
   const isRobocoders =
-    pathname === "/robocoders" || pathname.startsWith("/robocoders/");
+    onRobocodersHost ||
+    pathname === "/robocoders" ||
+    pathname.startsWith("/robocoders/");
 
   const [atTop, setAtTop] = useState(true);
   // local, optimistic toggle state so the thumb slides instantly on click,
   // ahead of (and independent from) the route change that follows it.
   const [active, setActive] = useState(isRobocoders);
+
+  useEffect(() => {
+    setOnRobocodersHost(normalizeHost(window.location.host) === ROBOCODERS_HOST);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setAtTop(window.scrollY < 10);
@@ -33,11 +41,18 @@ export default function BrandSwitcherBar({
     setActive(isRobocoders);
   }, [isRobocoders]);
 
-  const handleToggle = (target: boolean, href: string) => {
+  const handleToggle = (target: boolean, pathHref: string) => {
     if (target === active) return;
     setActive(target);
-    // let the thumb finish its slide before the page actually navigates
-    window.setTimeout(() => router.push(href), 260);
+    window.setTimeout(() => {
+      if (brandFromHostname(window.location.host)) {
+        window.location.href = target
+          ? BRAND_ORIGINS.robocoders
+          : BRAND_ORIGINS.yugminds;
+        return;
+      }
+      router.push(pathHref);
+    }, 260);
   };
 
   const round = editorial ? "rounded-none" : "rounded-full";

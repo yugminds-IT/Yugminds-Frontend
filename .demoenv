@@ -1,0 +1,53 @@
+# ─── Production frontend (Coolify) ───────────────────────────────────────────
+# One app serves all three brands. Coolify → Domains:
+#   https://yugminds.org,https://www.yugminds.org,https://robocoders.yugminds.org,https://lms.yugminds.org
+#
+# Hostinger DNS (A records → 200.97.175.125): @, www, robocoders, lms, api
+#
+# Routing (middleware.ts, no extra config needed):
+#   yugminds.org              → YugMinds home        (www → 308 to apex)
+#   robocoders.yugminds.org   → /robocoders/* pages with clean URLs (/about, /programs…)
+#   lms.yugminds.org          → / redirects to /lms/login; dashboards at /lms/*
+#   yugminds.org/robocoders/* and /lms/* → 308 to the matching subdomain
+#
+# NEXT_PUBLIC_* values are baked in at build time — mark them "Build Variable" in Coolify.
+
+NODE_ENV=production
+
+# Root brand host; fallback for absolute URLs (canonicals on unknown hosts, etc.)
+NEXT_PUBLIC_APP_URL=https://yugminds.org
+
+# This app's own /api proxy. In the browser it is rewritten to the current host,
+# so robocoders.* and lms.* each call their own /api (keeps auth cookies per host).
+NEXT_PUBLIC_API_BASE_URL=https://yugminds.org/api
+
+# NestJS backend (server-side proxy target)
+BACKEND_URL=https://api.yugminds.org
+
+# NestJS origin for Socket.io (browser connects directly; must be public)
+NEXT_PUBLIC_REALTIME_URL=https://api.yugminds.org
+
+# Must match the backend JWT_ACCESS_SECRET exactly
+JWT_ACCESS_SECRET=REPLACE_WITH_SAME_VALUE_AS_BACKEND
+
+# Number of reverse proxies in front of the app (Coolify Traefik = 1)
+TRUSTED_PROXY_HOPS=1
+
+# Redis (same instance as backend)
+REDIS_URL=redis://default:REPLACE_PASSWORD@REPLACE_REDIS_HOST:6379/0
+REDIS_ENABLED=true
+
+# Admin user
+ADMIN_EMAIL=admin@yugminds.org
+ADMIN_PASSWORD=REPLACE_WITH_STRONG_PASSWORD
+ADMIN_FULL_NAME=YugMinds Admin
+
+# Contact form email
+EMAIL_USER=REPLACE_EMAIL@gmail.com
+EMAIL_PASS=REPLACE_APP_PASSWORD
+
+# Scheduled tasks
+CRON_SECRET=REPLACE_WITH_openssl_rand_hex_32
+
+# Optional error tracking
+NEXT_PUBLIC_SENTRY_DSN=

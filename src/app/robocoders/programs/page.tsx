@@ -6,6 +6,7 @@ import Footer from "../../../components/Footer";
 import Book3DModal from "../../../components/Book3DModal";
 import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
 import { level1KidsTextBook, level1TextBook, level2TextBook } from "../../../data/books";
+import { JsonLd, RoboBreadcrumbs, courseListJsonLd } from "../../../components/seo/JsonLd";
 import {
   Code,
   Cpu,
@@ -76,16 +77,30 @@ export default function ProgramsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Top Navigation */}
+      <JsonLd
+        data={courseListJsonLd(
+          programs.map((p) => ({
+            name: p.title,
+            description: p.description,
+            audience: "Students ages 6–18",
+          })),
+        )}
+      />
+      <RoboBreadcrumbs
+        crumbs={[
+          { name: "RoboCoders", path: "/" },
+          { name: "Programs", path: "/programs" },
+        ]}
+      />
 
       {/* 1. Programs Section — thin white strip for navbar, then white heading + cards */}
       <section className="flex flex-col">
 
         {/* White strip — only tall enough for the fixed navbar */}
-        <div className="bg-white h-20" />
+        <div className="bg-white h-4" />
 
         {/* White: heading + cards */}
-        <div className="bg-white pt-16 pb-16 px-4">
+        <div className="bg-white pt-8 pb-16 px-4">
           <div className="container">
 
             {/* Heading */}
@@ -95,7 +110,15 @@ export default function ProgramsPage() {
                   Our <span className="text-blue-600">Programs</span>
                 </h1>
                 <p className="text-lg md:text-xl lg:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-                  Discover the perfect STEM learning journey for every student, from coding basics to advanced AI and robotics.
+                  Discover the perfect STEM learning journey for every student, from coding basics to
+                  advanced AI and robotics.{" "}
+                  <Link href="/robocoders/for-schools" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                    For schools
+                  </Link>
+                  {" · "}
+                  <Link href="/robocoders/for-parents" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                    For parents
+                  </Link>
                 </p>
               </div>
             </Reveal>
@@ -354,6 +377,8 @@ export default function ProgramsPage() {
                 loop
                 muted
                 playsInline
+                title="RoboCoders robotics kit demo for school STEM classes"
+                aria-label="RoboCoders robotics kit demo for school STEM classes"
                 className="w-full h-auto"
               >
                 Your browser does not support the video tag.

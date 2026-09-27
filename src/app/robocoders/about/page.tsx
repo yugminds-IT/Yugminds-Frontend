@@ -4,6 +4,7 @@ import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
 import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
+import { RoboBreadcrumbs } from "../../../components/seo/JsonLd";
 import {
   Target,
   Eye,
@@ -86,10 +87,15 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Top Navigation */}
+      <RoboBreadcrumbs
+        crumbs={[
+          { name: "RoboCoders", path: "/" },
+          { name: "About", path: "/about" },
+        ]}
+      />
 
       {/* Combined Hero & Mission & Vision Section */}
-      <section className="min-h-screen flex flex-col justify-center bg-gray-50 py-20">
+      <section className="min-h-screen flex flex-col justify-center bg-gray-50 py-12 md:py-20">
         <div className="container flex-1 flex flex-col justify-center py-8 md:py-12">
           {/* Hero Content */}
           <Reveal>
@@ -98,7 +104,16 @@ export default function AboutPage() {
                 About <span className="text-blue-600">Robo Coders™</span>
               </h1>
               <p className="text-lg md:text-xl lg:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-                Transforming education through innovative coding and robotics programs powered by Yugminds
+                Transforming education through innovative coding and robotics programs powered by YugMinds.
+                Explore our{" "}
+                <Link href="/robocoders/programs" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                  programs
+                </Link>{" "}
+                or{" "}
+                <Link href="/robocoders/contact" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                  get in touch
+                </Link>
+                .
               </p>
             </div>
           </Reveal>
@@ -167,7 +182,7 @@ export default function AboutPage() {
             <RevealX x={48} className="rounded-2xl overflow-hidden bg-gray-100 aspect-[4/3] relative max-h-[600px] shadow-2xl">
               <Image
                 src={`/${encodeURI('About Us.jpg')}`}
-                alt="Students learning robotics and coding"
+                alt="Students learning robotics and coding with RoboCoders"
                 fill
                 className="object-cover max-w-full max-h-full hover:scale-105 transition-transform duration-700"
                 sizes="(max-width: 768px) 100vw, 50vw"

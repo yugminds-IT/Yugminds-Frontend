@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { adminApi } from "@/lib/api/admin.api";
+import { getVerifyCertUrl } from "@/lib/brand-host";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
 import {
@@ -735,7 +736,7 @@ export default function AdminCertificatesPage() {
                                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Download" onClick={() => handleDownload(cert)}>
                                     <Download className="h-3.5 w-3.5" />
                                   </Button>
-                                  <a href={`/robocoders/lms/verify/${cert.short_id}`} target="_blank" rel="noopener noreferrer" title="Public verify link">
+                                  <a href={getVerifyCertUrl(cert.short_id)} target="_blank" rel="noopener noreferrer" title="Public verify link">
                                     <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-blue-600">
                                       <ExternalLink className="h-3.5 w-3.5" />
                                     </Button>
@@ -799,7 +800,7 @@ export default function AdminCertificatesPage() {
                 <p className="text-xs text-gray-500 mt-0.5">{previewCert.student_name} · {previewCert.course_title}</p>
               </div>
               <div className="flex gap-2">
-                <a href={`/robocoders/lms/verify/${previewCert.short_id}`} target="_blank" rel="noopener noreferrer">
+                <a href={getVerifyCertUrl(previewCert.short_id)} target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" size="sm">
                     <ExternalLink className="h-4 w-4 mr-1" /> Verify Link
                   </Button>

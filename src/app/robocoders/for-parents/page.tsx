@@ -5,6 +5,7 @@ import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
 import FAQAccordion from "../../../components/FAQAccordion";
 import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
+import { JsonLd, RoboBreadcrumbs, faqPageJsonLd } from "../../../components/seo/JsonLd";
 import { 
   BookOpen,
   Rocket,
@@ -102,13 +103,21 @@ export default function ForParentsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Top Navigation */}
+      <JsonLd data={faqPageJsonLd(faqs)} />
+      <RoboBreadcrumbs
+        crumbs={[
+          { name: "RoboCoders", path: "/" },
+          { name: "For Parents", path: "/for-parents" },
+        ]}
+      />
 
       {/* Hero Section */}
-      <section className="min-h-screen flex items-center relative overflow-hidden pt-24 lg:pt-20">
+      <section className="min-h-[90vh] flex items-center relative overflow-hidden pt-8 lg:pt-6">
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
           style={{ backgroundImage: `url('/${encodeURI('Doodle icon robotics , coding background.png')}')`, opacity: 0.1 }}
+          role="presentation"
+          aria-hidden="true"
         />
         <div className="w-full relative z-10">
           <div className="flex flex-col lg:flex-row items-center lg:items-center gap-0">
@@ -121,15 +130,24 @@ export default function ForParentsPage() {
                   <span className="block lg:whitespace-nowrap">in <span className="text-blue-600">Technology</span></span>
                 </h1>
                 <p className="mt-6 text-gray-700 text-lg md:text-xl lg:text-2xl leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                  Robo Coders™ helps children develop critical 21st-century skills through engaging coding and robotics programs. Join thousands of parents who trust us with their child&apos;s future.
+                  Robo Coders™ helps children develop critical 21st-century skills through engaging
+                  coding and robotics programs. See our{" "}
+                  <Link href="/robocoders/programs" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                    programs
+                  </Link>{" "}
+                  or{" "}
+                  <Link href="/robocoders/contact" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                    contact us to enroll
+                  </Link>
+                  .
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                  <Link href="/contact" className="w-full sm:w-auto">
+                  <Link href="/robocoders/contact" className="w-full sm:w-auto">
                     <Button size="lg" className="w-full sm:w-auto px-8 text-lg bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/25 group">
                       Book Free Trial Class <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
                     </Button>
                   </Link>
-                  <Link href="/programs" className="w-full sm:w-auto">
+                  <Link href="/robocoders/programs" className="w-full sm:w-auto">
                     <Button variant="outline" className="w-full sm:w-auto px-8 text-lg border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full" size="lg">
                       View Programs
                     </Button>
@@ -141,7 +159,8 @@ export default function ForParentsPage() {
             <RevealX x={48} className="w-full lg:w-[45%] xl:w-[50%] relative h-[300px] sm:h-[400px] md:h-[450px] lg:h-[calc(100vh-8rem)] lg:min-h-[480px] lg:max-h-[820px] rounded-none lg:rounded-l-[61px] overflow-hidden bg-white shadow-2xl">
               <Image
                 src="/child-making-robot.jpg"
-                alt="Child Learning STEM Activity"
+                alt="Child learning STEM with RoboCoders"
+
                 fill
                 sizes="(max-width: 1023px) 100vw, (max-width: 1279px) 45vw, 50vw"
                 className="object-cover max-w-full max-h-full"
@@ -204,7 +223,8 @@ export default function ForParentsPage() {
               <RevealX x={48} className="bg-gray-100 rounded-2xl aspect-video relative overflow-hidden max-h-[600px] shadow-xl">
                 <Image
                   src="/Kids Dong Robotics.png"
-                  alt="Students Learning Robotics Activity"
+                  alt="Students learning robotics with RoboCoders"
+
                   fill
                   className="object-cover max-w-full max-h-full hover:scale-105 transition-transform duration-700"
                   sizes="(max-width: 768px) 100vw, 50vw"
@@ -246,7 +266,7 @@ export default function ForParentsPage() {
                       </li>
                     ))}
                   </ul>
-                  <Link href="/contact">
+                  <Link href="/robocoders/contact">
                     <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-transform hover:scale-105">
                       Get Started
                     </Button>
@@ -281,7 +301,7 @@ export default function ForParentsPage() {
           <p className="text-blue-100 mb-6 md:mb-8 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
             Give your child the gift of future-ready skills. Join thousands of families who&apos;ve chosen Robo Coders™ for their child&apos;s technology education.
           </p>
-          <Link href="/contact">
+          <Link href="/robocoders/contact">
             <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 rounded-full shadow-lg transition-transform hover:scale-105 group">
               Start Enrollment <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Button>

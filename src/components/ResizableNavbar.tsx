@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../lib/utils";
 import { motion } from "framer-motion";
+import { BRAND_ORIGINS, ROBOCODERS_HOST, brandFromHostname, normalizeHost } from "../lib/brand-host";
 import {
   Navbar,
   NavBody,
@@ -17,24 +18,38 @@ import {
   MobileNavMenu,
 } from "./ui/resizable-navbar";
 
+const PATH_NAV = [
+  { name: "Home", link: "/robocoders", exact: true, publicPath: "/" },
+  { name: "About Us", link: "/robocoders/about", publicPath: "/about" },
+  { name: "Our Programs", link: "/robocoders/programs", publicPath: "/programs" },
+  { name: "Community", link: "/robocoders/community", publicPath: "/community" },
+  { name: "For Schools", link: "/robocoders/for-schools", publicPath: "/for-schools" },
+  { name: "For Parents", link: "/robocoders/for-parents", publicPath: "/for-parents" },
+  { name: "Contact Us", link: "/robocoders/contact", publicPath: "/contact" },
+];
+
 export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetForBrandBar?: boolean }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [onRobocodersHost, setOnRobocodersHost] = useState(false);
+  const [lmsLoginHref, setLmsLoginHref] = useState("/lms/login");
   const pathname = usePathname();
 
-  const navItems = [
-    { name: "Home", link: "/robocoders", exact: true },
-    { name: "About Us", link: "/robocoders/about" },
-    { name: "Our Programs", link: "/robocoders/programs" },
-    { name: "Community", link: "/robocoders/community" },
-    { name: "For Schools", link: "/robocoders/for-schools" },
-    { name: "For Parents", link: "/robocoders/for-parents" },
-    { name: "Contact Us", link: "/robocoders/contact" },
-  ];
+  useEffect(() => {
+    const host = normalizeHost(window.location.host);
+    setOnRobocodersHost(host === ROBOCODERS_HOST);
+    setLmsLoginHref(brandFromHostname(host) ? `${BRAND_ORIGINS.lms}/lms/login` : "/lms/login");
+  }, []);
+
+  // usePathname() is the browser-visible path, so match against the same form we link to.
+  const navItems = PATH_NAV.map((item) => ({
+    name: item.name,
+    link: onRobocodersHost ? item.publicPath : item.link,
+    exact: item.exact,
+  }));
 
   const isActive = (item: { link: string; exact?: boolean }) => {
-    const link = item.link.replace(/\/$/, '');
-    if (item.exact) return pathname === link;
-    return pathname === link || pathname.startsWith(link + '/');
+    if (item.exact) return pathname === item.link;
+    return pathname === item.link || pathname.startsWith(item.link + "/");
   };
 
   return (
@@ -44,7 +59,7 @@ export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetF
         <NavbarLogo />
         <NavItems items={navItems} />
         <div className="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
-          <NavbarButton href="/lms/login" variant="secondary" className="text-sm px-2.5 py-1">Student Portal</NavbarButton>
+          <NavbarButton href={lmsLoginHref} variant="secondary" className="text-sm px-2.5 py-1">Student Portal</NavbarButton>
         </div>
       </NavBody>
 
@@ -110,7 +125,7 @@ export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetF
           })}
           <div className="flex w-full flex-col gap-4">
             <NavbarButton
-              href="/lms/login"
+              href={lmsLoginHref}
               onClick={() => setIsMobileMenuOpen(false)}
               variant="primary"
               className="w-full"

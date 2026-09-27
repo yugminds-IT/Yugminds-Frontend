@@ -84,14 +84,14 @@ export default function HomeHero() {
                 variants={line}
                 className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start"
               >
-                <Link href="/programs" className="w-full sm:w-auto">
+                <Link href="/robocoders/programs" className="w-full sm:w-auto">
                   <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
                     <Button size="lg" className="w-full sm:w-auto px-8 text-lg bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/25 group">
                       Explore Programs <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
                     </Button>
                   </motion.div>
                 </Link>
-                <Link href="/contact" className="w-full sm:w-auto">
+                <Link href="/robocoders/contact" className="w-full sm:w-auto">
                   <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
                     <Button variant="outline" className="w-full sm:w-auto px-8 text-lg border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full" size="lg">
                       Book a Demo
@@ -110,7 +110,7 @@ export default function HomeHero() {
           >
             <Image
               src="/image.png"
-              alt="Students Learning STEM Activity"
+              alt="Students learning STEM with RoboCoders"
               fill
               sizes="(max-width: 1023px) 100vw, (max-width: 1279px) 45vw, 50vw"
               className="object-cover max-w-full max-h-full"

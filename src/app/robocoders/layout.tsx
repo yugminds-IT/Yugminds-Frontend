@@ -1,28 +1,21 @@
-"use client";
+import type { Metadata } from "next";
+import {
+  buildBrandMetadata,
+  readInternalPathname,
+} from "../../lib/brand-metadata";
+import RobocodersChrome from "./RobocodersChrome";
 
-import { usePathname } from "next/navigation";
-import BrandSwitcherBar from "../../components/BrandSwitcherBar";
-import ResizableNavbar from "../../components/ResizableNavbar";
+export async function generateMetadata(): Promise<Metadata> {
+  const pathname = await readInternalPathname();
+  const path =
+    pathname.startsWith("/robocoders") ? pathname : `/robocoders${pathname === "/" ? "" : pathname}`;
+  return buildBrandMetadata("robocoders", path || "/robocoders");
+}
 
 export default function RobocodersLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-
-  // LMS sub-pages (verify, etc.) are standalone — no marketing chrome
-  if (pathname.startsWith("/robocoders/lms")) {
-    return <>{children}</>;
-  }
-
-  return (
-    <>
-      <BrandSwitcherBar fixed />
-      {/* 36px document-flow spacer for the fixed brand bar */}
-      <div className="h-9" />
-      <ResizableNavbar offsetForBrandBar />
-      {children}
-    </>
-  );
+  return <RobocodersChrome>{children}</RobocodersChrome>;
 }

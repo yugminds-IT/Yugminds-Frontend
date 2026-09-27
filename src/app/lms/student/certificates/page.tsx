@@ -22,6 +22,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "@/components/ui/toast";
 import { studentApi } from "@/lib/api";
+import { getVerifyCertUrl } from "@/lib/brand-host";
 
 /**
  * Downloads a certificate through the authenticated backend proxy.
@@ -244,7 +245,7 @@ export default function CertificatesPage() {
                           </div>
                           {cert.short_id && (
                             <a
-                              href={`/robocoders/lms/verify/${cert.short_id}`}
+                              href={getVerifyCertUrl(cert.short_id)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="mt-2 flex items-center justify-center gap-1.5 text-xs text-blue-600 hover:text-blue-800"

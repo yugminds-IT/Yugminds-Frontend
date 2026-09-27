@@ -45,7 +45,7 @@ function ReelCard({ item }: { item: CommunityItem }) {
       <div className="absolute top-3 left-3 right-3 flex items-center gap-2">
         {item.creator_avatar_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={item.creator_avatar_url} alt="" className="w-7 h-7 rounded-full border-2 border-white object-cover shrink-0" />
+          <img src={item.creator_avatar_url} alt={`${item.title} creator`} className="w-7 h-7 rounded-full border-2 border-white object-cover shrink-0" />
         ) : (
           <div className="w-7 h-7 rounded-full bg-blue-500 border-2 border-white shrink-0 flex items-center justify-center text-xs font-bold text-white">
             {(item.creator_name || "S").charAt(0)}

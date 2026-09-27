@@ -3,7 +3,9 @@ import Image from "next/image";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
+import FAQAccordion from "../../../components/FAQAccordion";
 import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
+import { JsonLd, RoboBreadcrumbs, faqPageJsonLd } from "../../../components/seo/JsonLd";
 import {
   BookOpen,
   User,
@@ -75,15 +77,46 @@ export default function ForSchoolsPage() {
     }
   ];
 
+  const schoolFaqs = [
+    {
+      question: "How does RoboCoders integrate with our school timetable?",
+      answer:
+        "We customize delivery around your periods — weekly clubs, semester modules, or full STEM periods. Our team maps a program plan that fits your academic calendar.",
+    },
+    {
+      question: "Do you provide instructors and materials?",
+      answer:
+        "Yes. Trained RoboCoders instructors can teach independently or co-teach with your staff. Kits, textbooks, and LMS access are included so your school can launch ready to run.",
+    },
+    {
+      question: "What grades do you cover?",
+      answer:
+        "Programs span ages 6–18, from block coding and Scratch through Arduino robotics and introductory AI — suitable for primary through senior secondary.",
+    },
+    {
+      question: "How do we get started?",
+      answer:
+        "Schedule a free consultation via our contact page. We assess goals, propose a pilot or full rollout, and handle setup and teacher orientation.",
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-white">
-      {/* Top Navigation */}
+      <JsonLd data={faqPageJsonLd(schoolFaqs)} />
+      <RoboBreadcrumbs
+        crumbs={[
+          { name: "RoboCoders", path: "/" },
+          { name: "For Schools", path: "/for-schools" },
+        ]}
+      />
 
       {/* Hero Section */}
-      <section className="min-h-screen flex items-center relative overflow-hidden pt-24 lg:pt-20">
+      <section className="min-h-[90vh] flex items-center relative overflow-hidden pt-8 lg:pt-6">
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
           style={{ backgroundImage: `url('/${encodeURI('Doodle icon robotics , coding background.png')}')`, opacity: 0.1 }}
+          role="presentation"
+          aria-hidden="true"
         />
         <div className="w-full relative z-10">
           <div className="flex flex-col lg:flex-row items-center lg:items-center gap-0">
@@ -97,15 +130,24 @@ export default function ForSchoolsPage() {
                   <span className="block text-blue-600 font-extrabold lg:whitespace-nowrap">Tech Education</span>
                 </h1>
                 <p className="mt-6 text-gray-700 text-lg md:text-xl lg:text-2xl leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                  Partner with Robo Coders™ to bring comprehensive coding and robotics programs to your students. Join 10+ schools already transforming their STEM education.
+                  Partner with Robo Coders™ to bring comprehensive coding and robotics programs to your
+                  students. Join 10+ schools already transforming their STEM education —{" "}
+                  <Link href="/robocoders/programs" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                    view programs
+                  </Link>{" "}
+                  or{" "}
+                  <Link href="/robocoders/contact" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                    schedule a consultation
+                  </Link>
+                  .
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                  <Link href="/contact" className="w-full sm:w-auto">
+                  <Link href="/robocoders/contact" className="w-full sm:w-auto">
                     <Button size="lg" className="w-full sm:w-auto px-8 text-lg bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/25 group">
                       Schedule a Consultation <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
                     </Button>
                   </Link>
-                  <Link href="/programs" className="w-full sm:w-auto">
+                  <Link href="/robocoders/programs" className="w-full sm:w-auto">
                     <Button variant="outline" className="w-full sm:w-auto px-8 text-lg border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full" size="lg">
                       View Programs
                     </Button>
@@ -117,7 +159,7 @@ export default function ForSchoolsPage() {
             <RevealX x={48} className="w-full lg:w-[45%] xl:w-[50%] relative h-[300px] sm:h-[400px] md:h-[450px] lg:h-[calc(100vh-8rem)] lg:min-h-[480px] lg:max-h-[820px] rounded-none lg:rounded-l-[61px] overflow-hidden bg-white shadow-2xl">
               <Image
                 src="/For School.png"
-                alt="Students Learning STEM Activity"
+                alt="Students learning STEM with RoboCoders at school"
                 fill
                 sizes="(max-width: 1023px) 100vw, (max-width: 1279px) 45vw, 50vw"
                 className="object-cover max-w-full max-h-full"
@@ -199,12 +241,26 @@ export default function ForSchoolsPage() {
             <p className="text-blue-100 mb-6 md:mb-8 max-w-2xl mx-auto text-base md:text-lg lg:text-xl px-2">
               Schedule a free consultation to discuss how we can support your students
             </p>
-            <Link href="/contact">
+            <Link href="/robocoders/contact">
               <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 rounded-full shadow-lg transition-transform hover:scale-105 group">
                 Get Started Today <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Button>
             </Link>
           </Reveal>
+        </div>
+      </section>
+
+      <section className="bg-white py-16 md:py-20 px-4">
+        <div className="container">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 max-w-5xl mx-auto">
+              School Partnership <span className="text-blue-600">FAQs</span>
+            </h2>
+            <p className="text-center text-gray-600 mb-10 max-w-2xl mx-auto text-base md:text-lg">
+              Common questions from schools adopting our coding curriculum
+            </p>
+          </Reveal>
+          <FAQAccordion faqs={schoolFaqs} />
         </div>
       </section>
 

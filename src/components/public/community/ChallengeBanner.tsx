@@ -68,7 +68,7 @@ export function ChallengeBanner({ items }: { items: CommunityItem[] }) {
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={item.media_url}
-                    alt=""
+                    alt={item.title}
                     className="w-16 h-16 rounded-xl object-cover shrink-0 border border-gray-100"
                   />
                 ) : (

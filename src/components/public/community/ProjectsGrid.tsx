@@ -41,7 +41,7 @@ export function ProjectsGrid({
                 <div className="flex items-center gap-2 mt-2.5">
                   {item.creator_avatar_url ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={item.creator_avatar_url} alt="" className="w-6 h-6 rounded-full object-cover border border-gray-200" />
+                    <img src={item.creator_avatar_url} alt={`${item.title} creator avatar`} className="w-6 h-6 rounded-full object-cover border border-gray-200" />
                   ) : (
                     <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                       <User className="w-3 h-3 text-blue-600" />

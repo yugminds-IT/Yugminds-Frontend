@@ -59,7 +59,7 @@ export function CommunityHero({
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={config.hero_image_url}
-                alt=""
+                alt={config.hero_title || "RoboCoders student coding community"}
                 className="max-h-[300px] w-full object-contain drop-shadow-lg"
               />
             ) : (

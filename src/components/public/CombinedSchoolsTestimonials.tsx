@@ -162,7 +162,11 @@ export default function CombinedSchoolsTestimonials() {
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={logo.image}
-                                alt={logo.description || 'School logo'}
+                                alt={
+                                  logo.description
+                                    ? `${logo.description} school logo — RoboCoders STEM partner`
+                                    : "Partner school logo — RoboCoders STEM"
+                                }
                                 className={logo.className || "h-20 md:h-28 lg:h-32 w-auto opacity-60 hover:opacity-100 transition-opacity max-w-[150px] object-contain"}
                                 loading="lazy"
                                 decoding="async"

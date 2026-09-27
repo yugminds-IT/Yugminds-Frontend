@@ -3,18 +3,29 @@ import type { NextRequest } from 'next/server'
 import { jwtVerify, errors as joseErrors } from 'jose'
 import { ensureCsrfToken } from './src/lib/csrf-middleware'
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './src/lib/auth-cookie'
+import {
+	brandFromHostname,
+	brandOrigin,
+	HEADER_BRAND,
+	HEADER_INTERNAL_PATH,
+	HEADER_PUBLIC_PATH,
+	isDevHost,
+	normalizeHost,
+	resolveBrand,
+	routeForHost,
+	shouldSkipHostPrefix,
+	toPublicPath,
+	type Brand,
+} from './src/lib/brand-host'
 
 const PUBLIC_PATHS: RegExp[] = [
-	// Root & YugMinds company pages
 	/^\/$/,
 	/^\/about(?:\/.*)?$/,
 	/^\/divisions(?:\/.*)?$/,
 	/^\/contact(?:\/.*)?$/,
 	/^\/careers(?:\/.*)?$/,
 	/^\/not-found(?:\/.*)?$/,
-	// Robocoders public marketing pages
 	/^\/robocoders(?:\/.*)?$/,
-	// LMS auth pages (login, signup, password flows)
 	/^\/lms\/login(?:\/.*)?$/,
 	/^\/lms\/signup(?:\/.*)?$/,
 	/^\/lms\/forgot-password(?:\/.*)?$/,
@@ -23,17 +34,16 @@ const PUBLIC_PATHS: RegExp[] = [
 	/^\/lms\/redirect(?:\/.*)?$/,
 	/^\/lms\/auth\/callback(?:\/.*)?$/,
 	/^\/lms\/student-registration(?:\/.*)?$/,
-	// Public certificate verification (no login required)
 	/^\/lms\/verify(?:\/.*)?$/,
-	// Static assets & API
 	/^\/_next\//,
 	/^\/api\//,
 	/^\/images\//,
 	/^\/favicon/,
+	/^\/sitemap\.xml$/,
+	/^\/robots\.txt$/,
 	/\.(css|js|json|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|mp4|webp)$/,
 ]
 
-// Maps URL prefix → allowed roles (isSuperAdmin always passes).
 const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
 	{ prefix: '/lms/admin', roles: ['admin'] },
 	{ prefix: '/lms/school-admin', roles: ['school_admin'] },
@@ -52,42 +62,100 @@ function addSecurityHeaders(response: NextResponse | Response): void {
 	r.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
 }
 
+function withBrandHeaders(
+	req: NextRequest,
+	brand: Brand,
+	publicPath: string,
+	internalPath: string,
+): Headers {
+	const headers = new Headers(req.headers)
+	headers.set(HEADER_BRAND, brand)
+	headers.set(HEADER_PUBLIC_PATH, publicPath)
+	headers.set(HEADER_INTERNAL_PATH, internalPath)
+	return headers
+}
+
+function finish(
+	response: NextResponse,
+	req: NextRequest,
+): NextResponse {
+	addSecurityHeaders(response)
+	ensureCsrfToken(response, req)
+	return response
+}
+
+/** Absolute redirect URL; brand hosts use their https origin (proxy-safe). */
+function publicUrl(req: NextRequest, brand: Brand | null, internalPath: string): URL {
+	if (brand) return new URL(toPublicPath(brand, internalPath), brandOrigin(brand))
+	return new URL(internalPath, req.url)
+}
+
 export async function middleware(req: NextRequest) {
-	const { pathname } = req.nextUrl
+	const hostname = normalizeHost(req.headers.get('host'))
+	const publicPath = req.nextUrl.pathname
+	const search = req.nextUrl.search
+	const hostBrand = isDevHost(hostname) ? null : brandFromHostname(hostname)
 
-	if (isPublicPath(pathname)) {
-		const response = NextResponse.next()
-		addSecurityHeaders(response)
-		ensureCsrfToken(response, req)
-		return response
+	if (hostname === 'www.yugminds.org' && !shouldSkipHostPrefix(publicPath)) {
+		const dest = new URL(publicPath, brandOrigin('yugminds'))
+		dest.search = search
+		return finish(NextResponse.redirect(dest, 308), req)
 	}
 
-	const routeRule = ROLE_ROUTES.find((r) => pathname.startsWith(r.prefix))
+	const route = routeForHost(hostBrand, publicPath)
+	if (route.kind === 'redirect') {
+		const dest = new URL(route.url)
+		dest.search = search
+		return finish(NextResponse.redirect(dest, route.status), req)
+	}
+
+	const needsRewrite = route.kind === 'rewrite'
+	const internalPath = needsRewrite ? route.path : publicPath
+
+	const brand: Brand = hostBrand ?? resolveBrand(hostname, internalPath)
+	const requestHeaders = withBrandHeaders(req, brand, publicPath, internalPath)
+
+	const respondNext = () => {
+		if (needsRewrite) {
+			const url = req.nextUrl.clone()
+			url.pathname = internalPath
+			return finish(
+				NextResponse.rewrite(url, { request: { headers: requestHeaders } }),
+				req,
+			)
+		}
+		return finish(
+			NextResponse.next({ request: { headers: requestHeaders } }),
+			req,
+		)
+	}
+
+	if (isPublicPath(internalPath)) {
+		return respondNext()
+	}
+
+	const routeRule = ROLE_ROUTES.find((r) => internalPath.startsWith(r.prefix))
 	if (!routeRule) {
-		// Non-role-specific protected path — just apply headers.
-		const response = NextResponse.next()
-		addSecurityHeaders(response)
-		ensureCsrfToken(response, req)
-		return response
+		return respondNext()
 	}
 
-	// --- Cryptographic JWT verification ---
+	const loginInternal = '/lms/login'
 	const token = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value
 	if (!token) {
 		if (req.cookies.get(REFRESH_TOKEN_COOKIE)?.value) {
-			const response = NextResponse.next()
-			addSecurityHeaders(response)
-			ensureCsrfToken(response, req)
-			return response
+			return respondNext()
 		}
-		const loginUrl = new URL('/lms/login', req.url)
-		loginUrl.searchParams.set('next', pathname)
-		return NextResponse.redirect(loginUrl)
+		const loginUrl = publicUrl(req, hostBrand, loginInternal)
+		loginUrl.searchParams.set('next', toPublicPath(hostBrand ?? 'yugminds', internalPath))
+		return finish(NextResponse.redirect(loginUrl), req)
 	}
 
 	const secret = process.env.JWT_ACCESS_SECRET
 	if (!secret) {
-		return NextResponse.redirect(new URL('/lms/login', req.url))
+		return finish(
+			NextResponse.redirect(publicUrl(req, hostBrand, loginInternal)),
+			req,
+		)
 	}
 
 	let payload: { role?: string; isSuperAdmin?: boolean } = {}
@@ -98,9 +166,6 @@ export async function middleware(req: NextRequest) {
 		)
 		payload = p as typeof payload
 	} catch (err) {
-		// Access JWT expired (15m) but a refresh cookie can still restore the
-		// session. Let the page load so the client can silently refresh instead
-		// of wiping the form by redirecting to login.
 		const expired =
 			err instanceof joseErrors.JWTExpired ||
 			(typeof err === 'object' &&
@@ -108,39 +173,36 @@ export async function middleware(req: NextRequest) {
 				(err as { code?: string }).code === 'ERR_JWT_EXPIRED')
 		const hasRefresh = Boolean(req.cookies.get(REFRESH_TOKEN_COOKIE)?.value)
 		if (expired && hasRefresh) {
-			const response = NextResponse.next()
-			addSecurityHeaders(response)
-			ensureCsrfToken(response, req)
-			return response
+			return respondNext()
 		}
-		const loginUrl = new URL('/lms/login', req.url)
-		loginUrl.searchParams.set('next', pathname)
+		const loginUrl = publicUrl(req, hostBrand, loginInternal)
+		loginUrl.searchParams.set('next', toPublicPath(hostBrand ?? 'yugminds', internalPath))
 		const res = NextResponse.redirect(loginUrl)
 		res.cookies.set(ACCESS_TOKEN_COOKIE, '', { maxAge: 0, path: '/' })
-		return res
+		return finish(res, req)
 	}
 
-	// Super-admins bypass role checks.
 	const hasAccess =
 		payload.isSuperAdmin ||
 		(payload.role !== undefined && routeRule.roles.includes(payload.role))
 
 	if (!hasAccess) {
-		// Authenticated but wrong role — send to their own dashboard.
 		const roleDashboard: Record<string, string> = {
 			admin: '/lms/admin',
 			school_admin: '/lms/school-admin',
 			teacher: '/lms/teacher',
 			student: '/lms/student',
 		}
-		const dest = payload.role ? (roleDashboard[payload.role] ?? '/lms/login') : '/lms/login'
-		return NextResponse.redirect(new URL(dest, req.url))
+		const destInternal = payload.role
+			? (roleDashboard[payload.role] ?? loginInternal)
+			: loginInternal
+		return finish(
+			NextResponse.redirect(publicUrl(req, hostBrand, destInternal)),
+			req,
+		)
 	}
 
-	const response = NextResponse.next()
-	addSecurityHeaders(response)
-	ensureCsrfToken(response, req)
-	return response
+	return respondNext()
 }
 
 export const config = {
