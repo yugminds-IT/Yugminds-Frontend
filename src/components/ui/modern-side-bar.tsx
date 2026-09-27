@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { commonApi } from '../../lib/api';
 import { clearStoredSession, getStoredUserId } from '../../lib/session-utils';
+import { toLmsPath } from '../../lib/brand-host';
 
 import { 
   Home, 
@@ -141,7 +142,8 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
   const [activeItem, setActiveItem] = useState("dashboard");
   const [resolvedNotificationCount, setResolvedNotificationCount] = useState<number>(notificationBadgeCount ?? 0);
   const router = useRouter();
-  const pathname = usePathname();
+  // Nav hrefs are `/lms/...`; on lms.yugminds.org the visible path has no prefix.
+  const pathname = toLmsPath(usePathname());
 
   const navigationItems = useMemo(
     () => getNavigationItems(userRole, assignmentBadgeCount, resolvedNotificationCount, passwordResetBadgeCount),

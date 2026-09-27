@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify, errors as joseErrors } from 'jose'
-import { ensureCsrfToken } from './src/lib/csrf-middleware'
-import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './src/lib/auth-cookie'
+import { ensureCsrfToken } from './lib/csrf-middleware'
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './lib/auth-cookie'
 import {
 	brandFromHostname,
 	brandOrigin,
@@ -16,12 +16,13 @@ import {
 	shouldSkipHostPrefix,
 	toPublicPath,
 	type Brand,
-} from './src/lib/brand-host'
+} from './lib/brand-host'
 
 const PUBLIC_PATHS: RegExp[] = [
 	/^\/$/,
 	/^\/about(?:\/.*)?$/,
 	/^\/divisions(?:\/.*)?$/,
+	/^\/work(?:\/.*)?$/,
 	/^\/contact(?:\/.*)?$/,
 	/^\/careers(?:\/.*)?$/,
 	/^\/not-found(?:\/.*)?$/,
@@ -146,7 +147,7 @@ export async function middleware(req: NextRequest) {
 			return respondNext()
 		}
 		const loginUrl = publicUrl(req, hostBrand, loginInternal)
-		loginUrl.searchParams.set('next', toPublicPath(hostBrand ?? 'yugminds', internalPath))
+		loginUrl.searchParams.set('next', internalPath)
 		return finish(NextResponse.redirect(loginUrl), req)
 	}
 
@@ -176,7 +177,7 @@ export async function middleware(req: NextRequest) {
 			return respondNext()
 		}
 		const loginUrl = publicUrl(req, hostBrand, loginInternal)
-		loginUrl.searchParams.set('next', toPublicPath(hostBrand ?? 'yugminds', internalPath))
+		loginUrl.searchParams.set('next', internalPath)
 		const res = NextResponse.redirect(loginUrl)
 		res.cookies.set(ACCESS_TOKEN_COOKIE, '', { maxAge: 0, path: '/' })
 		return finish(res, req)

@@ -10,6 +10,8 @@
  * middleware verify identity without touching JS-accessible storage.
  */
 
+import { currentInternalPath } from './brand-host.ts';
+
 export interface Session {
   access_token: string;
   refresh_token?: string;
@@ -172,7 +174,7 @@ export function startSessionKeepAlive(): () => void {
 
   const refreshIfNeeded = () => {
     if (document.visibilityState !== 'visible') return;
-    const path = window.location.pathname;
+    const path = currentInternalPath();
     const onLms =
       path.startsWith('/lms/') &&
       !path.startsWith('/lms/login') &&
@@ -195,7 +197,7 @@ export function startSessionKeepAlive(): () => void {
 }
 
 export function loginRedirectUrl(reason: LogoutReason = 'session_expired'): string {
-  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const path = typeof window !== 'undefined' ? currentInternalPath() : '';
   const search = typeof window !== 'undefined' ? window.location.search : '';
   const next = safeNextPath(path + search);
   setLogoutReason(reason);

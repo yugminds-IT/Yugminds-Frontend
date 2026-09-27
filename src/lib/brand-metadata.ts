@@ -107,8 +107,12 @@ export async function buildBrandMetadata(
     : canonicalUrl(brand, internalPath);
 
   const isProductionHost = brandFromHostname(hostname) !== null;
+  // Individual certificate pages carry student names — reachable, but not indexed.
+  const isCertificatePage = internalPath.startsWith("/robocoders/lms/verify/");
   const robots: Metadata["robots"] =
-    !isProductionHost || (brand === "lms" && !isLmsIndexablePath(internalPath))
+    !isProductionHost ||
+    isCertificatePage ||
+    (brand === "lms" && !isLmsIndexablePath(internalPath))
       ? { index: false, follow: false }
       : { index: true, follow: true };
 

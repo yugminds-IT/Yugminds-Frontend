@@ -88,7 +88,7 @@ export async function StructuredData() {
   }
 
   // LMS — WebApplication on login (and siblings under LMS host / path)
-  const loginUrl = `${BRAND_ORIGINS.lms}/lms/login`;
+  const loginUrl = `${BRAND_ORIGINS.lms}/login`;
   const webApp = {
     "@context": "https://schema.org",
     "@type": "WebApplication",

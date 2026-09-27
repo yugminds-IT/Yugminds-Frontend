@@ -246,7 +246,7 @@ export default function RobocodersVerifyCertificatePage() {
         {/* Footer */}
         <p className="text-center text-xs text-gray-400 mt-6">
           Certificates issued by Robocoders · Yugminds Education Platform ·{" "}
-          <Link href={`${BRAND_ORIGINS.lms}/lms/login`} className="underline hover:text-gray-600">Sign in</Link>
+          <Link href={`${BRAND_ORIGINS.lms}/login`} className="underline hover:text-gray-600">Sign in</Link>
         </p>
       </div>
     </div>

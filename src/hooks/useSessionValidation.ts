@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiClient } from '../lib/api';
 import { clearStoredSession, getStoredUserId, getSession, setLogoutReason, tryRefreshSession, loginRedirectUrl } from '../lib/session-utils';
 import { toast } from '../components/ui/toast';
+import { currentInternalPath } from '../lib/brand-host';
 
 // Key used to mark that a fresh login just happened
 const FRESH_LOGIN_KEY = 'fresh_login_timestamp';
@@ -135,7 +136,7 @@ export function useSessionValidation(options: SessionValidationOptions = {}): Se
 
       const userId = getStoredUserId();
       if (!userId) {
-        const currentPath = window.location.pathname;
+        const currentPath = currentInternalPath();
         if (currentPath === '/lms/login' || currentPath === '/lms/signup' || currentPath.startsWith('/lms/auth')) {
           return true;
         }

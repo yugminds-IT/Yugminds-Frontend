@@ -7,7 +7,7 @@
 # Routing (middleware.ts, no extra config needed):
 #   yugminds.org              → YugMinds home        (www → 308 to apex)
 #   robocoders.yugminds.org   → /robocoders/* pages with clean URLs (/about, /programs…)
-#   lms.yugminds.org          → / redirects to /lms/login; dashboards at /lms/*
+#   lms.yugminds.org          → /login, /admin, /student… (clean URLs; old /lms/* links 308 here)
 #   yugminds.org/robocoders/* and /lms/* → 308 to the matching subdomain
 #
 # NEXT_PUBLIC_* values are baked in at build time — mark them "Build Variable" in Coolify.

@@ -26,6 +26,41 @@ export const PAGE_SEO: Record<string, PageSeo> = {
       "EdTech",
     ],
   },
+  "/about": {
+    primaryKeyword: "About YugMinds",
+    title: "About YugMinds | Software, Electronics & Machines — Hyderabad",
+    description:
+      "About YugMinds — founded in 2024 in Hyderabad. One team building software, electronics and machines, and teaching the next generation through Robocoders.",
+    keywords: ["About YugMinds", "YugMinds Hyderabad", "YugMinds Private Limited", "YugMinds story"],
+  },
+  "/divisions": {
+    primaryKeyword: "YugMinds divisions",
+    title: "Our Divisions | Software, Manufacturing, Hardware & Labs — YugMinds",
+    description:
+      "Five YugMinds divisions under one roof: Software, Manufacturing, Hardware, Research Labs and Robocoders EdTech — from design to product to classroom.",
+    keywords: [
+      "YugMinds divisions",
+      "YugMinds Software",
+      "YugMinds Manufacturing",
+      "YugMinds Hardware",
+      "YugMinds Labs",
+      "Robocoders EdTech",
+    ],
+  },
+  "/work": {
+    primaryKeyword: "YugMinds work",
+    title: "Our Work | Projects & Stories — YugMinds",
+    description:
+      "Explore YugMinds work — hands-on robotics in classrooms, a STEM curriculum from first circuits to competitions, and software and machines built by one team.",
+    keywords: ["YugMinds work", "YugMinds projects", "YugMinds journal", "Robocoders robotics"],
+  },
+  "/contact": {
+    primaryKeyword: "Contact YugMinds",
+    title: "Contact YugMinds | Begumpet, Hyderabad",
+    description:
+      "Contact YugMinds in Begumpet, Hyderabad — email info@yugminds.org or call +91 85003 45655 for software, electronics, manufacturing or Robocoders enquiries.",
+    keywords: ["Contact YugMinds", "YugMinds Hyderabad", "YugMinds email", "YugMinds phone"],
+  },
   "/robocoders": {
     primaryKeyword: "RoboCoders",
     title: "RoboCoders — Coding, Robotics & AI for Students",
@@ -110,6 +145,17 @@ export const PAGE_SEO: Record<string, PageSeo> = {
       "RoboCoders enquiry",
       "school demo",
       "STEM program contact",
+    ],
+  },
+  "/robocoders/lms/verify": {
+    primaryKeyword: "Verify RoboCoders certificate",
+    title: "Verify Certificate | RoboCoders",
+    description:
+      "Verify a RoboCoders certificate. Enter the certificate ID printed on the certificate to confirm the student, course, and issue date are authentic.",
+    keywords: [
+      "verify RoboCoders certificate",
+      "certificate verification",
+      "RoboCoders certificate ID",
     ],
   },
   "/lms/login": {

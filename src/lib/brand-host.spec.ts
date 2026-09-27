@@ -5,6 +5,7 @@ import {
   canonicalUrl,
   getVerifyCertUrl,
   routeForHost,
+  toLmsPath,
   toPublicPath,
 } from "./brand-host.ts";
 
@@ -40,7 +41,7 @@ describe("brand-host", () => {
     );
     assert.deepEqual(
       routeForHost("yugminds", "/lms/login"),
-      redirect("https://lms.yugminds.org/lms/login"),
+      redirect("https://lms.yugminds.org/login"),
     );
   });
 
@@ -53,19 +54,27 @@ describe("brand-host", () => {
     );
     assert.deepEqual(
       routeForHost("robocoders", "/lms/login"),
-      redirect("https://lms.yugminds.org/lms/login"),
+      redirect("https://lms.yugminds.org/login"),
     );
   });
 
-  it("lms host keeps the /lms prefix", () => {
+  it("lms host serves clean URLs", () => {
     assert.deepEqual(
       routeForHost("lms", "/"),
-      redirect("https://lms.yugminds.org/lms/login", 307),
+      redirect("https://lms.yugminds.org/login", 307),
     );
-    assert.deepEqual(routeForHost("lms", "/lms/admin/analytics"), pass);
+    assert.deepEqual(routeForHost("lms", "/login"), rewrite("/lms/login"));
     assert.deepEqual(
-      routeForHost("lms", "/login"),
-      redirect("https://lms.yugminds.org/lms/login"),
+      routeForHost("lms", "/admin/analytics"),
+      rewrite("/lms/admin/analytics"),
+    );
+    assert.deepEqual(
+      routeForHost("lms", "/lms/admin/analytics"),
+      redirect("https://lms.yugminds.org/admin/analytics"),
+    );
+    assert.deepEqual(
+      routeForHost("lms", "/lms"),
+      redirect("https://lms.yugminds.org/login"),
     );
     assert.deepEqual(
       routeForHost("lms", "/robocoders/about"),
@@ -87,14 +96,16 @@ describe("brand-host", () => {
 
   it("builds canonical URLs", () => {
     assert.equal(toPublicPath("robocoders", "/robocoders/about"), "/about");
-    assert.equal(toPublicPath("lms", "/lms/login"), "/lms/login");
+    assert.equal(toPublicPath("lms", "/lms/login"), "/login");
+    assert.equal(toLmsPath("/admin"), "/lms/admin");
+    assert.equal(toLmsPath("/lms/admin"), "/lms/admin");
     assert.equal(
       canonicalUrl("robocoders", "/robocoders"),
       "https://robocoders.yugminds.org",
     );
     assert.equal(
       canonicalUrl("lms", "/lms/login"),
-      "https://lms.yugminds.org/lms/login",
+      "https://lms.yugminds.org/login",
     );
   });
 });

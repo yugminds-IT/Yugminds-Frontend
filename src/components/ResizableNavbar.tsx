@@ -37,7 +37,7 @@ export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetF
   useEffect(() => {
     const host = normalizeHost(window.location.host);
     setOnRobocodersHost(host === ROBOCODERS_HOST);
-    setLmsLoginHref(brandFromHostname(host) ? `${BRAND_ORIGINS.lms}/lms/login` : "/lms/login");
+    setLmsLoginHref(brandFromHostname(host) ? `${BRAND_ORIGINS.lms}/login` : "/lms/login");
   }, []);
 
   // usePathname() is the browser-visible path, so match against the same form we link to.

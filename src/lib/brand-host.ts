@@ -87,7 +87,7 @@ function hasPrefix(path: string, prefix: string): boolean {
  * How a production host serves a path:
  * - yugminds.org: root site; `/robocoders*` and `/lms*` move to their subdomains.
  * - robocoders.yugminds.org: clean URLs rewritten under `/robocoders`.
- * - lms.yugminds.org: keeps the `/lms` prefix visible (client code relies on it).
+ * - lms.yugminds.org: clean URLs rewritten under `/lms`; legacy `/lms/*` links 308 to the clean URL.
  * `/lms/verify` is canonical on the RoboCoders host.
  */
 export function routeForHost(brand: Brand | null, path: string): HostRoute {
@@ -105,6 +105,11 @@ export function routeForHost(brand: Brand | null, path: string): HostRoute {
     };
   }
 
+  const toLms = (): HostRoute => ({
+    kind: "redirect",
+    url: `${BRAND_ORIGINS.lms}${path.slice("/lms".length) || "/login"}`,
+    status: 308,
+  });
   const toRobocoders = (): HostRoute => ({
     kind: "redirect",
     url: `${BRAND_ORIGINS.robocoders}${path.slice("/robocoders".length) || "/"}`,
@@ -113,38 +118,47 @@ export function routeForHost(brand: Brand | null, path: string): HostRoute {
 
   if (brand === "yugminds") {
     if (hasPrefix(path, "/robocoders")) return toRobocoders();
-    if (hasPrefix(path, "/lms")) {
-      return { kind: "redirect", url: `${BRAND_ORIGINS.lms}${path}`, status: 308 };
-    }
+    if (hasPrefix(path, "/lms")) return toLms();
     return { kind: "pass" };
   }
 
   if (brand === "robocoders") {
     if (hasPrefix(path, "/robocoders")) return toRobocoders();
-    if (hasPrefix(path, "/lms")) {
-      return { kind: "redirect", url: `${BRAND_ORIGINS.lms}${path}`, status: 308 };
-    }
+    if (hasPrefix(path, "/lms")) return toLms();
     return { kind: "rewrite", path: path === "/" ? "/robocoders" : `/robocoders${path}` };
   }
 
   // lms
-  if (path === "/" || path === "/lms") {
-    return { kind: "redirect", url: `${BRAND_ORIGINS.lms}/lms/login`, status: 307 };
+  if (path === "/") {
+    return { kind: "redirect", url: `${BRAND_ORIGINS.lms}/login`, status: 307 };
   }
-  if (hasPrefix(path, "/lms")) return { kind: "pass" };
+  if (hasPrefix(path, "/lms")) return toLms();
   if (hasPrefix(path, "/robocoders")) return toRobocoders();
-  return { kind: "redirect", url: `${BRAND_ORIGINS.lms}/lms${path}`, status: 308 };
+  return { kind: "rewrite", path: toLmsPath(path) };
 }
 
 /** Browser-visible path for an internal route on that brand's host. */
 export function toPublicPath(brand: Brand, internalPath: string): string {
-  if (brand === "robocoders") {
-    if (internalPath === "/robocoders") return "/";
-    if (internalPath.startsWith("/robocoders/")) {
-      return internalPath.slice("/robocoders".length) || "/";
-    }
+  const prefix = brand === "robocoders" ? "/robocoders" : brand === "lms" ? "/lms" : null;
+  if (prefix && hasPrefix(internalPath, prefix)) {
+    return internalPath.slice(prefix.length) || "/";
   }
   return internalPath || "/";
+}
+
+/** `/admin` → `/lms/admin`; already-prefixed paths are unchanged. */
+export function toLmsPath(path: string): string {
+  if (hasPrefix(path, "/lms")) return path;
+  return path === "/" ? "/lms" : `/lms${path}`;
+}
+
+/**
+ * Internal App Router path for the current browser URL (client-only).
+ * On lms.yugminds.org the visible URL has no `/lms` prefix.
+ */
+export function currentInternalPath(): string {
+  const { hostname, pathname } = window.location;
+  return brandFromHostname(hostname) === "lms" ? toLmsPath(pathname) : pathname;
 }
 
 export function brandOrigin(brand: Brand): string {
