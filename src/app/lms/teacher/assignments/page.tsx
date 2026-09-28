@@ -904,9 +904,6 @@ export default function TeacherAssignmentsPage() {
     setGrantingStudentId(studentId);
     setLoading(true);
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'post-fix',hypothesisId:'G',location:'teacher/assignments/page.tsx:handleGrantRetake',message:'grant start',data:{assignmentId:selectedId,studentId,activate:true},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       await teacherApi.assignments.grantRetake(selectedId, {
         studentIds: [studentId],
         isActive: true,
@@ -917,9 +914,6 @@ export default function TeacherAssignmentsPage() {
       ]);
       setError(null);
       toast.success("Retake access granted");
-      // #region agent log
-      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'post-fix',hypothesisId:'G',location:'teacher/assignments/page.tsx:handleGrantRetake',message:'grant ok',data:{assignmentId:selectedId,studentId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     } catch (e: unknown) {
       setError(
         typeof e === "object" && e !== null && "message" in e

@@ -38,6 +38,14 @@ const nextConfig = {
   // Ensure CSS is processed correctly
   // Bundle Sentry/OpenTelemetry instrumentation deps — Turbopack external symlinks break in monorepos
   transpilePackages: ['import-in-the-middle', 'require-in-the-middle'],
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [{ key: 'Strict-Transport-Security', value: 'max-age=31536000' }],
+      },
+    ];
+  },
   // Force CSS to reload on changes
   reactStrictMode: true,
   // Performance optimizations

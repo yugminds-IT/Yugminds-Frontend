@@ -15,6 +15,7 @@ import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import TeacherHolidayBanner from "@/components/teacher/TeacherHolidayBanner";
 
 /** Sentinel stored/selected in place of a real school id to mean "combine data across every assigned school" — every teacher hook already treats an omitted school id as "aggregate across all schools." */
 const ALL_SCHOOLS_VALUE = "__all__";
@@ -533,6 +534,7 @@ export default function TeacherLayout({
         {/* Store selected school in context for child components */}
         <TeacherSchoolContext.Provider value={{ selectedSchool, schools, onSchoolChange: handleSchoolChange }}>
           <div className="p-4 md:p-6 lg:p-8">
+            <TeacherHolidayBanner selectedSchoolId={selectedSchool?.id ?? null} schools={schools} />
             {children}
           </div>
         </TeacherSchoolContext.Provider>

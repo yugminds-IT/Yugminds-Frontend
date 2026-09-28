@@ -12,6 +12,8 @@ export const teacherApi = {
   /** Dashboard */
   dashboard: {
     get: () => apiClient.get(`${TEACHER}/dashboard`),
+    dayStatus: (date?: string) =>
+      apiClient.get(withParams(`${TEACHER}/day-status`, { date })),
   },
 
   /** Schools */

@@ -18,9 +18,10 @@ import {
   useSubmitReport,
   useTeacherPeriods,
   useTeacherSchedules,
+  useTeacherDayStatus,
   formatGradeSection,
 } from "@/hooks/useTeacherData";
-import { FileText, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { FileText, CheckCircle, AlertCircle, RefreshCw, CalendarOff } from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
@@ -118,6 +119,13 @@ export default function SubmitReportPage() {
     { limit: 10 }
   );
   const submitReport = useSubmitReport();
+
+  const { data: dayStatus } = useTeacherDayStatus(formData.date);
+  const closedDay = useMemo(() => {
+    if (!selectedSchool?.id) return null;
+    const row = dayStatus?.schools.find((s) => s.school_id === selectedSchool.id);
+    return row?.status === 'holiday' ? row.holiday ?? { name: 'Holiday', type: 'Holiday' } : null;
+  }, [dayStatus, selectedSchool?.id]);
 
   // Get today's day name (Monday, Tuesday, etc.)
   const todayDayName = useMemo(() => {
@@ -286,6 +294,11 @@ export default function SubmitReportPage() {
       return;
     }
 
+    if (closedDay) {
+      toast.error(`${selectedSchool.name} is closed on this date (${closedDay.name}). Reports can't be submitted.`);
+      return;
+    }
+
     if (!formData.period_id) {
       toast.warning('Please select a period');
       return;
@@ -309,9 +322,6 @@ export default function SubmitReportPage() {
       return;
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'A',location:'teacher/reports/page.tsx:handleSubmit',message:'submit attempt',data:{periodId:formData.period_id,date:formData.date,grade:finalGrade,section:formData.section||selectedPeriod?.section||null,hasExistingReport:!!existingReport,availableCount:availablePeriods?.length??null,submittedCount:submittedPeriods?.length??null,existingStatus:existingReport?.report_status??null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     try {
       const result = await submitReport.mutateAsync({
@@ -328,9 +338,6 @@ export default function SubmitReportPage() {
         student_count: formData.student_count.trim() ? Number(formData.student_count) : undefined
       });
 
-      // #region agent log
-      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'C',location:'teacher/reports/page.tsx:handleSubmit:success',message:'submit success',data:{attendanceMarked:(result as {attendance_marked_present?:boolean})?.attendance_marked_present??null,reportId:(result as {id?:string})?.id??null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       // Refetch reports to update the UI
       await Promise.all([refetchReports(), refetchRecentReports()]);
@@ -362,9 +369,6 @@ export default function SubmitReportPage() {
      
     } catch (error: unknown) {
       const err = error as { message?: string; response?: { json: () => Promise<{ details?: string; error?: string }> }; data?: { details?: string; error?: string }; details?: string; hint?: string };
-      // #region agent log
-      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'A',location:'teacher/reports/page.tsx:handleSubmit:error',message:'submit error',data:{errMessage:err?.message??null,periodId:formData.period_id,date:formData.date,hadExistingReport:!!existingReport},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       console.error('❌ Error submitting report:', {
         error,
         message: err?.message,
@@ -545,7 +549,46 @@ export default function SubmitReportPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {closedDay && (
+                <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <CalendarOff className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <p className="font-semibold text-red-800">
+                          {selectedSchool.name} is closed on{' '}
+                          {new Date(formData.date + 'T00:00:00').toLocaleDateString('en-IN', {
+                            weekday: 'long',
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                        </p>
+                        <p className="text-sm text-red-700 mt-1">
+                          {closedDay.type === 'Break' ? 'Break' : 'Holiday'}: {closedDay.name}. No classes are held, so reports can&apos;t be submitted for this date.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="closed-date" className="text-sm text-red-800">
+                          Report for another date:
+                        </Label>
+                        <Input
+                          id="closed-date"
+                          type="date"
+                          className="w-auto bg-white"
+                          value={formData.date}
+                          onChange={(e) => setFormData({ ...formData, date: e.target.value, period_id: '' })}
+                          max={new Date().toLocaleDateString('en-CA')}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <form onSubmit={handleSubmit} className="space-y-6">
+                <fieldset
+                  disabled={!!closedDay}
+                  className={`space-y-6 ${closedDay ? 'opacity-50 pointer-events-none select-none' : ''}`}
+                >
                 {/* Period Selection */}
                 <div className="space-y-2">
                   <Label htmlFor="period_id">Period *</Label>
@@ -809,6 +852,7 @@ export default function SubmitReportPage() {
                     </Button>
                   </div>
                 </div>
+                </fieldset>
               </form>
             </CardContent>
           </Card>

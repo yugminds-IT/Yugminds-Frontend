@@ -483,6 +483,28 @@ export function useTeacherPeriods(schoolId?: string, day?: string) {
   });
 }
 
+export interface TeacherSchoolDayStatus {
+  school_id: string;
+  status: 'working' | 'holiday' | 'off';
+  holiday: { name: string; type: string } | null;
+}
+
+/** Per-school open/holiday/off status for a date (YYYY-MM-DD, defaults to today). */
+export function useTeacherDayStatus(date?: string) {
+  return useQuery({
+    queryKey: ['teacher', 'day-status', date ?? 'today'],
+    queryFn: async () => {
+      const { data: { session } } = await getSession();
+      if (!session) throw new Error('Not authenticated');
+      setAuthToken(session.access_token || null);
+      const { data } = await teacherApi.dashboard.dayStatus(date);
+      return data as { date: string; schools: TeacherSchoolDayStatus[] };
+    },
+    staleTime: 60_000,
+    retry: 1,
+  });
+}
+
 // ==================== Mutation Hooks ====================
 
 /**

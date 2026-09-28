@@ -61,9 +61,6 @@ function rejectRefreshSubscribers(err: unknown) {
 }
 
 function performLogout(reason?: string): void {
-  // #region agent log
-  fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'pre-fix',hypothesisId:'A',location:'axios.ts:performLogout',message:'forced logout',data:{reason:reason??null,path:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   // Don't broadcast — a refresh failure in this tab must not sign out a
   // tab that just rotated the refresh cookie successfully.
   const redirect = loginRedirectUrl('session_expired');
@@ -177,9 +174,6 @@ apiClient.interceptors.response.use(
         url.endsWith('/auth/signup') ||
         url.endsWith('/api/auth/login') ||
         url.endsWith('/api/auth/signup');
-      // #region agent log
-      fetch('http://127.0.0.1:7441/ingest/b3c04580-14c5-4099-bcec-c0dbc729bb7f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'990e57'},body:JSON.stringify({sessionId:'990e57',runId:'post-fix',hypothesisId:'A',location:'axios.ts:401',message:'got 401',data:{url,message:String(message),skipRefresh:!!skipRefresh,alreadyRetried:!!alreadyRetried,isCredentialEndpoint},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (isCredentialEndpoint) return Promise.reject(new Error(message));
 
       // Tenant-isolation 401s are application errors, not expired sessions.
