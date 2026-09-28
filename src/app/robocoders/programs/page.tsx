@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { brandHref } from "@/lib/brand-host";
 import Image from "next/image";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
@@ -93,14 +94,11 @@ export default function ProgramsPage() {
         ]}
       />
 
-      {/* 1. Programs Section — thin white strip for navbar, then white heading + cards */}
-      <section className="flex flex-col">
-
-        {/* White strip — only tall enough for the fixed navbar */}
-        <div className="bg-white h-4" />
+      {/* 1. Programs Section — full-screen white heading + cards */}
+      <section className="min-h-screen flex flex-col bg-white">
 
         {/* White: heading + cards */}
-        <div className="bg-white pt-8 pb-16 px-4">
+        <div className="flex-1 flex items-center pt-24 lg:pt-28 pb-16 px-4">
           <div className="container">
 
             {/* Heading */}
@@ -240,13 +238,13 @@ export default function ProgramsPage() {
               ))}
 
               <div className="mt-4 flex flex-col sm:flex-row gap-4">
-                <Link href="/robocoders/contact">
+                <Link href={brandHref("/robocoders/contact")}>
                   <Button size="lg" className="bg-white hover:bg-gray-100 text-blue-600 h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full transition-transform hover:scale-105">
                     Get Early Access
                   </Button>
                 </Link>
-                <Link href="/robocoders/contact">
-                  <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10 h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full">
+                <Link href={brandHref("/robocoders/contact")}>
+                  <Button size="lg" variant="outline" className="bg-transparent border-white text-white hover:bg-white/10 hover:text-white h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full">
                     Learn More
                   </Button>
                 </Link>
@@ -364,7 +362,7 @@ export default function ProgramsPage() {
                   Order Robotics Kit
                 </Button>
                 <Link href="/contact">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-white text-white hover:bg-white/10 h-12 text-lg font-bold rounded-full">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto bg-transparent border-white text-white hover:bg-white/10 hover:text-white h-12 text-lg font-bold rounded-full">
                     For More Information
                   </Button>
                 </Link>

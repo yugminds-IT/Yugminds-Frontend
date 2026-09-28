@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../lib/utils";
 import { motion } from "framer-motion";
-import { BRAND_ORIGINS, ROBOCODERS_HOST, brandFromHostname, normalizeHost } from "../lib/brand-host";
+import { ROBOCODERS_HOST, brandHref, normalizeHost } from "../lib/brand-host";
 import {
   Navbar,
   NavBody,
@@ -28,32 +28,38 @@ const PATH_NAV = [
   { name: "Contact Us", link: "/robocoders/contact", publicPath: "/contact" },
 ];
 
-export default function ResizableNavbar({ offsetForBrandBar = false }: { offsetForBrandBar?: boolean }) {
+export default function ResizableNavbar({
+  offsetForBrandBar = false,
+  solid = false,
+}: {
+  offsetForBrandBar?: boolean;
+  /** Opaque white bar, for pages where content sits under the navbar (e.g. full-bleed login image). */
+  solid?: boolean;
+}) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [onRobocodersHost, setOnRobocodersHost] = useState(false);
-  const [lmsLoginHref, setLmsLoginHref] = useState("/lms/login");
   const pathname = usePathname();
+  const lmsLoginHref = brandHref("/lms/login");
 
   useEffect(() => {
-    const host = normalizeHost(window.location.host);
-    setOnRobocodersHost(host === ROBOCODERS_HOST);
-    setLmsLoginHref(brandFromHostname(host) ? `${BRAND_ORIGINS.lms}/login` : "/lms/login");
+    setOnRobocodersHost(normalizeHost(window.location.host) === ROBOCODERS_HOST);
   }, []);
 
   // usePathname() is the browser-visible path, so match against the same form we link to.
   const navItems = PATH_NAV.map((item) => ({
     name: item.name,
-    link: onRobocodersHost ? item.publicPath : item.link,
+    link: onRobocodersHost ? item.publicPath : brandHref(item.link),
     exact: item.exact,
   }));
 
   const isActive = (item: { link: string; exact?: boolean }) => {
-    if (item.exact) return pathname === item.link;
-    return pathname === item.link || pathname.startsWith(item.link + "/");
+    const link = item.link.replace(/^https?:\/\/[^/]+/, "") || "/";
+    if (item.exact) return pathname === link;
+    return pathname === link || pathname.startsWith(link + "/");
   };
 
   return (
-    <Navbar className={offsetForBrandBar ? "!top-9" : ""}>
+    <Navbar className={cn(offsetForBrandBar && "!top-9", solid && "bg-white shadow-sm")}>
       {/* Desktop Navigation */}
       <NavBody>
         <NavbarLogo />

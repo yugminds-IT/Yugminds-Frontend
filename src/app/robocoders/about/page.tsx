@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { brandHref } from "@/lib/brand-host";
 import Image from "next/image";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
@@ -110,7 +111,7 @@ export default function AboutPage() {
                   programs
                 </Link>{" "}
                 or{" "}
-                <Link href="/robocoders/contact" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                <Link href={brandHref("/robocoders/contact")} className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
                   get in touch
                 </Link>
                 .

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { brandHref } from "@/lib/brand-host";
 import Image from "next/image";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent } from "../../../components/ui/card";
@@ -111,10 +112,10 @@ export default function ForSchoolsPage() {
       />
 
       {/* Hero Section */}
-      <section className="min-h-[90vh] flex items-center relative overflow-hidden pt-8 lg:pt-6">
+      <section className="min-h-screen flex items-center relative overflow-hidden pt-24 lg:pt-20">
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-          style={{ backgroundImage: `url('/${encodeURI('Doodle icon robotics , coding background.png')}')`, opacity: 0.1 }}
+          style={{ backgroundImage: "url('/robotics-coding-doodle-bg.png')", opacity: 0.1 }}
           role="presentation"
           aria-hidden="true"
         />
@@ -136,13 +137,13 @@ export default function ForSchoolsPage() {
                     view programs
                   </Link>{" "}
                   or{" "}
-                  <Link href="/robocoders/contact" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
+                  <Link href={brandHref("/robocoders/contact")} className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
                     schedule a consultation
                   </Link>
                   .
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                  <Link href="/robocoders/contact" className="w-full sm:w-auto">
+                  <Link href={brandHref("/robocoders/contact")} className="w-full sm:w-auto">
                     <Button size="lg" className="w-full sm:w-auto px-8 text-lg bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/25 group">
                       Schedule a Consultation <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
                     </Button>
@@ -241,7 +242,7 @@ export default function ForSchoolsPage() {
             <p className="text-blue-100 mb-6 md:mb-8 max-w-2xl mx-auto text-base md:text-lg lg:text-xl px-2">
               Schedule a free consultation to discuss how we can support your students
             </p>
-            <Link href="/robocoders/contact">
+            <Link href={brandHref("/robocoders/contact")}>
               <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 rounded-full shadow-lg transition-transform hover:scale-105 group">
                 Get Started Today <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Button>

@@ -103,6 +103,13 @@ export async function middleware(req: NextRequest) {
 		return finish(NextResponse.redirect(dest, 308), req)
 	}
 
+	// Crawlers fetch /favicon.ico directly; serve the RoboCoders icon on its hosts.
+	if (publicPath === '/favicon.ico' && (hostBrand === 'robocoders' || hostBrand === 'lms')) {
+		const url = req.nextUrl.clone()
+		url.pathname = '/robocoders-favicon.ico'
+		return NextResponse.rewrite(url)
+	}
+
 	const route = routeForHost(hostBrand, publicPath)
 	if (route.kind === 'redirect') {
 		const dest = new URL(route.url)
@@ -207,5 +214,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-	matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+	matcher: ['/((?!_next/static|_next/image).*)'],
 }

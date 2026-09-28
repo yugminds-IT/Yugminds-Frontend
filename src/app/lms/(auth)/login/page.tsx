@@ -194,7 +194,7 @@
  
    return (
      <div className="bg-background min-h-screen min-w-full text-foreground flex flex-col">
-       <ResizableNavbar />
+       <ResizableNavbar solid />
        <ErrorMessage />
 
        {/* Logout reason banner — shown when user was auto-redirected from a dashboard */}

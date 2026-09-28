@@ -176,6 +176,16 @@ export function canonicalUrl(brand: Brand, internalPath: string): string {
   return pub === "/" ? origin : `${origin}${pub}`;
 }
 
+/**
+ * Link target for a cross-brand internal path (e.g. `/robocoders/programs`, `/lms/login`).
+ * Production builds emit the absolute canonical URL so crawlers see a direct subdomain link
+ * instead of a redirect; dev keeps the internal path so localhost navigation still works.
+ */
+export function brandHref(internalPath: string): string {
+  if (process.env.NODE_ENV !== "production") return internalPath;
+  return canonicalUrl(resolveBrand("", internalPath), internalPath);
+}
+
 export function fallbackAppUrl(): string {
   return (
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||

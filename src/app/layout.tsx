@@ -3,6 +3,7 @@ import { ABeeZee } from "next/font/google";
 import "./globals.css";
 import QueryProvider from "../components/providers/QueryProvider";
 import SuppressPromiseWarnings from "../components/SuppressPromiseWarnings";
+import PageViewTracker from "../components/PageViewTracker";
 import { StructuredData } from "../components/StructuredData";
 import {
   buildBrandMetadata,
@@ -22,29 +23,11 @@ const abeezee = ABeeZee({
 export async function generateMetadata(): Promise<Metadata> {
   const brand = await resolveRequestBrand();
   const pathname = await readInternalPathname();
+  // Icons come from src/app/favicon.ico, icon.png (192px) and apple-icon.png.
   if (brand !== "yugminds") {
-    return {
-      metadataBase: await metadataBaseForRequest(),
-      icons: {
-        icon: [
-          { url: "/icon.png", type: "image/png", sizes: "32x32" },
-          { url: "/favicon.ico", sizes: "any" },
-        ],
-        apple: "/apple-icon.png",
-      },
-    };
+    return { metadataBase: await metadataBaseForRequest() };
   }
-  const meta = await buildBrandMetadata("yugminds", pathname === "/" ? "/" : pathname);
-  return {
-    ...meta,
-    icons: {
-      icon: [
-        { url: "/icon.png", type: "image/png", sizes: "32x32" },
-        { url: "/favicon.ico", sizes: "any" },
-      ],
-      apple: "/apple-icon.png",
-    },
-  };
+  return buildBrandMetadata("yugminds", pathname === "/" ? "/" : pathname);
 }
 
 export const viewport: Viewport = {
@@ -67,6 +50,7 @@ export default function RootLayout({
       >
         <StructuredData />
         <SuppressPromiseWarnings />
+        <PageViewTracker />
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

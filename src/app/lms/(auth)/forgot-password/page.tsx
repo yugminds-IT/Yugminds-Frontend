@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle, Mail, Clock, Shield, ArrowLeft } from "lucide-react";
 import { commonApi } from "@/lib/api";
+import AuthSplitLayout from "@/components/AuthSplitLayout";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -39,19 +40,19 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-6">
-        <div className="text-center">
-          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+    <AuthSplitLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-4xl md:text-5xl font-semibold leading-tight tracking-tight text-gray-900">
             Forgot your password?
-          </h2>
-          <p className="mt-2 text-sm text-gray-600">
+          </h1>
+          <p className="mt-3 text-muted-foreground">
             Submit a password reset request. An administrator will review and approve it.
           </p>
         </div>
 
-        <Card className="shadow-lg border-2">
-          <CardHeader>
+        <Card className="border-0 shadow-none py-0 gap-4">
+          <CardHeader className="!px-0">
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-blue-600" />
               Request Password Reset
@@ -63,7 +64,7 @@ export default function ForgotPasswordPage() {
               }
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-0">
             {submitted ? (
               <div className="space-y-4">
                 <Alert className="bg-green-50 border-green-200">
@@ -179,6 +180,6 @@ export default function ForgotPasswordPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { AuthHeroImage } from '@/components/AuthSplitLayout';
 import { Eye, EyeOff } from 'lucide-react';
 
 // --- HELPER COMPONENTS (ICONS) ---
@@ -39,18 +40,6 @@ const GlassInputWrapper = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
-const _TestimonialCard = ({ testimonial, delay }: { testimonial: Testimonial, delay: string }) => (
-  <div className={`animate-testimonial ${delay} flex items-start gap-3 rounded-3xl bg-card/40 dark:bg-zinc-800/40 backdrop-blur-xl border border-white/10 p-5 w-64`}>
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img src={testimonial.avatarSrc} className="h-10 w-10 object-cover rounded-2xl" alt={`${testimonial.name} testimonial photo`} />
-    <div className="text-sm leading-snug">
-      <p className="flex items-center gap-1 font-medium">{testimonial.name}</p>
-      <p className="text-muted-foreground">{testimonial.handle}</p>
-      <p className="mt-1 text-foreground/80">{testimonial.text}</p>
-    </div>
-  </div>
-);
-
 // --- MAIN COMPONENT ---
 export const SignInPage: React.FC<SignInPageProps> = ({
   title = <span className="font-light text-foreground tracking-tighter">Welcome</span>,
@@ -65,9 +54,11 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <div className="h-[100dvh] flex flex-col md:flex-row font-geist w-[100dvw]">
-      {/* Left column: sign-in form */}
-      <section className="flex-1 flex items-center justify-center p-8">
+    <div className="h-[100dvh] pt-[68px] flex flex-col md:flex-row font-geist w-[100dvw]">
+      <AuthHeroImage />
+
+      {/* Right column: sign-in form */}
+      <section className="flex-1 min-w-0 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="flex flex-col gap-6">
             <h1 className="animate-element animate-delay-100 text-4xl md:text-5xl font-semibold leading-tight">{title}</h1>
@@ -107,6 +98,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           </div>
         </div>
       </section>
+
     </div>
   );
 };

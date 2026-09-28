@@ -15,6 +15,7 @@ import {
 } from "framer-motion";
 import { ArrowRight, ArrowUp, Menu, X } from "lucide-react";
 import BrandSwitcherBar from "../BrandSwitcherBar";
+import { brandHref } from "@/lib/brand-host";
 
 const LOGO_SRC = "/Yugminds_Official_Logo-preview.png";
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
@@ -401,7 +402,7 @@ const NAV_LINKS = [
   { label: "About", href: "/about" },
   { label: "Divisions", href: "/divisions" },
   { label: "Work", href: "/work" },
-  { label: "Robocoders", href: "/robocoders" },
+  { label: "Robocoders", href: brandHref("/robocoders") },
   { label: "Contact", href: "/contact" },
 ];
 
@@ -899,7 +900,7 @@ const DIVISIONS = [
     title: "Teach",
     unit: "Robocoders™ EdTech",
     desc: "Real hardware in classrooms — coding, robotics and AI for students.",
-    href: "/robocoders",
+    href: brandHref("/robocoders"),
   },
 ];
 
@@ -1027,7 +1028,7 @@ const STORIES = [
     kicker: "Robocoders™",
     title: "Hands-on robotics for every student",
     desc: "Real hardware in classrooms, so students learn by building rather than watching.",
-    href: "/robocoders",
+    href: brandHref("/robocoders"),
   },
   {
     img: "/Kids Dong Robotics.png",
@@ -1035,7 +1036,7 @@ const STORIES = [
     kicker: "Curriculum",
     title: "From classroom to competition",
     desc: "A structured STEM path that takes students from first circuits to national events.",
-    href: "/robocoders/programs",
+    href: brandHref("/robocoders/programs"),
   },
   {
     img: "/images/landing/office-team.jpg",
@@ -1164,7 +1165,7 @@ const FOOTER_COLS = [
       { label: "Manufacturing", href: "/divisions" },
       { label: "Hardware", href: "/divisions" },
       { label: "Research Labs", href: "/divisions" },
-      { label: "Robocoders™", href: "/robocoders" },
+      { label: "Robocoders™", href: brandHref("/robocoders") },
     ],
   },
   {
@@ -1179,10 +1180,10 @@ const FOOTER_COLS = [
   {
     heading: "Robocoders™",
     links: [
-      { label: "Programs", href: "/robocoders/programs" },
-      { label: "For schools", href: "/robocoders/for-schools" },
-      { label: "For parents", href: "/robocoders/for-parents" },
-      { label: "Student login", href: "/lms/login" },
+      { label: "Programs", href: brandHref("/robocoders/programs") },
+      { label: "For schools", href: brandHref("/robocoders/for-schools") },
+      { label: "For parents", href: brandHref("/robocoders/for-parents") },
+      { label: "Student login", href: brandHref("/lms/login") },
     ],
   },
 ];

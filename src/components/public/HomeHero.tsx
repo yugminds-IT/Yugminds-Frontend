@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { brandHref } from "@/lib/brand-host";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Button } from "../ui/button";
@@ -22,7 +23,7 @@ export default function HomeHero() {
       {/* Background Image - Optimized with Next.js Image */}
       <div className="absolute inset-0 pointer-events-none opacity-10 z-0">
         <Image
-          src={`/${encodeURI('Doodle icon robotics , coding background.png')}`}
+          src="/robotics-coding-doodle-bg.png"
           alt="Robotics and coding background pattern"
           fill
           className="object-cover"
@@ -91,7 +92,7 @@ export default function HomeHero() {
                     </Button>
                   </motion.div>
                 </Link>
-                <Link href="/robocoders/contact" className="w-full sm:w-auto">
+                <Link href={brandHref("/robocoders/contact")} className="w-full sm:w-auto">
                   <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}>
                     <Button variant="outline" className="w-full sm:w-auto px-8 text-lg border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full" size="lg">
                       Book a Demo

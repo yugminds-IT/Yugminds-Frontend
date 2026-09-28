@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { commonApi } from "@/lib/api";
+import AuthSplitLayout from "@/components/AuthSplitLayout";
 import { validatePassword } from "@/lib/password-validation";
 
 interface ValidationResult {
@@ -184,17 +185,17 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <AuthSplitLayout>
+      <div className="space-y-6">
         {/* Header */}
-        <div className="text-center">
-          <School className="mx-auto h-12 w-12 text-blue-600" />
-          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Create your account</h2>
-          <p className="mt-2 text-sm text-gray-600">Join the Student Portal with your joining code</p>
+        <div>
+          <School className="h-10 w-10 text-blue-600" />
+          <h1 className="mt-4 text-4xl md:text-5xl font-semibold leading-tight tracking-tight text-gray-900">Create your account</h1>
+          <p className="mt-3 text-muted-foreground">Join the Student Portal with your joining code</p>
         </div>
 
-        <Card>
-          <CardHeader>
+        <Card className="border-0 shadow-none py-0 gap-4">
+          <CardHeader className="!px-0">
             <CardTitle>{step === "code" ? "Enter Joining Code" : "Student Registration"}</CardTitle>
             <CardDescription>
               {step === "code"
@@ -203,7 +204,7 @@ export default function SignupPage() {
             </CardDescription>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="px-0">
             {step === "code" ? (
               // ── Step 1 ──────────────────────────────────────────────────────
               <div className="space-y-4">
@@ -451,6 +452,6 @@ export default function SignupPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

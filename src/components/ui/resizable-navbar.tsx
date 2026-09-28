@@ -207,7 +207,7 @@ export const NavItems = ({ items, className, onItemClick, visible }: NavItemsPro
   }, [visible]);
 
   const isActive = (item: { link: string; exact?: boolean }) => {
-    const link = item.link.replace(/\/$/, '');
+    const link = item.link.replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '') || '/';
     if (item.exact) return pathname === link;
     return pathname === link || pathname.startsWith(link + '/');
   };
@@ -406,16 +406,13 @@ export const NavbarLogo = ({ visible }: { visible?: boolean }) => {
       )}
     >
       <Image
-        src="/Yugminds_Official_Logo-preview.png"
-        alt="YugMinds Logo"
-        width={visible ? 32 : 40} // Smaller logo when scrolled
-        height={visible ? 32 : 40}
-        className="object-contain"
+        src="/robocoders-logo.png"
+        alt="RoboCoders — An EdTech initiative by YugMinds"
+        width={803}
+        height={341}
+        priority
+        className={cn("w-auto object-contain", visible ? "h-9" : "h-11")}
       />
-      <span className={cn(
-        "font-medium text-black dark:text-white",
-        visible ? "text-base" : "text-lg" // Increased text size
-      )}>YugMinds</span>
     </Link>
   );
 };

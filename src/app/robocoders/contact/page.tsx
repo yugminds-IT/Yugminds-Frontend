@@ -105,15 +105,15 @@ export default function ContactPage() {
       />
 
       {/* Combined Get in Touch & Find Us Section */}
-      <section className="min-h-screen flex flex-col m-0 pt-2">
+      <section className="flex flex-col m-0">
         {/* Get in Touch Section */}
-        <div className="flex-1 flex items-start justify-center bg-gray-50 flex-shrink-0 py-8 md:py-12 min-h-0">
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 pt-24 lg:pt-28 pb-12">
           <div className="container w-full py-4 md:py-6">
             <Reveal>
-              <h1 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold mb-3 md:mb-4 text-center max-w-5xl mx-auto">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 text-center max-w-6xl mx-auto">
                 Get in <span className="text-blue-600">Touch</span>
               </h1>
-              <p className="text-sm md:text-base lg:text-lg text-gray-700 mb-4 md:mb-6 max-w-2xl mx-auto leading-relaxed text-center">
+              <p className="text-lg md:text-xl lg:text-2xl text-gray-600 mb-10 md:mb-14 max-w-3xl mx-auto leading-relaxed text-center">
                 Have questions about school partnerships, parent enrollment, or our programs?
                 Send us a message and we&apos;ll respond as soon as possible. You can also explore{" "}
                 <Link href="/robocoders/programs" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
@@ -126,21 +126,21 @@ export default function ContactPage() {
                 .
               </p>
             </Reveal>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
               {[
                 { icon: Phone, title: "Phone", a: "+91 85003 45655", b: "Mon-Fri, 9am-6pm EST" },
                 { icon: Mail, title: "Email", a: "robocoders07@gmail.com", b: "We reply within 24 hours" },
                 { icon: Clock, title: "Office Hours", a: "Mon-Fri: 9am-6pm", b: "Saturday: 10am-4pm" },
               ].map(({ icon: Icon, title, a, b }, idx) => (
                 <HoverLift key={title} delay={idx * 0.1}>
-                <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full group">
-                  <CardContent className="p-6 text-center">
-                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                      <Icon className="h-6 w-6 text-white" />
+                <Card className="bg-blue-600 text-white border-0 shadow-lg rounded-3xl h-full group">
+                  <CardContent className="p-6 md:p-8 text-center">
+                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-5 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
+                      <Icon className="h-8 w-8 md:h-9 md:w-9 text-white" />
                     </div>
-                    <h3 className="font-bold text-lg mb-2">{title}</h3>
-                    <p className="text-white/90 mb-1">{a}</p>
-                    <p className="text-white/70 text-sm">{b}</p>
+                    <h3 className="font-bold text-xl md:text-2xl lg:text-3xl mb-3">{title}</h3>
+                    <p className="text-white/90 text-base md:text-lg mb-1">{a}</p>
+                    <p className="text-blue-100 text-sm md:text-base">{b}</p>
                   </CardContent>
                 </Card>
                 </HoverLift>
@@ -156,10 +156,6 @@ export default function ContactPage() {
             {/* Heading */}
             <Reveal>
             <div className="text-center mb-10 md:mb-14">
-              <span className="inline-flex items-center gap-2 bg-white/20 text-white text-sm font-semibold px-4 py-2 rounded-full border border-white/30 mb-4">
-                <MapPin className="h-4 w-4" />
-                Our Location
-              </span>
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white mb-3">
                 Find Us
               </h2>
@@ -268,7 +264,7 @@ export default function ContactPage() {
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                 required
                 className="mt-2 text-base md:text-lg h-12 md:h-14"
-                placeholder="John"
+                placeholder="Rahul"
               />
             </div>
             <div>
@@ -282,7 +278,7 @@ export default function ContactPage() {
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                 required
                 className="mt-2 text-base md:text-lg h-12 md:h-14"
-                placeholder="Doe"
+                placeholder="Sharma"
               />
             </div>
           </div>
@@ -312,7 +308,7 @@ export default function ContactPage() {
                   required
                   type="tel"
                   className="text-base md:text-lg h-12 md:h-14"
-                  placeholder="8500345655"
+                  placeholder="9876543210"
                 />
                 <Label htmlFor="phoneNumber" className="text-sm md:text-base text-gray-500 mt-1 block">
                   Phone Number
@@ -333,9 +329,9 @@ export default function ContactPage() {
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               required
               className="mt-2 text-base md:text-lg h-12 md:h-14"
-              placeholder="ex: email@yahoo.com"
+              placeholder="ex: rahul.sharma@gmail.com"
             />
-            <p className="text-sm md:text-base text-gray-500 mt-1">example@example.com</p>
+            <p className="text-sm md:text-base text-gray-500 mt-1">example@gmail.com</p>
           </div>
 
           <div className="mb-6 md:mb-8">

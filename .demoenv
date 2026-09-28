@@ -33,7 +33,7 @@ JWT_ACCESS_SECRET=REPLACE_WITH_SAME_VALUE_AS_BACKEND
 # Number of reverse proxies in front of the app (Coolify Traefik = 1)
 TRUSTED_PROXY_HOPS=1
 
-# Redis (same instance as backend)
+# Redis (same instance as backend). Also stores the footer visitor count (key: site:visits)
 REDIS_URL=redis://default:REPLACE_PASSWORD@REPLACE_REDIS_HOST:6379/0
 REDIS_ENABLED=true
 

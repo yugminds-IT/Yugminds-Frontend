@@ -1,6 +1,8 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Instagram, Youtube, Facebook, Mail, Phone, MapPin } from "lucide-react";
 import { Reveal, HoverLift } from "./public/robo-motion";
+import FooterVisitCount from "./FooterVisitCount";
 
 export default function Footer() {
   const quickLinks = [
@@ -14,15 +16,18 @@ export default function Footer() {
 
   return (
     <footer id="contact" className="footer-section bg-gray-900 text-white pt-20 pb-8 w-full relative z-10 mt-0 overflow-hidden">
-      {/* faint oversized watermark */}
-      <p className="pointer-events-none select-none absolute -bottom-8 left-1/2 -translate-x-1/2 text-[7rem] md:text-[11rem] font-extrabold text-white/[0.03] whitespace-nowrap leading-none">
-        Robo Coders
-      </p>
-
       <div className="container mx-auto px-4 md:px-6 lg:px-8 relative">
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
           <Reveal className="lg:col-span-2">
-            <div className="text-3xl md:text-4xl font-extrabold mb-6 text-white">Robo Coders™</div>
+            <div className="inline-block bg-white rounded-xl px-4 py-3 mb-6">
+              <Image
+                src="/robocoders-logo.png"
+                alt="RoboCoders — An EdTech initiative by YugMinds"
+                width={803}
+                height={341}
+                className="h-16 md:h-20 w-auto"
+              />
+            </div>
             <p className="text-gray-400 mb-8 max-w-lg text-base md:text-lg leading-relaxed">An EdTech initiative by YugMinds, empowering the next generation with cutting‑edge STEM education through AI, robotics, and programming.</p>
             <div className="space-y-3 text-base text-gray-300">
               <div className="flex items-center gap-3">
@@ -81,6 +86,7 @@ export default function Footer() {
                 </a>
               </HoverLift>
             </div>
+            <FooterVisitCount />
           </Reveal>
         </div>
 
@@ -88,13 +94,7 @@ export default function Footer() {
           <div className="flex flex-col md:flex-row justify-center items-center gap-4 text-sm text-gray-400">
             <p className="text-center">
               © 2024 Robo Coders™ by Yugminds. All rights reserved. |{" "}
-              <Link href="/privacy-policy" className="hover:text-white transition-colors">
-                Privacy Policy
-              </Link>{" "}
-              |{" "}
-              <Link href="/terms-of-service" className="hover:text-white transition-colors">
-                Terms of Service
-              </Link>
+              <span>Privacy Policy</span> | <span>Terms of Service</span>
             </p>
           </div>
         </div>

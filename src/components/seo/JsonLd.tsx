@@ -77,8 +77,9 @@ export function RoboBreadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
   return (
     <>
       <JsonLd data={breadcrumbJsonLd(crumbs)} />
-      <nav aria-label="Breadcrumb" className="bg-white border-b border-gray-100">
-        <ol className="container flex flex-wrap items-center gap-1.5 py-2 text-sm text-gray-500">
+      {/* sr-only: the fixed navbar would cover a visible strip; Google reads the JSON-LD above. */}
+      <nav aria-label="Breadcrumb" className="sr-only">
+        <ol className="flex flex-wrap items-center gap-1.5">
           {crumbs.map((c, i) => {
             const href =
               c.path === "/"
