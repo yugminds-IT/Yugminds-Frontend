@@ -6,8 +6,8 @@ import { useStudentAssignment } from "@/hooks/useStudentData";
 import { ArrowLeft, CheckCircle, Clock, Loader2, FileText, Download, MessageSquare, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import MCQQuestion from "@/components/student/assignments/questions/MCQQuestion";
-import EssayQuestion from "@/components/student/assignments/questions/EssayQuestion";
 import FillBlankQuestion from "@/components/student/assignments/questions/FillBlankQuestion";
+import ProtectedAssignmentContent from "@/components/student/assignments/ProtectedAssignmentContent";
 
 interface Question {
   id: string;
@@ -43,6 +43,7 @@ export default function ViewSubmissionPage(props: PageProps) {
     current_attempts?: number;
     scoring_rule?: string;
     enabled?: boolean;
+    granted?: boolean;
   } | undefined;
   const questions: Question[] = useMemo(() => assignment?.questions ?? [], [assignment?.questions]);
 
@@ -253,9 +254,9 @@ export default function ViewSubmissionPage(props: PageProps) {
                 </span>
               )}
             </div>
-            <div className="border-t border-gray-100">
+            <ProtectedAssignmentContent className="border-t border-gray-100">
               {questions.map((q, i) => renderQuestion(q, i))}
-            </div>
+            </ProtectedAssignmentContent>
           </div>
         )}
 
@@ -265,9 +266,9 @@ export default function ViewSubmissionPage(props: PageProps) {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-700">Attempt History</h3>
               <span className="text-xs text-gray-400">
-                {retake?.max_attempts != null
+                {retake?.enabled && retake.max_attempts != null
                   ? `${attempts.length} of ${Number(retake.max_attempts) + 1} attempts used`
-                  : `${attempts.length} attempt${attempts.length !== 1 ? "s" : ""} · Unlimited`}
+                  : `${attempts.length} attempt${attempts.length !== 1 ? "s" : ""}${retake?.enabled ? " · Unlimited" : ""}`}
               </span>
             </div>
             <div className="overflow-hidden rounded-xl border border-gray-200">
@@ -322,7 +323,9 @@ export default function ViewSubmissionPage(props: PageProps) {
               <div>
                 <p className="text-sm font-semibold text-amber-800">Retake available</p>
                 <p className="text-xs text-amber-600">
-                  {retake.max_attempts == null
+                  {retake.granted
+                    ? "Your teacher gave you 1 extra attempt."
+                    : retake.max_attempts == null
                     ? "Unlimited attempts — you can retake any time."
                     : `${retake.current_attempts ?? attempts.length} of ${Number(retake.max_attempts) + 1} attempts used.`}
                 </p>

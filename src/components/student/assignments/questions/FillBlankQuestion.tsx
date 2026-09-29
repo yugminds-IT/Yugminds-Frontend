@@ -1,6 +1,10 @@
 'use client'
 
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useState, type DragEvent } from 'react'
+import { X } from 'lucide-react'
+import { availableWordChips } from '@/lib/word-bank'
+
+export const WORD_CHIP_MIME = 'application/x-word-chip'
 
 interface FillBlankQuestionProps {
   question: {
@@ -10,6 +14,8 @@ interface FillBlankQuestionProps {
     correct_answer: string | string[]
     marks?: number
     hints?: string[]
+    /** Correct + wrong words, shuffled by the server. Present = pick-a-word mode. */
+    word_bank?: string[]
   }
   index: number
   totalQuestions: number
@@ -27,6 +33,9 @@ function FillBlankQuestion({
   disabled = false,
 }: FillBlankQuestionProps) {
   const text = question.question || question.question_text || ''
+  const wordBank = question.word_bank?.length ? question.word_bank : null
+  const [activeBlank, setActiveBlank] = useState<number | null>(null)
+  const [dragOverBlank, setDragOverBlank] = useState<number | null>(null)
 
   const { parts, blankCount } = useMemo(() => {
     const pattern = /(_{3,}|\[blank\]|\[BLANK\]|\{blank\}|\{BLANK\})/gi
@@ -52,6 +61,11 @@ function FillBlankQuestion({
     return String(question.correct_answer).split(/[,;]/).map(a => a.toLowerCase().trim()).filter(Boolean)
   }, [question.correct_answer])
 
+  const availableChips = useMemo(
+    () => (wordBank ? availableWordChips(wordBank, answers, blankCount) : []),
+    [wordBank, answers, blankCount],
+  )
+
   const checkBlank = (bi: number, val: string): boolean | undefined => {
     if (!showCorrectAnswer || !val.trim()) return undefined
     const norm = val.toLowerCase().trim()
@@ -59,7 +73,73 @@ function FillBlankQuestion({
     return target === norm || correctAnswers.some(c => c === norm)
   }
 
+  const placeWord = (word: string, blank?: number) => {
+    if (disabled) return
+    let target = blank ?? activeBlank
+    if (target == null || target >= blankCount) {
+      target = Array.from({ length: blankCount }, (_, i) => i).find(i => !answers[i]) ?? blankCount - 1
+    }
+    onAnswerChange(target, word)
+    const nextEmpty = Array.from({ length: blankCount }, (_, i) => i).find(i => i !== target && !answers[i])
+    setActiveBlank(nextEmpty ?? null)
+  }
+
+  const onChipDragStart = (e: DragEvent, word: string) => {
+    e.dataTransfer.setData(WORD_CHIP_MIME, word)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const onSlotDrop = (e: DragEvent, bi: number) => {
+    const word = e.dataTransfer.getData(WORD_CHIP_MIME)
+    setDragOverBlank(null)
+    if (!word) return
+    e.preventDefault()
+    placeWord(word, bi)
+  }
+
+  const renderSlot = (bi: number) => {
+    const val = answers[bi] || ''
+    const result = checkBlank(bi, val)
+    const isActive = !disabled && activeBlank === bi
+    const isDragOver = dragOverBlank === bi
+    return (
+      <span key={`blank-${bi}`} className="inline-flex items-center gap-1 mx-1 align-middle">
+        <button
+          type="button"
+          disabled={disabled}
+          data-drop-slot
+          onClick={() => {
+            if (val) onAnswerChange(bi, '')
+            setActiveBlank(bi)
+          }}
+          onDragOver={e => {
+            if (disabled || !Array.from(e.dataTransfer.types).includes(WORD_CHIP_MIME)) return
+            e.preventDefault()
+            setDragOverBlank(bi)
+          }}
+          onDragLeave={() => setDragOverBlank(null)}
+          onDrop={e => onSlotDrop(e, bi)}
+          aria-label={val ? `Blank ${bi + 1}: ${val}. Click to remove` : `Blank ${bi + 1}: empty`}
+          className={`inline-flex min-w-[120px] min-h-[34px] items-center justify-center gap-1.5 rounded-lg border-2 px-3 py-1 text-sm font-medium transition-colors
+            ${result === true ? 'border-green-500 bg-green-50 text-green-800' :
+              result === false ? 'border-red-400 bg-red-50 text-red-700' :
+              val ? 'border-blue-500 bg-blue-50 text-blue-800' :
+              isDragOver || isActive ? 'border-blue-500 border-dashed bg-blue-50/60' :
+              'border-gray-300 border-dashed bg-white'}
+            ${disabled ? 'cursor-default' : 'cursor-pointer'}
+          `}
+        >
+          {val || <span className="text-xs font-normal text-gray-400">{isDragOver ? 'Drop here' : 'Place a word'}</span>}
+          {val && !disabled && <X className="h-3.5 w-3.5 opacity-60" aria-hidden />}
+        </button>
+        {showCorrectAnswer && result === true && <span className="text-xs text-green-700 font-semibold">✓</span>}
+        {showCorrectAnswer && result === false && <span className="text-xs text-red-600 font-semibold">✗</span>}
+      </span>
+    )
+  }
+
   const renderInput = (bi: number) => {
+    if (wordBank) return renderSlot(bi)
     const val = answers[bi] || ''
     const result = checkBlank(bi, val)
     return (
@@ -90,13 +170,39 @@ function FillBlankQuestion({
   return (
     <div>
       {parts.length > 0 ? (
-        <p className="text-base text-gray-900 leading-relaxed mb-5">
+        <p className="text-base text-gray-900 leading-loose mb-5">
           {parts.map((p, i) => p.isBlank ? renderInput(p.blankIdx) : <span key={i}>{p.text}</span>)}
         </p>
       ) : (
-        <div>
+        <div className="mb-5">
           <p className="text-base text-gray-900 mb-4">{text}</p>
           {renderInput(0)}
+        </div>
+      )}
+
+      {wordBank && !disabled && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="mb-3 text-xs font-medium text-gray-500">
+            Tap a word or drag it into the blank. Tap a filled blank to take the word back.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {availableChips.map(({ word, i }) => (
+              <button
+                key={`${word}-${i}`}
+                type="button"
+                draggable
+                data-word-chip
+                onDragStart={e => onChipDragStart(e, word)}
+                onClick={() => placeWord(word)}
+                className="rounded-lg border border-blue-200 bg-white px-3.5 py-1.5 text-sm font-medium text-blue-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:shadow active:translate-y-0 cursor-grab active:cursor-grabbing"
+              >
+                {word}
+              </button>
+            ))}
+            {availableChips.length === 0 && (
+              <p className="text-xs text-gray-400">All words placed.</p>
+            )}
+          </div>
         </div>
       )}
 

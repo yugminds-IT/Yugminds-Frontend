@@ -41,6 +41,7 @@ import {
 import { getStoredUserId } from '../../../lib/session-utils'
 import { studentApi } from '../../../lib/api'
 import CircularProgress from '../CircularProgress'
+import { confirmLeaveAssignment } from '@/hooks/useAssignmentLeaveGuard'
 
 interface CoursePlayerProps {
   courseId: string
@@ -341,14 +342,18 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     }
   }
 
-  const handlePrevious = () => {
+  const afterLeaveConfirmed = (go: () => void) => {
+    void confirmLeaveAssignment().then(ok => { if (ok) go() })
+  }
+
+  const handlePrevious = () => afterLeaveConfirmed(() => {
     if (currentContentIndex > 0) {
       const prevIdx = currentContentIndex - 1
       setCurrentContentIndex(prevIdx)
       const prev = (contents as Content[])?.[prevIdx]
       if (prev) setContentId(prev.id)
     }
-  }
+  })
 
   const swipeTouchStartX = useRef<number | null>(null)
   const onTouchStart = (e: React.TouchEvent) => {
@@ -689,8 +694,8 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           currentContentId={currentContent?.id}
           completedContentItems={completedContentItems}
           totalContentItems={totalContentItems}
-          onChapterSelect={id => { setChapterId(id); setContentId(undefined) }}
-          onContentSelect={id => setContentId(id)}
+          onChapterSelect={id => afterLeaveConfirmed(() => { setChapterId(id); setContentId(undefined) })}
+          onContentSelect={id => afterLeaveConfirmed(() => setContentId(id))}
         />
 
         {/* ─── Center: top-bar + scrollable content + bottom nav ────────── */}
@@ -701,7 +706,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
             {/* Breadcrumb: Course › Module › Lesson */}
             <nav className="flex items-center gap-1.5 text-sm min-w-0 flex-shrink" aria-label="Breadcrumb">
               <button
-                onClick={() => { setChapterId(undefined); setContentId(undefined) }}
+                onClick={() => afterLeaveConfirmed(() => { setChapterId(undefined); setContentId(undefined) })}
                 className="flex items-center gap-1 text-gray-500 hover:text-gray-900 transition-colors font-medium truncate max-w-[150px] flex-shrink-0"
                 title="Course overview"
               >

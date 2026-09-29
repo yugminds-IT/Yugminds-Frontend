@@ -17,10 +17,13 @@ import { useStudentAssignment, useSubmitAssignment } from '../../../hooks/useStu
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 import { useToast } from '../../ui/toast'
 import { confirmDialog } from '../../ui/confirm-dialog'
-import { requestClose, useBeforeUnloadWhenDirty } from '@/hooks/useUnsavedCloseGuard'
+import { useBeforeUnloadWhenDirty } from '@/hooks/useUnsavedCloseGuard'
+import { useAssignmentLeaveGuard } from '@/hooks/useAssignmentLeaveGuard'
 import MCQQuestion from '../assignments/questions/MCQQuestion'
 import EssayQuestion from '../assignments/questions/EssayQuestion'
 import FillBlankQuestion from '../assignments/questions/FillBlankQuestion'
+import ProtectedAssignmentContent from '../assignments/ProtectedAssignmentContent'
+import QuestionStepper from '../assignments/QuestionStepper'
 
 /* ─── Types ─────────────────────────────────────────────── */
 
@@ -43,6 +46,7 @@ interface Question {
   question_text?: string
   question_type?: string
   options?: string[]
+  word_bank?: string[]
   correct_answer?: number | string | string[]
   marks?: number
   word_limit?: number
@@ -152,21 +156,22 @@ export default function AssignmentContentViewer({
   }, [submission, questions])
 
   /* ── Answered count ── */
-  const answeredCount = useMemo(() => questions.filter(q => {
+  const isAnswered = useCallback((q: Question) => {
     const a = answers[q.id]
     if (!a) return false
     if (a.type === 'mcq') return typeof a.value === 'number' && a.value >= 0
     if (a.type === 'essay') return typeof a.value === 'string' && a.value.trim().length > 0
     if (a.type === 'fill_blank') return Array.isArray(a.value) && (a.value as string[]).some(v => v?.trim().length > 0)
     return false
-  }).length, [answers, questions])
+  }, [answers])
+  const answeredCount = useMemo(() => questions.filter(isAnswered).length, [isAnswered, questions])
 
   const takingIsDirty = mode === 'taking' && Object.keys(answers).length > 0
   useBeforeUnloadWhenDirty(takingIsDirty)
 
-  const leaveTaking = () => {
-    void requestClose(takingIsDirty, () => setMode('overview'))
-  }
+  const requestLeave = useAssignmentLeaveGuard(takingIsDirty, () => setAnswers({}))
+
+  const leaveTaking = () => requestLeave(() => setMode('overview'))
 
   /* ── Submit ── */
   const handleSubmit = async () => {
@@ -216,7 +221,7 @@ export default function AssignmentContentViewer({
     const ans = answers[q.id]
 
     const wrapper = (children: React.ReactNode) => (
-      <div key={q.id} className="py-6 border-b border-gray-100 last:border-0">
+      <div key={q.id}>
         <div className="flex items-start justify-between gap-4 mb-4">
           <span className="text-sm font-semibold text-gray-500">Q{idx + 1}</span>
           <span className="text-xs text-gray-400">{q.marks ?? 1} pt{(q.marks ?? 1) !== 1 ? 's' : ''}</span>
@@ -245,7 +250,7 @@ export default function AssignmentContentViewer({
     )
     if (qt === 'fill_blank') return wrapper(
       <FillBlankQuestion
-        question={{ id: q.id, question: q.question || q.question_text || '', correct_answer: q.correct_answer as string | string[], marks: q.marks }}
+        question={{ id: q.id, question: q.question || q.question_text || '', correct_answer: q.correct_answer as string | string[], marks: q.marks, word_bank: q.word_bank }}
         index={idx} totalQuestions={questions.length}
         answers={ans?.type === 'fill_blank' && Array.isArray(ans.value) ? ans.value as string[] : []}
         onAnswerChange={(bi, v) => {
@@ -329,45 +334,45 @@ export default function AssignmentContentViewer({
   ════════════════════════════════════ */
   if (mode === 'taking') {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        {/* Back link */}
-        <button
-          onClick={leaveTaking}
-          className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium mb-6"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to overview
-        </button>
-
-        <h1 className="text-2xl font-semibold text-gray-900 mb-1">{assignment.title}</h1>
-        <p className="text-sm text-gray-500 mb-6 capitalize">
-          {(assignment.assignment_type ?? '').replace(/_/g, ' ')} · {questions.length} question{questions.length !== 1 ? 's' : ''}
-        </p>
-
-        {/* Questions */}
-        <div className="bg-white">
-          {questions.map((q, i) => renderTakingQuestion(q, i))}
-        </div>
-
-        {/* Submit section */}
-        <div className="mt-8 pt-6 border-t border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-gray-500">
-              {answeredCount}/{questions.length} answered
-              {answeredCount < questions.length && (
-                <span className="ml-2 text-amber-600">({questions.length - answeredCount} remaining)</span>
-              )}
-            </p>
-          </div>
+      <div>
+        <div className="max-w-3xl mx-auto px-6 pt-8 pb-4">
+          {/* Back link */}
           <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white font-semibold px-8 py-3 rounded-lg transition-colors text-sm"
+            onClick={leaveTaking}
+            className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium mb-6"
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-            {submitting ? 'Submitting…' : 'Submit Assignment'}
+            <ArrowLeft className="h-4 w-4" />
+            Back to overview
           </button>
+
+          <h1 className="text-2xl font-semibold text-gray-900 mb-1">{assignment.title}</h1>
+          <p className="text-sm text-gray-500 capitalize">
+            {(assignment.assignment_type ?? '').replace(/_/g, ' ')} · {questions.length} question{questions.length !== 1 ? 's' : ''}
+          </p>
         </div>
+
+        <ProtectedAssignmentContent className="bg-white">
+          <QuestionStepper
+            count={questions.length}
+            isAnswered={i => isAnswered(questions[i])}
+            renderQuestion={i => renderTakingQuestion(questions[i], i)}
+            onSubmit={handleSubmit}
+            submitting={submitting}
+          />
+        </ProtectedAssignmentContent>
+
+        {questions.length === 0 && (
+          <div className="max-w-3xl mx-auto px-6 py-8">
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white font-semibold px-8 py-3 rounded-lg transition-colors text-sm"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+              {submitting ? 'Submitting…' : 'Submit Assignment'}
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -454,9 +459,9 @@ export default function AssignmentContentViewer({
                 </span>
               )}
             </div>
-            <div className="border-t border-gray-100">
+            <ProtectedAssignmentContent className="border-t border-gray-100">
               {questions.map((q, i) => renderReviewQuestion(q, i))}
-            </div>
+            </ProtectedAssignmentContent>
           </div>
         )}
 
@@ -553,7 +558,11 @@ export default function AssignmentContentViewer({
           <div>
             <p className="text-xs text-gray-500 mb-1">Attempts</p>
             <p className="text-sm font-semibold text-gray-900">
-              {retake?.max_attempts != null
+              {retake?.granted
+                ? `${retake.current_attempts ?? 0} used · +1 granted`
+                : !retake?.enabled
+                ? `${retake?.current_attempts ?? 0} / 1`
+                : retake.max_attempts != null
                 ? `${retake.current_attempts ?? 0} / ${Number(retake.max_attempts) + 1}`
                 : 'Unlimited'}
             </p>

@@ -127,11 +127,25 @@ export async function StructuredData() {
   };
 
   if (pathname === "/lms/login" || pathname.endsWith("/login")) {
+    // The LMS root redirects here, so this page carries the site name Google shows in results.
+    const website = {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "RoboCoders LMS",
+      alternateName: "RoboCoders",
+      url: `${BRAND_ORIGINS.lms}/`,
+    };
     return (
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(webApp) }}
-      />
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(webApp) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }}
+        />
+      </>
     );
   }
 

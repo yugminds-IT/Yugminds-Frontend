@@ -14,12 +14,15 @@ import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import MCQQuestion from "@/components/student/assignments/questions/MCQQuestion";
 import EssayQuestion from "@/components/student/assignments/questions/EssayQuestion";
 import FillBlankQuestion from "@/components/student/assignments/questions/FillBlankQuestion";
+import ProtectedAssignmentContent from "@/components/student/assignments/ProtectedAssignmentContent";
+import QuestionStepper from "@/components/student/assignments/QuestionStepper";
 import { apiClient } from "@/lib/api";
 import { getStoredUserId } from "@/lib/session-utils";
 import { useToast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { studentApi } from "@/lib/api/student.api";
-import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
+import { useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
+import { useAssignmentLeaveGuard } from "@/hooks/useAssignmentLeaveGuard";
 
 interface Question {
   id: string;
@@ -27,6 +30,7 @@ interface Question {
   question_text?: string;
   question_type?: string;
   options?: string[];
+  word_bank?: string[];
   correct_answer?: number | string | string[];
   marks?: number;
   word_limit?: number;
@@ -184,16 +188,21 @@ export default function AssignmentDetailPage(props: PageProps) {
     clearFormData(`student-assignment-${assignmentId}`, false);
   }, [assignmentId]);
 
-  // Warn on browser refresh/close while answering (SPA Link leave is limited in App Router).
   const takingIsDirty =
     mode === "taking" &&
-    !isSubmitted &&
+    (!isSubmitted || canRetake) &&
     (Object.keys(answers).length > 0 || !!fileUpload || !!fileUploadName);
   useBeforeUnloadWhenDirty(takingIsDirty);
 
-  const leaveTaking = () => {
-    void requestClose(takingIsDirty, () => setMode("overview"));
-  };
+  const requestLeave = useAssignmentLeaveGuard(takingIsDirty, () => {
+    clearFormData(draftFormId, true);
+    clearSavedData();
+    setAnswers({});
+    setFileUpload(null);
+    setFileUploadName(null);
+  });
+
+  const leaveTaking = () => requestLeave(() => setMode("overview"));
 
   // Populate answers from existing submission
   useEffect(() => {
@@ -303,7 +312,7 @@ export default function AssignmentDetailPage(props: PageProps) {
     const ans = answers[q.id];
 
     const wrapper = (content: React.ReactNode) => (
-      <div key={q.id} id={`question-${idx}`} className="py-7 border-b border-gray-100 last:border-0 scroll-mt-28">
+      <div key={q.id} id={`question-${idx}`}>
         <div className="flex items-start justify-between gap-4 mb-5">
           <span className="text-[15px] font-semibold text-gray-700">{idx + 1}.</span>
           <span className="text-sm text-gray-400 whitespace-nowrap flex-shrink-0">
@@ -337,7 +346,7 @@ export default function AssignmentDetailPage(props: PageProps) {
 
     if (qt === "fill_blank") return wrapper(
       <FillBlankQuestion
-        question={{ id: q.id, question: q.question || q.question_text || "", correct_answer: q.correct_answer as string | string[], marks: q.marks }}
+        question={{ id: q.id, question: q.question || q.question_text || "", correct_answer: q.correct_answer as string | string[], marks: q.marks, word_bank: q.word_bank }}
         index={idx} totalQuestions={questions.length}
         answers={ans?.type === "fill_blank" && Array.isArray(ans.value) ? ans.value as string[] : []}
         onAnswerChange={(bi, v) => {
@@ -398,8 +407,29 @@ export default function AssignmentDetailPage(props: PageProps) {
      TAKING MODE
   ═══════════════════════════════════════════ */
   if (mode === "taking") {
+    const fileUploadSection = (effectiveType === "project" || effectiveType === "quiz") && (
+      <div className="mt-6 p-5 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+        <Label htmlFor="file-upload" className="block text-sm font-semibold text-gray-700 mb-3">
+          Upload Your Work
+        </Label>
+        <Input
+          id="file-upload"
+          type="file"
+          onChange={e => { if (e.target.files?.[0]) { setFileUpload(e.target.files[0]); setFileUploadName(e.target.files[0].name); } }}
+          accept=".pdf,.doc,.docx,.zip,.png,.jpg,.jpeg"
+          className="bg-white text-sm mb-2"
+        />
+        {fileUpload && (
+          <p className="text-xs text-green-700 flex items-center gap-1">
+            <CheckCircle className="h-3.5 w-3.5" /> {fileUpload.name} ready to upload
+          </p>
+        )}
+        <p className="text-xs text-gray-400 mt-1">PDF, Word, Images, ZIP supported</p>
+      </div>
+    );
+
     return (
-      <div className="min-h-screen bg-white">
+      <ProtectedAssignmentContent className="min-h-screen bg-white">
         {/* Minimal sticky header */}
         <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
           <div className="flex items-center justify-between px-5 h-14">
@@ -451,77 +481,22 @@ export default function AssignmentDetailPage(props: PageProps) {
               )}
             </div>
           </div>
-
-          {/* Question navigator — jump to any question, see what's left at a glance */}
-          {questions.length > 1 && (
-            <div className="border-t border-gray-100 px-5 py-2 flex items-center gap-1.5 overflow-x-auto">
-              {questions.map((q, i) => {
-                const answered = isQuestionAnswered(q);
-                return (
-                  <button
-                    key={q.id}
-                    onClick={() => document.getElementById(`question-${i}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                    title={answered ? `Question ${i + 1} — answered` : `Question ${i + 1} — not answered`}
-                    className={`h-7 w-7 flex-shrink-0 rounded-full text-xs font-semibold transition-colors ${
-                      answered
-                        ? "bg-blue-600 text-white hover:bg-blue-700"
-                        : "bg-white text-gray-500 border border-gray-300 hover:border-blue-400 hover:text-blue-600"
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                );
-              })}
-              <span className="ml-2 text-[11px] text-gray-400 whitespace-nowrap">
-                {questions.length - answeredCount > 0
-                  ? `${questions.length - answeredCount} left`
-                  : "All answered ✓"}
-              </span>
-            </div>
-          )}
         </header>
 
-        {/* All questions */}
+        {questions.length > 0 ? (
+          <QuestionStepper
+            count={questions.length}
+            isAnswered={(i) => isQuestionAnswered(questions[i])}
+            renderQuestion={(i) => renderQuestion(questions[i], i)}
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            statusBarClassName="sticky top-14"
+            lastStepExtra={fileUploadSection}
+          />
+        ) : (
         <div className="max-w-3xl mx-auto px-6 py-8">
-          <div className="bg-white">
-            {questions.map((q, i) => renderQuestion(q, i))}
-          </div>
-
-          {/* File upload for project type */}
-          {(effectiveType === "project" || effectiveType === "quiz") && (
-            <div className="mt-6 p-5 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-              <Label htmlFor="file-upload" className="block text-sm font-semibold text-gray-700 mb-3">
-                Upload Your Work
-              </Label>
-              <Input
-                id="file-upload"
-                type="file"
-                onChange={e => { if (e.target.files?.[0]) { setFileUpload(e.target.files[0]); setFileUploadName(e.target.files[0].name); } }}
-                accept=".pdf,.doc,.docx,.zip,.png,.jpg,.jpeg"
-                className="bg-white text-sm mb-2"
-              />
-              {fileUpload && (
-                <p className="text-xs text-green-700 flex items-center gap-1">
-                  <CheckCircle className="h-3.5 w-3.5" /> {fileUpload.name} ready to upload
-                </p>
-              )}
-              <p className="text-xs text-gray-400 mt-1">PDF, Word, Images, ZIP supported</p>
-            </div>
-          )}
-
-          {/* Submit section */}
+          {fileUploadSection}
           <div className="mt-10 pt-8 border-t border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-500">
-                {answeredCount}/{questions.length} questions answered
-                {answeredCount < questions.length && (
-                  <span className="ml-2 text-amber-600">
-                    ({questions.length - answeredCount} remaining)
-                  </span>
-                )}
-              </p>
-              <p className="text-xs text-gray-400">Answers saved automatically</p>
-            </div>
             <button
               onClick={handleSubmit}
               disabled={submitting}
@@ -532,7 +507,8 @@ export default function AssignmentDetailPage(props: PageProps) {
             </button>
           </div>
         </div>
-      </div>
+        )}
+      </ProtectedAssignmentContent>
     );
   }
 
@@ -579,7 +555,9 @@ export default function AssignmentDetailPage(props: PageProps) {
             <div>
               <p className="text-xs text-gray-500 mb-1">Attempts</p>
               <p className="text-sm font-semibold text-gray-900">
-                {!retake?.enabled
+                {retake?.granted
+                  ? `${attempts.length} used · +1 granted`
+                  : !retake?.enabled
                   ? `${attempts.length} / 1`
                   : retake.max_attempts != null
                   ? `${attempts.length} / ${Number(retake.max_attempts) + 1}`

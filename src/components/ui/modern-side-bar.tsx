@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { commonApi } from '../../lib/api';
 import { clearStoredSession, getStoredUserId } from '../../lib/session-utils';
 import { toLmsPath } from '../../lib/brand-host';
+import { confirmLeaveAssignment } from '@/hooks/useAssignmentLeaveGuard';
 
 import { 
   Home, 
@@ -253,12 +254,13 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
     if (parentMatches.length > 0) {
       setActiveItem(parentMatches[0].id);
     }
-  }, [pathname, navigationItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, navigationItems]);
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);
 
-  const handleItemClick = (itemId: string, href: string) => {
+  const handleItemClick = async (itemId: string, href: string) => {
+    if (!(await confirmLeaveAssignment())) return;
     if (itemId === "logout") {
       onLogout?.();
       return;
@@ -492,6 +494,7 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
               onClick={async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                if (!(await confirmLeaveAssignment())) return;
                 if (onLogout) {
                   await onLogout();
                 } else {

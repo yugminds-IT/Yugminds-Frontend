@@ -45,6 +45,8 @@ interface Assignment {
   days_until_due: number;
   is_locked?: boolean;
   unlocks_in_days?: number | null;
+  retake_available?: boolean;
+  retake_granted?: boolean;
 }
 
 type StatusFilter = "all" | "pending" | "submitted" | "graded" | "overdue";
@@ -263,7 +265,8 @@ function AssignmentTable({
             const isGraded =
               a.status === "graded" ||
               (a.submission?.grade !== null && a.submission?.grade !== undefined);
-            const href = a.submission
+            // With a retake open, go to the overview that has the Retake button.
+            const href = a.submission && !a.retake_available
               ? `/lms/student/assignments/${a.id}/view`
               : `/lms/student/assignments/${a.id}`;
             const score = a.submission?.grade;
@@ -306,6 +309,15 @@ function AssignmentTable({
                     <p className="font-semibold text-sm text-gray-900 truncate group-hover:text-blue-700 transition-colors">
                       {a.title}
                     </p>
+                    {a.retake_available && (
+                      <span
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                        title={a.retake_granted ? "Your teacher granted you a retake" : "You can retake this assignment"}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        {a.retake_granted ? "Retake granted" : "Retake available"}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5 truncate ml-3.5">
                     {a.course_title || a.subject || (type === "daily" ? "Daily" : "Course")}
@@ -375,6 +387,8 @@ function normalizeAssignment(raw: Record<string, unknown>): Assignment {
     days_until_due: Number(raw.days_until_due ?? 0),
     is_locked: Boolean(raw.is_locked ?? false),
     unlocks_in_days: raw.unlocks_in_days != null ? Number(raw.unlocks_in_days) : null,
+    retake_available: Boolean(raw.retake_available ?? false),
+    retake_granted: Boolean(raw.retake_granted ?? false),
   };
 }
 

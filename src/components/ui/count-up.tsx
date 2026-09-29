@@ -11,8 +11,6 @@ import {
   type MotionValue,
   type TargetAndTransition,
 } from "framer-motion";
-import useMeasure from "react-use-measure";
-
 import { cn } from "@/lib/utils";
 
 type DigitEffect = "none" | "fade" | "blur" | "slide";
@@ -38,12 +36,15 @@ type OdometerDigitProps = {
 };
 
 function OdometerDigit({ springValue, place }: OdometerDigitProps) {
-  const [ref, { height }] = useMeasure();
-
+  // Higher places only roll while the lower places carry over (…9 → …0),
+  // so every column rests on a whole digit when the animation ends.
   const y = useTransform(springValue, (v) => {
-    if (!height) return 0;
-    const digit = (Math.abs(v) / place) % 10;
-    return -digit * height;
+    const abs = Math.abs(v);
+    if (place === 1) return `${(-(abs % 10) * 100) / 11}%`;
+    const lower = abs % place;
+    const carry = Math.max(0, lower - (place - 1));
+    const digit = (Math.floor(abs / place) % 10) + carry;
+    return `${(-digit * 100) / 11}%`;
   });
 
   return (
@@ -58,7 +59,7 @@ function OdometerDigit({ springValue, place }: OdometerDigitProps) {
         fontVariantNumeric: "tabular-nums",
       }}
     >
-      <span ref={ref} style={{ visibility: "hidden", display: "block" }}>
+      <span style={{ visibility: "hidden", display: "block", height: "1em" }}>
         0
       </span>
       <motion.span
@@ -80,7 +81,7 @@ function OdometerDigit({ springValue, place }: OdometerDigitProps) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              height: height || "1em",
+              height: "1em",
             }}
           >
             {i % 10}

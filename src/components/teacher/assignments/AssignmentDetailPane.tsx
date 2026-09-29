@@ -693,6 +693,15 @@ export default function AssignmentDetailPane(props: Props) {
                                 <span className="font-medium text-green-700">
                                   {answer || "—"}
                                 </span>
+                                {options.length > 0 && (
+                                  <>
+                                    <span className="mx-1.5 text-gray-300">·</span>
+                                    Wrong choices:{" "}
+                                    <span className="text-red-600">
+                                      {options.join(", ")}
+                                    </span>
+                                  </>
+                                )}
                               </p>
                             )}
                           </div>
@@ -865,7 +874,7 @@ export default function AssignmentDetailPane(props: Props) {
                                 </div>
                               ) : row.retake_grant_count > 0 ? (
                                 <span className="text-[11px] text-gray-400">
-                                  Revoked (×{row.retake_grant_count})
+                                  Used or revoked (×{row.retake_grant_count})
                                 </span>
                               ) : (
                                 <span className="text-[11px] text-gray-400">

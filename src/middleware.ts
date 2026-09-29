@@ -45,6 +45,12 @@ const PUBLIC_PATHS: RegExp[] = [
 	/\.(css|js|json|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|mp4|webp)$/,
 ]
 
+const ROBOCODERS_ROOT_ICONS: Record<string, string> = {
+	'/favicon.ico': '/robocoders-favicon.ico',
+	'/icon.png': '/robocoders/icon.png',
+	'/apple-icon.png': '/robocoders/apple-icon.png',
+}
+
 const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
 	{ prefix: '/lms/admin', roles: ['admin'] },
 	{ prefix: '/lms/school-admin', roles: ['school_admin'] },
@@ -103,10 +109,11 @@ export async function middleware(req: NextRequest) {
 		return finish(NextResponse.redirect(dest, 308), req)
 	}
 
-	// Crawlers fetch /favicon.ico directly; serve the RoboCoders icon on its hosts.
-	if (publicPath === '/favicon.ico' && (hostBrand === 'robocoders' || hostBrand === 'lms')) {
+	// Crawlers fetch root icon paths directly; serve the RoboCoders icon on its hosts.
+	const roboIcon = ROBOCODERS_ROOT_ICONS[publicPath]
+	if (roboIcon && (hostBrand === 'robocoders' || hostBrand === 'lms')) {
 		const url = req.nextUrl.clone()
-		url.pathname = '/robocoders-favicon.ico'
+		url.pathname = roboIcon
 		return NextResponse.rewrite(url)
 	}
 

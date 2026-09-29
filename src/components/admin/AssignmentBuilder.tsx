@@ -123,7 +123,7 @@ export function AssignmentBuilder({
         ? [...question.options]
         : question.question_type === "MCQ"
           ? ["", "", "", ""]
-          : [];
+          : ["", ""];
       const answer = question.correct_answer || "";
       const answerNorm = answer.trim().toLowerCase();
       const matchedIndex =
@@ -288,6 +288,23 @@ export function AssignmentBuilder({
         toast.warning("Correct answer is required for fill-in-the-blank questions.");
         return null;
       }
+      const correctNorm = new Set(
+        resolvedCorrectAnswer.split(/[,;]/).map((s) => s.trim().toLowerCase()).filter(Boolean),
+      );
+      const seen = new Set<string>();
+      const wrongChoices = questionFormData.options
+        .map((opt) => opt.trim())
+        .filter((opt) => {
+          const key = opt.toLowerCase();
+          if (!opt || correctNorm.has(key) || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      if (wrongChoices.length === 0) {
+        toast.warning("Add at least one wrong answer choice for students to pick from.");
+        return null;
+      }
+      resolvedOptions = wrongChoices;
     }
 
     if (!assignment) {
@@ -303,8 +320,7 @@ export function AssignmentBuilder({
       assignment_id: assignment.id,
       question_type: questionFormData.question_type,
       question_text: questionFormData.question_text.trim(),
-      options:
-        questionFormData.question_type === "MCQ" ? resolvedOptions : undefined,
+      options: resolvedOptions,
       correct_answer: resolvedCorrectAnswer,
       marks,
     };
@@ -334,7 +350,7 @@ export function AssignmentBuilder({
     setQuestionFormData({
       ...emptyQuestionForm(),
       question_type: type,
-      options: type === "MCQ" ? ["", "", "", ""] : [],
+      options: type === "MCQ" ? ["", "", "", ""] : ["", ""],
     });
   };
 
@@ -471,7 +487,7 @@ export function AssignmentBuilder({
             setQuestionFormData({
               ...questionFormData,
               question_type: value,
-              options: value === "MCQ" ? ["", "", "", ""] : [],
+              options: value === "MCQ" ? ["", "", "", ""] : ["", ""],
               correct_answer: "",
               correct_option_index: -1,
             })
@@ -582,20 +598,64 @@ export function AssignmentBuilder({
       )}
 
       {questionFormData.question_type === "FillBlank" && (
-        <div className="space-y-1.5">
-          <Label htmlFor="correct-answer">Correct answer *</Label>
-          <Input
-            id="correct-answer"
-            value={questionFormData.correct_answer}
-            onChange={(e) =>
-              setQuestionFormData({
-                ...questionFormData,
-                correct_answer: e.target.value,
-                correct_option_index: -1,
-              })
-            }
-            placeholder="Enter correct answer"
-          />
+        <div className="space-y-4">
+          <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            Type <span className="font-mono font-semibold">___</span> (three underscores) in the question where the
+            blank goes. Students see the correct answer mixed with your wrong choices and drag the right word into
+            the blank.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="correct-answer">Correct answer *</Label>
+            <Input
+              id="correct-answer"
+              value={questionFormData.correct_answer}
+              onChange={(e) =>
+                setQuestionFormData({
+                  ...questionFormData,
+                  correct_answer: e.target.value,
+                  correct_option_index: -1,
+                })
+              }
+              placeholder="e.g. Say"
+              className="border-emerald-300 focus-visible:ring-emerald-500"
+            />
+            <p className="text-xs text-gray-500">
+              More than one blank? Separate the answers with commas, in order (e.g. Motion, Looks).
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Wrong answer choices *</Label>
+            <div className="space-y-2">
+              {questionFormData.options.map((option, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <X className="h-4 w-4 shrink-0 text-red-400" aria-hidden />
+                  <Input
+                    value={option}
+                    onChange={(e) => updateOption(index, e.target.value)}
+                    placeholder={`Wrong choice ${index + 1}`}
+                  />
+                  {questionFormData.options.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeOption(index)}
+                      className="h-8 w-8 p-0 text-gray-400"
+                      aria-label="Remove wrong choice"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {questionFormData.options.length < 8 && (
+                <Button type="button" variant="outline" size="sm" onClick={addOption} className="h-8 text-xs">
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Add wrong choice
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -803,12 +863,20 @@ export function AssignmentBuilder({
                           </div>
                         )}
                         {question.question_type === "FillBlank" && (
-                          <p className="text-xs text-gray-500">
-                            Answer:{" "}
-                            <span className="font-medium text-green-700">
-                              {question.correct_answer}
-                            </span>
-                          </p>
+                          <>
+                            <p className="text-xs text-gray-500">
+                              Answer:{" "}
+                              <span className="font-medium text-green-700">
+                                {question.correct_answer}
+                              </span>
+                            </p>
+                            {!!question.options?.length && (
+                              <p className="text-xs text-gray-500">
+                                Wrong choices:{" "}
+                                <span className="text-red-600">{question.options.join(", ")}</span>
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
                       {!disabled && (

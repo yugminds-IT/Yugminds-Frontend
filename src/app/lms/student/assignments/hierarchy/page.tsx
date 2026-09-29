@@ -6,7 +6,7 @@ import { useStudentAssignments } from '@/hooks/useStudentData'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { BookOpen, ChevronRight, FileText, AlertCircle, Lock } from 'lucide-react'
+import { BookOpen, ChevronRight, FileText, AlertCircle, Lock, RotateCcw } from 'lucide-react'
 
 type AssignmentRow = {
   id: string
@@ -17,6 +17,8 @@ type AssignmentRow = {
   status?: string
   is_locked?: boolean
   unlocks_in_days?: number | null
+  retake_available?: boolean
+  retake_granted?: boolean
 }
 
 export default function AssignmentHierarchyPage() {
@@ -127,7 +129,11 @@ export default function AssignmentHierarchyPage() {
                   ) : (
                     <Link
                       key={a.id}
-                      href={`/lms/student/assignments/${a.id}/view`}
+                      href={
+                        (a.status === 'submitted' || a.status === 'graded') && !a.retake_available
+                          ? `/lms/student/assignments/${a.id}/view`
+                          : `/lms/student/assignments/${a.id}`
+                      }
                       className="block rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                     >
                       <div className="p-4 flex items-center justify-between gap-4">
@@ -138,6 +144,12 @@ export default function AssignmentHierarchyPage() {
                           ) : null}
                         </div>
                         <div className="flex items-center gap-3 flex-shrink-0">
+                          {a.retake_available && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                              <RotateCcw className="h-3 w-3" />
+                              {a.retake_granted ? 'Retake granted' : 'Retake available'}
+                            </span>
+                          )}
                           <Badge variant="outline" className="capitalize">
                             {a.status ?? 'not_started'}
                           </Badge>
