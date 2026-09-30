@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { authApi } from "../lib/api/auth.api";
-import { getStoredSession, setStoredSession } from "../lib/session-utils";
+import { getStoredSession, setStoredSession, waitForSession } from "../lib/session-utils";
 
 function StrengthBar({ password }: { password: string }) {
   const checks = [
@@ -31,8 +31,10 @@ function StrengthBar({ password }: { password: string }) {
   );
 }
 
-export function ForcePasswordChange() {
+/** `allowSkip` adds a Cancel button that keeps the issued password permanently (students only). */
+export function ForcePasswordChange({ allowSkip = false }: { allowSkip?: boolean }) {
   const [show, setShow] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -42,11 +44,38 @@ export function ForcePasswordChange() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const session = getStoredSession();
-    if (session?.user?.mustChangePassword) setShow(true);
+    let cancelled = false;
+    // After a reload the session is restored asynchronously via refresh.
+    void waitForSession().then((res) => {
+      if (!cancelled && res?.session?.user?.mustChangePassword) setShow(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!show) return null;
+
+  const clearFlag = () => {
+    const session = getStoredSession();
+    if (session?.user) {
+      setStoredSession({ ...session, user: { ...session.user, mustChangePassword: false } });
+    }
+  };
+
+  const handleSkip = async () => {
+    setError("");
+    setSkipping(true);
+    try {
+      await authApi.keepPassword();
+      clearFlag();
+      setShow(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setSkipping(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,18 +84,13 @@ export function ForcePasswordChange() {
     if (newPassword.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
     if (!/[A-Z]/.test(newPassword)) { setError("Password must contain at least one uppercase letter."); return; }
+    if (!/[a-z]/.test(newPassword)) { setError("Password must contain at least one lowercase letter."); return; }
     if (!/\d/.test(newPassword)) { setError("Password must contain at least one number."); return; }
 
     setLoading(true);
     try {
       await authApi.updatePassword({ new_password: newPassword });
-
-      // Clear the flag in stored session
-      const session = getStoredSession();
-      if (session?.user) {
-        setStoredSession({ ...session, user: { ...session.user, mustChangePassword: false } });
-      }
-
+      clearFlag();
       setDone(true);
       setTimeout(() => setShow(false), 1800);
     } catch (err) {
@@ -77,17 +101,19 @@ export function ForcePasswordChange() {
   };
 
   return (
-    // Full-screen blocking overlay — cannot be dismissed
+    // Full-screen blocking overlay — only dismissible via Cancel when allowSkip
     <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 text-white">
           <div className="flex items-center gap-3 mb-1">
             <ShieldAlert className="h-6 w-6" />
-            <h2 className="text-lg font-bold">Password Change Required</h2>
+            <h2 className="text-lg font-bold">{allowSkip ? "Set Your Own Password?" : "Password Change Required"}</h2>
           </div>
           <p className="text-blue-100 text-sm">
-            You are logged in with a temporary password. You must set a new password before continuing.
+            {allowSkip
+              ? "You logged in with the password you were given. You can set a new one now, or press Cancel to keep using your current password."
+              : "You are logged in with a temporary password. You must set a new password before continuing."}
           </p>
         </div>
 
@@ -158,13 +184,26 @@ export function ForcePasswordChange() {
                 </ul>
               </div>
 
-              <Button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                {loading ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" />Updating password…</>
-                ) : (
-                  <><KeyRound className="h-4 w-4" />Set New Password</>
+              <div className="flex gap-2">
+                {allowSkip && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSkip}
+                    disabled={loading || skipping}
+                    className="flex-1 gap-2"
+                  >
+                    {skipping ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : "Cancel"}
+                  </Button>
                 )}
-              </Button>
+                <Button type="submit" disabled={loading || skipping} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                  {loading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" />Updating password…</>
+                  ) : (
+                    <><KeyRound className="h-4 w-4" />Set New Password</>
+                  )}
+                </Button>
+              </div>
             </form>
           )}
         </div>

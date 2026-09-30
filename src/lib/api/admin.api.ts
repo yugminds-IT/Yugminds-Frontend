@@ -102,7 +102,7 @@ export const adminApi = {
       grade?: string;
       section?: string;
     }) => apiClient.post(`${ADMIN}/students/bulk`, data, { timeout: 120000 }),
-    bulkImport: (data: { school_id: string; students: Record<string, unknown>[]; dry_run?: boolean }) =>
+    bulkImport: (data: { school_id: string; students: Record<string, unknown>[]; dry_run?: boolean; email_domain?: string }) =>
       apiClient.post(`${ADMIN}/students/bulk-import`, data, { timeout: 120000 }),
     syncEnrollments: (params?: { school_id?: string }) =>
       apiClient.post(withParams(`${ADMIN}/students/sync-enrollments`, params), {}, {

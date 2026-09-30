@@ -11,6 +11,7 @@ import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, 
@@ -207,6 +208,9 @@ interface BulkImportData {
   error?: string;
 }
 
+/** Same rule the backend enforces on `email_domain` (e.g. "snt.edu.in"). */
+const EMAIL_DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
 export default function StudentsManagement() {
   const [students, setStudents] = useState<Student[]>([]);
   const [totalStudentsCount, setTotalStudentsCount] = useState<number>(0);
@@ -319,6 +323,10 @@ export default function StudentsManagement() {
   const [credentialsSectionFilter, setCredentialsSectionFilter] = useState<string>('all');
   const [showStudentPasswords, setShowStudentPasswords] = useState<Record<string, boolean>>({});
   const [selectedSchoolForImport, setSelectedSchoolForImport] = useState<string>('');
+  // Optional override for the part after @ in auto-generated emails (blank = derive from school name).
+  const [bulkEmailDomain, setBulkEmailDomain] = useState('');
+  const normalizedBulkEmailDomain = bulkEmailDomain.trim().toLowerCase().replace(/^@/, '');
+  const bulkEmailDomainInvalid = normalizedBulkEmailDomain !== '' && !EMAIL_DOMAIN_RE.test(normalizedBulkEmailDomain);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -1113,6 +1121,11 @@ export default function StudentsManagement() {
       return;
     }
 
+    if (bulkEmailDomainInvalid) {
+      setBulkImportError(`"${normalizedBulkEmailDomain}" is not a valid email domain (e.g. school.edu.in). Fix it or leave it blank.`);
+      return;
+    }
+
     // Validate required fields. Password is intentionally not required here —
     // the backend auto-generates one per student when left blank.
     const invalidRows = bulkData
@@ -1217,6 +1230,7 @@ export default function StudentsManagement() {
             school_id: selectedSchoolForImport,
             students: chunk.map(toRow),
             dry_run: true,
+            email_domain: normalizedBulkEmailDomain || undefined,
           });
           const rowResults = (res.data as { results: RowResult[] }).results;
           rowResults.forEach((r, i) => {
@@ -1252,6 +1266,7 @@ export default function StudentsManagement() {
           school_id: selectedSchoolForImport,
           students: chunk.map(toRow),
           dry_run: false,
+          email_domain: normalizedBulkEmailDomain || undefined,
         });
         const rowResults = (res.data as { results: RowResult[] }).results;
         rowResults.forEach((r, i) => {
@@ -1896,9 +1911,10 @@ export default function StudentsManagement() {
   };
 
   /**
-   * Fills any blank `email` fields as `{last_name}@{school-domain}.edu`,
-   * derived from the given school's name. Never overwrites an email the
-   * admin already typed/edited. Students sharing a last name (e.g. two
+   * Fills blank or previously auto-generated `email` fields as
+   * `{last_name}@{domain}` — the custom domain if one is entered, otherwise
+   * `{schoolname}.edu`. Never overwrites an email the admin typed/edited.
+   * Students sharing a last name (e.g. two
    * "Smith"s) would otherwise collide on the same email, so a numeric
    * suffix (smith2@, smith3@, ...) is appended whenever the base email is
    * already taken — by an existing row's email or one just generated in
@@ -1907,16 +1923,18 @@ export default function StudentsManagement() {
    * (surfaced afterward via bulkImportCredentials).
    */
   const autoFillEmails = (schoolId: string) => {
+    if (bulkEmailDomainInvalid) return;
     const schoolName = schools.find((s: School) => s.id === schoolId)?.name?.toLowerCase().replace(/\s+/g, '') || 'school';
-    const domain = `@${schoolName}.edu`;
+    const domain = `@${normalizedBulkEmailDomain || `${schoolName}.edu`}`;
 
     setBulkData(prev => {
+      const isManual = (item: BulkImportData) => !!item.email && !item.emailAuto;
       const taken = new Set(
-        prev.filter((item) => item.email).map((item) => item.email!.trim().toLowerCase())
+        prev.filter(isManual).map((item) => item.email!.trim().toLowerCase())
       );
 
       return prev.map((item) => {
-        if (item.email) return item;
+        if (isManual(item)) return item;
         const nameParts = item.student_name.trim().toLowerCase().split(/\s+/);
         const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : nameParts[0];
 
@@ -1932,6 +1950,12 @@ export default function StudentsManagement() {
       });
     });
   };
+
+  // Re-derive auto-generated emails when the school or custom domain changes.
+  useEffect(() => {
+    if (selectedSchoolForImport && bulkData.length > 0) autoFillEmails(selectedSchoolForImport);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on school/domain changes, not on every row edit
+  }, [selectedSchoolForImport, normalizedBulkEmailDomain]);
 
   const downloadSampleCSV = () => {
     // Sample CSV data with headers + 15 example rows (template)
@@ -3394,6 +3418,37 @@ export default function StudentsManagement() {
                         </SelectContent>
                       </Select>
                     )}
+
+                    <div className="mt-4 max-w-md">
+                      <Label htmlFor="bulk-email-domain" className="text-sm font-medium">
+                        Email domain <span className="font-normal text-gray-500">(optional)</span>
+                      </Label>
+                      <div className={cn(
+                        "mt-1 flex items-center rounded-md border focus-within:ring-2",
+                        bulkEmailDomainInvalid ? "border-red-500 focus-within:ring-red-500/30" : "border-input focus-within:ring-ring/50"
+                      )}>
+                        <span className="pl-3 text-sm text-gray-500 select-none">@</span>
+                        <Input
+                          id="bulk-email-domain"
+                          value={bulkEmailDomain}
+                          onChange={(e) => setBulkEmailDomain(e.target.value)}
+                          placeholder={
+                            (schools.find((s: School) => s.id === selectedSchoolForImport)?.name?.toLowerCase().replace(/\s+/g, '') || 'schoolname') + '.edu'
+                          }
+                          aria-invalid={bulkEmailDomainInvalid}
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="border-0 shadow-none pl-1 focus-visible:ring-0"
+                        />
+                      </div>
+                      {bulkEmailDomainInvalid ? (
+                        <p className="mt-1 text-xs text-red-600">Enter a valid domain like school.edu.in (no spaces or @ in the middle).</p>
+                      ) : (
+                        <p className="mt-1 text-xs text-gray-500">
+                          The part after @ in student emails. Leave blank to use the default from the school name.
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Step 2: Upload */}
@@ -3446,7 +3501,7 @@ export default function StudentsManagement() {
                           )}
                           {!isParsingFile && bulkData.length > 0 && (
                             <p className="text-sm text-green-600 font-medium">
-                              ✓ Successfully parsed {bulkData.length} student(s) — emails auto-filled from the school name
+                              ✓ Successfully parsed {bulkData.length} student(s) — emails auto-filled {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}
                             </p>
                           )}
                         </div>
@@ -3474,12 +3529,12 @@ export default function StudentsManagement() {
                           <div>
                             <Label className="font-medium">Step 3: Review & Edit ({bulkData.length} students)</Label>
                             <p className="text-sm text-gray-500">
-                              Emails are auto-filled from the school name. Passwords are left blank so each student gets a unique auto-generated one — type one only to override.
+                              Emails are auto-filled {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}. Passwords are left blank so each student gets a unique auto-generated one — type one only to override.
                             </p>
                           </div>
                           <Button
                             onClick={handleBulkImport}
-                            disabled={isBulkImporting || !selectedSchoolForImport || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
+                            disabled={isBulkImporting || !selectedSchoolForImport || bulkEmailDomainInvalid || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
                             className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 shrink-0"
                           >
                             {isBulkImporting ? (

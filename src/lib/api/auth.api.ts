@@ -92,4 +92,5 @@ export const authApi = {
     apiClient.post(`${AUTH_BASE}/update-password`, data),
   verifyPassword: (data: { current_password: string }) =>
     apiClient.post<{ valid: boolean }>(`${AUTH_BASE}/verify-password`, data),
+  keepPassword: () => apiClient.post<{ success: boolean }>(`${AUTH_BASE}/keep-password`),
 };

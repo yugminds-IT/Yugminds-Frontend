@@ -124,6 +124,7 @@ async function doRefreshOnce(): Promise<boolean> {
   const data = (await response.json()) as {
     token?: string;
     tokens?: { accessToken?: string };
+    user?: { mustChangePassword?: boolean };
   };
   const token = data.token ?? data.tokens?.accessToken;
   if (!token) return false;
@@ -135,6 +136,7 @@ async function doRefreshOnce(): Promise<boolean> {
     writeMeta({
       id: String(sub),
       email: typeof payload?.email === 'string' ? payload.email : undefined,
+      mustChangePassword: data.user?.mustChangePassword ?? false,
     });
   }
   return true;

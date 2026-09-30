@@ -294,7 +294,7 @@ export default function StudentLayoutWrapper({
 
   return (
     <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
-      <ForcePasswordChange />
+      <ForcePasswordChange allowSkip />
       <AnnouncementBanner />
       <ImpersonationBanner />
       <Sidebar 
