@@ -18,6 +18,8 @@ export const schoolAdminApi = {
   stats: {
     get: () => apiClient.get(`${SCHOOL_ADMIN}/stats`),
     leaderboard: () => apiClient.get(`${SCHOOL_ADMIN}/leaderboard`),
+    assignmentMarks: (assignmentId: string) =>
+      apiClient.get(`${SCHOOL_ADMIN}/leaderboard/assignments/${assignmentId}/marks`),
   },
 
   /** Courses */

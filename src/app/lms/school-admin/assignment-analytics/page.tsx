@@ -18,7 +18,9 @@ import {
   Star,
   ArrowUp,
   ArrowDown,
+  ChevronRight,
 } from "lucide-react";
+import { AssignmentMarksPanel } from "@/components/school-admin/AssignmentMarksPanel";
 
 type LeaderboardStudent = {
   rank: number;
@@ -56,7 +58,9 @@ type AssignmentRow = {
   title: string;
   assignment_type: string;
   subject: string;
+  total_marks: number | null;
   total_submissions: number;
+  graded_count: number;
   avg_score: number;
   highest_score: number;
   lowest_score: number;
@@ -150,6 +154,9 @@ export default function SchoolAdminLeaderboardPage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortAsc, setSortAsc] = useState(true);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [assignmentType, setAssignmentType] = useState<"all" | "DAILY" | "COURSE">("all");
 
   useEffect(() => {
     void (async () => {
@@ -177,6 +184,15 @@ export default function SchoolAdminLeaderboardPage() {
   const sectionBreakdown = data?.section_breakdown ?? [];
   const subjectBreakdown = data?.subject_breakdown ?? [];
   const assignmentTable = data?.assignment_table ?? [];
+  const assignmentQuery = assignmentSearch.trim().toLowerCase();
+  const visibleAssignments = assignmentTable.filter(
+    (row) =>
+      (assignmentType === "all" ||
+        (assignmentType === "COURSE") === (row.assignment_type === "COURSE")) &&
+      (!assignmentQuery ||
+        row.title.toLowerCase().includes(assignmentQuery) ||
+        (row.subject ?? "").toLowerCase().includes(assignmentQuery)),
+  );
 
   const goldCount = leaderboard.filter((s) => s.badge === "GOLD").length;
   const silverCount = leaderboard.filter((s) => s.badge === "SILVER").length;
@@ -554,17 +570,53 @@ export default function SchoolAdminLeaderboardPage() {
         )}
 
         {/* Assignment table */}
-        {tab === "assignments" && (
+        {tab === "assignments" && selectedAssignmentId && (
+          <AssignmentMarksPanel
+            key={selectedAssignmentId}
+            assignmentId={selectedAssignmentId}
+            onBack={() => setSelectedAssignmentId(null)}
+          />
+        )}
+        {tab === "assignments" && !selectedAssignmentId && (
           <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="px-5 py-3 border-b border-gray-100">
-              <CardTitle className="text-sm font-semibold text-gray-800">
-                Assignment Performance
-              </CardTitle>
+            <CardHeader className="px-5 py-3 border-b border-gray-100 space-y-2">
+              <div>
+                <CardTitle className="text-sm font-semibold text-gray-800">
+                  Assignment Performance
+                </CardTitle>
+                <p className="text-xs text-gray-400 mt-0.5">Click an assignment to see each student&apos;s marks</p>
+              </div>
+              {assignmentTable.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-48">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                    <Input
+                      value={assignmentSearch}
+                      onChange={(e) => setAssignmentSearch(e.target.value)}
+                      placeholder="Search assignments..."
+                      className="h-8 pl-8 text-sm"
+                    />
+                  </div>
+                  {(["all", "DAILY", "COURSE"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setAssignmentType(t)}
+                      className={`h-8 px-3 rounded-md text-xs font-medium border transition-colors ${
+                        assignmentType === t
+                          ? "bg-gray-900 text-white border-gray-900"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      {t === "all" ? "All" : t === "DAILY" ? "Daily" : "Course"}
+                    </button>
+                  ))}
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-0">
-              {assignmentTable.length === 0 ? (
+              {visibleAssignments.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">
-                  No assignments published yet
+                  {assignmentTable.length === 0 ? "No assignments published yet" : "No assignments match these filters"}
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -592,12 +644,22 @@ export default function SchoolAdminLeaderboardPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {assignmentTable.map((row) => (
-                        <tr key={row.assignment_id} className="hover:bg-gray-50 transition-colors">
+                      {visibleAssignments.map((row) => (
+                        <tr
+                          key={row.assignment_id}
+                          onClick={() => setSelectedAssignmentId(row.assignment_id)}
+                          className="hover:bg-blue-50/50 transition-colors cursor-pointer"
+                        >
                           <td className="py-3 px-5">
-                            <p className="font-semibold text-gray-900 truncate max-w-52">
-                              {row.title}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-semibold text-gray-900 truncate max-w-52">
+                                {row.title}
+                              </p>
+                              <ChevronRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+                            </div>
+                            {row.total_marks != null && (
+                              <p className="text-[11px] text-gray-400">{row.total_marks} marks</p>
+                            )}
                           </td>
                           <td className="py-3 px-4 hidden sm:table-cell">
                             <span className="text-xs text-gray-500">{row.subject || "—"}</span>
