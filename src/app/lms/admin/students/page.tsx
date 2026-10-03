@@ -63,7 +63,10 @@ import {
   Loader2,
   RefreshCw,
   Copy,
-  Shield
+  Shield,
+  CheckCircle2,
+  RotateCcw,
+  ArrowRight
 } from "lucide-react";
 
 interface StudentSchool {
@@ -1330,6 +1333,42 @@ export default function StudentsManagement() {
     } finally {
       setIsBulkImporting(false);
     }
+  };
+
+  /** Resets all bulk import state to allow starting a new bulk import cleanly. */
+  const resetBulkImportState = () => {
+    setBulkData([]);
+    setUploadFile(null);
+    setBulkImportError(null);
+    setBulkImportResults(null);
+    setBulkImportCredentials(null);
+    setCredentialsGradeFilter('all');
+    setCredentialsSectionFilter('all');
+    setShowStudentPasswords({});
+    setBulkEmailDomain('');
+    const fileInput = document.getElementById('bulk-file-upload-tab') as HTMLInputElement | null;
+    if (fileInput) fileInput.value = '';
+  };
+
+  /** Clears the current completed bulk import and scrolls to top to upload a new file. */
+  const handleResetAndNewImport = () => {
+    resetBulkImportState();
+    toast.info("Cleared previous import. You can select a school and upload a new file.");
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /** Refreshes student data and navigates to the main Students list tab. */
+  const handleGoToStudentsList = async () => {
+    await loadData();
+    resetBulkImportState();
+    setActiveTab('students');
+    toast.success("Switched to Students list with updated data.");
+  };
+
+  /** Manually refreshes student data from the server. */
+  const handleRefreshData = async () => {
+    await loadData();
+    toast.success("Student data refreshed successfully!");
   };
 
   /** Builds a CSV from `rows` (first row treated as header) and triggers a browser download. */
@@ -3532,24 +3571,89 @@ export default function StudentsManagement() {
                               Emails are auto-filled {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}. Passwords are left blank so each student gets a unique auto-generated one — type one only to override.
                             </p>
                           </div>
-                          <Button
-                            onClick={handleBulkImport}
-                            disabled={isBulkImporting || !selectedSchoolForImport || bulkEmailDomainInvalid || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 shrink-0"
-                          >
-                            {isBulkImporting ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Importing Students...
-                              </>
-                            ) : (
-                              <>
-                                <Upload className="mr-2 h-4 w-4" />
-                                Import {bulkData.length} Student{bulkData.length !== 1 ? 's' : ''}
-                              </>
-                            )}
-                          </Button>
+                          {bulkImportResults && bulkImportResults.success > 0 ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleResetAndNewImport}
+                                className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50 shrink-0"
+                              >
+                                <RotateCcw className="mr-2 h-4 w-4 text-blue-600" />
+                                Create New Import
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={handleGoToStudentsList}
+                                className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                              >
+                                <Users className="mr-2 h-4 w-4" />
+                                View Students List
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              onClick={handleBulkImport}
+                              disabled={isBulkImporting || !selectedSchoolForImport || bulkEmailDomainInvalid || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 shrink-0"
+                            >
+                              {isBulkImporting ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Importing Students...
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="mr-2 h-4 w-4" />
+                                  Import {bulkData.length} Student{bulkData.length !== 1 ? 's' : ''}
+                                </>
+                              )}
+                            </Button>
+                          )}
                         </div>
+                        {bulkImportResults && bulkImportResults.success > 0 && (
+                          <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg flex flex-wrap items-center justify-between gap-3 text-sm text-green-800">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                              <span>
+                                <strong className="font-semibold">Import Completed!</strong> Successfully imported {bulkImportResults.success} student(s).
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleRefreshData}
+                                className="h-8 text-xs bg-white border-green-300 text-green-700 hover:bg-green-100"
+                              >
+                                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                                Refresh
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleResetAndNewImport}
+                                className="h-8 text-xs bg-white border-green-300 text-green-700 hover:bg-green-100"
+                              >
+                                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                                Create New Import
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={handleGoToStudentsList}
+                                className="h-8 text-xs bg-green-700 hover:bg-green-800 text-white"
+                              >
+                                <Users className="mr-1.5 h-3.5 w-3.5" />
+                                View Students
+                                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                         {(() => {
                           const missingPhone = bulkData.filter((s) => !s.phone_number?.trim()).length;
                           const missingFather = bulkData.filter((s) => !s.father_name?.trim()).length;
@@ -3750,9 +3854,33 @@ export default function StudentsManagement() {
 
                       {/* Import Results */}
                       {bulkImportResults && (
-                        <Card className="bg-white">
-                          <CardHeader>
-                            <CardTitle className="text-lg">Import Results</CardTitle>
+                        <Card className="bg-white border-green-200 shadow-sm">
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              <CheckCircle2 className="h-5 w-5 text-green-600" />
+                              Import Results
+                            </CardTitle>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleResetAndNewImport}
+                                className="h-8 text-xs bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                              >
+                                <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+                                Create New Import
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={handleGoToStudentsList}
+                                className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                <Users className="mr-1.5 h-3.5 w-3.5" />
+                                View Students
+                              </Button>
+                            </div>
                           </CardHeader>
                           <CardContent>
                             <div className="space-y-3">
@@ -3840,6 +3968,46 @@ export default function StudentsManagement() {
                                 </div>
                                 );
                               })()}
+
+                              {/* Next Steps Action Bar */}
+                              <div className="mt-6 pt-4 border-t border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gray-50 p-4 rounded-lg">
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-900">What would you like to do next?</p>
+                                  <p className="text-xs text-gray-600">Refresh dataset, view imported students in main directory, or start another bulk import.</p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleRefreshData}
+                                    className="bg-white border-gray-300 text-gray-700 hover:bg-gray-100"
+                                  >
+                                    <RefreshCw className="mr-1.5 h-3.5 w-3.5 text-gray-500" />
+                                    Refresh
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleResetAndNewImport}
+                                    className="bg-white border-blue-300 text-blue-700 hover:bg-blue-50"
+                                  >
+                                    <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
+                                    Create New Import
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={handleGoToStudentsList}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                  >
+                                    <Users className="mr-1.5 h-3.5 w-3.5" />
+                                    Go to Students List
+                                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>

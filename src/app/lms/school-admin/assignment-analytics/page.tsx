@@ -60,8 +60,10 @@ type AssignmentRow = {
   subject: string;
   total_marks: number | null;
   total_submissions: number;
+  targeted_students: number;
   graded_count: number;
   avg_score: number;
+  avg_marks: number | null;
   highest_score: number;
   lowest_score: number;
   completion_rate: number;
@@ -434,7 +436,7 @@ export default function SchoolAdminLeaderboardPage() {
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="px-5 py-3 border-b border-gray-100">
               <CardTitle className="text-sm font-semibold text-gray-800">Student Rankings</CardTitle>
-              <p className="text-xs text-gray-400 mt-0.5">Overall = Course (60%) + Daily (40%) · Ranked by school, grade, and section</p>
+              <p className="text-xs text-gray-400 mt-0.5">Overall = Course (60%) + Daily (40%), or just one if the student only has that kind · Ranked by school, grade, and section</p>
             </CardHeader>
             <CardContent className="p-4">
               {leaderboard.length === 0 ? (
@@ -677,6 +679,7 @@ export default function SchoolAdminLeaderboardPage() {
                           </td>
                           <td className="py-3 px-4 text-right text-xs text-gray-700 font-medium">
                             {row.total_submissions}
+                            <span className="text-gray-400 font-normal"> / {row.targeted_students}</span>
                           </td>
                           <td className="py-3 px-4 text-right hidden md:table-cell">
                             <div className="flex items-center justify-end gap-2">
@@ -703,8 +706,13 @@ export default function SchoolAdminLeaderboardPage() {
                                   : "text-red-500"
                               }`}
                             >
-                              {row.avg_score.toFixed(1)}%
+                              {row.graded_count > 0 ? `${row.avg_score.toFixed(1)}%` : "—"}
                             </span>
+                            {row.avg_marks != null && row.total_marks != null && (
+                              <p className="text-[11px] text-gray-400">
+                                {row.avg_marks.toFixed(1)}/{row.total_marks} marks
+                              </p>
+                            )}
                           </td>
                         </tr>
                       ))}

@@ -158,7 +158,7 @@ export default function AssignmentAnalyticsPanel({
               Student rankings
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">
-              Overall = Course (60%) + Daily (40%)
+              Overall = Course (60%) + Daily (40%), or just one if the student only has that kind
             </p>
           </div>
           {(data.top_students ?? []).length === 0 ? (

@@ -997,22 +997,42 @@ export default function StudentsManagement() {
                 </div>
 
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsImportDialogOpen(false)}>
-                    Close
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={actionLoading !== null || importPreview.length === 0}
-                    onClick={() => void handleRunImport(true)}
-                  >
-                    Dry run
-                  </Button>
-                  <Button
-                    disabled={actionLoading !== null || importPreview.length === 0}
-                    onClick={() => void handleRunImport(false)}
-                  >
-                    Import
-                  </Button>
+                  {importResults ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setImportResults(null);
+                          setImportPreview([]);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                      >
+                        Start New Import
+                      </Button>
+                      <Button onClick={() => setIsImportDialogOpen(false)}>
+                        Done & Close
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="outline" onClick={() => setIsImportDialogOpen(false)}>
+                        Close
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={actionLoading !== null || importPreview.length === 0}
+                        onClick={() => void handleRunImport(true)}
+                      >
+                        Dry run
+                      </Button>
+                      <Button
+                        disabled={actionLoading !== null || importPreview.length === 0}
+                        onClick={() => void handleRunImport(false)}
+                      >
+                        Import
+                      </Button>
+                    </>
+                  )}
                 </DialogFooter>
               </DialogContent>
             </Dialog>

@@ -268,7 +268,7 @@ export default function AdminAssignmentAnalyticsPage() {
                 <Star className="h-4 w-4 text-yellow-500" />
                 Top 50 Students Platform-wide
               </CardTitle>
-              <p className="text-xs text-gray-500">Overall = Course (60%) + Daily (40%) · Ranked system-wide</p>
+              <p className="text-xs text-gray-500">Overall = Course (60%) + Daily (40%), or just one if the student only has that kind · Ranked system-wide</p>
             </CardHeader>
             <CardContent>
               {topStudents.length === 0 ? (
