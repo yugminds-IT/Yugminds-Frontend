@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Edit, Trash2, Upload, RefreshCw, Image as ImageIcon, AlertTriangle, CheckCircle, AlertCircle, X, Search, Pencil } from "lucide-react";
 import { adminApi } from "@/lib/api/admin.api";
 import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import { LogoFramer, DEFAULT_FRAMING, isDefaultFraming, renderFramedLogo, type Framing } from "@/components/admin/LogoFramer";
 
 interface LogoItem {
   id: string;
@@ -85,6 +86,7 @@ export default function LogoManagementPage() {
   const [schoolIdsWithLogo, setSchoolIdsWithLogo] = useState<Set<string>>(new Set());
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [framing, setFraming] = useState<Framing>(DEFAULT_FRAMING);
   const [uploadSchoolId, setUploadSchoolId] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -169,6 +171,7 @@ export default function LogoManagementPage() {
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
     setFile(f);
+    setFraming(DEFAULT_FRAMING);
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return f ? URL.createObjectURL(f) : null;
@@ -201,8 +204,10 @@ export default function LogoManagementPage() {
 
     try {
       setUploading(true);
+      const toUpload =
+        previewUrl && !isDefaultFraming(framing) ? await renderFramedLogo(previewUrl, framing, file) : file;
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', toUpload);
       fd.append('school_id', uploadSchoolId);
       if (uploadDescription.trim()) fd.append('description', uploadDescription.trim());
       await adminApi.logos.create(fd);
@@ -210,6 +215,7 @@ export default function LogoManagementPage() {
       // Reset form
       setFile(null);
       setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+      setFraming(DEFAULT_FRAMING);
       setUploadSchoolId('');
       setUploadDescription('');
       if (uploadFileInputRef.current) uploadFileInputRef.current.value = '';
@@ -365,11 +371,9 @@ export default function LogoManagementPage() {
                   <section className="border rounded-lg p-4 bg-gray-50">
                     <div className="flex items-center gap-2 mb-2"><ImageIcon className="h-5 w-5" /><span className="font-medium">Preview</span></div>
                     {previewUrl ? (
-                      <div className="aspect-[4/1] flex items-center justify-center bg-white border rounded-lg relative min-h-24">
-                        <Image src={previewUrl} alt="Preview" fill className="object-contain" unoptimized />
-                      </div>
+                      <LogoFramer src={previewUrl} framing={framing} onChange={setFraming} />
                     ) : (
-                      <div className="h-24 flex items-center justify-center text-gray-400">No file selected</div>
+                      <div className="h-48 flex items-center justify-center text-gray-400">No file selected</div>
                     )}
                   </section>
                 </div>

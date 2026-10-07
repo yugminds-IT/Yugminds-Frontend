@@ -167,19 +167,12 @@ export default function CombinedSchoolsTestimonials() {
                                     ? `${logo.description} school logo — RoboCoders STEM partner`
                                     : "Partner school logo — RoboCoders STEM"
                                 }
-                                className={logo.className || "h-20 md:h-28 lg:h-32 w-auto opacity-60 hover:opacity-100 transition-opacity max-w-[150px] object-contain"}
+                                className={logo.className || "h-20 md:h-28 lg:h-32 w-auto max-w-[150px] object-contain"}
                                 loading="lazy"
                                 decoding="async"
-                                crossOrigin="anonymous"
                                 onError={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
+                                  (e.target as HTMLImageElement).style.display = 'none';
                                   console.warn('Failed to load logo image:', logo.image, 'for school:', logo.description);
-                                }}
-                                onLoad={(e) => {
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'block';
-                                  console.log('Successfully loaded logo:', logo.description);
                                 }}
                               />
                             </div>
@@ -188,8 +181,6 @@ export default function CombinedSchoolsTestimonials() {
                       ))}
                     </CarouselContent>
                   </Carousel>
-                  <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-white to-transparent pointer-events-none z-10"></div>
-                  <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white to-transparent pointer-events-none z-10"></div>
                 </>
               )}
               

@@ -102,6 +102,12 @@ export const adminApi = {
       grade?: string;
       section?: string;
     }) => apiClient.post(`${ADMIN}/students/bulk`, data, { timeout: 120000 }),
+    deleteByClass: (data: {
+      school_id: string;
+      whole_school?: boolean;
+      classes?: Array<{ grade: string | null; section: string | null }>;
+      dry_run?: boolean;
+    }) => apiClient.post(`${ADMIN}/students/delete-by-class`, data, { timeout: 120000 }),
     bulkImport: (data: { school_id: string; students: Record<string, unknown>[]; dry_run?: boolean; email_domain?: string }) =>
       apiClient.post(`${ADMIN}/students/bulk-import`, data, { timeout: 120000 }),
     syncEnrollments: (params?: { school_id?: string }) =>

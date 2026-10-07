@@ -6,6 +6,7 @@ import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import ViewStudentDialog from "@/components/admin/ViewStudentDialog";
+import BulkDeleteStudentsButton from "@/components/admin/BulkDeleteStudentsButton";
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,8 +67,11 @@ import {
   Shield,
   CheckCircle2,
   RotateCcw,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronRight
 } from "lucide-react";
+import { exportClassOptions, matchingEnrollment, type ExportClassOption } from "@/lib/student-export";
 
 interface StudentSchool {
   id?: string;
@@ -254,7 +258,9 @@ export default function StudentsManagement() {
   const [addStudentError, setAddStudentError] = useState<string | null>(null);
   const [updateStudentError, setUpdateStudentError] = useState<string | null>(null);
   const [exportSelectedSchools, setExportSelectedSchools] = useState<string[]>([]);
-  const [exportSelectedGrades, setExportSelectedGrades] = useState<string[]>([]);
+  // Keys from classKey(grade, section); empty = every grade and section.
+  const [exportSelectedClasses, setExportSelectedClasses] = useState<string[]>([]);
+  const [exportExpandedGrades, setExportExpandedGrades] = useState<string[]>([]);
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('csv');
   const [resetPasswordsOnExport, setResetPasswordsOnExport] = useState(false);
   
@@ -330,6 +336,7 @@ export default function StudentsManagement() {
   const [bulkEmailDomain, setBulkEmailDomain] = useState('');
   const normalizedBulkEmailDomain = bulkEmailDomain.trim().toLowerCase().replace(/^@/, '');
   const bulkEmailDomainInvalid = normalizedBulkEmailDomain !== '' && !EMAIL_DOMAIN_RE.test(normalizedBulkEmailDomain);
+  const bulkImportDone = !!bulkImportResults && bulkImportResults.success > 0;
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -411,6 +418,31 @@ export default function StudentsManagement() {
     }
     return availableGrades;
   }, [selectedSchoolGrades]);
+
+  // Export dialog: grades/sections that really exist in the chosen schools.
+  const exportOptions = useMemo(
+    () => exportClassOptions(students, exportSelectedSchools),
+    [students, exportSelectedSchools],
+  );
+  const exportClassesLabel = useMemo(() => {
+    if (exportSelectedClasses.length === 0) return 'All Grades';
+    return exportOptions
+      .map((o) => {
+        const picked = o.sections.filter((s) => exportSelectedClasses.includes(s.key));
+        if (picked.length === 0) return null;
+        if (picked.length === o.sections.length) return o.grade;
+        return `${o.grade} (${picked.map((s) => s.section || 'No section').join(', ')})`;
+      })
+      .filter(Boolean)
+      .join(', ');
+  }, [exportOptions, exportSelectedClasses]);
+  const exportMatchCount = useMemo(
+    () =>
+      isExportDialogOpen
+        ? students.filter((s) => matchingEnrollment(s, exportSelectedSchools, exportSelectedClasses)).length
+        : 0,
+    [isExportDialogOpen, students, exportSelectedSchools, exportSelectedClasses],
+  );
 
   // Group Step-3 review rows by grade, then by section within each grade,
   // for easier scanning; rows missing a required field or carrying a grade
@@ -1353,7 +1385,7 @@ export default function StudentsManagement() {
   /** Clears the current completed bulk import and scrolls to top to upload a new file. */
   const handleResetAndNewImport = () => {
     resetBulkImportState();
-    toast.info("Cleared previous import. You can select a school and upload a new file.");
+    toast.info("Ready for the next import.");
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1363,12 +1395,6 @@ export default function StudentsManagement() {
     resetBulkImportState();
     setActiveTab('students');
     toast.success("Switched to Students list with updated data.");
-  };
-
-  /** Manually refreshes student data from the server. */
-  const handleRefreshData = async () => {
-    await loadData();
-    toast.success("Student data refreshed successfully!");
   };
 
   /** Builds a CSV from `rows` (first row treated as header) and triggers a browser download. */
@@ -2030,17 +2056,14 @@ export default function StudentsManagement() {
         student_schools?: Array<StudentSchool>;
       }
       
-      const filteredStudentsForExport = students.filter((student: StudentWithSchools) => {
-        // School filter
-        const matchesSchool = exportSelectedSchools.length === 0 || 
-          student.student_schools?.some((ss: { school_id?: string }) => exportSelectedSchools.includes(ss.school_id || ''));
-        
-        // Grade filter
-        const matchesGrade = exportSelectedGrades.length === 0 ||
-          student.student_schools?.some((ss: { grade?: string }) => exportSelectedGrades.includes(ss.grade || ''));
-        
-        return matchesSchool && matchesGrade;
-      });
+      const matches = students
+        .map((student: StudentWithSchools) => ({
+          student,
+          enrollment: matchingEnrollment(student, exportSelectedSchools, exportSelectedClasses),
+        }))
+        .filter((m) => m.enrollment !== null);
+      const filteredStudentsForExport = matches.map((m) => m.student);
+      const enrollmentFor = new Map(matches.map((m) => [m.student.id, m.enrollment]));
 
       if (filteredStudentsForExport.length === 0) {
         toast.warning('No students found matching the selected criteria.');
@@ -2073,7 +2096,7 @@ export default function StudentsManagement() {
       // whichever applies, per row. No password shows for students who've
       // already changed theirs and weren't part of a reset.
       const credentials = filteredStudentsForExport.map((student: StudentWithSchools) => {
-        const schoolAssignment = student.student_schools?.[0];
+        const schoolAssignment = enrollmentFor.get(student.id);
         const password = resetPasswordsOnExport
           ? (passwordMap.get(String(student.id)) ?? '')
           : (student.initial_password ?? '');
@@ -2099,8 +2122,8 @@ export default function StudentsManagement() {
           .join('_');
         filename += `_${schoolNames.replace(/\s+/g, '_')}`;
       }
-      if (exportSelectedGrades.length > 0) {
-        filename += `_${exportSelectedGrades.join('_').replace(/\s+/g, '_')}`;
+      if (exportSelectedClasses.length > 0) {
+        filename += `_${exportClassesLabel.replace(/[^A-Za-z0-9]+/g, '_').replace(/_+$/, '')}`;
       }
 
       if (exportFormat === 'csv') {
@@ -2169,7 +2192,7 @@ export default function StudentsManagement() {
             <div class="summary">
               <p><strong>Total Students:</strong> ${credentials.length}</p>
               <p><strong>Schools:</strong> ${exportSelectedSchools.length === 0 ? 'All Schools' : exportSelectedSchools.map((id: string) => schools.find((s: School) => s.id === id)?.name).filter(Boolean).join(', ')}</p>
-              <p><strong>Grades:</strong> ${exportSelectedGrades.length === 0 ? 'All Grades' : exportSelectedGrades.join(', ')}</p>
+              <p><strong>Grades:</strong> ${exportClassesLabel}</p>
               <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
               ${resetPasswordsOnExport
                 ? '<p><strong>Note:</strong> Every password below is brand new, generated for this export. Previous passwords no longer work.</p>'
@@ -2213,7 +2236,8 @@ export default function StudentsManagement() {
       // Close dialog and reset filters
       setIsExportDialogOpen(false);
       setExportSelectedSchools([]);
-      setExportSelectedGrades([]);
+      setExportSelectedClasses([]);
+      setExportExpandedGrades([]);
       setExportFormat('csv');
       setResetPasswordsOnExport(false);
 
@@ -2234,57 +2258,43 @@ export default function StudentsManagement() {
 
   const handleOpenExportDialog = () => {
     // If no filters are set, show dialog; otherwise export directly
-    if (exportSelectedSchools.length === 0 && exportSelectedGrades.length === 0) {
+    if (exportSelectedSchools.length === 0 && exportSelectedClasses.length === 0) {
       setIsExportDialogOpen(true);
     } else {
       generateLoginCredentials();
     }
   };
 
+  // Changing schools drops grade/section picks that the new schools don't have.
+  const setExportSchools = (next: string[]) => {
+    setExportSelectedSchools(next);
+    const available = new Set(
+      exportClassOptions(students, next).flatMap((o) => o.sections.map((s) => s.key)),
+    );
+    setExportSelectedClasses((prev) => prev.filter((k) => available.has(k)));
+  };
+
   const handleSchoolToggle = (schoolId: string) => {
-    setExportSelectedSchools(prev => {
-      if (prev.includes(schoolId)) {
-        return prev.filter((id: string) => id !== schoolId);
-      } else {
-        return [...prev, schoolId];
-      }
-    });
+    setExportSchools(
+      exportSelectedSchools.includes(schoolId)
+        ? exportSelectedSchools.filter((id) => id !== schoolId)
+        : [...exportSelectedSchools, schoolId],
+    );
   };
 
-  const handleGradeToggle = (grade: string) => {
-    setExportSelectedGrades(prev => {
-      if (prev.includes(grade)) {
-        return prev.filter((g: string) => g !== grade);
-      } else {
-        return [...prev, grade];
-      }
-    });
+  const handleExportGradeToggle = (option: ExportClassOption) => {
+    const keys = option.sections.map((s) => s.key);
+    setExportSelectedClasses((prev) =>
+      keys.every((k) => prev.includes(k))
+        ? prev.filter((k) => !keys.includes(k))
+        : [...new Set([...prev, ...keys])],
+    );
   };
 
-  // Get all unique grades from students
-  const getAllGrades = () => {
-    const grades = new Set<string>();
-    students.forEach(student => {
-       
-      interface StudentSchool {
-        school_id?: string;
-        grade?: string;
-        section?: string;
-        schools?: {
-          name?: string;
-        };
-      }
-      
-      student.student_schools?.forEach((ss: StudentSchool) => {
-        if (ss.grade) grades.add(ss.grade);
-      });
-    });
-    return Array.from(grades).sort((a: string, b: string) => {
-      // Sort grades naturally (Grade 1, Grade 2, etc.)
-      const numA = parseInt(a.replace(/\D/g, '')) || 0;
-      const numB = parseInt(b.replace(/\D/g, '')) || 0;
-      return numA - numB;
-    });
+  const handleExportSectionToggle = (key: string) => {
+    setExportSelectedClasses((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
   };
 
   // Get all unique sections from students
@@ -2631,6 +2641,13 @@ export default function StudentsManagement() {
                       </>
                     )}
                   </Button>
+                  <BulkDeleteStudentsButton
+                    schools={schools}
+                    onDeleted={() => {
+                      setBulkSelectionResetKey((k) => k + 1);
+                      void loadData();
+                    }}
+                  />
                   </div>
                 </div>
               </div>
@@ -2701,7 +2718,7 @@ export default function StudentsManagement() {
                 <DialogHeader>
                   <DialogTitle>Delete student</DialogTitle>
                   <DialogDescription>
-                    This cannot be undone. The student's account, enrollment, and progress will be permanently removed, and their email will be free to reuse.
+                    This cannot be undone. The student&apos;s account, enrollment, and progress will be permanently removed, and their email will be free to reuse.
                   </DialogDescription>
                 </DialogHeader>
                 {deletingStudent && (
@@ -3197,13 +3214,7 @@ export default function StudentsManagement() {
                           <Checkbox
                             id="export-all-schools"
                             checked={exportSelectedSchools.length === 0}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setExportSelectedSchools([]); // Empty means all
-                              } else {
-                                setExportSelectedSchools([]);
-                              }
-                            }}
+                            onCheckedChange={() => setExportSchools([])}
                           />
                           <Label htmlFor="export-all-schools" className="font-medium cursor-pointer">
                             All Schools
@@ -3235,51 +3246,96 @@ export default function StudentsManagement() {
                   {/* Grade Selection */}
                   <Card className="bg-white">
                     <CardHeader>
-                      <CardTitle className="text-lg">Select Grades</CardTitle>
+                      <CardTitle className="text-lg">Select Grades &amp; Sections</CardTitle>
                       <CardDescription>
-                        Select one or more grades. Leave unchecked to include all grades.
+                        {exportSelectedSchools.length === 0
+                          ? "Showing grades across all schools. Select schools above to see only their grades and sections."
+                          : "Grades and sections that have students in the selected school(s)."}{" "}
+                        Leave unchecked to include all.
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-3 max-h-48 overflow-y-auto">
+                      <div className="space-y-1 max-h-64 overflow-y-auto">
                         <div className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
                           <Checkbox
                             id="export-all-grades"
-                            checked={exportSelectedGrades.length === 0}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setExportSelectedGrades([]); // Empty means all
-                              } else {
-                                setExportSelectedGrades([]);
-                              }
-                            }}
+                            checked={exportSelectedClasses.length === 0}
+                            onCheckedChange={() => setExportSelectedClasses([])}
                           />
                           <Label htmlFor="export-all-grades" className="font-medium cursor-pointer">
                             All Grades
                           </Label>
                         </div>
-                        {getAllGrades().map((grade) => (
-                          <div key={grade} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
-                            <Checkbox
-                              id={`export-grade-${grade}`}
-                              checked={exportSelectedGrades.includes(grade)}
-                              onCheckedChange={() => handleGradeToggle(grade)}
-                            />
-                            <Label htmlFor={`export-grade-${grade}`} className="cursor-pointer">
-                              {grade}
-                            </Label>
-                          </div>
-                        ))}
+                        {exportOptions.map((option) => {
+                          const pickedCount = option.sections.filter((s) => exportSelectedClasses.includes(s.key)).length;
+                          const allPicked = pickedCount === option.sections.length;
+                          const expanded = exportExpandedGrades.includes(option.grade);
+                          return (
+                            <div key={option.grade}>
+                              <div className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded">
+                                <Checkbox
+                                  id={`export-grade-${option.grade}`}
+                                  checked={allPicked}
+                                  onCheckedChange={() => handleExportGradeToggle(option)}
+                                />
+                                <Label htmlFor={`export-grade-${option.grade}`} className="cursor-pointer flex-1">
+                                  {option.grade}
+                                  <span className="ml-2 text-xs font-normal text-gray-400">
+                                    {option.count} student{option.count !== 1 ? "s" : ""}
+                                  </span>
+                                  {pickedCount > 0 && !allPicked && (
+                                    <span className="ml-2 text-xs font-normal text-blue-600">
+                                      {pickedCount}/{option.sections.length} sections
+                                    </span>
+                                  )}
+                                </Label>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExportExpandedGrades((prev) =>
+                                      prev.includes(option.grade)
+                                        ? prev.filter((g) => g !== option.grade)
+                                        : [...prev, option.grade],
+                                    )
+                                  }
+                                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 px-1"
+                                >
+                                  {option.sections.length} section{option.sections.length !== 1 ? "s" : ""}
+                                  {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                </button>
+                              </div>
+                              {expanded && (
+                                <div className="ml-8 grid grid-cols-2 sm:grid-cols-3 gap-1 pb-1">
+                                  {option.sections.map((s) => (
+                                    <div key={s.key} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded">
+                                      <Checkbox
+                                        id={`export-section-${s.key}`}
+                                        checked={exportSelectedClasses.includes(s.key)}
+                                        onCheckedChange={() => handleExportSectionToggle(s.key)}
+                                      />
+                                      <Label htmlFor={`export-section-${s.key}`} className="cursor-pointer text-sm">
+                                        {s.section ? `Section ${s.section}` : "No section"}
+                                        <span className="ml-1 text-xs text-gray-400">({s.count})</span>
+                                      </Label>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                      {exportSelectedGrades.length > 0 && (
+                      {exportSelectedClasses.length > 0 && (
                         <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                          <p className="text-sm text-blue-800">
-                            Selected: {exportSelectedGrades.join(', ')}
-                          </p>
+                          <p className="text-sm text-blue-800">Selected: {exportClassesLabel}</p>
                         </div>
                       )}
-                      {getAllGrades().length === 0 && (
-                        <p className="text-sm text-gray-500">No grades found in the database.</p>
+                      {exportOptions.length === 0 && (
+                        <p className="text-sm text-gray-500">
+                          {exportSelectedSchools.length > 0
+                            ? "The selected school(s) have no students yet."
+                            : "No grades found."}
+                        </p>
                       )}
                     </CardContent>
                   </Card>
@@ -3372,7 +3428,10 @@ export default function StudentsManagement() {
                           <strong>Schools:</strong> {exportSelectedSchools.length === 0 ? 'All Schools' : `${exportSelectedSchools.length} selected`}
                         </p>
                         <p className="text-sm text-gray-600">
-                          <strong>Grades:</strong> {exportSelectedGrades.length === 0 ? 'All Grades' : `${exportSelectedGrades.length} selected`}
+                          <strong>Grades:</strong> {exportClassesLabel}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <strong>Students to export:</strong> {exportMatchCount}
                         </p>
                         <p className="text-sm text-gray-600">
                           <strong>File Format:</strong> {exportFormat.toUpperCase()}
@@ -3390,7 +3449,8 @@ export default function StudentsManagement() {
                     onClick={() => {
                       setIsExportDialogOpen(false);
                       setExportSelectedSchools([]);
-                      setExportSelectedGrades([]);
+                      setExportSelectedClasses([]);
+                      setExportExpandedGrades([]);
                       setExportFormat('csv');
                       setResetPasswordsOnExport(false);
                     }}
@@ -3427,6 +3487,8 @@ export default function StudentsManagement() {
                   <CardDescription>Select a school, then upload a filled-in template to create students in bulk.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {!bulkImportDone && (
+                  <>
                   {/* Step 1: Select School */}
                   <div>
                     <Label className="font-medium">Step 1: Select School <span className="text-red-500">*</span></Label>
@@ -3559,10 +3621,13 @@ export default function StudentsManagement() {
                       </div>
                     </div>
                   )}
+                  </>
+                  )}
 
                   {bulkData.length > 0 && (
                     <>
                       {/* Step 3: Review & Edit */}
+                      {!bulkImportDone && (
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <div>
@@ -3571,28 +3636,6 @@ export default function StudentsManagement() {
                               Emails are auto-filled {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}. Passwords are left blank so each student gets a unique auto-generated one — type one only to override.
                             </p>
                           </div>
-                          {bulkImportResults && bulkImportResults.success > 0 ? (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={handleResetAndNewImport}
-                                className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50 shrink-0"
-                              >
-                                <RotateCcw className="mr-2 h-4 w-4 text-blue-600" />
-                                Create New Import
-                              </Button>
-                              <Button
-                                type="button"
-                                onClick={handleGoToStudentsList}
-                                className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
-                              >
-                                <Users className="mr-2 h-4 w-4" />
-                                View Students List
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                              </Button>
-                            </div>
-                          ) : (
                             <Button
                               onClick={handleBulkImport}
                               disabled={isBulkImporting || !selectedSchoolForImport || bulkEmailDomainInvalid || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
@@ -3610,50 +3653,7 @@ export default function StudentsManagement() {
                                 </>
                               )}
                             </Button>
-                          )}
                         </div>
-                        {bulkImportResults && bulkImportResults.success > 0 && (
-                          <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg flex flex-wrap items-center justify-between gap-3 text-sm text-green-800">
-                            <div className="flex items-center gap-2">
-                              <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
-                              <span>
-                                <strong className="font-semibold">Import Completed!</strong> Successfully imported {bulkImportResults.success} student(s).
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={handleRefreshData}
-                                className="h-8 text-xs bg-white border-green-300 text-green-700 hover:bg-green-100"
-                              >
-                                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                                Refresh
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={handleResetAndNewImport}
-                                className="h-8 text-xs bg-white border-green-300 text-green-700 hover:bg-green-100"
-                              >
-                                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                                Create New Import
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={handleGoToStudentsList}
-                                className="h-8 text-xs bg-green-700 hover:bg-green-800 text-white"
-                              >
-                                <Users className="mr-1.5 h-3.5 w-3.5" />
-                                View Students
-                                <ArrowRight className="ml-1 h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        )}
                         {(() => {
                           const missingPhone = bulkData.filter((s) => !s.phone_number?.trim()).length;
                           const missingFather = bulkData.filter((s) => !s.father_name?.trim()).length;
@@ -3667,7 +3667,7 @@ export default function StudentsManagement() {
                           if (notes.length === 0) return null;
                           return (
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 mb-2">
-                              ⚠ {notes.join(' · ')} — these won't block the import, just double-check them below.
+                              ⚠ {notes.join(' · ')} — these won&apos;t block the import, just double-check them below.
                             </p>
                           );
                         })()}
@@ -3781,7 +3781,7 @@ export default function StudentsManagement() {
                                       </SelectContent>
                                     </Select>
                                     {gradeUnknown && (
-                                      <p className="text-xs text-amber-600 mt-1">Not in this school's grade list — will still be saved as entered</p>
+                                      <p className="text-xs text-amber-600 mt-1">Not in this school&apos;s grade list — will still be saved as entered</p>
                                     )}
                                   </TableCell>
                                   <TableCell>
@@ -3851,52 +3851,41 @@ export default function StudentsManagement() {
                           </Table>
                         </div>
                       </div>
+                      )}
 
                       {/* Import Results */}
                       {bulkImportResults && (
-                        <Card className="bg-white border-green-200 shadow-sm">
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                              <CheckCircle2 className="h-5 w-5 text-green-600" />
-                              Import Results
-                            </CardTitle>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={handleResetAndNewImport}
-                                className="h-8 text-xs bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                              >
-                                <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
-                                Create New Import
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={handleGoToStudentsList}
-                                className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                              >
-                                <Users className="mr-1.5 h-3.5 w-3.5" />
-                                View Students
-                              </Button>
+                        <div className={bulkImportDone ? "space-y-5" : "space-y-3 rounded-lg border border-red-200 p-4"}>
+                          {bulkImportDone ? (
+                            <div className="flex flex-col items-center text-center pt-2">
+                              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+                                <CheckCircle2 className="h-8 w-8 text-green-600" />
+                              </div>
+                              <h3 className="mt-3 text-xl font-semibold text-gray-900">Import complete</h3>
+                              <p className="mt-1 text-sm text-gray-600">
+                                {bulkImportResults.success} student{bulkImportResults.success !== 1 ? "s" : ""} added to{" "}
+                                <strong>{schools.find((s: School) => s.id === selectedSchoolForImport)?.name ?? "the school"}</strong>
+                                {uploadFile ? ` from ${uploadFile.name}` : ""}.
+                              </p>
                             </div>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="space-y-3">
-                              <div className="flex items-center space-x-4">
-                                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                                  <p className="text-lg font-bold text-green-600">{bulkImportResults.success}</p>
-                                  <p className="text-xs text-green-600">Success</p>
+                          ) : (
+                            <p className="text-sm font-medium text-red-800">No students were imported. Fix the rows above and try again.</p>
+                          )}
+                              <div className={cn("grid gap-3", bulkImportDone ? "grid-cols-2 max-w-sm mx-auto" : "grid-cols-2 max-w-xs")}>
+                                <div className="p-3 text-center bg-green-50 border border-green-200 rounded-lg">
+                                  <p className="text-2xl font-bold text-green-600">{bulkImportResults.success}</p>
+                                  <p className="text-xs text-green-700">Imported</p>
                                 </div>
-                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                                  <p className="text-lg font-bold text-red-600">{bulkImportResults.failed}</p>
-                                  <p className="text-xs text-red-600">Failed</p>
+                                <div className={cn("p-3 text-center rounded-lg border", bulkImportResults.failed > 0 ? "bg-red-50 border-red-200" : "bg-gray-50 border-gray-200")}>
+                                  <p className={cn("text-2xl font-bold", bulkImportResults.failed > 0 ? "text-red-600" : "text-gray-400")}>{bulkImportResults.failed}</p>
+                                  <p className={cn("text-xs", bulkImportResults.failed > 0 ? "text-red-700" : "text-gray-500")}>Failed</p>
                                 </div>
                               </div>
                               {bulkImportResults.errors.length > 0 && (
-                                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                  <p className="text-sm font-medium text-red-800 mb-2">Errors:</p>
+                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                  <p className="text-sm font-medium text-red-800 mb-2">
+                                    {bulkImportDone ? "These rows were not imported — add them again in a new import:" : "Errors:"}
+                                  </p>
                                   <ul className="text-xs text-red-600 space-y-1 max-h-32 overflow-y-auto">
                                     {bulkImportResults.errors.map((error, idx) => (
                                       <li key={idx}>• {error}</li>
@@ -3918,10 +3907,13 @@ export default function StudentsManagement() {
                                 )).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
                                 const filteredCount = getFilteredBulkImportCredentials().length;
                                 return (
-                                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-                                  <p className="text-sm text-blue-800">
-                                    {bulkImportCredentials.length} student{bulkImportCredentials.length !== 1 ? 's' : ''} got an auto-generated password — download these to share with the school.
-                                  </p>
+                                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-blue-900">Download login details</p>
+                                    <p className="text-sm text-blue-800">
+                                      {bulkImportCredentials.length} student{bulkImportCredentials.length !== 1 ? 's' : ''} got an auto-generated password. Download them before clicking Done to share with the school.
+                                    </p>
+                                  </div>
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Label className="text-xs text-blue-800 font-normal">Grade:</Label>
                                     <Select
@@ -3969,48 +3961,24 @@ export default function StudentsManagement() {
                                 );
                               })()}
 
-                              {/* Next Steps Action Bar */}
-                              <div className="mt-6 pt-4 border-t border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gray-50 p-4 rounded-lg">
-                                <div>
-                                  <p className="text-sm font-semibold text-gray-900">What would you like to do next?</p>
-                                  <p className="text-xs text-gray-600">Refresh dataset, view imported students in main directory, or start another bulk import.</p>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleRefreshData}
-                                    className="bg-white border-gray-300 text-gray-700 hover:bg-gray-100"
-                                  >
-                                    <RefreshCw className="mr-1.5 h-3.5 w-3.5 text-gray-500" />
-                                    Refresh
+                              {bulkImportDone && (
+                                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t pt-4">
+                                  <Button type="button" variant="outline" onClick={handleGoToStudentsList}>
+                                    <Users className="mr-2 h-4 w-4" />
+                                    View Students
+                                    <ArrowRight className="ml-2 h-4 w-4" />
                                   </Button>
                                   <Button
                                     type="button"
-                                    variant="outline"
-                                    size="sm"
                                     onClick={handleResetAndNewImport}
-                                    className="bg-white border-blue-300 text-blue-700 hover:bg-blue-50"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white sm:min-w-32"
                                   >
-                                    <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-blue-600" />
-                                    Create New Import
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={handleGoToStudentsList}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                                  >
-                                    <Users className="mr-1.5 h-3.5 w-3.5" />
-                                    Go to Students List
-                                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                                    <RotateCcw className="mr-2 h-4 w-4" />
+                                    Done — Start New Import
                                   </Button>
                                 </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
+                              )}
+                        </div>
                       )}
                     </>
                   )}
