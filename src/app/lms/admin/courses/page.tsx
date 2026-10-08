@@ -43,6 +43,7 @@ import {
   clearWizardDraftFromStorage,
 } from '@/components/admin/CourseCreationWizard';
 import { CourseEditor, type Chapter as EditorChapter, type AssignmentFromAPI as EditorAssignmentFromAPI } from '@/components/admin/CourseEditor';
+import { clearCourseEditorDraft, peekCourseEditorDraft } from '@/lib/course-editor-draft';
 import { CoursePublishDialog } from '@/components/admin/CoursePublishDialog';
 import { CourseVersionHistory } from '@/components/admin/CourseVersionHistory';
 import NextImage from "next/image";
@@ -459,6 +460,25 @@ export default function CoursesManagement() {
     }
   };
 
+  const editorResumeAttempted = useRef(false);
+  useEffect(() => {
+    if (editorResumeAttempted.current || isEditDialogOpen || isCreateDialogOpen) return;
+    if (loadingCourses || courses.length === 0) return;
+    const draft = peekCourseEditorDraft();
+    if (!draft) {
+      editorResumeAttempted.current = true;
+      return;
+    }
+    const course = courses.find((c) => c.id === draft.courseId);
+    if (!course) {
+      clearCourseEditorDraft(draft.courseId);
+      editorResumeAttempted.current = true;
+      return;
+    }
+    editorResumeAttempted.current = true;
+    void handleEditCourse(course);
+  }, [courses, loadingCourses, isEditDialogOpen, isCreateDialogOpen]);
+
   const handleDeleteCourse = (course: Course) => {
     setDeletingCourse(course);
     setIsDeleteDialogOpen(true);
@@ -551,19 +571,22 @@ export default function CoursesManagement() {
 
   // Warn before leaving page with unsaved data
   useEffect(() => {
-    if (!isCreateDialogOpen) return;
-    
+    if (!isCreateDialogOpen && !isEditDialogOpen) return;
+
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasWizardDraft()) {
+      if (
+        (isCreateDialogOpen && hasWizardDraft()) ||
+        (isEditDialogOpen && courseEditorDirtyRef.current)
+      ) {
         e.preventDefault();
         e.returnValue = 'You have unsaved course data. Are you sure you want to leave?';
         return e.returnValue;
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isCreateDialogOpen]);
+  }, [isCreateDialogOpen, isEditDialogOpen]);
 
   // NOTE: resetForm removed - CourseCreationWizard manages its own state
   // Simple helper to clear dialog state when opening create dialog
@@ -1323,6 +1346,7 @@ export default function CoursesManagement() {
               return;
             }
             void requestClose(courseEditorDirtyRef.current, () => {
+              if (editingCourse?.id) clearCourseEditorDraft(editingCourse.id);
               setIsEditDialogOpen(false);
               setEditingCourse(null);
             });

@@ -19,6 +19,12 @@ import {
 import { generateUUID } from "../../lib/uuid-utils";
 import { toast } from "@/components/ui/toast";
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
+import {
+  defaultQuestionMarks,
+  marksExceedCap,
+  remainingAssignmentMarks,
+  sumQuestionMarks,
+} from "@/lib/assignment-marks";
 
 export interface AssignmentQuestion {
   id?: string;
@@ -117,7 +123,10 @@ export function AssignmentBuilder({
     });
   };
 
-  const loadQuestionIntoForm = (question?: AssignmentQuestion) => {
+  const loadQuestionIntoForm = (
+    question?: AssignmentQuestion,
+    remainingForNew?: number,
+  ) => {
     if (question) {
       const options = question.options?.length
         ? [...question.options]
@@ -141,7 +150,16 @@ export function AssignmentBuilder({
       });
     } else {
       setEditingQuestion(null);
-      setQuestionFormData(emptyQuestionForm());
+      setQuestionFormData({
+        ...emptyQuestionForm(),
+        marks: defaultQuestionMarks(
+          remainingForNew ??
+            remainingAssignmentMarks(
+              assignment?.max_score ?? 0,
+              assignment?.questions ?? [],
+            ),
+        ),
+      });
     }
   };
 
@@ -176,6 +194,18 @@ export function AssignmentBuilder({
 
   /** Chapter mode only — opens the question dialog. */
   const openQuestionDialog = (question?: AssignmentQuestion) => {
+    if (
+      !question &&
+      remainingAssignmentMarks(
+        assignment?.max_score ?? 0,
+        assignment?.questions ?? [],
+      ) <= 0
+    ) {
+      toast.warning(
+        `All ${assignment?.max_score ?? 0} marks are already assigned. Edit an existing question or raise the maximum score to add more.`,
+      );
+      return;
+    }
     loadQuestionIntoForm(question);
     setIsQuestionDialogOpen(true);
   };
@@ -203,7 +233,15 @@ export function AssignmentBuilder({
 
   const cancelInlineEdit = () => {
     setEditingQuestion(null);
-    setQuestionFormData(emptyQuestionForm());
+    setQuestionFormData({
+      ...emptyQuestionForm(),
+      marks: defaultQuestionMarks(
+        remainingAssignmentMarks(
+          assignment?.max_score ?? 0,
+          assignment?.questions ?? [],
+        ),
+      ),
+    });
     focusQuestionText();
   };
 
@@ -217,8 +255,19 @@ export function AssignmentBuilder({
       return;
     }
 
-    const maxScore = parseInt(formData.max_score) || 100;
+    const maxScore = parseInt(formData.max_score, 10);
+    if (!Number.isFinite(maxScore) || maxScore < 1) {
+      toast.warning("Maximum score must be at least 1.");
+      return;
+    }
     const questions = assignment?.questions || [];
+    const used = sumQuestionMarks(questions);
+    if (used > maxScore) {
+      toast.warning(
+        `Questions already add up to ${used} marks. Set the maximum to at least ${used}, or lower question marks first.`,
+      );
+      return;
+    }
     const assignmentId = assignment?.id || generateUUID();
 
     const updatedAssignment: Assignment = {
@@ -312,7 +361,28 @@ export function AssignmentBuilder({
       return null;
     }
 
-    const marks = parseFloat(questionFormData.marks) || 1;
+    const marks = parseFloat(questionFormData.marks);
+    if (!Number.isFinite(marks) || marks <= 0) {
+      toast.warning("Each question must be worth more than 0 marks.");
+      return null;
+    }
+    const usedByOthers = sumQuestionMarks(
+      assignment.questions || [],
+      editingQuestion?.id,
+    );
+    if (marksExceedCap(assignment.max_score, usedByOthers, marks)) {
+      const left = remainingAssignmentMarks(
+        assignment.max_score,
+        assignment.questions || [],
+        editingQuestion?.id,
+      );
+      toast.warning(
+        left > 0
+          ? `At most ${left} mark${left === 1 ? "" : "s"} remain on this assignment (maximum ${assignment.max_score}).`
+          : `All ${assignment.max_score} marks are already assigned. Edit an existing question or raise the maximum score to add more.`,
+      );
+      return null;
+    }
     const questionId = editingQuestion?.id || generateUUID();
     const newQuestion: AssignmentQuestion = {
       ...(editingQuestion || {}),
@@ -334,23 +404,22 @@ export function AssignmentBuilder({
     } else {
       nextQuestions = [...questions, newQuestion];
     }
-    const maxScore = nextQuestions.reduce((sum, q) => sum + (q.marks || 0), 0);
     onAssignmentChange({
       ...assignment,
       questions: nextQuestions,
-      max_score: maxScore > 0 ? maxScore : assignment.max_score || 100,
     });
 
     return questionId;
   };
 
-  const resetFormKeepType = () => {
+  const resetFormKeepType = (remainingForNew?: number) => {
     const type = questionFormData.question_type;
     setEditingQuestion(null);
     setQuestionFormData({
       ...emptyQuestionForm(),
       question_type: type,
       options: type === "MCQ" ? ["", "", "", ""] : ["", ""],
+      marks: defaultQuestionMarks(remainingForNew ?? 0),
     });
   };
 
@@ -361,7 +430,21 @@ export function AssignmentBuilder({
 
     if (mode === "add-another" || mode === "inline") {
       setLastAddedQuestionId(wasEdit ? null : savedId);
-      resetFormKeepType();
+      const nextMarks = parseFloat(questionFormData.marks) || 0;
+      const questionsAfter = wasEdit
+        ? (assignment?.questions ?? []).map((q) =>
+            q.id === savedId ? { ...q, marks: nextMarks } : q,
+          )
+        : [...(assignment?.questions ?? []), { id: savedId, marks: nextMarks }];
+      const left = remainingAssignmentMarks(
+        assignment?.max_score ?? 0,
+        questionsAfter,
+      );
+      resetFormKeepType(left);
+      if (left <= 0) {
+        if (mode === "add-another") closeQuestionDialog();
+        return;
+      }
       focusQuestionText();
       return;
     }
@@ -389,11 +472,9 @@ export function AssignmentBuilder({
     const nextQuestions = (assignment!.questions || []).filter(
       (q: AssignmentQuestion) => q.id !== questionId,
     );
-    const maxScore = nextQuestions.reduce((sum, q) => sum + (q.marks || 0), 0);
     onAssignmentChange({
       ...assignment!,
       questions: nextQuestions,
-      max_score: maxScore > 0 ? maxScore : assignment?.max_score || 100,
     });
     if (editingQuestion?.id === questionId) {
       cancelInlineEdit();
@@ -456,17 +537,28 @@ export function AssignmentBuilder({
   const questionsForMarks = Array.isArray(assignment?.questions)
     ? assignment.questions
     : [];
-  const totalMarks =
-    questionsForMarks.reduce(
-      (sum: number, q: AssignmentQuestion) => sum + (q.marks || 0),
-      0,
-    ) || 0;
+  const totalMarks = sumQuestionMarks(questionsForMarks);
+  const remainingMarks = remainingAssignmentMarks(
+    assignment?.max_score ?? 0,
+    questionsForMarks,
+    editingQuestion?.id,
+  );
+  const remainingForNew = remainingAssignmentMarks(
+    assignment?.max_score ?? 0,
+    questionsForMarks,
+  );
+  const budgetFull = remainingForNew <= 0;
 
   const statusDescription = assignment ? (
     <>
       {questionsForMarks.length} question
       {questionsForMarks.length !== 1 ? "s" : ""} • Total marks: {totalMarks} /{" "}
       {assignment.max_score}
+      {budgetFull && questionsForMarks.length > 0
+        ? " · all marks assigned"
+        : remainingForNew > 0
+          ? ` · ${remainingForNew} remaining`
+          : ""}
     </>
   ) : (
     "No assignment created yet"
@@ -666,6 +758,7 @@ export function AssignmentBuilder({
           type="number"
           min="0.5"
           step="0.5"
+          max={remainingMarks > 0 ? remainingMarks : undefined}
           value={questionFormData.marks}
           onChange={(e) =>
             setQuestionFormData({ ...questionFormData, marks: e.target.value })
@@ -673,6 +766,13 @@ export function AssignmentBuilder({
           placeholder="1"
           className="w-32"
         />
+        {assignment && (
+          <p className="text-xs text-gray-500">
+            {remainingMarks > 0
+              ? `${remainingMarks} mark${remainingMarks === 1 ? "" : "s"} remaining of ${assignment.max_score}`
+              : `No marks remaining of ${assignment.max_score}`}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -786,7 +886,8 @@ export function AssignmentBuilder({
                   : "Questions"}
                 {isInline && questionsArray.length > 0 && (
                   <span className="ml-1.5 font-normal text-gray-400">
-                    · {assignment.max_score} marks total
+                    · {totalMarks}/{assignment.max_score} marks
+                    {remainingForNew > 0 ? ` · ${remainingForNew} left` : " · full"}
                   </span>
                 )}
               </Label>
@@ -795,6 +896,12 @@ export function AssignmentBuilder({
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={budgetFull}
+                  title={
+                    budgetFull
+                      ? `All ${assignment.max_score} marks are assigned`
+                      : undefined
+                  }
                   onClick={() => openQuestionDialog()}
                   className="h-8 border-gray-200 text-xs font-medium text-gray-700"
                 >
@@ -959,7 +1066,7 @@ export function AssignmentBuilder({
             )}
 
             {/* Persistent inline composer — teacher wizard */}
-            {isInline && !disabled && (
+            {isInline && !disabled && (editingQuestion || !budgetFull) && (
               <div
                 ref={composerRef}
                 className="space-y-3 rounded-lg border border-blue-200 bg-white p-4"
@@ -976,7 +1083,7 @@ export function AssignmentBuilder({
                     <p className="text-[11px] text-gray-500 mt-0.5">
                       {editingQuestion
                         ? "Update this question, or cancel to add a new one."
-                        : "Saves instantly — keep going for as many as you need. ⌘/Ctrl+Enter to add."}
+                        : `Saves instantly. ${remainingForNew} mark${remainingForNew === 1 ? "" : "s"} left of ${assignment.max_score}. ⌘/Ctrl+Enter to add.`}
                     </p>
                   </div>
                 </div>
@@ -1010,6 +1117,13 @@ export function AssignmentBuilder({
                     {editingQuestion ? "Save changes" : "Add question"}
                   </Button>
                 </div>
+              </div>
+            )}
+            {isInline && !disabled && budgetFull && !editingQuestion && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                All {assignment.max_score} marks are assigned across{" "}
+                {questionsArray.length} question{questionsArray.length !== 1 ? "s" : ""}.
+                Edit a question or raise the assignment maximum score to add more.
               </div>
             )}
           </div>
@@ -1087,6 +1201,9 @@ export function AssignmentBuilder({
                   }
                   placeholder="100"
                 />
+                <p className="text-xs text-gray-500">
+                  Question marks cannot add up to more than this. Raise it before adding extra questions.
+                </p>
               </div>
 
               <label

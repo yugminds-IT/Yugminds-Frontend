@@ -29,6 +29,8 @@ import {
   isStateDirty,
   requestClose,
 } from "@/hooks/useUnsavedCloseGuard";
+import { sumQuestionMarks } from "@/lib/assignment-marks";
+import { toast } from "@/components/ui/toast";
 
 export type CreatePayload = {
   dueDate: string;
@@ -176,6 +178,23 @@ export default function AssignmentFormDrawer({
       ...builderAssignment,
       description: value.trim() || undefined,
     });
+  };
+
+  const syncMaxScore = (value: string) => {
+    if (!builderAssignment) return;
+    const maxScore = parseInt(value, 10);
+    if (!Number.isFinite(maxScore) || maxScore < 1) {
+      onBuilderChange({ ...builderAssignment, max_score: Number(value) || 0 });
+      return;
+    }
+    const used = sumQuestionMarks(builderAssignment.questions ?? []);
+    if (used > maxScore) {
+      toast.warning(
+        `Questions already add up to ${used} marks. Set at least ${used}, or lower question marks first.`,
+      );
+      return;
+    }
+    onBuilderChange({ ...builderAssignment, max_score: maxScore });
   };
 
   const toggleSchool = (schoolId: string) => {
@@ -342,6 +361,21 @@ export default function AssignmentFormDrawer({
                   rows={3}
                   className="text-sm resize-none"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600">
+                  Maximum marks
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={builderAssignment?.max_score ?? 100}
+                  onChange={(e) => syncMaxScore(e.target.value)}
+                  className="h-10 text-sm"
+                />
+                <p className="text-xs text-gray-500">
+                  Question marks cannot add up to more than this.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-gray-600">

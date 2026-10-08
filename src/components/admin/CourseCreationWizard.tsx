@@ -23,7 +23,7 @@ import {
 import { FileUploadZone } from "./FileUploadZone";
 import { ChapterContent } from "./ChapterContentManager";
 import { Assignment } from "./AssignmentBuilder";
-import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import { requestClose, useLeaveGuard } from "@/hooks/useUnsavedCloseGuard";
 import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
 import { BulkAddChaptersDialog } from "./BulkAddChaptersDialog";
 import { buildChaptersFromNames } from "./bulkChapters";
@@ -203,6 +203,8 @@ export function CourseCreationWizard({
   const handleRequestCancel = () => {
     void requestClose(isDirty, onCancel);
   };
+
+  useLeaveGuard(true, isDirty, onCancel);
 
   useEffect(() => {
     if (courseId) return;

@@ -119,3 +119,87 @@ export function useBeforeUnloadWhenDirty(isDirty: boolean) {
     return () => window.removeEventListener("beforeunload", handler);
   }, [isDirty]);
 }
+
+const LEAVE_GUARD = "__leaveGuard";
+
+/**
+ * While `active`, intercepts browser Back/Forward and in-app link clicks so
+ * dirty work is confirmed instead of discarded. Reload/close uses the native
+ * beforeunload dialog. `onLeave` runs only after the user confirms discard
+ * (or immediately when the form is clean).
+ */
+export function useLeaveGuard(
+  active: boolean,
+  isDirty: boolean,
+  onLeave: () => void,
+) {
+  useBeforeUnloadWhenDirty(active && isDirty);
+  const onLeaveRef = useRef(onLeave);
+  onLeaveRef.current = onLeave;
+  const dirtyRef = useRef(isDirty);
+  dirtyRef.current = isDirty;
+
+  useEffect(() => {
+    if (!active) return;
+
+    const trap = () => {
+      window.history.pushState(
+        { ...window.history.state, [LEAVE_GUARD]: true },
+        "",
+        window.location.href,
+      );
+    };
+    trap();
+
+    let prompting = false;
+    const considerLeave = async () => {
+      if (prompting) return false;
+      if (!dirtyRef.current) return true;
+      prompting = true;
+      try {
+        return await confirmDiscardUnsavedChanges();
+      } finally {
+        prompting = false;
+      }
+    };
+
+    const onPopState = () => {
+      trap();
+      void considerLeave().then((ok) => {
+        if (ok) onLeaveRef.current();
+      });
+    };
+
+    const onClick = (e: MouseEvent) => {
+      if (!dirtyRef.current) return;
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+        return;
+      const anchor = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || (anchor.target && anchor.target !== "_self") || anchor.hasAttribute("download"))
+        return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void considerLeave().then((ok) => {
+        if (ok) {
+          onLeaveRef.current();
+          window.location.assign(url.pathname + url.search + url.hash);
+        }
+      });
+    };
+
+    window.addEventListener("popstate", onPopState);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      document.removeEventListener("click", onClick, true);
+      if (window.history.state?.[LEAVE_GUARD]) {
+        const next = { ...window.history.state };
+        delete next[LEAVE_GUARD];
+        window.history.replaceState(next, "", window.location.href);
+      }
+    };
+  }, [active]);
+}

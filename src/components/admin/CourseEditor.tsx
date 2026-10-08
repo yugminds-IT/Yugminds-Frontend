@@ -23,7 +23,12 @@ import { ChapterBuilderCard, type Chapter } from "./ChapterBuilderCard";
 import { BulkAddChaptersDialog } from "./BulkAddChaptersDialog";
 import { buildChaptersFromNames } from "./bulkChapters";
 import { generateUUID } from "../../lib/uuid-utils";
-import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import { requestClose, useLeaveGuard } from "@/hooks/useUnsavedCloseGuard";
+import {
+  clearCourseEditorDraft,
+  loadCourseEditorDraft,
+  saveCourseEditorDraft,
+} from "@/lib/course-editor-draft";
 
 export type { Chapter };
 
@@ -198,24 +203,32 @@ function dedupeChapters(chapters: Chapter[]): Chapter[] {
 }
 
 export function CourseEditor({ course, onSave, onCancel, onDirtyChange }: CourseEditorProps) {
+  const [restoredDraft] = useState(() =>
+    course.id ? loadCourseEditorDraft(course.id) : null,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState("basic");
+  const [restoredFromDraft, setRestoredFromDraft] = useState(!!restoredDraft);
+  const [activeTab, setActiveTab] = useState(restoredDraft?.activeTab ?? "basic");
 
-  const [basicInfo, setBasicInfo] = useState({
-    name: course.name || "",
-    description: course.description || "",
-    thumbnail_url: course.thumbnail_url || "",
-    chapter_unlock_interval_days: course.chapter_unlock_interval_days?.toString() || "",
-  });
+  const [basicInfo, setBasicInfo] = useState(
+    restoredDraft?.basicInfo ?? {
+      name: course.name || "",
+      description: course.description || "",
+      thumbnail_url: course.thumbnail_url || "",
+      chapter_unlock_interval_days: course.chapter_unlock_interval_days?.toString() || "",
+    },
+  );
 
   const [chapters, setChapters] = useState<Chapter[]>(() =>
-    dedupeChapters(course.chapters || [])
+    restoredDraft?.chapters ?? dedupeChapters(course.chapters || [])
   );
   // Collapsed-by-default chapter list — only one chapter's content/assignment
   // builder is ever mounted at a time (see ChapterBuilderCard).
-  const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
+  const [expandedChapterId, setExpandedChapterId] = useState<string | null>(
+    restoredDraft?.expandedChapterId ?? null,
+  );
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
 
   // Seeded once from the initial `course` prop (CourseEditor is remounted
@@ -224,10 +237,10 @@ export function CourseEditor({ course, onSave, onCancel, onDirtyChange }: Course
   // add/delete/reorder, and re-deriving these from the original prop on each
   // of those changes silently wiped unsaved content/assignment edits.
   const [chapterContents, setChapterContents] = useState<Record<string, ChapterContent[]>>(
-    () => computeInitialChapterContents(course)
+    () => restoredDraft?.chapterContents ?? computeInitialChapterContents(course)
   );
   const [assignments, setAssignments] = useState<Record<string, Assignment>>(() =>
-    computeInitialAssignments(course)
+    restoredDraft?.assignments ?? computeInitialAssignments(course)
   );
   const [videos, setVideos] = useState<
     Array<{ chapter_id: string; title: string; video_url: string; duration?: number }>
@@ -259,9 +272,47 @@ export function CourseEditor({ course, onSave, onCancel, onDirtyChange }: Course
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
+  const discardAndClose = () => {
+    if (course.id) clearCourseEditorDraft(course.id);
+    onCancel?.();
+  };
+
+  useLeaveGuard(true, isDirty, discardAndClose);
+
+  useEffect(() => {
+    if (!course.id || !isDirty) return;
+    const payload = {
+      courseId: course.id,
+      name: basicInfo.name.trim() || course.name || "Untitled course",
+      activeTab,
+      expandedChapterId,
+      basicInfo,
+      chapters,
+      chapterContents,
+      assignments,
+    };
+    const timer = window.setTimeout(() => saveCourseEditorDraft(payload), 400);
+    const flush = () => saveCourseEditorDraft(payload);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [
+    course.id,
+    course.name,
+    isDirty,
+    activeTab,
+    expandedChapterId,
+    basicInfo,
+    chapters,
+    chapterContents,
+    assignments,
+  ]);
+
   const handleCancel = () => {
     if (!onCancel) return;
-    void requestClose(isDirty, onCancel);
+    void requestClose(isDirty, discardAndClose);
   };
 
   useEffect(() => {
@@ -400,6 +451,7 @@ export function CourseEditor({ course, onSave, onCancel, onDirtyChange }: Course
       };
 
       await Promise.resolve(onSave(courseData));
+      if (course.id) clearCourseEditorDraft(course.id);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
@@ -432,6 +484,36 @@ export function CourseEditor({ course, onSave, onCancel, onDirtyChange }: Course
       </div>
 
       <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
+      {restoredFromDraft && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <span className="text-sm text-amber-800">
+            Restored your unsaved edits from before the page was left. Continue, or discard this draft.
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (course.id) clearCourseEditorDraft(course.id);
+              setRestoredFromDraft(false);
+              setBasicInfo({
+                name: course.name || "",
+                description: course.description || "",
+                thumbnail_url: course.thumbnail_url || "",
+                chapter_unlock_interval_days:
+                  course.chapter_unlock_interval_days?.toString() || "",
+              });
+              setChapters(dedupeChapters(course.chapters || []));
+              setChapterContents(computeInitialChapterContents(course));
+              setAssignments(computeInitialAssignments(course));
+              setActiveTab("basic");
+              setExpandedChapterId(null);
+            }}
+          >
+            Discard draft
+          </Button>
+        </div>
+      )}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
