@@ -220,20 +220,12 @@ export default function AssignmentContentViewer({
     const qt = (q.question_type?.toLowerCase() ?? '').replace('fillblank', 'fill_blank')
     const ans = answers[q.id]
 
-    const wrapper = (children: React.ReactNode) => (
-      <div key={q.id}>
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <span className="text-sm font-semibold text-gray-500">Q{idx + 1}</span>
-          <span className="text-xs text-gray-400">{q.marks ?? 1} pt{(q.marks ?? 1) !== 1 ? 's' : ''}</span>
-        </div>
-        {children}
-      </div>
-    )
+    const wrapper = (children: React.ReactNode) => <div key={q.id}>{children}</div>
 
     if (qt === 'mcq') return wrapper(
       <MCQQuestion
         question={{ id: q.id, question: q.question || q.question_text || '', options: q.options || [], correct_answer: Array.isArray(q.correct_answer) ? q.correct_answer[0] : q.correct_answer, marks: q.marks }}
-        index={idx} totalQuestions={questions.length}
+        index={idx} totalQuestions={questions.length} number={idx + 1}
         selectedAnswer={ans?.type === 'mcq' ? (typeof ans.value === 'number' ? ans.value : parseInt(String(ans.value))) : undefined}
         onAnswerChange={v => setAnswers(p => ({ ...p, [q.id]: { type: 'mcq', value: v } }))}
         showCorrectAnswer={false} disabled={false}
@@ -242,7 +234,7 @@ export default function AssignmentContentViewer({
     if (qt === 'essay') return wrapper(
       <EssayQuestion
         question={{ id: q.id, question: q.question || q.question_text || '', marks: q.marks, word_limit: q.word_limit }}
-        index={idx} totalQuestions={questions.length}
+        index={idx} totalQuestions={questions.length} number={idx + 1}
         answer={ans?.type === 'essay' && typeof ans.value === 'string' ? ans.value : ''}
         onAnswerChange={v => setAnswers(p => ({ ...p, [q.id]: { type: 'essay', value: v } }))}
         disabled={false}
@@ -251,7 +243,7 @@ export default function AssignmentContentViewer({
     if (qt === 'fill_blank') return wrapper(
       <FillBlankQuestion
         question={{ id: q.id, question: q.question || q.question_text || '', correct_answer: q.correct_answer as string | string[], marks: q.marks, word_bank: q.word_bank }}
-        index={idx} totalQuestions={questions.length}
+        index={idx} totalQuestions={questions.length} number={idx + 1}
         answers={ans?.type === 'fill_blank' && Array.isArray(ans.value) ? ans.value as string[] : []}
         onAnswerChange={(bi, v) => {
           const cur = ans?.type === 'fill_blank' && Array.isArray(ans.value) ? [...(ans.value as string[])] : []

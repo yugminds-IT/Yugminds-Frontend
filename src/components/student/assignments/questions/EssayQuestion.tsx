@@ -1,6 +1,7 @@
 'use client'
 
 import { memo } from 'react'
+import QuestionHeading from './QuestionHeading'
 
 interface EssayQuestionProps {
   question: {
@@ -15,9 +16,11 @@ interface EssayQuestionProps {
   answer: string
   onAnswerChange: (answer: string) => void
   disabled?: boolean
+  /** shows "Q{number}." and points inline with the question text */
+  number?: number
 }
 
-function EssayQuestion({ question, answer, onAnswerChange, disabled = false }: EssayQuestionProps) {
+function EssayQuestion({ question, answer, onAnswerChange, disabled = false, number }: EssayQuestionProps) {
   const text = question.question || question.question_text || ''
   const wordLimit = question.word_limit
   const wordCount = answer.trim() === '' ? 0 : answer.trim().split(/\s+/).length
@@ -25,7 +28,7 @@ function EssayQuestion({ question, answer, onAnswerChange, disabled = false }: E
 
   return (
     <div>
-      <p className="text-base text-gray-900 leading-relaxed mb-5">{text}</p>
+      <QuestionHeading number={number} marks={question.marks}>{text}</QuestionHeading>
 
       <textarea
         value={answer}

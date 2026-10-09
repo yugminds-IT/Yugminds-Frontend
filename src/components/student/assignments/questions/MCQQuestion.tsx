@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import QuestionHeading from './QuestionHeading'
 
 interface MCQQuestionProps {
   question: {
@@ -17,6 +18,8 @@ interface MCQQuestionProps {
   onAnswerChange: (answerIndex: number) => void
   showCorrectAnswer?: boolean
   disabled?: boolean
+  /** shows "Q{number}." and points inline with the question text */
+  number?: number
 }
 
 function getCorrectIndex(correct_answer: number | string | undefined, options: string[]): number | undefined {
@@ -42,6 +45,7 @@ export default function MCQQuestion({
   onAnswerChange,
   showCorrectAnswer = false,
   disabled = false,
+  number,
 }: MCQQuestionProps) {
   const text = question.question || question.question_text || ''
   const options = question.options || []
@@ -49,8 +53,7 @@ export default function MCQQuestion({
 
   return (
     <div>
-      {/* Question text */}
-      <p className="text-base text-gray-900 leading-relaxed mb-5">{text}</p>
+      <QuestionHeading number={number} marks={question.marks}>{text}</QuestionHeading>
 
       {/* No answer submitted notice */}
       {showCorrectAnswer && selectedAnswer === undefined && (

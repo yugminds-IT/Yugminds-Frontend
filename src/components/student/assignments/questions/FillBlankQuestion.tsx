@@ -3,6 +3,7 @@
 import { memo, useMemo, useState, type DragEvent } from 'react'
 import { X } from 'lucide-react'
 import { availableWordChips } from '@/lib/word-bank'
+import QuestionHeading from './QuestionHeading'
 
 export const WORD_CHIP_MIME = 'application/x-word-chip'
 
@@ -23,6 +24,8 @@ interface FillBlankQuestionProps {
   onAnswerChange: (blankIndex: number, answer: string) => void
   showCorrectAnswer?: boolean
   disabled?: boolean
+  /** shows "Q{number}." and points inline with the question text */
+  number?: number
 }
 
 function FillBlankQuestion({
@@ -31,6 +34,7 @@ function FillBlankQuestion({
   onAnswerChange,
   showCorrectAnswer = false,
   disabled = false,
+  number,
 }: FillBlankQuestionProps) {
   const text = question.question || question.question_text || ''
   const wordBank = question.word_bank?.length ? question.word_bank : null
@@ -170,12 +174,12 @@ function FillBlankQuestion({
   return (
     <div>
       {parts.length > 0 ? (
-        <p className="text-base text-gray-900 leading-loose mb-5">
+        <QuestionHeading number={number} marks={question.marks} className="leading-loose">
           {parts.map((p, i) => p.isBlank ? renderInput(p.blankIdx) : <span key={i}>{p.text}</span>)}
-        </p>
+        </QuestionHeading>
       ) : (
         <div className="mb-5">
-          <p className="text-base text-gray-900 mb-4">{text}</p>
+          <QuestionHeading number={number} marks={question.marks}>{text}</QuestionHeading>
           {renderInput(0)}
         </div>
       )}
