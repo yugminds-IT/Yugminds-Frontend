@@ -24,6 +24,10 @@ import { toast } from "@/components/ui/toast";
 import { studentApi } from "@/lib/api";
 import { getVerifyCertUrl } from "@/lib/brand-host";
 
+/** The backend stores "pending" until the certificate image has been drawn and uploaded. */
+const isRenderedUrl = (url?: string): url is string =>
+  !!url && url.trim() !== "" && !url.startsWith("pending");
+
 /**
  * Downloads a certificate through the authenticated backend proxy.
  * A plain `<a download>` is a no-op for cross-origin (S3/CDN) URLs, and a
@@ -83,9 +87,7 @@ export default function CertificatesPage() {
     const hasCertificateWithUrl = certificates.some((cert) => {
       // Check both course_id (direct field) and courses?.id (from joined data) for compatibility
       const courseMatches = cert.course_id === course.id || cert.courses?.id === course.id;
-      const hasValidUrl = cert.certificate_url && 
-                         typeof cert.certificate_url === 'string' && 
-                         cert.certificate_url.trim() !== '';
+      const hasValidUrl = isRenderedUrl(cert.certificate_url);
       return courseMatches && hasValidUrl;
     });
     
@@ -212,7 +214,7 @@ export default function CertificatesPage() {
                       </div>
 
                       {/* Certificate Preview */}
-                      {cert.certificate_url ? (
+                      {isRenderedUrl(cert.certificate_url) ? (
                         <>
                           <div className="mb-4 border rounded-lg overflow-hidden bg-white">
                             {/* eslint-disable-next-line @next/next/no-img-element -- external certificate URL, not static asset */}

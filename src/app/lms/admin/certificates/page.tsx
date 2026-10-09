@@ -284,6 +284,26 @@ export default function AdminCertificatesPage() {
     queryClient.invalidateQueries({ queryKey: ["adminCertificates"] });
   };
 
+  const handleRedrawAll = async () => {
+    if (!(await confirmDialog({
+      title: 'Redraw all certificates?',
+      description: 'Re-creates the image of every issued certificate with the current template and fonts. Certificate IDs and issue dates stay the same.',
+      confirmText: 'Redraw all',
+    }))) return;
+    setBatchLoading(true);
+    try {
+      const res = await adminApi.certificates.regenerateAll();
+      const d = res.data as { regenerated?: number; failed?: number };
+      if (d.failed) toast.error(`Redrew ${d.regenerated ?? 0} certificates, ${d.failed} failed`);
+      else toast.success(`Redrew ${d.regenerated ?? 0} certificates`);
+      queryClient.invalidateQueries({ queryKey: ["adminCertificates"] });
+    } catch {
+      toast.error("Failed to redraw certificates");
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
   const handleBatchGenerate = async () => {
     if (!(await confirmDialog({
       title: 'Generate all certificates?',
@@ -398,6 +418,9 @@ export default function AdminCertificatesPage() {
           >
             <FileText className="h-4 w-4 mr-1" />
             {templateTab ? "View Certificates" : "Manage Template"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleRedrawAll} disabled={batchLoading}>
+            <RotateCcw className="h-4 w-4 mr-1" /> Redraw All
           </Button>
           <Button size="sm" className="bg-yellow-600 hover:bg-yellow-700 text-white" onClick={handleBatchGenerate} disabled={batchLoading}>
             {batchLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Zap className="h-4 w-4 mr-1" />}

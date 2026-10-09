@@ -257,6 +257,8 @@ export const adminApi = {
       apiClient.get(withParams(`${ADMIN}/certificates`, params as Record<string, string | number | undefined>)),
     regenerate: (id: string) =>
       apiClient.post(`${ADMIN}/certificates/${id}/regenerate`, {}),
+    regenerateAll: () =>
+      apiClient.post(`${ADMIN}/certificates/regenerate-all`, {}, { timeout: 300_000 }),
     download: (id: string) =>
       apiClient.get(`${ADMIN}/certificates/${id}/download`, { responseType: "blob" }),
     revoke: (id: string, reason?: string) =>
