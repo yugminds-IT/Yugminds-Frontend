@@ -841,6 +841,9 @@ export default function CoursesManagement() {
                     return gradeLabel ? [gradeLabel] : [];
                   });
                   const uniqueGrades = [...new Set(gradeLabels)];
+                  // Unpublishing keeps targeting so re-publishing is one click; show it as inactive.
+                  const isLive = course.status === 'Published';
+                  const savedTargetHint = 'Saved targeting — not visible to students until the course is published';
                   
                   return (
                   <TableRow key={course.id} className={selectedCourseIds.has(course.id) ? 'bg-blue-50' : ''}>
@@ -857,14 +860,24 @@ export default function CoursesManagement() {
                     </TableCell>
                     <TableCell className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
                       {uniqueSchoolNames.length > 0 ? (
-                        uniqueSchoolNames.join(', ')
+                        isLive ? (
+                          uniqueSchoolNames.join(', ')
+                        ) : (
+                          <span className="text-gray-400" title={savedTargetHint}>
+                            {uniqueSchoolNames.join(', ')}
+                            <span className="block text-[11px] italic">Not live</span>
+                          </span>
+                        )
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
                     </TableCell>
                     <TableCell>
                       {uniqueGrades.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
+                        <div
+                          className={`flex flex-wrap gap-1 ${isLive ? '' : 'opacity-50'}`}
+                          title={isLive ? undefined : savedTargetHint}
+                        >
                           {uniqueGrades.map((grade: string, idx: number) => (
                             <Badge key={`${course.id}-${grade}-${idx}`} variant="secondary" className="text-xs">
                               {grade}
@@ -1047,11 +1060,17 @@ export default function CoursesManagement() {
                         </p>
 
                         {uniqueSchoolNames.length > 0 && (
-                          <p className="text-xs text-gray-500 truncate">{uniqueSchoolNames.join(', ')}</p>
+                          <p
+                            className={`text-xs truncate ${course.status === 'Published' ? 'text-gray-500' : 'text-gray-400 italic'}`}
+                            title={course.status === 'Published' ? undefined : 'Saved targeting — not visible to students until the course is published'}
+                          >
+                            {uniqueSchoolNames.join(', ')}
+                            {course.status !== 'Published' && ' · not live'}
+                          </p>
                         )}
 
                         {uniqueGrades.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
+                          <div className={`flex flex-wrap gap-1 ${course.status === 'Published' ? '' : 'opacity-50'}`}>
                             {uniqueGrades.map((grade: string, idx: number) => (
                               <Badge key={`${course.id}-${grade}-${idx}`} variant="secondary" className="text-xs">
                                 {grade}
