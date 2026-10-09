@@ -154,6 +154,13 @@ export function useDashboardRealtime(role: RealtimeRole, options: UseDashboardRe
           queryClient.setQueryData(statsKey, (old: unknown) =>
             old && typeof old === 'object' ? { ...(old as Record<string, unknown>), ...payload } : payload,
           );
+          // Stats arrive as a "something changed" signal too — refetch the role's
+          // dependent lists (student courses, previews, progress). statsKey itself
+          // was just set from the payload, so skip refetching it.
+          const statsKeyId = JSON.stringify(statsKey);
+          for (const key of eventMap['dashboard:stats'] ?? []) {
+            if (JSON.stringify(key) !== statsKeyId) enqueueInvalidation(key);
+          }
           onStatsRef.current?.(payload);
           onEventRef.current?.({ eventType: 'dashboard:stats', data: payload });
         }

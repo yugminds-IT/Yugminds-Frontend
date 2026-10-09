@@ -35,6 +35,9 @@ export const queryKeys = {
     dashboardStats: ['studentDashboardStats'] as const,
     notifications: ['studentNotifications'] as const,
     courses: ['studentCourses'] as const,
+    course: ['studentCourse'] as const,
+    courseChapters: ['courseChapters'] as const,
+    chapterContents: ['chapterContents'] as const,
     assignments: ['studentAssignments'] as const,
   },
 } as const;

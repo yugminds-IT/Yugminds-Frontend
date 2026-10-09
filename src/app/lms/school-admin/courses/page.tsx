@@ -22,6 +22,7 @@ import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { getStoredUserId } from "@/lib/session-utils";
 import { toast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 
 interface Course {
   id: string;
@@ -98,13 +99,13 @@ export default function CoursesManagement() {
   const [studentsDialogData, setStudentsDialogData] = useState<{ students: Student[]; chapters: Chapter[]; error?: string } | null>(null);
   const [selectedCourseForStudents, setSelectedCourseForStudents] = useState<Course | null>(null);
 
-  const loadCourses = useCallback(async () => {
+  const loadCourses = useCallback(async (opts?: { silent?: boolean }) => {
     if (isFetchingRef.current) return; // prevent overlapping loads
     isFetchingRef.current = true;
     let isActive = true;
     const abort = new AbortController();
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       
       // School is resolved by API routes; optional fetch for display if needed
       try {
@@ -355,6 +356,14 @@ export default function CoursesManagement() {
   useEffect(() => {
     loadCourses();
   }, [loadCourses]);
+
+  useDashboardRealtime("school_admin", {
+    enabled: true,
+    debugLabel: "school-admin-courses",
+    onStats: () => {
+      void loadCourses({ silent: true });
+    },
+  });
 
   const handleViewCourseDetails = (course: Course) => {
     setSelectedCourse(course);

@@ -23,17 +23,31 @@ export const roleEventQueryOverrides: Record<'admin' | 'school_admin' | 'teacher
       queryKeys.schoolAdmin.quickPreviews,
     ],
     'notification:read': [queryKeys.schoolAdmin.notifications, queryKeys.schoolAdmin.dashboardStats],
-    'dashboard:stats': [queryKeys.schoolAdmin.dashboardStats],
+      'dashboard:stats': [
+        queryKeys.schoolAdmin.dashboardStats,
+        queryKeys.schoolAdmin.quickPreviews,
+        queryKeys.schoolAdmin.studentProgress,
+      ],
   },
   teacher: {
     'notification:new': [queryKeys.teacher.notifications, queryKeys.teacher.dashboard, queryKeys.teacher.studentProgress],
     'notification:read': [queryKeys.teacher.notifications, queryKeys.teacher.dashboard, queryKeys.teacher.studentProgress],
-    'dashboard:stats': [queryKeys.teacher.dashboard],
+    'dashboard:stats': [
+      queryKeys.teacher.dashboard,
+      queryKeys.teacher.studentProgress,
+    ],
   },
   student: {
     'notification:new': [queryKeys.student.notifications, queryKeys.student.dashboardStats],
     'notification:read': [queryKeys.student.notifications, queryKeys.student.dashboardStats],
-    'dashboard:stats': [queryKeys.student.dashboardStats, queryKeys.student.courses, queryKeys.student.assignments],
+    'dashboard:stats': [
+      queryKeys.student.dashboardStats,
+      queryKeys.student.courses,
+      queryKeys.student.course,
+      queryKeys.student.courseChapters,
+      queryKeys.student.chapterContents,
+      queryKeys.student.assignments,
+    ],
   },
 };
 

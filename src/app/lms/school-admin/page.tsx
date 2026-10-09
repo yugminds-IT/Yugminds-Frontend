@@ -371,7 +371,11 @@ export default function SchoolAdminDashboard() {
         queryKeys.schoolAdmin.studentProgress,
       ],
       "notification:read": [queryKeys.schoolAdmin.dashboardStats, queryKeys.schoolAdmin.notifications],
-      "dashboard:stats": [queryKeys.schoolAdmin.dashboardStats],
+      "dashboard:stats": [
+        queryKeys.schoolAdmin.dashboardStats,
+        queryKeys.schoolAdmin.quickPreviews,
+        queryKeys.schoolAdmin.studentProgress,
+      ],
     },
     onStats: (payload) => {
       const current =
