@@ -55,6 +55,8 @@ interface CourseSidebarProps {
   totalContentItems?: number
   onChapterSelect?: (chapterId: string) => void
   onContentSelect?: (contentId: string) => void
+  /** hides the desktop outline so the lesson can use the full width */
+  collapsed?: boolean
 }
 
 function getContentTypeLabel(contentType: string): string {
@@ -91,6 +93,7 @@ export default function CourseSidebar({
   totalContentItems,
   onChapterSelect,
   onContentSelect,
+  collapsed = false,
 }: CourseSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -277,7 +280,12 @@ export default function CourseSidebar({
       </div>
 
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex flex-col w-72 flex-shrink-0 border-r border-gray-200 overflow-hidden h-full">
+      <div
+        className={cn(
+          'hidden flex-col w-80 flex-shrink-0 border-r border-gray-200 overflow-hidden h-full',
+          !collapsed && 'lg:flex'
+        )}
+      >
         {inner}
       </div>
     </>

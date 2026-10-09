@@ -37,6 +37,8 @@ import {
   Lock,
   X,
   AlertCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { getStoredUserId } from '../../../lib/session-utils'
 import { studentApi } from '../../../lib/api'
@@ -114,6 +116,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
   const contents = contentsRaw as Content[] | undefined
   const [currentContentIndex, setCurrentContentIndex] = useState(0)
   const [retryCount, setRetryCount] = useState(0)
+  const [outlineCollapsed, setOutlineCollapsed] = useState(false)
   // Up-next auto-advance (Udemy-style): countdown after a lesson is completed.
   const [upNextCountdown, setUpNextCountdown] = useState<number | null>(null)
   const upNextShownRef = useRef<Set<string>>(new Set())
@@ -159,7 +162,8 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     title?: string
     status?: string
     is_overdue?: boolean
-    days_until_due?: number
+    days_until_due?: number | null
+    is_locked?: boolean
     submission?: unknown
   }
   const urgentAssignments = (() => {
@@ -172,7 +176,9 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       if (!a.id || seen.has(a.id)) return false
       seen.add(a.id)
       const pending = (a.status === 'not_started' || a.status === 'pending' || a.status == null) && !a.submission
-      return pending && (a.is_overdue || a.days_until_due === 0)
+      if (!pending || a.is_locked) return false
+      // days_until_due is null/absent for assignments with no deadline.
+      return a.is_overdue || (typeof a.days_until_due === 'number' && a.days_until_due === 0)
     })
   })()
 
@@ -696,19 +702,29 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           totalContentItems={totalContentItems}
           onChapterSelect={id => afterLeaveConfirmed(() => { setChapterId(id); setContentId(undefined) })}
           onContentSelect={id => afterLeaveConfirmed(() => setContentId(id))}
+          collapsed={outlineCollapsed}
         />
 
         {/* ─── Center: top-bar + scrollable content + bottom nav ────────── */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-          {/* Top bar — breadcrumb · progress bar · progress ring */}
-          <div className="flex-shrink-0 border-b border-gray-200 bg-white px-5 flex items-center gap-4" style={{ minHeight: 52 }}>
-            {/* Breadcrumb: Course › Module › Lesson */}
-            <nav className="flex items-center gap-1.5 text-sm min-w-0 flex-shrink" aria-label="Breadcrumb">
+          {/* Top bar — outline toggle · breadcrumb · progress */}
+          <div className="flex-shrink-0 h-14 border-b border-gray-200 bg-white px-3 sm:px-5 flex items-center gap-3">
+            <button
+              onClick={() => setOutlineCollapsed(c => !c)}
+              className="hidden lg:inline-flex flex-shrink-0 p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+              title={outlineCollapsed ? 'Show course outline' : 'Hide course outline'}
+              aria-label={outlineCollapsed ? 'Show course outline' : 'Hide course outline'}
+            >
+              {outlineCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+
+            {/* Breadcrumb: Course › Module › Lesson — segments truncate instead of overlapping */}
+            <nav className="flex-1 min-w-0 flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
               <button
                 onClick={() => afterLeaveConfirmed(() => { setChapterId(undefined); setContentId(undefined) })}
-                className="flex items-center gap-1 text-gray-500 hover:text-gray-900 transition-colors font-medium truncate max-w-[150px] flex-shrink-0"
-                title="Course overview"
+                className="flex min-w-0 max-w-[35%] items-center gap-1 text-gray-500 hover:text-gray-900 transition-colors font-medium"
+                title={`Course overview — ${courseName}`}
               >
                 <ChevronLeft className="h-4 w-4 flex-shrink-0" />
                 <span className="truncate">{courseName}</span>
@@ -716,32 +732,34 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
               {chapterDisplayName && (
                 <>
                   <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0 hidden md:block" />
-                  <span className="text-gray-500 truncate max-w-[140px] hidden md:inline">{chapterDisplayName}</span>
+                  <span className="min-w-0 max-w-[35%] text-gray-500 truncate hidden md:inline" title={chapterDisplayName}>
+                    {chapterDisplayName}
+                  </span>
                 </>
               )}
               {currentContent?.title && (
                 <>
                   <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0 hidden lg:block" />
-                  <span className="text-gray-900 font-medium truncate max-w-[180px] hidden lg:inline">{currentContent.title}</span>
+                  <span className="min-w-0 text-gray-900 font-medium truncate hidden lg:inline" title={currentContent.title}>
+                    {currentContent.title}
+                  </span>
                 </>
               )}
             </nav>
 
-            {/* Progress bar (center) */}
-            <div className="flex-1 flex items-center justify-center gap-3 min-w-0">
-              <div className="w-40 sm:w-56 md:w-72 h-1.5 bg-gray-200 rounded-full overflow-hidden flex-shrink-0">
+            {/* Progress */}
+            <div className="flex flex-shrink-0 items-center gap-3">
+              <div className="hidden md:block w-28 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-blue-600 rounded-full transition-all duration-500"
                   style={{ width: `${overallProgressPercent}%` }}
                 />
               </div>
-              <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0 hidden sm:inline">
+              <span className="hidden sm:inline text-xs text-gray-500 whitespace-nowrap">
                 {completedContentItems}/{totalContentItems} items
               </span>
+              <CircularProgress value={overallProgressPercent} size={36} stroke={4} />
             </div>
-
-            {/* Progress ring (right) */}
-            <CircularProgress value={overallProgressPercent} size={34} stroke={4} className="flex-shrink-0" />
           </div>
 
           {/* Deadline nudge — homework due today shouldn't be invisible mid-lesson */}

@@ -88,7 +88,7 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
 
   if (!isPdf) {
     return (
-      <div className="max-w-4xl mx-auto px-6 py-6" ref={containerRef}>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5" ref={containerRef}>
         <div className="flex items-start justify-between gap-4 mb-1">
           <h2 className="text-xl font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
           {(isCompleted || saving) && (
@@ -187,28 +187,21 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-6" ref={containerRef}>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5" ref={containerRef}>
       {/* Title + status */}
-      <div className="flex items-start justify-between gap-4 mb-1">
-        <h2 className="text-xl font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="min-w-0 flex items-start gap-2.5">
+          <File className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
+            {chapterName && <p className="text-sm text-gray-500 truncate">{chapterName}</p>}
+          </div>
+        </div>
         {(isCompleted || saving) && (
           <Badge className={`flex-shrink-0 border-0 text-xs ${saving ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
             {saving
               ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Saving...</>
               : <><CheckCircle className="h-3 w-3 mr-1" />Completed</>}
-          </Badge>
-        )}
-      </div>
-
-      {chapterName && <p className="text-sm text-gray-500 mb-4">{chapterName}</p>}
-
-      {/* File header row */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
-        <File className="h-6 w-6 text-red-500 flex-shrink-0" />
-        <span className="flex-1 text-sm text-gray-800 font-medium truncate">{shortTitle}</span>
-        {isCompleted && (
-          <Badge className="bg-green-100 text-green-700 border-0 text-xs flex-shrink-0">
-            <CheckCircle className="h-3 w-3 mr-1" /> Viewed
           </Badge>
         )}
       </div>
@@ -219,7 +212,7 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
           <iframe
             src={`${content.content_url}#toolbar=0&navpanes=0`}
             className="w-full"
-            style={{ height: '70vh', minHeight: 480 }}
+            style={{ height: 'calc(100vh - 240px)', minHeight: 480 }}
             title={content.title}
             onLoad={() => setPdfLoaded(true)}
             aria-label={`PDF document: ${content.title}`}

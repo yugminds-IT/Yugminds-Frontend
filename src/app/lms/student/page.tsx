@@ -48,7 +48,8 @@ interface Assignment {
   due_date?: string;
   status?: string;
   is_overdue?: boolean;
-  days_until_due?: number;
+  days_until_due?: number | null;
+  is_locked?: boolean;
   submission?: {
     grade?: number | string | null;
     submitted_at?: string;
@@ -162,7 +163,7 @@ export default function StudentDashboard() {
     const seen = new Set<string>();
     const pending = [...course, ...daily]
       .filter((a) => {
-        if (!a.id || seen.has(a.id)) return false;
+        if (!a.id || seen.has(a.id) || a.is_locked) return false;
         seen.add(a.id);
         return a.status === 'not_started' || a.status === 'pending' || a.status == null;
       })
@@ -561,9 +562,11 @@ export default function StudentDashboard() {
                                   )}
                                   <div className={`flex items-center ${group.key === 'overdue' ? 'text-red-600 font-medium' : group.key === 'today' ? 'text-orange-600 font-medium' : ''}`}>
                                     <Clock className="h-4 w-4 mr-1" />
-                                    {(assignment.days_until_due ?? 0) > 0
-                                      ? `${assignment.days_until_due ?? 0} days left`
-                                      : (assignment.days_until_due ?? 0) === 0
+                                    {assignment.days_until_due == null
+                                      ? 'No due date'
+                                      : assignment.days_until_due > 0
+                                      ? `${assignment.days_until_due} days left`
+                                      : assignment.days_until_due === 0
                                       ? 'Due today'
                                       : 'Overdue'
                                     }
@@ -571,7 +574,7 @@ export default function StudentDashboard() {
                                 </div>
                               </div>
                               <Link href={`/lms/student/assignments/${assignment.id}`}>
-                                <Button size="sm" variant={(assignment.days_until_due ?? 0) <= 2 ? "default" : "outline"}>
+                                <Button size="sm" variant={assignment.days_until_due != null && assignment.days_until_due <= 2 ? "default" : "outline"}>
                                   <Upload className="h-4 w-4 mr-2" />
                                   Start
                                 </Button>

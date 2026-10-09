@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo } from "react";
 import { studentApi } from "@/lib/api/student.api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,9 @@ interface Assignment {
     status: string;
   } | null;
   is_overdue: boolean;
-  days_until_due: number;
+  /** null when the assignment has no deadline. */
+  days_until_due: number | null;
+  chapter_title?: string | null;
   is_locked?: boolean;
   unlocks_in_days?: number | null;
   retake_available?: boolean;
@@ -92,7 +94,8 @@ function getStatusConfig(a: Assignment) {
 }
 
 function DueDateChip({ a }: { a: Assignment }) {
-  if (!a.due_date) return <span className="text-xs text-gray-400">—</span>;
+  if (!a.due_date || a.days_until_due == null)
+    return <span className="text-xs text-gray-400">—</span>;
   const isSubmitted = !!a.submission;
   // Once submitted/graded, show the static due date — no "overdue" or "Xd left" noise.
   if (isSubmitted)
@@ -261,6 +264,35 @@ function AssignmentTable({
 
           {/* Rows */}
           {filtered.map((a, idx) => {
+            // Chapter-wise heading whenever the course/chapter changes (list is
+            // already in chapter order from the API).
+            const groupKey = a.chapter_title ? `${a.course_title}|${a.chapter_title}` : null;
+            const prev = filtered[idx - 1];
+            const prevKey = prev?.chapter_title ? `${prev.course_title}|${prev.chapter_title}` : null;
+            const header =
+              groupKey && groupKey !== prevKey ? (
+                <div className="px-4 py-1.5 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold uppercase tracking-wide text-gray-500 truncate">
+                  {a.chapter_title}
+                  {a.course_title && (
+                    <span className="ml-2 font-normal normal-case tracking-normal text-gray-400">
+                      · {a.course_title}
+                    </span>
+                  )}
+                </div>
+              ) : null;
+            return (
+              <Fragment key={a.id}>
+                {header}
+                {renderRow(a, idx)}
+              </Fragment>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  function renderRow(a: Assignment, idx: number) {
             const sc = getStatusConfig(a);
             const isGraded =
               a.status === "graded" ||
@@ -359,11 +391,7 @@ function AssignmentTable({
                 </div>
               </Link>
             );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  }
 }
 
 function isValidDate(d: string | null | undefined): boolean {
@@ -384,7 +412,8 @@ function normalizeAssignment(raw: Record<string, unknown>): Assignment {
     status: (raw.status ?? "not_started") as Assignment["status"],
     submission: (raw.submission as Assignment["submission"]) ?? null,
     is_overdue: Boolean(raw.is_overdue ?? false),
-    days_until_due: Number(raw.days_until_due ?? 0),
+    days_until_due: raw.days_until_due != null ? Number(raw.days_until_due) : null,
+    chapter_title: raw.chapter_title != null ? String(raw.chapter_title) : null,
     is_locked: Boolean(raw.is_locked ?? false),
     unlocks_in_days: raw.unlocks_in_days != null ? Number(raw.unlocks_in_days) : null,
     retake_available: Boolean(raw.retake_available ?? false),

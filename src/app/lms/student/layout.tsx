@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/ui/modern-side-bar";
 import { useStudentProfile, useStudentDashboardStats } from "@/hooks/useStudentData";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
@@ -22,6 +22,8 @@ export default function StudentLayoutWrapper({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  // The course player is a full-screen focus view with its own navigation.
+  const isCoursePlayer = /^\/lms\/student\/my-courses\/[^/]+/.test(usePathname() ?? "");
   type AuthUser = { id: string; email?: string };
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -297,16 +299,18 @@ export default function StudentLayoutWrapper({
       <ForcePasswordChange allowSkip />
       <AnnouncementBanner />
       <ImpersonationBanner />
-      <Sidebar 
-        userRole="student"
-        userName={userName}
-        userEmail={userEmail}
-        onLogout={handleLogout}
-        assignmentBadgeCount={pendingAssignmentsCount}
-        notificationBadgeCount={unreadNotificationCount}
-      />
-      
-      <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
+      {!isCoursePlayer && (
+        <Sidebar
+          userRole="student"
+          userName={userName}
+          userEmail={userEmail}
+          onLogout={handleLogout}
+          assignmentBadgeCount={pendingAssignmentsCount}
+          notificationBadgeCount={unreadNotificationCount}
+        />
+      )}
+
+      <div className="flex-1 min-w-0 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
         {children}
       </div>
     </div>
