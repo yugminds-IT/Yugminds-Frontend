@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import {
@@ -10,7 +10,6 @@ import {
   useTransform,
   useInView,
   animate,
-  useReducedMotion,
   type MotionValue,
 } from "framer-motion";
 import { ArrowRight, ArrowUp, Menu, X } from "lucide-react";
@@ -161,79 +160,6 @@ function DrawnRing({
         style={{ rotate: -90, transformOrigin: "50% 50%" }}
       />
     </svg>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   PRELOADER
-   Ring draws → mark fills in → wordmark rises → curtain lifts.
-───────────────────────────────────────────── */
-function Preloader({ onDone }: { onDone: () => void }) {
-  const reduced = useReducedMotion();
-  const [lifting, setLifting] = useState(false);
-  const word = "YUGMINDS".split("");
-
-  useEffect(() => {
-    const hold = reduced ? 200 : 2700;
-    const t = window.setTimeout(() => setLifting(true), hold);
-    return () => window.clearTimeout(t);
-  }, [reduced]);
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-[100] overflow-hidden"
-      initial={{ y: 0 }}
-      animate={lifting ? { y: "-100%" } : { y: 0 }}
-      transition={{ duration: reduced ? 0.2 : 1.05, ease: EASE_CURTAIN }}
-      onAnimationComplete={() => lifting && onDone()}
-    >
-      <div className="absolute inset-0 bg-ym-cream" />
-
-      <div className="relative h-full w-full flex flex-col items-center justify-center">
-        <div className="relative w-[190px] h-[190px] md:w-[230px] md:h-[230px]">
-          <DrawnRing
-            className="absolute inset-0 w-full h-full"
-            duration={1.15}
-            delay={0.18}
-            stroke="#2563EB"
-          />
-          <motion.div
-            className="absolute inset-[19%]"
-            initial={{ opacity: 0, scale: 0.86, filter: "blur(6px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.95, delay: 1.05, ease: EASE_OUT }}
-          >
-            <LogoMark tint="#2563EB" className="w-full h-full" />
-          </motion.div>
-        </div>
-
-        <div className="mt-8 flex overflow-hidden">
-          {word.map((c, i) => (
-            <motion.span
-              key={`${c}-${i}`}
-              className="font-extrabold text-[1.6rem] md:text-[2rem] text-ym-text leading-none"
-              style={{ letterSpacing: "0.2em" }}
-              initial={{ y: "110%", opacity: 0 }}
-              animate={{ y: "0%", opacity: 1 }}
-              transition={{
-                duration: 0.7,
-                delay: 1.5 + i * 0.045,
-                ease: EASE_OUT,
-              }}
-            >
-              {c}
-            </motion.span>
-          ))}
-        </div>
-
-        <motion.div
-          className="mt-7 h-px bg-ym-blue/40"
-          initial={{ width: 0 }}
-          animate={{ width: 110 }}
-          transition={{ duration: 0.9, delay: 1.85, ease: EASE_OUT }}
-        />
-      </div>
-    </motion.div>
   );
 }
 
@@ -514,7 +440,7 @@ const HERO_TAGLINE = [
   { text: "Industries", accent: true },
 ];
 
-function Hero({ start }: { start: boolean }) {
+function Hero() {
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -523,8 +449,7 @@ function Hero({ start }: { start: boolean }) {
   const y = useTransform(scrollYProgress, [0, 1], [0, 140]);
   const fade = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
 
-  /* Hero copy waits for the curtain so the two never play over each other. */
-  const anim = start ? "in" : "out";
+  const anim = "in";
   const rise = {
     out: { opacity: 0, y: 34 },
     in: { opacity: 1, y: 0 },
@@ -591,11 +516,7 @@ function Hero({ start }: { start: boolean }) {
         {/* The tagline carries the headline slot, same as Robocoders'
             "Empowering Students to Code, Create, and Innovate" — the brand
             name moved to the eyebrow above, since it's already the biggest
-            thing in the nav. Each line masks/rises in on its own delay,
-            gated on `start` like the rest of the hero (not MaskLines'
-            whileInView — that fires the moment the section enters the
-            viewport, curtain or no curtain, which would let it finish
-            revealing itself behind the preloader). */}
+            thing in the nav. Each line masks/rises in on its own delay. */}
         {/* leading-[0.98] let descenders (the "g" in "Building") overlap
             the line below at this font-weight/size — 1.08 gives room
             between lines, but each line also sits in its own
@@ -610,7 +531,7 @@ function Hero({ start }: { start: boolean }) {
               <motion.span
                 className={`block ${line.accent ? "text-ym-blue" : ""}`}
                 initial={{ y: "112%" }}
-                animate={start ? { y: "0%" } : { y: "112%" }}
+                animate={{ y: "0%" }}
                 transition={{ duration: 1.1, delay: 0.35 + i * 0.13, ease: EASE_OUT }}
               >
                 {line.text}
@@ -1300,48 +1221,17 @@ function Footer() {
    PAGE
 ───────────────────────────────────────────── */
 export function YugmindsHomePage() {
-  /* The intro plays once per tab, not on every client-side return to `/`.
-     useSyncExternalStore reads sessionStorage without a setState-in-effect:
-     the server snapshot is "already seen", so SSR markup never contains the
-     curtain and hydration stays clean. The flag is only written once the
-     curtain has finished, so re-reading it mid-animation can't cut it short. */
-  const introSeen = useSyncExternalStore(
-    () => () => {},
-    () => sessionStorage.getItem("ym-intro") === "1",
-    () => true,
-  );
-  const [introDone, setIntroDone] = useState(false);
-
-  const showPreloader = !introSeen && !introDone;
-  const revealed = introSeen || introDone;
-
-  useEffect(() => {
-    if (introSeen) return;
-    /* Browsers restore scroll on reload; without this the curtain would
-       lift onto the middle of the page instead of the hero. */
-    window.scrollTo(0, 0);
-    document.body.classList.add("ym-locked");
-    return () => document.body.classList.remove("ym-locked");
-  }, [introSeen]);
-
-  const finishIntro = () => {
-    document.body.classList.remove("ym-locked");
-    sessionStorage.setItem("ym-intro", "1");
-    setIntroDone(true);
-  };
-
   return (
     /* The CSS prefers-reduced-motion block can't reach framer's inline
        transforms — this makes every motion component here skip straight to
        its end state for users who ask for reduced motion. */
     <MotionConfig reducedMotion="user">
       <div data-landing className="min-h-screen bg-ym-cream">
-        {showPreloader && <Preloader onDone={finishIntro} />}
         <ScrollProgress />
         <BrandSwitcherBar fixed editorial />
         <Nav />
         <main>
-          <Hero start={revealed} />
+          <Hero />
           <Manifesto />
           <Story />
           <ScrubStatement />

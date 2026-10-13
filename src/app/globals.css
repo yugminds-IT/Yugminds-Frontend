@@ -151,7 +151,7 @@ section, main, article, aside {
   color: #ffffff;
 }
 
-/* Concentric-ring field used behind the preloader and the hero. */
+/* Concentric-ring field used behind the hero. */
 .ym-rings {
   background-image: repeating-radial-gradient(
     circle at 50% 45%,
@@ -171,11 +171,6 @@ section, main, article, aside {
   opacity: 0.28;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.32'/%3E%3C/svg%3E");
-}
-
-/* The preloader locks scroll until the curtain lifts. */
-body.ym-locked {
-  overflow: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {

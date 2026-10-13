@@ -22,6 +22,7 @@ const PATH_NAV = [
   { name: "Home", link: "/robocoders", exact: true, publicPath: "/" },
   { name: "About Us", link: "/robocoders/about", publicPath: "/about" },
   { name: "Our Programs", link: "/robocoders/programs", publicPath: "/programs" },
+  { name: "Products", link: "/robocoders/products", publicPath: "/products" },
   { name: "Community", link: "/robocoders/community", publicPath: "/community" },
   { name: "For Schools", link: "/robocoders/for-schools", publicPath: "/for-schools" },
   { name: "For Parents", link: "/robocoders/for-parents", publicPath: "/for-parents" },

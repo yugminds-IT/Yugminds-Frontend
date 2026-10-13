@@ -116,6 +116,14 @@ export async function buildBrandMetadata(
       ? { index: false, follow: false }
       : { index: true, follow: true };
 
+  const shareImage = {
+    url: `/og/${brand}.png`,
+    width: 1200,
+    height: 630,
+    alt: copy.title,
+    type: "image/png",
+  };
+
   return {
     metadataBase: new URL(base),
     title: copy.title,
@@ -128,11 +136,14 @@ export async function buildBrandMetadata(
       url: canonical,
       siteName: copy.siteName,
       type: "website",
+      locale: "en_IN",
+      images: [shareImage],
     },
     twitter: {
       card: "summary_large_image",
       title: copy.title,
       description: copy.description,
+      images: [shareImage],
     },
     alternates: { canonical },
     ...overrides,

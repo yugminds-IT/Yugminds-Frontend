@@ -99,6 +99,20 @@ export const PAGE_SEO: Record<string, PageSeo> = {
       "STEM courses",
     ],
   },
+  "/robocoders/products": {
+    primaryKeyword: "RoboCoders products",
+    title: "Products | RoboCoders Studio, ESP32 Robotics Kit & Play Kit",
+    description:
+      "RoboCoders products by YugMinds: Studio offline coding software, the ESP32 Robotics Kit with 40+ projects, and a screen-free card-coding Play Kit for kids.",
+    keywords: [
+      "RoboCoders products",
+      "RoboCoders Studio",
+      "ESP32 robotics kit",
+      "robotics kit for kids",
+      "screen-free coding robot",
+      "coding cards robot",
+    ],
+  },
   "/robocoders/community": {
     primaryKeyword: "RoboCoders community",
     title: "Community | Student Projects & Challenges — RoboCoders",

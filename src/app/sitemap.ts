@@ -48,6 +48,7 @@ const ROBOCODERS_ROUTES: Route[] = [
   { path: "/", changeFrequency: "weekly", priority: 1.0 },
   { path: "/about", changeFrequency: "monthly", priority: 0.8 },
   { path: "/programs", changeFrequency: "monthly", priority: 0.9 },
+  { path: "/products", changeFrequency: "monthly", priority: 0.9 },
   { path: "/community", changeFrequency: "weekly", priority: 0.85 },
   { path: "/for-schools", changeFrequency: "monthly", priority: 0.85 },
   { path: "/for-parents", changeFrequency: "monthly", priority: 0.85 },

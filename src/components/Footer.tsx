@@ -8,6 +8,7 @@ export default function Footer() {
   const quickLinks = [
     { href: "/about", label: "About Us" },
     { href: "/programs", label: "Our Programs" },
+    { href: "/products", label: "Products" },
     { href: "/community", label: "Community" },
     { href: "/for-schools", label: "For Schools" },
     { href: "/for-parents", label: "For Parents" },

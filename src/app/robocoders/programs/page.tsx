@@ -243,7 +243,7 @@ export default function ProgramsPage() {
                     Get Early Access
                   </Button>
                 </Link>
-                <Link href={brandHref("/robocoders/contact")}>
+                <Link href={brandHref("/robocoders/products#studio")}>
                   <Button size="lg" variant="outline" className="bg-transparent border-white text-white hover:bg-white/10 hover:text-white h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full">
                     Learn More
                   </Button>
@@ -358,9 +358,11 @@ export default function ProgramsPage() {
                 ))}
               </ul>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button size="lg" className="w-full sm:w-auto bg-white hover:bg-gray-100 text-blue-600 h-12 text-lg font-bold rounded-full transition-transform hover:scale-105">
-                  Order Robotics Kit
-                </Button>
+                <Link href={brandHref("/robocoders/products#robotics-kit")}>
+                  <Button size="lg" className="w-full sm:w-auto bg-white hover:bg-gray-100 text-blue-600 h-12 text-lg font-bold rounded-full transition-transform hover:scale-105">
+                    Order Robotics Kit
+                  </Button>
+                </Link>
                 <Link href="/contact">
                   <Button size="lg" variant="outline" className="w-full sm:w-auto bg-transparent border-white text-white hover:bg-white/10 hover:text-white h-12 text-lg font-bold rounded-full">
                     For More Information

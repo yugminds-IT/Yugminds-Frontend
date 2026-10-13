@@ -11,6 +11,22 @@ import {
   readRequestHost,
 } from "../lib/brand-metadata";
 
+const ADDRESS = {
+  "@type": "PostalAddress",
+  addressLocality: "Begumpet, Hyderabad",
+  addressRegion: "Telangana",
+  addressCountry: "IN",
+};
+
+const CONTACT_POINT = {
+  "@type": "ContactPoint",
+  contactType: "customer support",
+  email: "info@yugminds.org",
+  telephone: "+91-85003-45655",
+  areaServed: "IN",
+  availableLanguage: ["en"],
+};
+
 export async function StructuredData() {
   const hostname = await readRequestHost();
   const pathname = await readInternalPathname();
@@ -22,10 +38,16 @@ export async function StructuredData() {
       "@context": "https://schema.org",
       "@type": "Organization",
       name: "YugMinds",
+      legalName: "YugMinds Private Limited",
       url,
       logo: `${url}/Yugminds_Official_Logo-preview.png`,
       description:
         "YugMinds builds software, electronics, and machines under one roof — and teaches the next generation through RoboCoders STEM programs.",
+      foundingDate: "2024",
+      email: "info@yugminds.org",
+      telephone: "+91-85003-45655",
+      address: ADDRESS,
+      contactPoint: CONTACT_POINT,
       subOrganization: {
         "@type": "Organization",
         name: "RoboCoders",
@@ -63,6 +85,8 @@ export async function StructuredData() {
       logo: `${url}/robocoders-logo.png`,
       description:
         "RoboCoders — STEM education in AI, robotics, and programming. An EdTech initiative by YugMinds.",
+      address: ADDRESS,
+      contactPoint: CONTACT_POINT,
       sameAs: [
         "https://www.instagram.com/robocoders",
         "https://youtube.com/@robocoders",
