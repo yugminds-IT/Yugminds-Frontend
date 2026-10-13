@@ -42,7 +42,7 @@ const PUBLIC_PATHS: RegExp[] = [
 	/^\/favicon/,
 	/^\/sitemap\.xml$/,
 	/^\/robots\.txt$/,
-	/\.(css|js|json|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|mp4|webp)$/,
+	/\.(css|m?js|json|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|mp4|webp)$/,
 ]
 
 const ROBOCODERS_ROOT_ICONS: Record<string, string> = {

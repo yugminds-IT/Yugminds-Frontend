@@ -68,7 +68,7 @@ export function shouldSkipHostPrefix(pathname: string): boolean {
     pathname === "/favicon.ico" ||
     pathname === "/icon.png" ||
     pathname === "/apple-icon.png" ||
-    /\.(css|js|json|ico|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|mp4|webp|txt|xml|map)$/i.test(
+    /\.(css|m?js|json|ico|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|mp4|webp|txt|xml|map)$/i.test(
       pathname,
     )
   );

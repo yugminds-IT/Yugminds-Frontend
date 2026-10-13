@@ -27,6 +27,7 @@ describe("brand-host", () => {
     assert.deepEqual(routeForHost(null, "/robocoders/about"), pass);
     assert.deepEqual(routeForHost("robocoders", "/api/health"), pass);
     assert.deepEqual(routeForHost("lms", "/sitemap.xml"), pass);
+    assert.deepEqual(routeForHost("lms", "/pdf.worker.min.mjs"), pass);
   });
 
   it("yugminds.org sends brand paths to their subdomains", () => {
