@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import CourseSidebar from './CourseSidebar'
 import CourseOverview from './CourseOverview'
 import VideoContentViewer from './VideoContentViewer'
+import { looksLikeVideo } from './media'
 import TextContentViewer from './TextContentViewer'
 import PDFContentViewer from './PDFContentViewer'
 import QuizContentViewer from './QuizContentViewer'
@@ -117,6 +118,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
   const [currentContentIndex, setCurrentContentIndex] = useState(0)
   const [retryCount, setRetryCount] = useState(0)
   const [outlineCollapsed, setOutlineCollapsed] = useState(false)
+  const [mobileOutlineOpen, setMobileOutlineOpen] = useState(false)
   // Up-next auto-advance (Udemy-style): countdown after a lesson is completed.
   const [upNextCountdown, setUpNextCountdown] = useState<number | null>(null)
   const upNextShownRef = useRef<Set<string>>(new Set())
@@ -478,7 +480,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     }
     if (contentsError) {
       return (
-        <div className="max-w-3xl mx-auto px-6 py-12 text-center text-gray-500">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 text-center text-gray-500">
           <FileText className="h-14 w-14 mx-auto mb-4 text-gray-300" />
           <p className="text-red-600 mb-1">Error loading content</p>
           <p className="text-sm">{contentsError.message}</p>
@@ -517,7 +519,11 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       )
     }
 
-    const contentType = (currentContent.content_type || '').toLowerCase()
+    const declaredType = (currentContent.content_type || '').toLowerCase()
+    const contentType =
+      (declaredType === 'link' || declaredType === 'file') && looksLikeVideo(currentContent.content_url)
+        ? 'video'
+        : declaredType
     switch (contentType) {
       case 'video':
       case 'video_link':
@@ -583,7 +589,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
         )
       default:
         return (
-          <div className="max-w-3xl mx-auto px-6 py-12 text-center text-gray-400">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 text-center text-gray-400">
             <FileText className="h-14 w-14 mx-auto mb-4 opacity-30" />
             <p>Unsupported content type: {contentType}</p>
           </div>
@@ -689,7 +695,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
 
   return (
     <ErrorBoundary>
-      <div ref={playerRootRef} className="flex overflow-hidden bg-white" style={{ height: '100vh' }}>
+      <div ref={playerRootRef} className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-white">
 
         {/* ─── Left: module sidebar ─────────────────────────────────────── */}
         <CourseSidebar
@@ -703,13 +709,15 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           onChapterSelect={id => afterLeaveConfirmed(() => { setChapterId(id); setContentId(undefined) })}
           onContentSelect={id => afterLeaveConfirmed(() => setContentId(id))}
           collapsed={outlineCollapsed}
+          mobileOpen={mobileOutlineOpen}
+          onMobileOpenChange={setMobileOutlineOpen}
         />
 
         {/* ─── Center: top-bar + scrollable content + bottom nav ────────── */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
           {/* Top bar — outline toggle · breadcrumb · progress */}
-          <div className="flex-shrink-0 h-14 border-b border-gray-200 bg-white px-3 sm:px-5 flex items-center gap-3">
+          <div className="flex-shrink-0 h-14 [@media(max-height:500px)]:h-11 border-b border-gray-200 bg-white px-3 sm:px-5 flex items-center gap-3">
             <button
               onClick={() => setOutlineCollapsed(c => !c)}
               className="hidden lg:inline-flex flex-shrink-0 p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
@@ -718,12 +726,20 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
             >
               {outlineCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </button>
+            <button
+              onClick={() => setMobileOutlineOpen(true)}
+              className="lg:hidden flex-shrink-0 inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              aria-label="Open course outline"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              Outline
+            </button>
 
             {/* Breadcrumb: Course › Module › Lesson — segments truncate instead of overlapping */}
             <nav className="flex-1 min-w-0 flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
               <button
                 onClick={() => afterLeaveConfirmed(() => { setChapterId(undefined); setContentId(undefined) })}
-                className="flex min-w-0 max-w-[35%] items-center gap-1 text-gray-500 hover:text-gray-900 transition-colors font-medium"
+                className="flex min-w-0 md:max-w-[35%] items-center gap-1 text-gray-500 hover:text-gray-900 transition-colors font-medium"
                 title={`Course overview — ${courseName}`}
               >
                 <ChevronLeft className="h-4 w-4 flex-shrink-0" />
@@ -764,7 +780,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
 
           {/* Deadline nudge — homework due today shouldn't be invisible mid-lesson */}
           {!dueBannerDismissed && urgentAssignments.length > 0 && (
-            <div className="flex-shrink-0 flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-5 py-2 text-sm text-amber-800">
+            <div className="flex-shrink-0 flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-3 sm:px-5 py-2 text-sm text-amber-800 [@media(max-height:500px)]:hidden">
               <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-500" />
               <span className="min-w-0 truncate">
                 {urgentAssignments.length === 1 ? (
@@ -814,7 +830,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
 
           {/* Up-next auto-advance card */}
           {upNextCountdown !== null && nextItemLabel && (
-            <div className="flex-shrink-0 px-5 pb-2">
+            <div className="flex-shrink-0 px-3 sm:px-5 pb-2">
               <div className="flex items-center gap-3 bg-gray-900 text-white rounded-xl px-4 py-3 shadow-lg">
                 <div className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
                   <Play className="h-4 w-4 fill-white" />
@@ -842,7 +858,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           )}
 
           {/* Bottom navigation bar */}
-          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-5 py-3 flex items-center justify-between gap-3">
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-3 sm:px-5 py-2.5 sm:py-3 pb-[max(0.625rem,env(safe-area-inset-bottom))] [@media(max-height:500px)]:py-1.5 flex items-center justify-between gap-3">
             <Button
               variant="ghost"
               size="sm"
@@ -866,7 +882,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
                 className="bg-blue-700 hover:bg-blue-800 text-white rounded-lg px-4 py-2 text-sm font-medium flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                 title={nextDisabled ? 'Complete this item to continue' : undefined}
               >
-                {isLastContent ? 'Finish Course' : 'Go to next item'}
+                {isLastContent ? 'Finish Course' : <>Next<span className="hidden sm:inline">&nbsp;item</span></>}
                 {isLastContent ? (
                   <CheckCircle className="h-4 w-4" />
                 ) : (

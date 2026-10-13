@@ -115,17 +115,17 @@ export default function AttendancePage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
-        <p className="text-gray-600 mt-2">
+        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
           View your attendance records and statistics {selectedSchool ? `for ${selectedSchool.name}` : ''}
         </p>
-        <p className="text-sm text-blue-600 mt-2 bg-blue-50 border border-blue-200 rounded-md p-3 inline-block">
+        <p className="text-xs md:text-sm text-blue-600 mt-2 bg-blue-50 border border-blue-200 rounded-md p-2.5 md:p-3 inline-block">
           <strong>Note:</strong> Your attendance is automatically marked as &quot;Present&quot; when you submit reports for all scheduled periods for the day.
         </p>
       </div>
 
       {/* Current Month Stats */}
       {_monthlyLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
               <CardHeader className="pb-2">
@@ -139,7 +139,7 @@ export default function AttendancePage() {
           ))}
         </div>
       ) : currentMonthData ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Present</CardTitle>
@@ -185,7 +185,7 @@ export default function AttendancePage() {
           </Card>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
           {[
             { label: 'Present', icon: <CheckCircle className="h-4 w-4 text-green-600" />, color: 'text-green-600', sub: 'Days present' },
             { label: 'Absent', icon: <XCircle className="h-4 w-4 text-red-600" />, color: 'text-red-600', sub: 'Days absent' },

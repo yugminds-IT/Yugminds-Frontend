@@ -454,19 +454,19 @@ export default function SchoolAdminNotifications() {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
-        <p className="text-gray-600 mt-2">Send and manage notifications for your school</p>
+    <div className="p-4 md:p-8">
+      <div className="mb-4 md:mb-8">
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900">Notifications</h1>
+        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">Send and manage notifications for your school</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'send' | 'view')}>
-        <TabsList>
-          <TabsTrigger value="send">Send Notification</TabsTrigger>
-          <TabsTrigger value="view">View Notifications</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:inline-flex sm:w-auto">
+          <TabsTrigger value="send">Send<span className="hidden sm:inline">&nbsp;Notification</span></TabsTrigger>
+          <TabsTrigger value="view">View<span className="hidden sm:inline">&nbsp;Notifications</span></TabsTrigger>
         </TabsList>
 
-        <TabsContent value="send" className="space-y-6">
+        <TabsContent value="send" className="space-y-4 md:space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -618,11 +618,11 @@ export default function SchoolAdminNotifications() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="view" className="space-y-6">
+        <TabsContent value="view" className="space-y-4 md:space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
                   <CardTitle className="flex items-center gap-2">
                     <Bell className="h-5 w-5" />
                     {notificationMode === 'sent' ? 'Sent Notifications' : 
@@ -639,20 +639,20 @@ export default function SchoolAdminNotifications() {
                 <div className="flex items-center gap-2">
                   {notificationMode === 'received' && notifications.some((n) => !n.is_read) && (
                     <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Mark all read
+                      <CheckCircle className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Mark all read</span>
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" onClick={loadNotifications}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh
+                  <Button variant="outline" size="sm" onClick={loadNotifications} aria-label="Refresh">
+                    <RefreshCw className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Refresh</span>
                   </Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex-1 relative">
+              <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-4">
+                <div className="relative basis-full sm:basis-auto sm:flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
                     placeholder="Search notifications..."
@@ -662,7 +662,7 @@ export default function SchoolAdminNotifications() {
                   />
                 </div>
                 <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as 'all' | 'read' | 'unread')}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -672,7 +672,7 @@ export default function SchoolAdminNotifications() {
                   </SelectContent>
                 </Select>
                 <Select value={notificationMode} onValueChange={(v) => setNotificationMode(v as 'all' | 'sent' | 'received')}>
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-48">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -698,11 +698,11 @@ export default function SchoolAdminNotifications() {
                   {notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      className={`border rounded-lg p-4 ${notification.is_read ? 'bg-gray-50' : 'bg-white border-blue-200'}`}
+                      className={`border rounded-lg p-3 md:p-4 ${notification.is_read ? 'bg-gray-50' : 'bg-white border-blue-200'}`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
                             {(() => {
                               const TypeIcon = formatNotificationType(notification.type).icon;
                               return <TypeIcon className="h-4 w-4 text-gray-500" />;
@@ -742,7 +742,7 @@ export default function SchoolAdminNotifications() {
                               View Password Reset Requests →
                             </Button>
                           )}
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                             <span className="flex items-center gap-1">
                               <User className="h-3 w-3" />
                               {notification.profiles?.full_name || 'Unknown User'}
@@ -753,7 +753,7 @@ export default function SchoolAdminNotifications() {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                           {notification.reply_count && notification.reply_count > 0 && (
                             <Badge variant="outline" className="flex items-center gap-1">
                               <MessageSquare className="h-3 w-3" />

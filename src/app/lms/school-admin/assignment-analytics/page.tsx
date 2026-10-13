@@ -229,11 +229,11 @@ export default function SchoolAdminLeaderboardPage() {
   if (loading) {
     return (
       <div className="bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4">
           <div className="h-6 bg-gray-200 rounded w-48 animate-pulse" />
           <div className="h-4 bg-gray-100 rounded w-32 mt-2 animate-pulse" />
         </div>
-        <div className="max-w-7xl mx-auto px-6 py-5 space-y-4">
+        <div className="max-w-7xl mx-auto px-4 py-4 md:px-6 md:py-5 space-y-4 md:space-y-4">
           <div className="grid grid-cols-4 gap-3">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-20 bg-gray-200 rounded-xl animate-pulse" />
@@ -283,7 +283,7 @@ export default function SchoolAdminLeaderboardPage() {
   return (
     <div className="bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-yellow-500" />
@@ -293,16 +293,16 @@ export default function SchoolAdminLeaderboardPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-5 space-y-5">
+      <div className="max-w-7xl mx-auto px-4 py-4 md:px-6 md:py-5 space-y-4 md:space-y-5">
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center">
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+              <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-blue-100 flex items-center justify-center">
                 <Users className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900 leading-none">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">
                   {summary.total_students}
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">Students</p>
@@ -310,12 +310,12 @@ export default function SchoolAdminLeaderboardPage() {
             </CardContent>
           </Card>
           <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center">
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+              <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-purple-100 flex items-center justify-center">
                 <BookOpen className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900 leading-none">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">
                   {summary.total_assignments_published}
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">Assignments</p>
@@ -323,12 +323,12 @@ export default function SchoolAdminLeaderboardPage() {
             </CardContent>
           </Card>
           <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+              <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-emerald-100 flex items-center justify-center">
                 <TrendingUp className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900 leading-none">
+                <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">
                   {summary.overall_avg_score.toFixed(1)}%
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">Avg Score</p>
@@ -336,12 +336,12 @@ export default function SchoolAdminLeaderboardPage() {
             </CardContent>
           </Card>
           <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-yellow-100 flex items-center justify-center">
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
+              <div className="max-sm:hidden h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-yellow-100 flex items-center justify-center">
                 <Star className="h-5 w-5 text-yellow-600" />
               </div>
               <div>
-                <div className="flex items-center gap-1.5 leading-none">
+                <div className="flex items-center gap-1 sm:gap-1.5 leading-none">
                   <span className="text-sm font-bold text-yellow-600">{goldCount}</span>
                   <span className="text-base">🥇</span>
                   <span className="text-sm font-bold text-gray-500">{silverCount}</span>
@@ -358,8 +358,8 @@ export default function SchoolAdminLeaderboardPage() {
         {/* Top 3 podium */}
         {leaderboard.length >= 3 && (
           <Card className="border-gray-200 shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-8">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest text-center mb-6">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-4 py-5 sm:px-6 sm:py-8">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest text-center mb-4 sm:mb-6">
                 Top Performers
               </p>
               <div className="flex items-end justify-center gap-4">
@@ -414,12 +414,12 @@ export default function SchoolAdminLeaderboardPage() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1 w-fit shadow-sm">
+        <div className="flex max-w-full gap-1 overflow-x-auto bg-white border border-gray-200 rounded-lg p-1 w-fit shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
                 tab === id
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-gray-500 hover:text-gray-800"
@@ -590,7 +590,7 @@ export default function SchoolAdminLeaderboardPage() {
               </div>
               {assignmentTable.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative flex-1 min-w-48">
+                  <div className="relative basis-full sm:basis-auto sm:flex-1 sm:min-w-48">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                     <Input
                       value={assignmentSearch}

@@ -85,15 +85,15 @@ export function AreaChartAnalyticsCard({
       )}
       style={{ "--analytics-accent": accentColor } as React.CSSProperties}
     >
-      <CardHeader className="flex flex-row items-start justify-between gap-3 px-4 pb-0 pt-4">
+      <CardHeader className="flex flex-row items-start justify-between gap-2 px-3 pb-0 pt-3 sm:gap-3 sm:px-4 sm:pt-4">
         <div className="flex min-w-0 items-center gap-1.5">
-          <CardTitle className="truncate text-sm font-medium text-muted-foreground">
+          <CardTitle className="truncate text-xs font-medium text-muted-foreground sm:text-sm">
             {title}
           </CardTitle>
           {info && (
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger aria-label={`${title} details`} className="shrink-0">
+                <TooltipTrigger aria-label={`${title} details`} className="hidden shrink-0 sm:inline-flex">
                   <svg
                     width={18}
                     height={18}
@@ -120,18 +120,22 @@ export function AreaChartAnalyticsCard({
         <div className="text-muted-foreground">{icon}</div>
       </CardHeader>
 
-      <CardContent className="flex flex-1 flex-col gap-3 p-0">
-        <div className="flex items-center gap-2 px-4">
-          <span className="text-2xl font-medium tracking-tight tabular-nums">
+      <CardContent className="flex flex-1 flex-col gap-2 p-0 sm:gap-3">
+        <div className="flex items-center gap-2 px-3 sm:px-4">
+          <span className="text-xl font-semibold tracking-tight tabular-nums sm:text-2xl sm:font-medium">
             {displayValue}
           </span>
-          <Badge className="rounded-full bg-green-100 text-[10px] text-green-800 hover:bg-green-100">
+          <Badge className="hidden rounded-full bg-green-100 text-[10px] text-green-800 hover:bg-green-100 sm:inline-flex">
             {badge}
           </Badge>
         </div>
-        <p className="px-4 text-xs text-muted-foreground">{description}</p>
+        <p className="hidden px-4 text-xs text-muted-foreground sm:block">{description}</p>
+        <p className="px-3 text-[11px] text-muted-foreground sm:hidden">
+          <span className="font-semibold text-foreground">{sideMetric ?? displayValue}</span>{" "}
+          {sideLabel ?? badge}
+        </p>
 
-        <div className="mt-auto grid h-[58px] grid-cols-[1fr_92px] border-t border-border">
+        <div className="mt-auto grid h-[40px] grid-cols-1 border-t border-border sm:h-[58px] sm:grid-cols-[1fr_92px]">
           <ChartContainer
             config={chartConfig}
             className="aspect-auto h-auto w-full"
@@ -164,7 +168,7 @@ export function AreaChartAnalyticsCard({
               />
             </AreaChart>
           </ChartContainer>
-          <div className="flex flex-col items-start justify-end border-l-2 border-[var(--analytics-accent)] px-3 pb-3">
+          <div className="hidden sm:flex flex-col items-start justify-end border-l-2 border-[var(--analytics-accent)] px-3 pb-3">
             <div className="text-sm font-semibold tracking-[-0.006em] text-foreground">
               {sideMetric ?? displayValue}
             </div>

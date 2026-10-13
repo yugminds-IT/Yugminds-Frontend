@@ -261,10 +261,10 @@ export default function NotificationsPage() {
           <div className="flex-shrink-0 mt-1"><TypeIcon className="h-5 w-5 text-gray-600" /></div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-1">
-              <h3 className={`font-semibold ${!notification.is_read ? 'text-gray-900' : 'text-gray-700'}`}>
+              <h3 className={`min-w-0 break-words font-semibold ${!notification.is_read ? 'text-gray-900' : 'text-gray-700'}`}>
                 {notification.title}
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 {!notification.is_read && <div className="w-2 h-2 rounded-full bg-blue-600" />}
                 <Badge variant="outline" className={`text-xs ${typeDisplay.badgeClassName}`}>
                   {typeDisplay.label}

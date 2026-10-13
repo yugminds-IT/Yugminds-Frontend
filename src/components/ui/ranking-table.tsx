@@ -42,6 +42,7 @@ interface RankingTableProps {
 }
 
 const MEDAL: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
+const PAGE_SIZE = 25;
 
 const BADGE_STYLE: Record<string, string> = {
   GOLD: "bg-yellow-100 text-yellow-800 border-yellow-300",
@@ -121,6 +122,14 @@ export function RankingTable({
     return list.slice(0, maxRows);
   }, [rows, search, gradeFilter, sectionFilter, sortKey, sortDir, maxRows]);
 
+  const filterKey = `${search}|${gradeFilter}|${sectionFilter}|${sortKey}|${sortDir}|${rows.length}`;
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const page = pageState.key === filterKey ? Math.min(pageState.page, totalPages) : 1;
+  const setPage = (p: number) => setPageState({ key: filterKey, page: p });
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const hasBadges = rows.some((r) => r.badge);
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("asc"); }
@@ -144,7 +153,7 @@ export function RankingTable({
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px]">
+        <div className="relative basis-full sm:basis-auto sm:flex-1 sm:min-w-[180px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
           <input
             placeholder="Search student, school, grade…"
@@ -180,12 +189,51 @@ export function RankingTable({
         )}
       </div>
 
+      {/* Mobile list */}
+      {filtered.length > 0 && (
+        <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white shadow-sm md:hidden">
+          {paged.map((row) => {
+            const isSelf = highlightSelf && row.is_self;
+            const meta = [
+              row.grade && `Grade ${row.grade}`,
+              row.section && `Sec ${row.section}`,
+              showSchool && row.school_name,
+            ].filter(Boolean).join(" · ");
+            return (
+              <li
+                key={row.student_id}
+                className={`flex items-center gap-3 px-3 py-2.5 ${isSelf ? "bg-blue-50" : ""}`}
+              >
+                <span className="flex w-9 shrink-0 justify-center">
+                  <RankBadge rank={row.rank} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className={`truncate text-sm font-semibold ${isSelf ? "text-blue-800" : "text-gray-900"}`}>
+                    {row.student_name}
+                    {isSelf && <span className="ml-1.5 text-xs font-normal text-blue-500">(You)</span>}
+                  </p>
+                  {meta && <p className="truncate text-xs text-gray-500">{meta}</p>}
+                </div>
+                <div className="shrink-0 text-right text-sm">
+                  <ScoreCell value={row.overall_score} />
+                  {hasBadges && row.badge && row.badge !== "NONE" && (
+                    <span className={`mt-0.5 block text-[10px] font-semibold border px-1.5 rounded-full ${BADGE_STYLE[row.badge] ?? ""}`}>
+                      {row.badge}
+                    </span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className={`overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm ${filtered.length > 0 ? "hidden md:block" : ""}`}>
         {filtered.length === 0 ? (
           <div className="py-12 text-center text-gray-400 text-sm">No matching students</div>
         ) : (
-          <table className="w-full text-sm min-w-[640px]">
+          <table data-no-stack className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
                 <th
@@ -246,7 +294,7 @@ export function RankingTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map((row) => {
+              {paged.map((row) => {
                 const isSelf = highlightSelf && row.is_self;
                 return (
                   <tr
@@ -338,6 +386,32 @@ export function RankingTable({
           </table>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+          <span>
+            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="h-8 rounded-lg border border-gray-200 bg-white px-3 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+              className="h-8 rounded-lg border border-gray-200 bg-white px-3 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

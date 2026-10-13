@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Badge } from '../../ui/badge'
 import { File, CheckCircle, Loader2, ExternalLink, Download, Volume2, Link as LinkIcon } from 'lucide-react'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
+import PdfPages from './PdfPages'
+import { OFFICE_EXTENSIONS, courseFileUrl, getExtension } from './media'
 
 interface PDFContentViewerProps {
   content: {
@@ -25,20 +27,6 @@ const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a', 'aac']
 
 // Minimum time the document must be open before completion can be confirmed.
 const MIN_DWELL_SECONDS = 8
-
-// Browsers can only render PDFs inline in an <iframe>. Any other "file"
-// content (docx, pptx, xlsx, zip, ...) that the admin uploads through the
-// same "material" upload flow would previously get embedded the same way —
-// since the browser can't display it, it silently downloaded the file
-// instead (and re-downloaded it every time the item was reopened). Detect
-// the real extension and only iframe-embed actual PDFs; everything else
-// gets a plain download card with a single explicit download action.
-function getExtension(url?: string): string {
-  if (!url) return ''
-  const clean = url.split('?')[0].split('#')[0]
-  const ext = clean.split('.').pop() ?? ''
-  return ext.toLowerCase()
-}
 
 export default function PDFContentViewer({ content, chapterName, onComplete }: PDFContentViewerProps) {
   const [pdfLoaded, setPdfLoaded] = useState(false)
@@ -63,6 +51,11 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
   const isAudio =
     declaredType === 'audio' || (declaredType !== 'link' && AUDIO_EXTENSIONS.includes(extension))
   const isLink = declaredType === 'link'
+  // Office's public viewer fetches the file itself, so it needs the original (public) URL.
+  const officeViewerUrl =
+    !isLink && content.content_url && OFFICE_EXTENSIONS.includes(extension)
+      ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(content.content_url)}`
+      : null
 
   // Only an inline PDF has a "loaded"/dwell signal to gate on. Everything else
   // (image, audio, link, downloadable file) is completed by explicit action —
@@ -90,7 +83,7 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
     return (
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5" ref={containerRef}>
         <div className="flex items-start justify-between gap-4 mb-1">
-          <h2 className="text-xl font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
           {(isCompleted || saving) && (
             <Badge className={`flex-shrink-0 border-0 text-xs ${saving ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
               {saving
@@ -108,23 +101,49 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
             <p>{isLink ? 'Link not available' : 'File not available'}</p>
           </div>
         ) : isImage ? (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <a
+            href={content.content_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded-lg border border-gray-200 bg-gray-50 p-2 sm:p-3"
+            title="Open full size"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={content.content_url}
               alt={content.title}
-              className="mx-auto max-h-[70vh] w-auto max-w-full rounded object-contain"
+              className="mx-auto max-h-[calc(100dvh-11rem)] w-auto max-w-full rounded object-contain"
             />
-          </div>
+          </a>
         ) : isAudio ? (
-          <div className="flex flex-col items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-6 py-10">
+          <div className="flex flex-col items-center gap-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 sm:px-6 sm:py-10">
             <Volume2 className="h-12 w-12 text-gray-400" />
             <audio controls preload="metadata" className="w-full max-w-lg" src={content.content_url}>
               Your browser does not support audio playback.
             </audio>
           </div>
+        ) : officeViewerUrl ? (
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+            <iframe
+              src={officeViewerUrl}
+              title={content.title}
+              className="block h-[min(75dvh,calc(100dvh_-_10rem))] min-h-[280px] w-full"
+              allowFullScreen
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 bg-white px-3 py-2">
+              <span className="text-xs uppercase text-gray-400">{extension} file</span>
+              <a
+                href={courseFileUrl(content.content_url)}
+                download
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </a>
+            </div>
+          </div>
         ) : (
-          <div className="flex flex-col items-center justify-center gap-4 py-16 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex flex-col items-center justify-center gap-4 px-4 py-12 sm:py-16 bg-gray-50 rounded-lg border border-gray-200">
             {isLink ? (
               <LinkIcon className="h-14 w-14 text-blue-500" />
             ) : (
@@ -133,12 +152,12 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
             <div className="text-center">
               <p className="text-sm font-medium text-gray-800">{shortTitle}</p>
               {isLink ? (
-                <p className="mt-0.5 max-w-md truncate text-xs text-gray-400">{content.content_url}</p>
+                <p className="mt-0.5 max-w-[80vw] truncate text-xs text-gray-400 sm:max-w-md">{content.content_url}</p>
               ) : (
                 extension && <p className="text-xs text-gray-400 uppercase mt-0.5">{extension} file</p>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-3">
               {isLink ? (
                 <button
                   onClick={() => window.open(content.content_url!, '_blank', 'noopener,noreferrer')}
@@ -150,7 +169,7 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
               ) : (
                 <>
                   <a
-                    href={content.content_url}
+                    href={courseFileUrl(content.content_url)}
                     download
                     className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
                   >
@@ -175,7 +194,7 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
             <button
               onClick={handleMarkComplete}
               disabled={saving}
-              className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
               Mark as Complete
@@ -193,7 +212,7 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
         <div className="min-w-0 flex items-start gap-2.5">
           <File className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 leading-snug">{shortTitle}</h2>
             {chapterName && <p className="text-sm text-gray-500 truncate">{chapterName}</p>}
           </div>
         </div>
@@ -206,18 +225,8 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
         )}
       </div>
 
-      {/* PDF iframe — #toolbar=0 suppresses browser's download/print toolbar */}
       {content.content_url ? (
-        <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-100">
-          <iframe
-            src={`${content.content_url}#toolbar=0&navpanes=0`}
-            className="w-full"
-            style={{ height: 'calc(100vh - 240px)', minHeight: 480 }}
-            title={content.title}
-            onLoad={() => setPdfLoaded(true)}
-            aria-label={`PDF document: ${content.title}`}
-          />
-        </div>
+        <PdfPages url={content.content_url} title={content.title} onLoaded={() => setPdfLoaded(true)} />
       ) : (
         <div className="flex flex-col items-center justify-center py-16 bg-gray-50 rounded-lg border border-dashed border-gray-200 text-gray-400">
           <File className="h-14 w-14 mb-3 opacity-30" />
@@ -226,7 +235,7 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
       )}
 
       {content.content_url && (
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <button
             onClick={() => window.open(content.content_url!, '_blank', 'noopener,noreferrer')}
             className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1.5 transition-colors"
@@ -236,11 +245,11 @@ export default function PDFContentViewer({ content, chapterName, onComplete }: P
           </button>
 
           {!isCompleted && (
-            <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col items-end gap-1 max-sm:w-full max-sm:items-stretch">
               <button
                 onClick={handleMarkComplete}
                 disabled={saving || !canComplete}
-                className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                 Mark as Complete

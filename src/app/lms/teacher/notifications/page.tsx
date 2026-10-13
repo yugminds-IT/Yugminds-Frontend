@@ -484,8 +484,8 @@ export default function TeacherNotifications() {
   const filteredNotifications = notifications;
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
+    <div className="md:p-8">
+      <div className="mb-5 md:mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
         <p className="text-gray-600 mt-2">Send and manage notifications to students</p>
       </div>

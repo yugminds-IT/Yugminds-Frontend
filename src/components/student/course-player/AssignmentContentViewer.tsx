@@ -305,7 +305,7 @@ export default function AssignmentContentViewer({
   /* ─── Loading ─────────────────────────────────────────────── */
   if (isLoading) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16 flex flex-col items-center">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 flex flex-col items-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-3" />
         <p className="text-sm text-gray-500">Loading assignment…</p>
       </div>
@@ -314,7 +314,7 @@ export default function AssignmentContentViewer({
 
   if (!assignment) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-16 text-center">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 text-center">
         <FileText className="h-14 w-14 mx-auto mb-4 text-gray-300" />
         <p className="text-gray-500">Assignment not found</p>
       </div>
@@ -327,7 +327,7 @@ export default function AssignmentContentViewer({
   if (mode === 'taking') {
     return (
       <div>
-        <div className="max-w-3xl mx-auto px-6 pt-8 pb-4">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-5 sm:pt-8 pb-4">
           {/* Back link */}
           <button
             onClick={leaveTaking}
@@ -354,7 +354,7 @@ export default function AssignmentContentViewer({
         </ProtectedAssignmentContent>
 
         {questions.length === 0 && (
-          <div className="max-w-3xl mx-auto px-6 py-8">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
             <button
               onClick={handleSubmit}
               disabled={submitting}
@@ -378,7 +378,7 @@ export default function AssignmentContentViewer({
       : null
 
     return (
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
         {/* Back link */}
         <button
           onClick={() => setMode('overview')}
@@ -519,7 +519,7 @@ export default function AssignmentContentViewer({
      OVERVIEW MODE
   ════════════════════════════════════ */
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
       {/* Completed badge */}
       {isCompleted && (
         <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium mb-4">
@@ -538,9 +538,9 @@ export default function AssignmentContentViewer({
       )}
 
       {/* Assignment details card */}
-      <div className="bg-gray-50 rounded-xl p-6 mb-4 border border-gray-100">
+      <div className="bg-gray-50 rounded-xl p-4 sm:p-6 mb-4 border border-gray-100">
         <h2 className="text-base font-semibold text-gray-900 mb-5">Assignment details</h2>
-        <div className="grid grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-3 gap-3 sm:gap-6 mb-5 sm:mb-6">
           <div>
             <p className="text-xs text-gray-500 mb-1">Due</p>
             <p className={`text-sm font-semibold ${isOverdue ? 'text-red-600' : 'text-gray-900'}`}>
@@ -567,26 +567,26 @@ export default function AssignmentContentViewer({
 
         {!isSubmitted && (
           <button onClick={handleStart}
-            className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+            className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-3 sm:py-2.5 rounded-lg transition-colors text-sm">
             <Play className="h-4 w-4" /> Start Assignment
           </button>
         )}
         {isSubmitted && canRetake && (
           <button onClick={handleStart}
-            className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+            className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 py-3 sm:py-2.5 rounded-lg transition-colors text-sm">
             <RotateCcw className="h-4 w-4" /> Retake Assignment
           </button>
         )}
         {isSubmitted && !canRetake && (
           <button onClick={handleReview}
-            className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+            className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-6 py-3 sm:py-2.5 rounded-lg transition-colors text-sm">
             <FileText className="h-4 w-4" /> Review Submission
           </button>
         )}
       </div>
 
       {/* Grade card */}
-      <div className="bg-gray-50 rounded-xl p-6 border border-gray-100">
+      <div className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-100">
         <h2 className="text-base font-semibold text-gray-900 mb-3">Your grade</h2>
         {!isSubmitted ? (
           <>

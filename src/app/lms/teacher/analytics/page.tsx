@@ -150,10 +150,10 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
-        <p className="text-gray-600 mt-2">
+        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
           Comprehensive insights and analytics {selectedSchool ? `for ${selectedSchool.name}` : ''}
         </p>
-        <div className="mt-3">
+        <div className="mt-2 md:mt-3">
           <Link href="/lms/teacher/assignments" className="text-sm text-blue-600 hover:underline">
             Manage assignments and retakes
           </Link>
@@ -161,7 +161,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Reports</CardTitle>
@@ -217,7 +217,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Attendance Trend */}
         <Card>
           <CardHeader>
@@ -230,7 +230,7 @@ export default function AnalyticsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : attendanceTrend.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
                 <LineChart data={attendanceTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
@@ -238,7 +238,7 @@ export default function AnalyticsPage() {
                   <Tooltip />
                   <Line type="monotone" dataKey="percentage" stroke="#0088FE" strokeWidth={2} />
                 </LineChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500">
                 <p>No attendance data available</p>
@@ -259,7 +259,7 @@ export default function AnalyticsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : totalReports > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={reportStatusData}
@@ -281,7 +281,7 @@ export default function AnalyticsPage() {
                   </Pie>
                   <Tooltip />
                 </PieChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500">
                 <p>No reports submitted yet</p>
@@ -302,7 +302,7 @@ export default function AnalyticsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : (approvedLeaves + pendingLeaves + rejectedLeaves) > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={leaveStatusData}
@@ -324,7 +324,7 @@ export default function AnalyticsPage() {
                   </Pie>
                   <Tooltip />
                 </PieChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500">
                 <p>No leave requests submitted yet</p>
@@ -335,7 +335,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Detailed Statistics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Attendance Breakdown */}
         <Card>
           <CardHeader>
@@ -348,7 +348,7 @@ export default function AnalyticsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : monthlyAttendance && monthlyAttendance.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={attendanceBarData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
@@ -358,7 +358,7 @@ export default function AnalyticsPage() {
                   <Bar dataKey="Absent" fill="#FF8042" />
                   <Bar dataKey="Leave" fill="#FFBB28" />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500">
                 <p>No attendance data available</p>
@@ -379,7 +379,7 @@ export default function AnalyticsPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : reports && reports.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={(() => {
                   // Group by sortable YYYY-MM key first so months render in
                   // chronological order (label-keyed grouping followed report
@@ -403,7 +403,7 @@ export default function AnalyticsPage() {
                   <Tooltip />
                   <Area type="monotone" dataKey="count" stroke="#0088FE" fill="#0088FE" fillOpacity={0.3} />
                 </AreaChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             ) : (
               <div className="h-64 flex items-center justify-center text-gray-500">
                 <p>No reports submitted yet</p>

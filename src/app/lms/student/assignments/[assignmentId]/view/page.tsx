@@ -176,7 +176,7 @@ export default function ViewSubmissionPage(props: PageProps) {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="border-b border-gray-200 px-6 py-4">
+      <div className="border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
         <Link
           href={`/lms/student/assignments/${assignmentId}`}
           className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-md transition-colors"
@@ -186,9 +186,9 @@ export default function ViewSubmissionPage(props: PageProps) {
         </Link>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="max-w-3xl mx-auto px-4 py-5 sm:px-6 sm:py-10">
         {/* Title */}
-        <h1 className="text-2xl font-semibold text-gray-900 mb-1">{assignment.title}</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-1 break-words">{assignment.title}</h1>
         <p className="text-sm text-gray-500 mb-7">{assignment.course_title || "Assignment"}</p>
 
         {/* Grade / status banner */}

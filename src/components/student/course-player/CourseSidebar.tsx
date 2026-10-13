@@ -5,7 +5,6 @@ import {
   CheckCircle,
   ChevronUp,
   ChevronDown,
-  Menu,
   X,
   Video,
   FileText,
@@ -57,6 +56,9 @@ interface CourseSidebarProps {
   onContentSelect?: (contentId: string) => void
   /** hides the desktop outline so the lesson can use the full width */
   collapsed?: boolean
+  /** controls the mobile outline drawer (opened from the player's top bar) */
+  mobileOpen?: boolean
+  onMobileOpenChange?: (open: boolean) => void
 }
 
 function getContentTypeLabel(contentType: string): string {
@@ -94,8 +96,10 @@ export default function CourseSidebar({
   onChapterSelect,
   onContentSelect,
   collapsed = false,
+  mobileOpen = false,
+  onMobileOpenChange,
 }: CourseSidebarProps) {
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const setMobileOpen = (open: boolean) => onMobileOpenChange?.(open)
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
     new Set(currentChapterId ? [currentChapterId] : [])
   )
@@ -252,15 +256,6 @@ export default function CourseSidebar({
 
   return (
     <>
-      {/* Mobile FAB */}
-      <button
-        className="lg:hidden fixed bottom-20 left-4 z-50 bg-blue-600 text-white rounded-full p-3 shadow-lg"
-        onClick={() => setMobileOpen(true)}
-        aria-label="Open course menu"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
-
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
@@ -272,8 +267,8 @@ export default function CourseSidebar({
       {/* Mobile drawer */}
       <div
         className={cn(
-          'lg:hidden fixed top-0 left-0 h-full w-80 z-50 shadow-2xl transition-transform duration-300',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+          'lg:hidden fixed top-0 left-0 h-full w-[85vw] max-w-80 z-50 transition-transform duration-300',
+          mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         )}
       >
         {inner}

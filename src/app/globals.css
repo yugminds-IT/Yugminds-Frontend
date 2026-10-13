@@ -262,6 +262,112 @@ section, main, article, aside {
   min-height: auto !important;
 }
 
+/* Phones: dashboard pages were written with desktop paddings (p-6/p-8,
+   card px-6/py-6, text-3xl titles). Tighten them so content gets the width.
+   Card rules match the default classes only, so cards with custom padding
+   (tailwind-merge drops py-6/px-6) are left alone. */
+@media (max-width: 767px) {
+  [data-dashboard-content] :is(.p-6, .p-8) {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  [data-dashboard-content] :is(.p-6, .p-8).space-y-6 > * + * {
+    margin-top: 1rem;
+  }
+  [data-dashboard-content] :is(.mb-8, .mb-6) {
+    margin-bottom: 1.25rem;
+  }
+  [data-dashboard-content] h1:is(.text-3xl, .text-4xl) {
+    font-size: 1.375rem;
+    line-height: 1.875rem;
+  }
+  [data-dashboard-content] [data-slot="card"].py-6 {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+  [data-dashboard-content] [data-slot="card"].gap-6 {
+    gap: 1rem;
+  }
+  [data-dashboard-content] :is([data-slot="card-header"], [data-slot="card-content"], [data-slot="card-footer"]).px-6 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  /* Page header rows (title + action buttons side by side) wrap instead of
+     pushing the buttons off-screen. */
+  [data-dashboard-content] .flex:has(> div > h1, > h1),
+  [data-dashboard-content] .flex:has(> div > h1, > h1) > div:not(:has(h1)) {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+  }
+  /* Plain tables stack into one card per row (labels come from
+     ResponsiveTables.tsx), so nothing needs sideways scrolling. */
+  [data-dashboard-content] table[data-stack],
+  [data-dashboard-content] table[data-stack] > :is(tbody, tfoot),
+  [data-dashboard-content] table[data-stack] > :is(tbody, tfoot) > tr:not(.hidden) {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  [data-dashboard-content] table[data-stack] > thead {
+    display: none;
+  }
+  [data-dashboard-content] table[data-stack] > tbody > tr:not(.hidden) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem 0.75rem;
+    margin: 0.5rem 0;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    background: #fff;
+  }
+  [data-dashboard-content] table[data-stack] > :is(tbody, tfoot) > tr > td {
+    display: block;
+    grid-column: 1 / -1;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  [data-dashboard-content] table[data-stack] > :is(tbody, tfoot) > tr > td.hidden {
+    display: none;
+  }
+  [data-dashboard-content] table[data-stack] > tbody > tr > td :is(.flex, .inline-flex) {
+    flex-wrap: wrap;
+  }
+  [data-dashboard-content] table[data-stack] > tbody > tr > td :is(.truncate, [class*="max-w-"]) {
+    max-width: 100%;
+  }
+  [data-dashboard-content] table[data-stack] > tbody > tr > td[data-label] {
+    grid-column: auto;
+  }
+  [data-dashboard-content] table[data-stack] > tbody > tr > td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.125rem;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  /* A table inside a card shouldn't be a second bordered box on phones. */
+  [data-dashboard-content] [data-slot="card-content"].px-6 [data-management-table] {
+    width: auto;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
 /* Lock html/body to viewport so dashboard scroll stays inside the
    overflow-y-auto content pane, not on the document body. */
 html:has([data-dashboard-content]),

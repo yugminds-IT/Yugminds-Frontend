@@ -52,22 +52,22 @@ export function StatCard({
   const card = (
     <Card
       className={cn(
-        'flex h-full min-h-[120px] flex-col justify-between gap-0 overflow-hidden p-0 shadow-none',
+        'flex h-full min-h-[96px] sm:min-h-[120px] flex-col justify-between gap-0 overflow-hidden p-0 shadow-none',
         href && 'transition-all hover:border-gray-300 hover:shadow-md cursor-pointer',
         className,
       )}
       style={{ '--stat-accent': accentColor } as React.CSSProperties}
     >
-      <CardContent className="flex flex-1 flex-col gap-3 p-4">
+      <CardContent className="flex flex-1 flex-col gap-2 p-3 sm:gap-3 sm:p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-sm font-medium text-muted-foreground">
+            <span className="truncate text-xs font-medium text-muted-foreground sm:text-sm">
               {title}
             </span>
             {info && (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger aria-label={`${title} details`} className="shrink-0">
+                  <TooltipTrigger aria-label={`${title} details`} className="hidden shrink-0 sm:block">
                     <svg
                       width={16}
                       height={16}
@@ -92,7 +92,7 @@ export function StatCard({
             )}
           </div>
           <span
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg"
+            className="flex size-7 shrink-0 items-center justify-center rounded-lg sm:size-8"
             style={{
               backgroundColor: 'color-mix(in srgb, var(--stat-accent) 12%, transparent)',
               color: 'var(--stat-accent)',
@@ -104,7 +104,7 @@ export function StatCard({
 
         <div className="mt-auto flex items-end justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
+            <div className="text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-3xl">
               {displayValue}
             </div>
             {description && (
@@ -116,7 +116,7 @@ export function StatCard({
           {badge && (
             <Badge
               variant="secondary"
-              className="rounded-full text-[10px] font-medium"
+              className="hidden rounded-full text-[10px] font-medium sm:inline-flex"
             >
               {badge}
             </Badge>

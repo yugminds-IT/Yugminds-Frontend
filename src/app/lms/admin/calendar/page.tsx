@@ -609,17 +609,20 @@ export default function AdminCalendarPage() {
                         type="button"
                         disabled={isNotScheduled}
                         onClick={() => openCreateForm({ date: cell.dateStr })}
-                        className={`relative flex flex-col items-start rounded-lg border p-2 min-h-[5.5rem] text-left transition-colors ${isNotScheduled ? "cursor-default" : "hover:ring-2 hover:ring-blue-300"} ${cellCls}`}
+                        className={`relative flex min-w-0 flex-col items-start overflow-hidden rounded-lg border p-1 sm:p-2 min-h-[3.75rem] sm:min-h-[5.5rem] text-left transition-colors ${isNotScheduled ? "cursor-default" : "hover:ring-2 hover:ring-blue-300"} ${cellCls}`}
                       >
                         <span className={`text-sm font-semibold ${cell.isSunday ? "text-red-600" : isNotScheduled ? "text-gray-400" : "text-gray-700"}`}>
                           {cell.day}
                         </span>
                         <div className="mt-1 flex flex-col gap-0.5 w-full">
                           {cell.isSunday && !compEntry && (
-                            <span className="text-[10px] font-medium text-red-600">Weekly Off</span>
+                            <span className="text-[10px] font-medium text-red-600">
+                              <span className="sm:hidden">Off</span>
+                              <span className="hidden sm:inline">Weekly Off</span>
+                            </span>
                           )}
                           {isNotScheduled && (
-                            <span className="text-[10px] font-medium text-gray-400">No one scheduled</span>
+                            <span className="hidden text-[10px] font-medium text-gray-400 sm:inline">No one scheduled</span>
                           )}
                           {cell.entries.slice(0, 2).map((e) => (
                             <span
@@ -634,7 +637,7 @@ export default function AdminCalendarPage() {
                             <span className="text-[10px] text-gray-400">+{cell.entries.length - 2} more</span>
                           )}
                           {viewSchoolId === "all" && uniqueSchools > 1 && (
-                            <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                            <span className="hidden text-[10px] text-gray-400 sm:flex items-center gap-0.5">
                               <Globe className="h-2.5 w-2.5" /> {uniqueSchools} schools
                             </span>
                           )}

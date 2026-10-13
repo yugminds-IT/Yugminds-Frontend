@@ -17,6 +17,7 @@ import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCou
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import ResponsiveTables from "@/components/ResponsiveTables";
 
 type UserProfile = {
   id: string;
@@ -322,9 +323,10 @@ export default function SchoolAdminLayout({
       initialSchoolInfo={_schoolInfo}
       initialProfileFullName={userProfile?.full_name ?? null}
     >
-      <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
+      <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
         <ForcePasswordChange />
       <AnnouncementBanner />
+      <ResponsiveTables />
       <ImpersonationBanner />
         <Sidebar 
           userRole="school_admin"

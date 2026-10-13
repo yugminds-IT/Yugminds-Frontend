@@ -133,7 +133,7 @@ export default function StudentsManagement() {
   const [sectionFilter, setSectionFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -864,13 +864,13 @@ export default function StudentsManagement() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Students Management</h1>
-        <p className="text-gray-600 mt-2">Manage student enrollment and information</p>
+        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">Manage student enrollment and information</p>
       </div>
 
       {/* Filters and Actions */}
-      <div className="mb-6 space-y-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+      <div className="mb-4 md:mb-6 space-y-3 md:space-y-4">
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-row sm:gap-4">
+          <div className="col-span-3 sm:flex-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
@@ -882,7 +882,7 @@ export default function StudentsManagement() {
             </div>
           </div>
           <Select value={gradeFilter} onValueChange={setGradeFilter}>
-            <SelectTrigger className="w-full sm:w-48">
+            <SelectTrigger className="w-full max-sm:px-2.5 max-sm:text-xs sm:w-48">
               <SelectValue placeholder="Filter by grade" />
             </SelectTrigger>
             <SelectContent>
@@ -893,7 +893,7 @@ export default function StudentsManagement() {
             </SelectContent>
           </Select>
           <Select value={sectionFilter} onValueChange={setSectionFilter}>
-            <SelectTrigger className="w-full sm:w-48">
+            <SelectTrigger className="w-full max-sm:px-2.5 max-sm:text-xs sm:w-48">
               <SelectValue placeholder="Filter by section" />
             </SelectTrigger>
             <SelectContent>
@@ -904,7 +904,7 @@ export default function StudentsManagement() {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-48">
+            <SelectTrigger className="w-full max-sm:px-2.5 max-sm:text-xs sm:w-48">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
@@ -915,11 +915,11 @@ export default function StudentsManagement() {
           </Select>
         </div>
 
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-center gap-2">
           <div className="text-sm text-gray-600">
             Showing {filteredStudents.length} of {total} student(s)
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               size="sm"

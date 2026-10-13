@@ -392,27 +392,28 @@ export default function ClassesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-3 md:items-center">
+        <div className="min-w-0 flex-1">
           <h1 className="text-3xl font-bold text-gray-900">My Classes</h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
             All classes assigned to you at {filterSchoolName}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="outline"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 max-sm:h-9 max-sm:px-3"
+            aria-label="Refresh"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </Button>
-          <Link href="/lms/teacher/reports">
-            <Button className="flex items-center gap-2">
+          <Link href="/lms/teacher/reports" aria-label="Submit Report">
+            <Button className="flex items-center gap-2 max-sm:h-9 max-sm:px-3">
               <FileText className="h-4 w-4" />
-              Submit Report
+              <span className="hidden sm:inline">Submit Report</span>
             </Button>
           </Link>
         </div>
@@ -464,7 +465,7 @@ export default function ClassesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             {/* School Filter */}
             <div className="space-y-2">
               <Label htmlFor="school-filter">School</Label>
@@ -594,7 +595,7 @@ export default function ClassesPage() {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="overflow-x-auto rounded-lg border border-gray-100">
-              <table className="w-full min-w-[720px] border-collapse text-sm">
+              <table data-no-stack className="w-full min-w-[720px] border-collapse text-sm">
                 <thead>
                   <tr className="bg-gray-50/90">
                     <th className="sticky left-0 z-20 bg-gray-50/90 border-b border-r border-gray-100 px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 w-28 min-w-[7rem]">
@@ -744,16 +745,16 @@ export default function ClassesPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3">
               {filteredClasses.map((classItem: ClassRow) => (
                 <Link
                   key={classItem.id}
                   href={`/lms/teacher/reports${classItem.grade ? `?grade=${encodeURIComponent(classItem.grade)}${classItem.section ? `&section=${encodeURIComponent(classItem.section)}` : ''}` : ''}`}
                   title="Submit a report for this class"
-                  className="flex items-center justify-between gap-3 rounded-lg border p-3 hover:shadow-sm hover:border-blue-300 transition-shadow"
+                  className="flex items-center justify-between gap-2 rounded-lg border p-2.5 sm:gap-3 sm:p-3 hover:shadow-sm hover:border-blue-300 transition-shadow"
                 >
                   <div className="min-w-0">
-                    <p className="font-medium truncate">
+                    <p className="text-sm sm:text-base font-medium truncate">
                       {formatGradeSection(classItem.grade, classItem.section) || classItem.class_name || 'N/A'}
                     </p>
                     <p className="text-xs text-gray-500 truncate">
@@ -762,7 +763,7 @@ export default function ClassesPage() {
                   </div>
                   <Badge
                     variant={classItem.is_active ? 'default' : 'secondary'}
-                    className="shrink-0"
+                    className={`shrink-0 ${classItem.is_active ? 'max-sm:hidden' : ''}`}
                   >
                     {classItem.is_active ? 'Active' : 'Inactive'}
                   </Badge>

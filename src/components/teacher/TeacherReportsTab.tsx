@@ -35,20 +35,20 @@ export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTa
         </CardHeader>
         <CardContent>
           {reports && reports.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 md:space-y-3">
               {reports.map((report: TeacherReport) => (
                 <div
                   key={report.id}
-                  className="flex items-center justify-between p-4 border rounded-lg"
+                  className="flex items-start justify-between gap-3 p-3 md:items-center md:p-4 border rounded-lg"
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     {(() => {
                       // Handle both array and object formats for classes
                       const classData = Array.isArray(report.classes) ? report.classes[0] : report.classes;
                       return (
                         <>
                           <p className="font-medium">{formatGradeSection(report.grade || classData?.grade, report.section ?? classData?.section) || 'N/A'}</p>
-                          <p className="text-sm text-gray-600">
+                          <p className="text-sm text-gray-600 line-clamp-2">
                             {report.topics_taught?.substring(0, 100) || 'No topics listed'}
                           </p>
                           <p className="text-xs text-gray-400 mt-1">
@@ -58,7 +58,7 @@ export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTa
                       );
                     })()}
                   </div>
-                  <Badge variant={
+                  <Badge className="shrink-0" variant={
                     report.report_status === 'Approved' ? 'default' :
                     report.report_status === 'Flagged' ? 'destructive' :
                     'secondary'

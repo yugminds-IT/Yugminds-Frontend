@@ -423,7 +423,7 @@ export default function LogoManagementPage() {
                       <div className="mt-2 text-sm font-medium truncate" title={logo.school_name}>{logo.school_name}</div>
                       <div className="mt-1 text-xs text-gray-500 truncate" title={logo.description || ''}>{logo.description || '—'}</div>
 
-                      <div className="mt-3 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                         {/* Replace image */}
                         <label title="Replace image" className="text-blue-600 hover:text-blue-700 text-xs flex items-center gap-1 cursor-pointer">
                           <Edit className="h-3 w-3" /> Replace

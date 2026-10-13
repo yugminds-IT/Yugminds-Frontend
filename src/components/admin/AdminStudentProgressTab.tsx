@@ -182,14 +182,14 @@ export default function AdminStudentProgressTab() {
   return (
     <div className="space-y-5">
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
         {kpis.map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <div key={label} className="flex min-w-0 items-center gap-2 rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:gap-3 sm:p-4">
             <div className={`${bg} ${color} p-2.5 rounded-lg shrink-0`}>
               <Icon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{value}</p>
+              <p className="text-xl font-bold text-gray-900 sm:text-2xl">{value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{label}</p>
             </div>
           </div>
@@ -198,7 +198,7 @@ export default function AdminStudentProgressTab() {
 
       {/* Global Filters */}
       <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative basis-full sm:basis-auto sm:flex-1 sm:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder="Search by name, email, or school…"
@@ -208,7 +208,7 @@ export default function AdminStudentProgressTab() {
           />
         </div>
         <Select value={schoolId} onValueChange={(v) => { setSchoolId(v); setPage(0); }}>
-          <SelectTrigger className="w-[190px] h-9"><SelectValue placeholder="All Schools" /></SelectTrigger>
+          <SelectTrigger className="w-[calc(50%-0.375rem)] sm:w-[190px] h-9"><SelectValue placeholder="All Schools" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Schools</SelectItem>
             {schools.map((s: any) => (
@@ -217,21 +217,21 @@ export default function AdminStudentProgressTab() {
           </SelectContent>
         </Select>
         <Select value={grade} onValueChange={(v) => { setGrade(v); setPage(0); }}>
-          <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder="All Grades" /></SelectTrigger>
+          <SelectTrigger className="w-[calc(50%-0.375rem)] sm:w-[130px] h-9"><SelectValue placeholder="All Grades" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Grades</SelectItem>
             {grades.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={section} onValueChange={(v) => { setSection(v); setPage(0); }}>
-          <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="All Sections" /></SelectTrigger>
+          <SelectTrigger className="w-[calc(50%-0.375rem)] sm:w-[140px] h-9"><SelectValue placeholder="All Sections" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Sections</SelectItem>
             {sections.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={courseId} onValueChange={(v) => { setCourseId(v); setPage(0); }}>
-          <SelectTrigger className="w-[170px] h-9"><SelectValue placeholder="All Courses" /></SelectTrigger>
+          <SelectTrigger className="w-[calc(50%-0.375rem)] sm:w-[170px] h-9"><SelectValue placeholder="All Courses" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Courses</SelectItem>
             {courses.map((c: any) => (

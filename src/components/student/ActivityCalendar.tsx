@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 
 export interface ActivityDay {
   date: string // YYYY-MM-DD
@@ -28,6 +28,7 @@ const DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 export default function ActivityCalendar({ activityDays = [], stats = [], legendLabels }: ActivityCalendarProps) {
   const today = new Date()
   const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -40,7 +41,29 @@ export default function ActivityCalendar({ activityDays = [], stats = [], legend
   const cells = [...Array(offset).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+    <div className="bg-white border border-gray-200 rounded-2xl p-3 lg:p-4 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setMobileOpen(o => !o)}
+        aria-expanded={mobileOpen}
+        className="lg:hidden flex w-full items-center justify-between gap-3 text-left"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+          <CalendarDays className="h-4 w-4 text-blue-600" />
+          Activity
+        </span>
+        <span className="flex min-w-0 items-center gap-2.5 text-xs text-gray-500">
+          {stats.map(s => (
+            <span key={s.label} className="flex flex-col items-center leading-tight">
+              <b className="text-sm text-gray-900">{s.value}</b>
+              <span className="whitespace-nowrap text-[10px]">{s.label}</span>
+            </span>
+          ))}
+          <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${mobileOpen ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      <div className={mobileOpen ? 'max-lg:mt-3 max-lg:border-t max-lg:border-gray-100 max-lg:pt-3' : 'max-lg:hidden'}>
       {/* Month navigation */}
       <div className="flex items-center justify-between mb-3">
         <span className="font-semibold text-sm text-gray-900">{MONTHS[month]} {year}</span>
@@ -117,7 +140,7 @@ export default function ActivityCalendar({ activityDays = [], stats = [], legend
 
       {/* Stats */}
       {stats.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-gray-100">
+        <div className="mt-4 pt-3 border-t border-gray-100 max-lg:hidden">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Last 4 weeks</p>
           <div className="flex gap-2">
             {stats.map(s => (
@@ -129,6 +152,7 @@ export default function ActivityCalendar({ activityDays = [], stats = [], legend
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

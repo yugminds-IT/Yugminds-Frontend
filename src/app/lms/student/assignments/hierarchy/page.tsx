@@ -49,7 +49,7 @@ export default function AssignmentHierarchyPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-200 rounded w-1/3" />
           <div className="h-24 bg-gray-200 rounded" />
@@ -61,7 +61,7 @@ export default function AssignmentHierarchyPage() {
 
   if (error) {
     return (
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         <Card className="p-6">
           <div className="text-center">
             <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
@@ -79,16 +79,16 @@ export default function AssignmentHierarchyPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Assignments by Course</h1>
-          <p className="text-gray-600 mt-2">Browse assignments grouped by course.</p>
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Assignments by Course</h1>
+          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">Browse assignments grouped by course.</p>
         </div>
-        <Button variant="outline" asChild>
-          <Link href="/lms/student/assignments">
-            <FileText className="h-4 w-4 mr-2" />
-            Back to Assignments
+        <Button variant="outline" asChild className="shrink-0 max-sm:h-9 max-sm:px-3">
+          <Link href="/lms/student/assignments" aria-label="Back to Assignments">
+            <FileText className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Back to Assignments</span>
           </Link>
         </Button>
       </div>
@@ -101,7 +101,7 @@ export default function AssignmentHierarchyPage() {
       ) : (
         <div className="space-y-4">
           {grouped.map((c) => (
-            <Card key={c.course_id} className="p-6">
+            <Card key={c.course_id} className="p-4 md:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">{c.course_title}</h2>
@@ -116,7 +116,7 @@ export default function AssignmentHierarchyPage() {
                       className="block rounded-lg border border-gray-200 opacity-70 cursor-not-allowed"
                       title={`Unlocks in ${a.unlocks_in_days} day${a.unlocks_in_days === 1 ? '' : 's'}`}
                     >
-                      <div className="p-4 flex items-center justify-between gap-4">
+                      <div className="p-3 sm:p-4 flex items-center justify-between gap-3 sm:gap-4">
                         <div className="min-w-0 flex items-center gap-2">
                           <Lock className="h-4 w-4 text-gray-400 shrink-0" />
                           <p className="font-medium text-gray-500 truncate">{a.title ?? 'Assignment'}</p>
@@ -136,16 +136,16 @@ export default function AssignmentHierarchyPage() {
                       }
                       className="block rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                     >
-                      <div className="p-4 flex items-center justify-between gap-4">
+                      <div className="p-3 sm:p-4 flex items-center justify-between gap-3 sm:gap-4">
                         <div className="min-w-0">
                           <p className="font-medium text-gray-900 truncate">{a.title ?? 'Assignment'}</p>
                           {a.description ? (
                             <p className="text-sm text-gray-600 truncate">{a.description}</p>
                           ) : null}
                         </div>
-                        <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="flex flex-wrap justify-end items-center gap-2 sm:gap-3 flex-shrink-0">
                           {a.retake_available && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                            <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                               <RotateCcw className="h-3 w-3" />
                               {a.retake_granted ? 'Retake granted' : 'Retake available'}
                             </span>

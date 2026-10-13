@@ -293,11 +293,12 @@ export default function TeacherDashboard() {
   return (
     <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
-          <p className="text-gray-600 mt-2">
-            Welcome back! Here&apos;s an overview of your teaching activities
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
+          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
+            <span className="hidden md:inline">Welcome back! Here&apos;s an overview of your teaching activities</span>
+            <span className="md:hidden">Welcome back</span>
             {selectedSchool ? ` at ${selectedSchool.name}` : ' across all your schools'}
           </p>
           <p className="text-xs text-gray-400 mt-1">
@@ -308,10 +309,12 @@ export default function TeacherDashboard() {
           onClick={loadDashboardData}
           disabled={isRefreshing}
           variant="outline"
-          className="flex items-center gap-2"
+          size="sm"
+          className="flex shrink-0 items-center gap-2 md:h-10 md:px-4"
+          aria-label="Refresh"
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh
+          <span className="hidden sm:inline">Refresh</span>
         </Button>
       </div>
 
@@ -336,10 +339,10 @@ export default function TeacherDashboard() {
       )}
 
       {/* Stats Cards — skeletons while loading (a 0 is a claim, not a loading state) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-6 [&>*:last-child]:max-md:col-span-2">
         {statsLoading ? (
           [...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-[132px] w-full rounded-xl" />
+            <Skeleton key={i} className="h-[100px] md:h-[132px] w-full rounded-xl" />
           ))
         ) : (
           <>

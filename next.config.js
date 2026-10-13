@@ -38,6 +38,19 @@ const nextConfig = {
   // Ensure CSS is processed correctly
   // Bundle Sentry/OpenTelemetry instrumentation deps — Turbopack external symlinks break in monorepos
   transpilePackages: ['import-in-the-middle', 'require-in-the-middle'],
+  // The S3 bucket sends no CORS headers, so the in-app PDF renderer (pdf.js)
+  // loads course files through this same-origin path instead. beforeFiles so
+  // it wins over the /api/[...path] backend proxy.
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: '/api/course-files/:path*',
+          destination: 'https://s3bucket.yugminds.org/yugminds-uploads/:path*',
+        },
+      ],
+    };
+  },
   async headers() {
     return [
       {

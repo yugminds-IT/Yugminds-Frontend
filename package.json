@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "node --experimental-strip-types --test src/lib/session-utils.spec.ts src/lib/auth-cookie.spec.ts src/lib/brand-host.spec.ts src/lib/word-bank.spec.ts src/lib/student-export.spec.ts src/lib/assignment-marks.spec.ts",
     "db:migrate": "node scripts/apply-migrations.cjs",
-    "postinstall": "node scripts/patch-baseline-warning.cjs",
+    "postinstall": "node scripts/patch-baseline-warning.cjs && cp node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs public/",
     "test:e2e": "playwright test",
     "test:e2e:admin": "playwright test --config=playwright.config.admin.ts",
     "test:e2e:teacher": "playwright test --config=playwright.config.teacher.ts"
@@ -49,6 +49,7 @@
     "next": "^16.0.10",
     "nodemailer": "^7.0.11",
     "papaparse": "^5.5.3",
+    "pdfjs-dist": "^4.10.38",
     "postcss": "^8.5.6",
     "postprocessing": "^6.39.4",
     "react": "19.2.0",
@@ -66,6 +67,7 @@
   "devDependencies": {
     "@next/bundle-analyzer": "^16.0.10",
     "@playwright/test": "^1.61.1",
+    "@tailwindcss/typography": "^0.5.20",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

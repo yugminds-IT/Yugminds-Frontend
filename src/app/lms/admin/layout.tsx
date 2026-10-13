@@ -14,6 +14,7 @@ import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import ResponsiveTables from "@/components/ResponsiveTables";
 
 type UserProfile = {
   id: string;
@@ -299,9 +300,10 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
+    <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
       <ForcePasswordChange />
       <AnnouncementBanner />
+      <ResponsiveTables />
       <Sidebar
         userRole="admin"
         userName={userProfile?.full_name || user?.email || "Admin User"}

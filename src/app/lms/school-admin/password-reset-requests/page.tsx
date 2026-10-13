@@ -227,50 +227,50 @@ export default function PasswordResetRequestsPage() {
   const filtered = Array.isArray(requests) ? requests : [];
 
   return (
-    <div className="p-8 bg-white">
+    <div className="p-4 md:p-8 bg-white">
       <Toast toasts={toasts} remove={removeToast} />
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <KeyRound className="h-7 w-7 text-blue-600" />
+      <div className="flex items-start justify-between gap-3 mb-4 md:mb-6">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900 flex flex-wrap items-center gap-2 md:gap-3">
+            <KeyRound className="h-5 w-5 md:h-7 md:w-7 text-blue-600 shrink-0" />
             Password Reset Requests
             {pendingCount > 0 && <Badge className="bg-yellow-100 text-yellow-700 text-sm">{pendingCount} pending</Badge>}
           </h1>
           <p className="text-gray-500 mt-1 text-sm">Manage password reset requests from your students and teachers</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadRequests} disabled={loading} className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh
+        <Button variant="outline" size="sm" onClick={loadRequests} disabled={loading} className="shrink-0 gap-2" aria-label="Refresh">
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /><span className="hidden sm:inline">Refresh</span>
         </Button>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 mb-4 border-b">
+      <div className="flex items-center gap-2 mb-4 border-b overflow-x-auto [scrollbar-width:none]">
         <button
           type="button"
           onClick={() => setActiveTab("pending")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === "pending" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          className={`shrink-0 whitespace-nowrap px-3 md:px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === "pending" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
         >
-          Pending Requests {pendingCount > 0 && <span className="ml-1.5 text-xs bg-yellow-100 text-yellow-700 rounded-full px-2 py-0.5">{pendingCount}</span>}
+          Pending<span className="hidden sm:inline"> Requests</span> {pendingCount > 0 && <span className="ml-1.5 text-xs bg-yellow-100 text-yellow-700 rounded-full px-2 py-0.5">{pendingCount}</span>}
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("history")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === "history" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+          className={`shrink-0 whitespace-nowrap px-3 md:px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === "history" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
         >
-          Password Reset History {activeTab === "history" && total > 0 && <span className="ml-1.5 text-xs bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">{total}</span>}
+          <span className="hidden sm:inline">Password Reset</span> History {activeTab === "history" && total > 0 && <span className="ml-1.5 text-xs bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">{total}</span>}
         </button>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-5">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap gap-2 md:gap-3 mb-4 md:mb-5">
+        <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input placeholder="Search by email, name, role, approver…" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="pl-10" />
         </div>
         {activeTab === "history" && (
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
@@ -283,7 +283,7 @@ export default function PasswordResetRequestsPage() {
 
       {/* Table */}
       <div className="border rounded-2xl overflow-hidden bg-white">
-        <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-4 border-b">
           <div>
             <h2 className="text-base font-semibold text-gray-900">{activeTab === "pending" ? "Pending Requests" : "Password Reset History"}</h2>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -344,7 +344,7 @@ export default function PasswordResetRequestsPage() {
                     </TableCell>
                   )}
                   <TableCell>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1">
                       {req.status === "pending" && (
                         <>
                           <Button variant="outline" size="sm" className="h-7 text-xs px-2 text-green-600 hover:bg-green-50" onClick={() => openDialog(req, "approve")}>
@@ -376,7 +376,7 @@ export default function PasswordResetRequestsPage() {
           </Table>
         )}
         {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between px-5 py-3 border-t text-sm text-gray-600">
+          <div className="flex items-center justify-between gap-2 px-4 md:px-5 py-3 border-t text-sm text-gray-600">
             <span>
               {Math.min(pageOffset + 1, total)}–{Math.min(pageOffset + PAGE_SIZE, total)} of {total}
             </span>

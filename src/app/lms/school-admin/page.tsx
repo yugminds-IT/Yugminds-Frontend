@@ -442,18 +442,18 @@ export default function SchoolAdminDashboard() {
   return (
     <div className="p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+      <div className="mb-4 md:mb-6">
+        <div className="flex justify-between items-start sm:items-center gap-3 md:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900">
               {schoolInfo?.name ? `${schoolInfo.name} Admin Panel` : "School Admin Dashboard"}
             </h1>
-            <p className="text-gray-600 mt-2">{`Welcome back, ${profileFullName ?? "School Admin"}`}</p>
+            <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">{`Welcome back, ${profileFullName ?? "School Admin"}`}</p>
             <div className="flex items-center gap-2 mt-1">
               <div
                 className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-300"}`}
               />
-              <span className="text-sm text-gray-500">
+              <span className="text-xs md:text-sm text-gray-500">
                 {isConnected ? "Live" : "Reconnecting…"}
                 {isMounted && lastRefresh
                   ? ` · updated ${lastRefresh.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
@@ -465,21 +465,22 @@ export default function SchoolAdminDashboard() {
             variant="outline"
             onClick={refreshDashboard}
             disabled={isRefreshing}
-            className="flex items-center gap-2"
+            className="flex shrink-0 items-center gap-2 max-sm:h-9 max-sm:px-3"
+            aria-label="Refresh"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            {isRefreshing ? "Refreshing..." : "Refresh"}
+            <span className="hidden sm:inline">{isRefreshing ? "Refreshing..." : "Refresh"}</span>
           </Button>
         </div>
       </div>
 
       {/* Needs attention — real, actionable counts only */}
-      <div className="mb-6">
+      <div className="mb-4 md:mb-6">
         <NeedsAttentionPanel items={needsAttention} />
       </div>
 
       {/* Stats Cards — skeletons while loading (a 0 is a claim, not a loading state) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-4 md:mb-8">
         {statsLoading
           ? [...Array(4)].map((_, i) => <Skeleton key={i} className="h-[120px] w-full rounded-xl" />)
           : statCards.map((metric) => (
@@ -497,18 +498,18 @@ export default function SchoolAdminDashboard() {
             ))}
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6">
         {/* Quick Actions */}
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="border-b bg-slate-50/80">
             <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common administrative tasks — latest 3 of each</CardDescription>
+            <CardDescription className="hidden sm:block">Common administrative tasks — latest 3 of each</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <CardContent className="flex snap-x snap-mandatory gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:gap-4">
             {quickActionPreviews.map((preview) => (
               <div
                 key={preview.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm"
+                className="w-[82%] shrink-0 snap-start rounded-xl border border-slate-200 bg-white p-3 md:w-auto md:p-4 transition-all hover:border-slate-300 hover:shadow-sm"
               >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
@@ -538,7 +539,7 @@ export default function SchoolAdminDashboard() {
                     )}
                   </Button>
                 </div>
-                <p className="mb-3 text-sm leading-relaxed text-slate-600">{preview.description}</p>
+                <p className="mb-3 hidden text-sm leading-relaxed text-slate-600 md:block">{preview.description}</p>
                 <div className="space-y-2">
                   {preview.data.length > 0 ? (
                     preview.data.slice(0, 3).map((item, index: number) => (
@@ -572,7 +573,7 @@ export default function SchoolAdminDashboard() {
             <CardDescription>Current school metrics</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-1 md:space-y-4">
               <button
                 onClick={() => router.push("/lms/school-admin/reports")}
                 className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
@@ -615,12 +616,12 @@ export default function SchoolAdminDashboard() {
             <CardDescription>Latest enrollments and teacher assignments</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-2 md:space-y-4">
               {recentActivity.length > 0 ? (
-                recentActivity.map((activity) => (
+                recentActivity.map((activity, index) => (
                   <div
                     key={activity.id}
-                    className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    className={`${index >= 4 ? "hidden md:flex" : "flex"} items-center gap-3 p-2.5 md:p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors`}
                   >
                     <div
                       className={`w-2 h-2 rounded-full ${
@@ -633,14 +634,14 @@ export default function SchoolAdminDashboard() {
                           : "bg-blue-500"
                       }`}
                     />
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{activity.title}</p>
-                      <p className="text-xs text-gray-500">{activity.message}</p>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-gray-500 [overflow-wrap:anywhere]">{activity.message}</p>
+                      <p className="hidden text-xs text-gray-400 mt-1 md:block">
                         {new Date(activity.created_at).toLocaleString()}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       <Clock className="h-3 w-3 text-gray-400" />
                       <span className="text-xs text-gray-400">
                         {isMounted ? timeAgo(activity.created_at) : ""}

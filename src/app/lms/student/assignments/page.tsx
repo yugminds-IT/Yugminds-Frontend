@@ -206,14 +206,14 @@ function AssignmentTable({
   return (
     <div className="space-y-3">
       {/* Controls row */}
-      <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
         {/* Filter pills */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] max-sm:-mx-4 max-sm:px-4 sm:flex-wrap">
           {(["all", "pending", "submitted", "graded", "overdue"] as StatusFilter[]).map((key) => (
             <button
               key={key}
               onClick={() => onFilterChange(key)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all border ${
+              className={`shrink-0 px-3 py-1.5 sm:px-2.5 sm:py-1 rounded-full text-xs font-medium transition-all border ${
                 filter === key
                   ? "bg-gray-900 text-white border-gray-900"
                   : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
@@ -234,7 +234,7 @@ function AssignmentTable({
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-7 pl-8 text-xs bg-white border-gray-200"
+            className="h-9 sm:h-7 pl-8 text-base sm:text-xs bg-white border-gray-200"
           />
         </div>
       </div>
@@ -254,7 +254,7 @@ function AssignmentTable({
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           {/* Table header */}
-          <div className="grid grid-cols-[2rem_1fr_auto_auto_auto] sm:grid-cols-[2.5rem_1fr_6rem_5rem_5.5rem] items-center gap-2 sm:gap-4 px-4 py-2 border-b border-gray-100 bg-gray-50/80">
+          <div className="grid grid-cols-[1.25rem_1fr_auto] sm:grid-cols-[2.5rem_1fr_6rem_5rem_5.5rem] items-center gap-2 sm:gap-4 px-4 py-2 border-b border-gray-100 bg-gray-50/80">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide text-right">#</span>
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Assignment</span>
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:block">Due</span>
@@ -307,7 +307,7 @@ function AssignmentTable({
               return (
                 <div
                   key={a.id}
-                  className="grid grid-cols-[2rem_1fr_auto] items-center gap-2 sm:gap-4 px-4 py-3.5 border-b border-gray-50 last:border-0 opacity-70 cursor-not-allowed"
+                  className="grid grid-cols-[1.25rem_1fr_auto] items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 sm:py-3.5 border-b border-gray-50 last:border-0 opacity-70 cursor-not-allowed"
                   title={`Unlocks in ${a.unlocks_in_days} day${a.unlocks_in_days === 1 ? "" : "s"}`}
                 >
                   <span className="text-xs font-medium text-gray-400 text-right">{idx + 1}</span>
@@ -331,7 +331,7 @@ function AssignmentTable({
               <Link
                 key={a.id}
                 href={href}
-                className={`grid grid-cols-[2rem_1fr_auto_auto_auto] sm:grid-cols-[2.5rem_1fr_6rem_5rem_5.5rem] items-center gap-2 sm:gap-4 px-4 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors group ${sc.rowClass}`}
+                className={`grid grid-cols-[1.25rem_1fr_auto] sm:grid-cols-[2.5rem_1fr_6rem_5rem_5.5rem] items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 sm:py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors group ${sc.rowClass}`}
               >
                 <span className="text-xs font-medium text-gray-400 text-right">{idx + 1}</span>
 
@@ -577,13 +577,13 @@ export default function StudentAssignmentsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
+      <div className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">Assignments</h1>
             <p className="text-xs text-gray-500 mt-0.5">All your assignments in one place</p>
           </div>
-          <Button variant="outline" size="sm" asChild className="text-xs">
+          <Button variant="outline" size="sm" asChild className="shrink-0 text-xs">
             <Link href="/lms/student/assignments/hierarchy">
               <BookOpen className="h-3.5 w-3.5 mr-1.5" />
               By Course
@@ -592,13 +592,13 @@ export default function StudentAssignmentsPage() {
         </div>
       </div>
 
-      <div className="px-6 py-5">
+      <div className="px-4 py-4 md:px-6 md:py-5">
         {/* Two-column layout */}
-        <div className="flex gap-6 items-start">
+        <div className="flex flex-col-reverse gap-4 lg:flex-row lg:gap-6 lg:items-start">
           {/* Left: assignment content */}
-          <div className="flex-1 min-w-0 space-y-5">
+          <div className="flex-1 min-w-0 space-y-4 md:space-y-5">
             {/* Summary stat cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
               {([
                 { label: "Total", value: summary.total, icon: FileText, color: "text-gray-700 bg-gray-100", ring: "", filter: "all" as StatusFilter },
                 {
@@ -622,16 +622,16 @@ export default function StudentAssignmentsPage() {
                 <button
                   key={label}
                   onClick={() => { setStatusFilter(filter); setActiveTab("all"); }}
-                  className={`bg-white border rounded-xl p-3.5 flex items-center gap-3 shadow-sm text-left transition-all hover:shadow-md hover:border-gray-300 ${
+                  className={`bg-white border rounded-xl p-2 sm:p-3.5 flex flex-col sm:flex-row items-center gap-1 sm:gap-3 shadow-sm text-center sm:text-left transition-all hover:shadow-md hover:border-gray-300 ${
                     statusFilter === filter && activeTab === "all" ? "border-blue-400 ring-1 ring-blue-200" : "border-gray-200"
                   } ${ring}`}
                 >
-                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${color}`}>
+                  <div className={`hidden sm:flex h-9 w-9 rounded-lg items-center justify-center ${color}`}>
                     <Icon className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xl font-bold text-gray-900 leading-none">{value}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+                    <p className="text-lg sm:text-xl font-bold text-gray-900 leading-none">{value}</p>
+                    <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">{label}</p>
                   </div>
                 </button>
               ))}
@@ -649,7 +649,7 @@ export default function StudentAssignmentsPage() {
             )}
 
             {/* Tabs */}
-            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 w-fit shadow-sm">
+            <div className="grid grid-cols-3 sm:flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 sm:w-fit shadow-sm">
               {(
                 [
                   { id: "all", label: "All", icon: FileText, count: allAssignments.length },
@@ -660,7 +660,7 @@ export default function StudentAssignmentsPage() {
                 <button
                   key={id}
                   onClick={() => setActiveTab(id)}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-md text-xs font-semibold transition-all ${
                     activeTab === id ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-800"
                   }`}
                 >
@@ -682,7 +682,7 @@ export default function StudentAssignmentsPage() {
           </div>
 
           {/* Right: calendar sidebar */}
-          <div className="w-72 shrink-0">
+          <div className="w-full lg:w-72 shrink-0">
             <ActivityCalendar
               activityDays={activityDays}
               stats={calendarStats}

@@ -2049,8 +2049,8 @@ export default function ClassSchedulingPage() {
   return (
     <div className="bg-gray-50/30">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-8 py-5">
-        <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="bg-white border-b border-gray-100 px-4 py-3 md:px-8 md:py-5">
+        <div className="flex items-center justify-between flex-wrap gap-3 md:gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
               <Calendar className="w-5 h-5 text-white" />
@@ -2062,7 +2062,7 @@ export default function ClassSchedulingPage() {
           </div>
 
           {/* Right: utilities */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" size="sm" onClick={runValidation} className="h-9 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm gap-1.5">
               <ShieldCheck className="h-4 w-4" />
               Validate
@@ -2111,7 +2111,7 @@ export default function ClassSchedulingPage() {
       </div>
 
       {/* Action bar */}
-      <div className="bg-white border-b border-gray-100 px-8 py-3 flex items-center gap-2">
+      <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-2.5 md:py-3 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
         <Button size="sm" onClick={openBlankScheduleDialog} className="h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm text-sm gap-1.5">
           <Plus className="h-3.5 w-3.5" />Add Schedule
         </Button>
@@ -2173,7 +2173,7 @@ export default function ClassSchedulingPage() {
           </TabsList>
 
           {/* Inline filters */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex w-full items-center gap-2 flex-wrap sm:w-auto">
             <Select
               value={selectedGrade}
               onValueChange={(value) => {
@@ -2181,7 +2181,7 @@ export default function ClassSchedulingPage() {
                 setSelectedSection('all');
               }}
             >
-              <SelectTrigger className="w-[150px] h-9 text-sm bg-white border-gray-200 shadow-sm">
+              <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-[150px] h-9 text-sm bg-white border-gray-200 shadow-sm">
                 <SelectValue placeholder="All Grades" />
               </SelectTrigger>
               <SelectContent>
@@ -2192,7 +2192,7 @@ export default function ClassSchedulingPage() {
               </SelectContent>
             </Select>
             <Select value={selectedSection} onValueChange={setSelectedSection}>
-              <SelectTrigger className="w-[140px] h-9 text-sm bg-white border-gray-200 shadow-sm">
+              <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-[140px] h-9 text-sm bg-white border-gray-200 shadow-sm">
                 <SelectValue placeholder="All Sections" />
               </SelectTrigger>
               <SelectContent>
@@ -2202,13 +2202,13 @@ export default function ClassSchedulingPage() {
                 ))}
               </SelectContent>
             </Select>
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
               <Input
                 placeholder="Search subject, teacher..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 h-9 w-56 text-sm bg-white border-gray-200 shadow-sm"
+                className="pl-8 h-9 w-full sm:w-56 text-sm bg-white border-gray-200 shadow-sm"
               />
             </div>
           </div>
@@ -2282,7 +2282,7 @@ export default function ClassSchedulingPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] border-collapse text-sm">
+                <table data-no-stack className="w-full min-w-[720px] border-collapse text-sm">
                   <thead>
                     <tr className="bg-gray-50/90">
                       <th className="sticky left-0 z-20 bg-gray-50/90 border-b border-r border-gray-100 px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 w-28 min-w-[7rem]">

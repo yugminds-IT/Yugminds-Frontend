@@ -185,10 +185,10 @@ export default function SchoolAdminSettings() {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-2">Manage your account settings</p>
+    <div className="p-4 md:p-8">
+      <div className="mb-4 md:mb-8">
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900">Settings</h1>
+        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">Manage your account settings</p>
       </div>
 
       {message && (
@@ -213,8 +213,8 @@ export default function SchoolAdminSettings() {
           </CardTitle>
           <CardDescription>Update your personal information and password</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CardContent className="space-y-5 md:space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <div className="space-y-2">
               <Label htmlFor="full_name">Full Name</Label>
               <Input
@@ -227,7 +227,7 @@ export default function SchoolAdminSettings() {
             <div className="space-y-2">
               <Label className="text-gray-500">Email Address</Label>
               <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 bg-gray-50">
-                <span className="flex-1 text-sm text-gray-500">{profileData.email}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-gray-500">{profileData.email}</span>
                 <Lock className="h-4 w-4 text-gray-400 shrink-0" />
               </div>
               <p className="text-xs text-gray-400">Email is fixed and cannot be changed</p>
@@ -354,8 +354,8 @@ export default function SchoolAdminSettings() {
                   },
                 ]
               ).map((item) => (
-                <div key={item.key} className="flex items-center justify-between rounded-lg border px-4 py-3">
-                  <div className="space-y-0.5">
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-3 md:px-4">
+                  <div className="min-w-0 space-y-0.5">
                     <Label htmlFor={item.key}>{item.label}</Label>
                     <p className="text-xs text-muted-foreground">{item.description}</p>
                   </div>
@@ -372,7 +372,7 @@ export default function SchoolAdminSettings() {
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving} className="max-sm:w-full">
               {saving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Profile
             </Button>

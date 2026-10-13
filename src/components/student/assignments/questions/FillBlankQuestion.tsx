@@ -154,7 +154,7 @@ function FillBlankQuestion({
           onChange={e => !disabled && onAnswerChange(bi, e.target.value)}
           disabled={disabled}
           placeholder="___"
-          className={`min-w-[120px] px-3 py-1 text-sm border-2 rounded focus:outline-none transition-colors
+          className={`w-32 sm:w-auto sm:min-w-[120px] px-3 py-1.5 sm:py-1 text-base sm:text-sm border-2 rounded focus:outline-none transition-colors
             ${result === true ? 'border-green-500 bg-green-50 text-green-800' :
               result === false && val.trim() ? 'border-red-400 bg-red-50 text-red-700' :
               'border-gray-400 focus:border-blue-500'}
@@ -198,7 +198,7 @@ function FillBlankQuestion({
                 data-word-chip
                 onDragStart={e => onChipDragStart(e, word)}
                 onClick={() => placeWord(word)}
-                className="rounded-lg border border-blue-200 bg-white px-3.5 py-1.5 text-sm font-medium text-blue-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:shadow active:translate-y-0 cursor-grab active:cursor-grabbing"
+                className="rounded-lg border border-blue-200 bg-white px-3.5 py-2 sm:py-1.5 text-sm font-medium text-blue-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:shadow active:translate-y-0 cursor-grab active:cursor-grabbing"
               >
                 {word}
               </button>

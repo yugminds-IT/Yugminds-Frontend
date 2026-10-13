@@ -67,7 +67,7 @@
      if (!error) return null;
      const errorLines = error.split("\n");
      return (
-       <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-50 border-2 border-red-300 text-red-700 px-6 py-4 rounded-lg text-sm z-50 shadow-lg max-w-md w-full mx-4">
+       <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-50 border-2 border-red-300 text-red-700 px-4 py-3 sm:px-6 sm:py-4 rounded-lg text-sm z-50 shadow-lg max-w-md w-[calc(100%-2rem)]">
          <div className="flex items-start gap-2">
            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
            <div className="flex-1">

@@ -81,7 +81,7 @@ export default function LessonTabs({
       : null
 
   return (
-    <div className="max-w-3xl mx-auto px-6 pb-12">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-8 sm:pb-12">
       {/* Tab bar */}
       <div className="flex items-center gap-1 border-b border-gray-200 mb-5">
         {tabs.map((t) => (

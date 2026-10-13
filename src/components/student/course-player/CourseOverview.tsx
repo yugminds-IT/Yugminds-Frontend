@@ -181,28 +181,28 @@ export default function CourseOverview({
     <div className="min-h-screen bg-gray-50 overflow-y-auto">
       {/* Hero */}
       <div className="bg-gradient-to-br from-blue-700 via-blue-700 to-indigo-800 text-white">
-        <div className="max-w-5xl mx-auto px-6 pt-6 pb-10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-4 pb-6 sm:pt-6 sm:pb-10">
           <button
             onClick={onExit}
-            className="inline-flex items-center gap-1.5 text-sm text-blue-100 hover:text-white transition-colors mb-6"
+            className="inline-flex items-center gap-1.5 text-sm text-blue-100 hover:text-white transition-colors mb-4 sm:mb-6"
           >
             <ArrowLeft className="h-4 w-4" />
             My Courses
           </button>
 
-          <div className="flex flex-col sm:flex-row gap-6 items-start">
-            <div className="relative h-28 w-28 rounded-2xl overflow-hidden bg-white/10 flex-shrink-0 ring-1 ring-white/20">
+          <div className="flex flex-row gap-4 sm:gap-6 items-start">
+            <div className="relative h-14 w-14 sm:h-28 sm:w-28 rounded-xl sm:rounded-2xl overflow-hidden bg-white/10 flex-shrink-0 ring-1 ring-white/20">
               {course?.thumbnail_url ? (
                 <Image src={course.thumbnail_url} alt={courseName} fill sizes="112px" unoptimized className="object-cover" />
               ) : (
                 <div className="h-full w-full flex items-center justify-center">
-                  <BookOpen className="h-10 w-10 text-white/70" />
+                  <BookOpen className="h-6 w-6 sm:h-10 sm:w-10 text-white/70" />
                 </div>
               )}
             </div>
 
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold leading-tight">{courseName}</h1>
+              <h1 className="text-xl sm:text-3xl font-bold leading-tight">{courseName}</h1>
 
               {/* Meta row */}
               <div className="mt-2 flex items-center gap-x-4 gap-y-1 flex-wrap text-sm text-blue-100/90">
@@ -233,7 +233,7 @@ export default function CourseOverview({
                 {resumeChapter && (
                   <Button
                     onClick={() => onStart(resumeChapter.id)}
-                    className="bg-white text-blue-700 hover:bg-blue-50 font-semibold rounded-lg px-5 py-2.5 flex items-center gap-2"
+                    className="bg-white text-blue-700 hover:bg-blue-50 font-semibold rounded-lg px-5 py-2.5 flex items-center justify-center gap-2 max-sm:w-full max-sm:h-11"
                   >
                     {isComplete ? <Trophy className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
                     {ctaLabel}
@@ -247,9 +247,9 @@ export default function CourseOverview({
       </div>
 
       {/* Body */}
-      <div className="max-w-5xl mx-auto px-6 py-6">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
         {/* Tab bar */}
-        <div className="flex items-center gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
+        <div className="flex items-center gap-1 border-b border-gray-200 mb-4 sm:mb-6 overflow-x-auto [scrollbar-width:none] [&>*]:shrink-0">
           {tabs.map(t => (
             <button
               key={t.id}

@@ -327,6 +327,59 @@ export function ManagementTable<T extends ManagementTableRow>({
     </span>
   );
 
+  const renderRowActions = (row: T) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          disabled={actionLoadingId === row.id}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Open menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {rowActions.map((action) => {
+          if (action.hidden?.(row)) return null;
+          const item = (
+            <DropdownMenuItem
+              key={action.id}
+              className={
+                action.destructive
+                  ? "text-destructive focus:text-destructive"
+                  : undefined
+              }
+              disabled={
+                action.disabled?.(row) || actionLoadingId === row.id
+              }
+              onClick={() => action.onClick(row)}
+            >
+              {action.icon ? (
+                <span className="mr-2 inline-flex [&_svg]:h-4 [&_svg]:w-4">
+                  {action.icon}
+                </span>
+              ) : null}
+              {action.getLabel?.(row) ?? action.label}
+            </DropdownMenuItem>
+          );
+          if (action.separatorBefore) {
+            return (
+              <span key={action.id}>
+                <DropdownMenuSeparator />
+                {item}
+              </span>
+            );
+          }
+          return item;
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   const alignClass = (align?: "left" | "right" | "center") => {
     if (align === "right") return "text-right";
     if (align === "center") return "text-center";
@@ -357,6 +410,7 @@ export function ManagementTable<T extends ManagementTableRow>({
 
   return (
     <div
+      data-management-table
       className={cn(
         "w-full overflow-hidden rounded-md border border-border bg-background shadow-sm",
         className,
@@ -416,7 +470,71 @@ export function ManagementTable<T extends ManagementTableRow>({
       </div>
       )}
 
-      <div className="overflow-auto">
+      <div className="md:hidden">
+        {enableSelection && pageRows.length > 0 && (
+          <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={pageIds.length > 0 && pageIds.every((id) => selected.includes(id))}
+                onCheckedChange={(c) => toggleSelectAllPage(Boolean(c))}
+                aria-label="Select all on this page"
+              />
+              {selected.length > 0 ? `${selected.length} selected` : "Select all"}
+            </label>
+            <span>
+              {totalCount} {entityName}
+              {totalCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
+        {pageRows.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm text-muted-foreground">{emptyMessage}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {pageRows.map((row) => {
+              const label = getRowLabel?.(row) ?? row.id;
+              const [primary, ...rest] = columns;
+              return (
+                <li key={row.id} className="px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    {enableSelection && (
+                      <Checkbox
+                        className="mt-1"
+                        checked={selected.includes(row.id)}
+                        onCheckedChange={() => toggleSelect(row.id)}
+                        aria-label={`Select ${label}`}
+                      />
+                    )}
+                    <div className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">{primary?.render(row)}</div>
+                    {hasActions && <div className="-mt-1 shrink-0">{renderRowActions(row)}</div>}
+                  </div>
+                  {rest.length > 0 && (
+                    <dl
+                      className={cn(
+                        "mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-muted/40 p-2.5 text-sm",
+                        enableSelection && "ml-7",
+                      )}
+                    >
+                      {rest.map((col) => (
+                        <div key={col.id} className="min-w-0">
+                          <dt className="mb-0.5 text-[11px] font-medium uppercase leading-4 tracking-wide text-muted-foreground">
+                            {col.header}
+                          </dt>
+                          <dd className="min-w-0 overflow-hidden [overflow-wrap:anywhere] [&_*]:!whitespace-normal [&_*]:max-w-full [&_*]:min-w-0 [&_.flex]:flex-wrap">
+                            {col.render(row)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="hidden overflow-auto md:block">
         <table className="w-full caption-bottom text-sm">
           <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]">
             <TableRow className="border-b border-border hover:bg-transparent">
@@ -526,58 +644,7 @@ export function ManagementTable<T extends ManagementTableRow>({
                       </TableCell>
                     ))}
                     {hasActions && (
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              disabled={actionLoadingId === row.id}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
-                            {rowActions.map((action) => {
-                              if (action.hidden?.(row)) return null;
-                              const item = (
-                                <DropdownMenuItem
-                                  key={action.id}
-                                  className={
-                                    action.destructive
-                                      ? "text-destructive focus:text-destructive"
-                                      : undefined
-                                  }
-                                  disabled={
-                                    action.disabled?.(row) || actionLoadingId === row.id
-                                  }
-                                  onClick={() => action.onClick(row)}
-                                >
-                                  {action.icon ? (
-                                    <span className="mr-2 inline-flex [&_svg]:h-4 [&_svg]:w-4">
-                                      {action.icon}
-                                    </span>
-                                  ) : null}
-                                  {action.getLabel?.(row) ?? action.label}
-                                </DropdownMenuItem>
-                              );
-                              if (action.separatorBefore) {
-                                return (
-                                  <span key={action.id}>
-                                    <DropdownMenuSeparator />
-                                    {item}
-                                  </span>
-                                );
-                              }
-                              return item;
-                            })}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+                      <TableCell className="text-right">{renderRowActions(row)}</TableCell>
                     )}
                   </TableRow>
                 );

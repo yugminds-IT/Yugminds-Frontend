@@ -53,6 +53,8 @@ import {
   Legend
 } from "recharts";
 import { adminApi } from '@/lib/api/admin.api';
+
+const REPORTS_PER_PAGE = 20;
 import { toast } from '@/components/ui/toast';
 
 interface TeacherReport {
@@ -119,6 +121,7 @@ export default function TeacherReports() {
   const [gradeFilter, setGradeFilter] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [reportPageState, setReportPageState] = useState({ key: "", page: 1 });
   // Real DB-count totals scoped to the current structural filters
   // (school/teacher/grade/date) — independent of the 500-row list cap, so
   // "Total Reports" stays accurate instead of measuring only what's loaded.
@@ -454,6 +457,13 @@ export default function TeacherReports() {
   // Reports are already filtered by API, no need to filter again
   const filteredReports = reports;
 
+  // Page resets to 1 whenever a filter changes (the key no longer matches).
+  const filterKey = [searchTerm, statusFilter, dateFilter, schoolFilter, gradeFilter, teacherFilter].join("|");
+  const reportPageCount = Math.max(1, Math.ceil(filteredReports.length / REPORTS_PER_PAGE));
+  const reportPage = Math.min(reportPageState.key === filterKey ? reportPageState.page : 1, reportPageCount);
+  const setReportPage = (page: number) => setReportPageState({ key: filterKey, page });
+  const pagedReports = filteredReports.slice((reportPage - 1) * REPORTS_PER_PAGE, reportPage * REPORTS_PER_PAGE);
+
   const orphanedCount = reports.filter((r) => r.teacher_deleted || r.school_deleted).length;
 
   // Get today's date in YYYY-MM-DD format
@@ -522,7 +532,7 @@ export default function TeacherReports() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Reports</CardTitle>
@@ -567,7 +577,7 @@ export default function TeacherReports() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {reports.reduce((total: number, report: TeacherReport) => total + (report.duration_hours || 0), 0)}
+                  {Math.round(reports.reduce((total: number, report: TeacherReport) => total + (report.duration_hours || 0), 0) * 10) / 10}
                 </div>
                 <p className="text-xs text-muted-foreground">Teaching hours</p>
               </CardContent>
@@ -590,8 +600,8 @@ export default function TeacherReports() {
                   <CardTitle>Filter Reports</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-                    <div className="space-y-2">
+                  <div className="grid grid-cols-2 lg:grid-cols-7 gap-3 md:gap-4">
+                    <div className="col-span-2 space-y-2 lg:col-span-1">
                       <Label htmlFor="search">Search</Label>
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -776,7 +786,7 @@ export default function TeacherReports() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredReports.map((report) => (
+                        pagedReports.map((report) => (
                           <TableRow key={report.id}>
                             <TableCell className="font-medium">
                               {report.teacher_deleted ? (
@@ -851,6 +861,24 @@ export default function TeacherReports() {
                       )}
                     </TableBody>
                   </Table>
+                  {reportPageCount > 1 && (
+                    <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                      <p className="text-sm text-muted-foreground">
+                        Showing {(reportPage - 1) * REPORTS_PER_PAGE + 1}–{Math.min(reportPage * REPORTS_PER_PAGE, filteredReports.length)} of {filteredReports.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" disabled={reportPage <= 1} onClick={() => setReportPage(reportPage - 1)}>
+                          Previous
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                          Page {reportPage} of {reportPageCount}
+                        </span>
+                        <Button variant="outline" size="sm" disabled={reportPage >= reportPageCount} onClick={() => setReportPage(reportPage + 1)}>
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

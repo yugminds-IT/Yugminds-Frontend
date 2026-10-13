@@ -12,6 +12,7 @@ import { startActivityTracking, stopActivityTracking } from "@/lib/activity-trac
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import ResponsiveTables from "@/components/ResponsiveTables";
 
 import { useAppStore, type AppState } from "@/store/app-store";
 import { useBrowserNavigation } from "@/hooks/useBrowserNavigation";
@@ -295,9 +296,10 @@ export default function StudentLayoutWrapper({
   const pendingAssignmentsCount = dashboardStats?.pendingAssignments ?? 0;
 
   return (
-    <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
+    <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
       <ForcePasswordChange allowSkip />
       <AnnouncementBanner />
+      <ResponsiveTables />
       <ImpersonationBanner />
       {!isCoursePlayer && (
         <Sidebar
@@ -310,7 +312,7 @@ export default function StudentLayoutWrapper({
         />
       )}
 
-      <div className="flex-1 min-w-0 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
+      <div className="flex-1 min-w-0 min-h-0 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
         {children}
       </div>
     </div>

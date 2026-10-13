@@ -123,7 +123,7 @@ export default function AssignmentAnalyticsPanel({
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 border-b border-gray-100">
+      <div className="flex gap-1 overflow-x-auto border-b border-gray-100 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {(
           [
             { key: "leaderboard", label: "Leaderboard", icon: Trophy },
@@ -135,7 +135,7 @@ export default function AssignmentAnalyticsPanel({
             key={key}
             type="button"
             onClick={() => setSubTab(key)}
-            className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors ${
+            className={`relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
               subTab === key
                 ? "text-gray-900"
                 : "text-gray-500 hover:text-gray-800"

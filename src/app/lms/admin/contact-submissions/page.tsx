@@ -354,7 +354,7 @@ export default function ContactSubmissionsPage() {
             onKeyDown={(e) => { if (e.key === "Enter") load(true); }}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -638,7 +638,7 @@ export default function ContactSubmissionsPage() {
             <DialogDescription>
               Move this submission from{" "}
               <strong>{deleteTarget?.first_name} {deleteTarget?.last_name}</strong> to Deleted?
-              You can restore it from the Deleted tab any time before it's purged.
+              You can restore it from the Deleted tab any time before it&apos;s purged.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">

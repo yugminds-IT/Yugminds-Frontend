@@ -36,7 +36,7 @@ function EssayQuestion({ question, answer, onAnswerChange, disabled = false, num
         disabled={disabled}
         rows={8}
         placeholder="Type your answer here..."
-        className={`w-full px-4 py-3 text-sm text-gray-900 border-2 rounded-lg resize-none focus:outline-none transition-colors
+        className={`w-full min-h-[180px] px-3 sm:px-4 py-3 text-base sm:text-sm leading-relaxed text-gray-900 border-2 rounded-lg resize-y focus:outline-none transition-colors
           ${isOverLimit
             ? 'border-red-400 focus:border-red-500'
             : 'border-gray-200 focus:border-blue-500'
@@ -46,7 +46,7 @@ function EssayQuestion({ question, answer, onAnswerChange, disabled = false, num
         aria-label="Essay answer"
       />
 
-      <div className="flex items-center justify-between mt-2">
+      <div className="flex items-center justify-between gap-3 mt-2">
         <span className="text-xs text-gray-400">
           {disabled ? '' : 'Your response will be saved automatically'}
         </span>

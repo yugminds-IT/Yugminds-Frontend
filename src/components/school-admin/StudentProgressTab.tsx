@@ -15,6 +15,8 @@ import { useSchoolAdminStudentProgress, type SchoolAdminProgressResponse } from 
 
 type StudentSortKey = "full_name" | "grade" | "section" | "total_courses" | "completed_courses" | "in_progress_courses" | "average_progress" | "last_activity";
 type SortDir = "asc" | "desc";
+
+const PAGE_SIZE = 25;
 type CourseFromAPI = SchoolAdminProgressResponse["courses"][number];
 
 function ProgressBar({ value, barColor = "bg-blue-500" }: { value: number; barColor?: string }) {
@@ -82,6 +84,13 @@ export default function StudentProgressTab() {
       return sortDir === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
     });
   }, [students, search, section, sortKey, sortDir]);
+
+  const filterKey = `${search}|${section}|${grade}|${course}|${sortKey}|${sortDir}`;
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
+  const totalPages = Math.max(1, Math.ceil(studentRows.length / PAGE_SIZE));
+  const page = pageState.key === filterKey ? Math.min(pageState.page, totalPages) : 1;
+  const setPage = (p: number) => setPageState({ key: filterKey, page: p });
+  const pagedStudentRows = studentRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const gradeRows = useMemo(() => {
     type Acc = { grade: string; section: string; students: number; completed: number; sum: number };
@@ -182,14 +191,14 @@ export default function StudentProgressTab() {
   return (
     <div className="space-y-5">
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 [&>*:last-child]:max-sm:col-span-2">
         {kpis.map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <div className={`${bg} ${color} p-2.5 rounded-lg shrink-0`}>
-              <Icon className="h-5 w-5" />
+          <div key={label} className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:gap-3 sm:p-4">
+            <div className={`${bg} ${color} p-2 rounded-lg shrink-0 sm:p-2.5`}>
+              <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{value}</p>
+            <div className="min-w-0">
+              <p className="text-xl font-bold text-gray-900 sm:text-2xl">{value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{label}</p>
             </div>
           </div>
@@ -212,8 +221,8 @@ export default function StudentProgressTab() {
         {/* ── Students ── */}
         <TabsContent value="students" className="space-y-4">
           {/* Toolbar */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[200px]">
+          <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+            <div className="relative basis-full sm:basis-auto sm:flex-1 sm:min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search by name or email…"
@@ -223,21 +232,21 @@ export default function StudentProgressTab() {
               />
             </div>
             <Select value={grade} onValueChange={setGrade}>
-              <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder="All Grades" /></SelectTrigger>
+              <SelectTrigger className="w-[calc(33.333%-0.5rem)] max-sm:px-2.5 max-sm:text-xs sm:w-[130px] h-9"><SelectValue placeholder="All Grades" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Grades</SelectItem>
                 {grades.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={section} onValueChange={setSection}>
-              <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="All Sections" /></SelectTrigger>
+              <SelectTrigger className="w-[calc(33.333%-0.5rem)] max-sm:px-2.5 max-sm:text-xs sm:w-[140px] h-9"><SelectValue placeholder="All Sections" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Sections</SelectItem>
                 {sections.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={course} onValueChange={setCourse}>
-              <SelectTrigger className="w-[170px] h-9"><SelectValue placeholder="All Courses" /></SelectTrigger>
+              <SelectTrigger className="w-[calc(33.333%-0.5rem)] max-sm:px-2.5 max-sm:text-xs sm:w-[170px] h-9"><SelectValue placeholder="All Courses" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Courses</SelectItem>
                 {courses.map((c: CourseFromAPI) => (
@@ -251,7 +260,7 @@ export default function StudentProgressTab() {
           </div>
 
           {/* Student Table */}
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -280,7 +289,7 @@ export default function StudentProgressTab() {
                         </p>
                       </td>
                     </tr>
-                  ) : studentRows.map((s: any, idx: number) => {
+                  ) : pagedStudentRows.map((s: any, idx: number) => {
                     const meta = statusMeta(s.average_progress ?? 0);
                     const isOpen = expanded === s.student_id;
                     return (
@@ -289,7 +298,7 @@ export default function StudentProgressTab() {
                           onClick={() => setExpanded(isOpen ? null : s.student_id)}
                           className={`border-b border-gray-50 cursor-pointer hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
                         >
-                          <td className="pl-4 pr-2 py-3 w-8">
+                          <td className="pl-4 pr-2 py-3 w-8 max-md:!hidden">
                             <ChevronRight className={`h-4 w-4 text-gray-300 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`} />
                           </td>
                           <td className="px-4 py-3">
@@ -300,11 +309,11 @@ export default function StudentProgressTab() {
                           <td className="px-4 py-3 text-gray-600">{s.section || "—"}</td>
                           <td className="px-4 py-3 text-center font-medium text-gray-700">{s.total_courses ?? 0}</td>
                           <td className="px-4 py-3 text-center font-semibold text-emerald-600">{s.completed_courses ?? 0}</td>
-                          <td className="px-4 py-3 text-center font-semibold text-blue-600">{s.in_progress_courses ?? 0}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-blue-600 max-md:!hidden">{s.in_progress_courses ?? 0}</td>
                           <td className="px-4 py-3">
                             <ProgressBar value={s.average_progress ?? 0} barColor={meta.bar} />
                           </td>
-                          <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                          <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap max-md:!hidden">
                             {s.last_activity
                               ? new Date(s.last_activity).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
                               : "—"}
@@ -361,12 +370,27 @@ export default function StudentProgressTab() {
                 </tbody>
               </table>
             </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-4 py-3 text-xs text-gray-500">
+                <span>
+                  {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, studentRows.length)} of {studentRows.length}
+                </span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                    Previous
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
         {/* ── Courses ── */}
         <TabsContent value="courses">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -403,7 +427,7 @@ export default function StudentProgressTab() {
 
         {/* ── Grades ── */}
         <TabsContent value="grades">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>

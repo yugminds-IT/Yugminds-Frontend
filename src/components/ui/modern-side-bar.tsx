@@ -305,17 +305,25 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
 
   return (
     <>
-      {/* Mobile hamburger button */}
-      <button
-        onClick={toggleSidebar}
-        className="fixed top-6 left-6 z-50 p-3 rounded-lg bg-white shadow-md border border-slate-100 md:hidden hover:bg-slate-50 transition-all duration-200"
-        aria-label="Toggle sidebar"
-      >
-        {isOpen ? 
-          <X className="h-5 w-5 text-slate-600" /> : 
-          <Menu className="h-5 w-5 text-slate-600" />
-        }
-      </button>
+      {/* Mobile top bar — in normal flow so it never covers page content */}
+      <header className="md:hidden sticky top-0 z-50 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white/95 px-3 backdrop-blur">
+        <button
+          onClick={toggleSidebar}
+          className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
+          aria-label="Toggle sidebar"
+        >
+          {isOpen ?
+            <X className="h-5 w-5 text-slate-700" /> :
+            <Menu className="h-5 w-5 text-slate-700" />
+          }
+        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+            <span className="text-xs font-bold text-white">{getPortalLabel(userRole).initials}</span>
+          </div>
+          <span className="truncate text-sm font-semibold text-slate-800">{getPortalLabel(userRole).label}</span>
+        </div>
+      </header>
 
       {/* Mobile overlay */}
       {isOpen && (
@@ -328,7 +336,7 @@ export function Sidebar({ className = "", userRole = "student", userName = "User
       {/* Sidebar */}
       <div
         className={`
-          fixed top-0 left-0 h-full bg-white border-r border-slate-200 z-40 transition-all duration-300 ease-in-out flex flex-col
+          fixed top-14 left-0 h-[calc(100%-3.5rem)] md:top-0 md:h-full bg-white border-r border-slate-200 z-40 transition-all duration-300 ease-in-out flex flex-col
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
           ${isCollapsed ? "w-28" : "w-78"}
           md:translate-x-0 md:static md:z-auto

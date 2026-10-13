@@ -970,13 +970,13 @@ export default function TeacherAssignmentsPage() {
       )}
 
       {tab === "analytics" && (
-        <div className="px-6 py-6 max-w-6xl mx-auto">
+        <div className="px-0 py-4 md:px-6 md:py-6 max-w-6xl mx-auto">
           <AssignmentAnalyticsPanel loading={analyticsLoading} data={analyticsData} />
         </div>
       )}
 
       {tab === "requests" && (
-        <div className="px-6 py-6 max-w-4xl mx-auto">
+        <div className="px-0 py-4 md:px-6 md:py-6 max-w-4xl mx-auto">
           <TeacherRetakeRequestsPanel />
         </div>
       )}

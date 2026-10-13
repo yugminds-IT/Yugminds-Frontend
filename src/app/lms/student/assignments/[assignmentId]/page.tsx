@@ -313,9 +313,9 @@ export default function AssignmentDetailPage(props: PageProps) {
 
     const wrapper = (content: React.ReactNode) => (
       <div key={q.id} id={`question-${idx}`}>
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <span className="text-[15px] font-semibold text-gray-700">{idx + 1}.</span>
-          <span className="text-sm text-gray-400 whitespace-nowrap flex-shrink-0">
+        <div className="flex items-start justify-between gap-4 mb-3 sm:mb-5">
+          <span className={disabled ? "text-[15px] font-semibold text-gray-700" : "sr-only"}>{idx + 1}.</span>
+          <span className="ml-auto text-sm text-gray-400 whitespace-nowrap flex-shrink-0">
             {q.marks ?? 1} point{(q.marks ?? 1) !== 1 ? "s" : ""}
           </span>
         </div>
@@ -408,7 +408,7 @@ export default function AssignmentDetailPage(props: PageProps) {
   ═══════════════════════════════════════════ */
   if (mode === "taking") {
     const fileUploadSection = (effectiveType === "project" || effectiveType === "quiz") && (
-      <div className="mt-6 p-5 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+      <div className="mt-6 p-4 sm:p-5 bg-gray-50 rounded-xl border border-dashed border-gray-300">
         <Label htmlFor="file-upload" className="block text-sm font-semibold text-gray-700 mb-3">
           Upload Your Work
         </Label>
@@ -432,11 +432,12 @@ export default function AssignmentDetailPage(props: PageProps) {
       <ProtectedAssignmentContent className="min-h-screen bg-white">
         {/* Minimal sticky header */}
         <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
-          <div className="flex items-center justify-between px-5 h-14">
-            <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center justify-between gap-3 px-3 sm:px-5 h-14">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
                 onClick={leaveTaking}
-                className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-md transition-colors flex-shrink-0"
+                aria-label="Back"
+                className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-2.5 sm:px-3 py-1.5 rounded-md transition-colors flex-shrink-0"
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span className="hidden sm:inline">Back</span>
@@ -449,13 +450,13 @@ export default function AssignmentDetailPage(props: PageProps) {
               </div>
             </div>
 
-            <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
               {/* Live auto-save status — students should always know work is safe */}
               <span className={`flex items-center gap-1 text-xs ${isSaving ? "text-gray-400" : "text-green-600"}`}>
                 {isSaving ? (
                   <>
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    Saving…
+                    <span className="hidden sm:inline">Saving…</span>
                   </>
                 ) : lastSaved ? (
                   <>
@@ -463,13 +464,13 @@ export default function AssignmentDetailPage(props: PageProps) {
                     Saved
                   </>
                 ) : (
-                  <span className="text-gray-400">Auto-save on</span>
+                  <span className="text-gray-400">Auto-save<span className="hidden sm:inline"> on</span></span>
                 )}
               </span>
               {/* Progress */}
               {questions.length > 0 && (
-                <span className="hidden sm:block text-xs text-gray-500">
-                  {answeredCount}/{questions.length} answered
+                <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
+                  {answeredCount}/{questions.length}<span className="hidden sm:inline"> answered</span>
                 </span>
               )}
               {/* Due date */}
@@ -494,7 +495,7 @@ export default function AssignmentDetailPage(props: PageProps) {
             lastStepExtra={fileUploadSection}
           />
         ) : (
-        <div className="max-w-3xl mx-auto px-6 py-8">
+        <div className="max-w-3xl mx-auto px-4 py-5 sm:px-6 sm:py-8">
           {fileUploadSection}
           <div className="mt-10 pt-8 border-t border-gray-100">
             <button
@@ -518,7 +519,7 @@ export default function AssignmentDetailPage(props: PageProps) {
   return (
     <div className="min-h-screen bg-white">
       {/* Simple header */}
-      <div className="border-b border-gray-200 px-6 py-4">
+      <div className="border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
         <Link
           href="/lms/student/assignments"
           className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-md transition-colors"
@@ -528,20 +529,22 @@ export default function AssignmentDetailPage(props: PageProps) {
         </Link>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="max-w-3xl mx-auto px-4 py-5 sm:px-6 sm:py-10 space-y-4">
         {/* Title */}
-        <h1 className="text-3xl font-semibold text-gray-900 mb-1">{assignment.title}</h1>
-        <p className="text-sm text-gray-500 mb-8">
+        <div>
+        <h1 className="text-xl sm:text-3xl font-semibold text-gray-900 mb-1 break-words">{assignment.title}</h1>
+        <p className="text-sm text-gray-500 sm:mb-4">
           {assignment.course_title || "Assignment"}
           {effectiveType && effectiveType !== "essay" && <> &middot; <span className="capitalize">{effectiveType.replace("_", " ")}</span></>}
         </p>
+        </div>
 
         {/* Assignment details card */}
-        <div className="bg-gray-50 rounded-xl p-6 mb-4 border border-gray-100">
+        <div className="bg-gray-50 rounded-xl p-4 sm:p-6 mb-4 border border-gray-100">
           <h2 className="text-base font-semibold text-gray-900 mb-5">Assignment details</h2>
 
           {/* Details grid */}
-          <div className="grid grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-3 gap-3 sm:gap-6 mb-5 sm:mb-6">
             <div>
               <p className="text-xs text-gray-500 mb-1">Due</p>
               <p className={`text-sm font-semibold ${isOverdue ? "text-red-600" : "text-gray-900"}`}>
@@ -603,7 +606,7 @@ export default function AssignmentDetailPage(props: PageProps) {
             {!isSubmitted && (
               <button
                 onClick={() => setMode("taking")}
-                className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
+                className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-3 sm:py-2.5 rounded-lg transition-colors text-sm"
               >
                 {draftAnsweredCount > 0 ? "Continue Assignment" : "Start Assignment"}
               </button>
@@ -618,7 +621,7 @@ export default function AssignmentDetailPage(props: PageProps) {
                   clearSavedData();
                   setMode("taking");
                 }}
-                className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
+                className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 py-3 sm:py-2.5 rounded-lg transition-colors text-sm"
               >
                 <RotateCcw className="h-4 w-4" />
                 Retake Assignment
@@ -707,7 +710,7 @@ export default function AssignmentDetailPage(props: PageProps) {
         </div>
 
         {/* Your grade card */}
-        <div className="bg-gray-50 rounded-xl p-6 border border-gray-100">
+        <div className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-100">
           <h2 className="text-base font-semibold text-gray-900 mb-3">Your grade</h2>
 
           {!isSubmitted ? (
@@ -755,7 +758,7 @@ export default function AssignmentDetailPage(props: PageProps) {
 
         {/* Attempt history (shown whenever there are multiple attempts) */}
         {attempts.length > 1 && (
-          <div className="bg-gray-50 rounded-xl p-6 border border-gray-100">
+          <div className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-100">
             <h2 className="text-base font-semibold text-gray-900 mb-4">Attempt history</h2>
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
               <table className="w-full text-sm">

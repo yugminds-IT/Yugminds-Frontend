@@ -212,7 +212,7 @@ function CourseRow({ course, nowMs, lv, onResume }: { course: CourseItem; nowMs:
   const isNotStarted = course.status === 'not_started' && course.progress_percentage === 0
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 flex gap-4 hover:shadow-md hover:border-gray-300 transition-all group">
+    <div className="bg-white border border-gray-200 rounded-xl p-4 sm:px-5 flex flex-wrap sm:flex-nowrap gap-x-4 gap-y-3 hover:shadow-md hover:border-gray-300 transition-all group">
       <div className="relative shrink-0">
         <CourseThumb course={course} />
         {!isNotStarted && (
@@ -244,7 +244,7 @@ function CourseRow({ course, nowMs, lv, onResume }: { course: CourseItem; nowMs:
         />
       </div>
 
-      <div className="flex items-center gap-4 shrink-0">
+      <div className="flex items-center gap-4 shrink-0 max-sm:basis-full">
         {isCompleted && (
           <div className="hidden lg:flex items-center gap-1.5 text-green-600 text-xs font-medium">
             <CheckCircle className="h-4 w-4" />
@@ -253,7 +253,7 @@ function CourseRow({ course, nowMs, lv, onResume }: { course: CourseItem; nowMs:
         )}
         <Button
           size="sm"
-          className={`${isCompleted ? 'bg-gray-800 hover:bg-gray-900' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+          className={`max-sm:h-10 max-sm:w-full ${isCompleted ? 'bg-gray-800 hover:bg-gray-900' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
           onClick={onResume}
         >
           {isCompleted ? 'Review' : isNotStarted ? 'Start' : 'Resume'}
@@ -537,14 +537,14 @@ export default function MyCoursesPage() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50 p-6">
+      <div className="min-h-screen bg-gray-50 p-4 md:p-6">
         {/* Page header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">My Learning</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 md:mb-6">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">My Learning</h1>
             <p className="text-sm text-gray-500 mt-0.5">{courses.length} course{courses.length !== 1 ? 's' : ''} enrolled</p>
           </div>
-          <div className="relative w-56">
+          <div className="relative w-full sm:w-56">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               placeholder="Search courses..."
@@ -557,7 +557,7 @@ export default function MyCoursesPage() {
 
         {/* Continue learning hero */}
         {resumeTarget && !searchQuery && (
-          <div className="mb-6">
+          <div className="mb-4 md:mb-6">
             <ContinueHero
               course={resumeTarget.course}
               lastViewed={resumeTarget.lv}
@@ -567,17 +567,17 @@ export default function MyCoursesPage() {
         )}
 
         {/* Two-column layout */}
-        <div className="flex gap-6 items-start">
+        <div className="flex flex-col-reverse gap-4 lg:flex-row lg:gap-6 lg:items-start">
           {/* Left: course list */}
           <div className="flex-1 min-w-0">
             {/* Toolbar: tabs + sort + view toggle */}
-            <div className="flex items-center justify-between gap-3 border-b border-gray-200 mb-4 bg-white rounded-t-xl px-1 shadow-sm">
-              <div className="flex">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 border-b border-gray-200 mb-4 bg-white rounded-t-xl px-1 shadow-sm">
+              <div className="flex min-w-0 max-sm:w-full overflow-x-auto [scrollbar-width:none]">
                 {tabs.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-4 py-3 text-sm font-medium relative transition-colors ${
+                    className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-3 text-sm font-medium relative transition-colors ${
                       activeTab === tab.id ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -596,7 +596,7 @@ export default function MyCoursesPage() {
                 ))}
               </div>
 
-              <div className="flex items-center gap-2 pr-2">
+              <div className="flex items-center gap-2 pr-2 max-sm:w-full max-sm:justify-end max-sm:border-t max-sm:border-gray-100 max-sm:py-2">
                 <select
                   value={sortBy}
                   onChange={e => setSortBy(e.target.value as SortKey)}
@@ -680,7 +680,7 @@ export default function MyCoursesPage() {
           </div>
 
           {/* Right: calendar sidebar */}
-          <div className="w-72 shrink-0 space-y-4">
+          <div className="w-full lg:w-72 shrink-0 space-y-4">
             <ActivityCalendar
               activityDays={activityDays}
               stats={calendarStats}

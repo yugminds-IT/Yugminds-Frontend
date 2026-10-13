@@ -329,11 +329,11 @@ export default function StudentDashboard() {
   const currentStreak = activity?.currentStreak ?? 0;
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 space-y-6">
+    <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900">
             {greeting}, {(profile as { full_name?: string } | null)?.full_name?.split(' ')[0] || 'Student'}! 👋
           </h1>
           {(() => {
@@ -348,13 +348,13 @@ export default function StudentDashboard() {
             )?.students?.[0];
             const schoolName = studentInfo?.schools?.[0]?.name;
             const gradeSection = studentInfo?.grade
-              ? `${studentInfo.grade}${studentInfo.section ? ` - Section ${studentInfo.section}` : ''}`
+              ? `${studentInfo.grade}${studentInfo.section ? ` - Section ${studentInfo.section.replace(/^section\s*/i, '')}` : ''}`
               : '';
             const subtitle = [schoolName, gradeSection].filter(Boolean).join(' • ');
-            return subtitle ? <p className="text-gray-600 mt-2">{subtitle}</p> : null;
+            return subtitle ? <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">{subtitle}</p> : null;
           })()}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {(activity?.activeDaysLast28 ?? 0) > 0 && (
             <div
               className="flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-600 ring-1 ring-blue-100"
@@ -417,7 +417,7 @@ export default function StudentDashboard() {
       ) : null}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-6 [&>*:last-child]:max-lg:col-span-2">
         {studentStatCards.map((metric) => (
           <StatCard
             key={metric.title}

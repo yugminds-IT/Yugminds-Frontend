@@ -110,19 +110,19 @@ export default function AdminOverviewTab({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
+      <div className="space-y-4 md:space-y-6">
         {/* Quick Actions */}
         <Card className="border-slate-200 shadow-sm">
           <CardHeader className="border-b bg-slate-50/80">
             <CardTitle>Quick Actions</CardTitle>
             <CardDescription>Common administrative tasks — latest 3 of each</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <CardContent className="-mx-px flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:pb-0">
             {quickActionPreviews.map((preview) => (
               <div
                 key={preview.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm"
+                className="w-[82%] shrink-0 snap-start rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm md:w-auto"
               >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
@@ -131,7 +131,7 @@ export default function AdminOverviewTab({
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-900">{preview.title}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="hidden text-xs text-slate-500 md:block">
                         Updated {new Date(preview.lastUpdated).toLocaleString()}
                       </p>
                     </div>
@@ -151,7 +151,7 @@ export default function AdminOverviewTab({
                     )}
                   </Button>
                 </div>
-                <p className="mb-3 text-sm leading-relaxed text-slate-600">{preview.description}</p>
+                <p className="mb-3 hidden text-sm leading-relaxed text-slate-600 md:block">{preview.description}</p>
                 <div className="space-y-2">
                   {preview.data && preview.data.length > 0 ? (
                     preview.data.slice(0, 3).map((item, index: number) => (
@@ -295,23 +295,23 @@ export default function AdminOverviewTab({
           <CardDescription>Latest additions across the platform</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="space-y-2 md:space-y-4">
             {recentActivity.length > 0 ? (
               recentActivity.map((activity, index) => (
-                <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div className={`w-2 h-2 rounded-full ${
+                <div key={index} className={`${index >= 4 ? "hidden md:flex" : "flex"} items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors`}>
+                  <div className={`w-2 h-2 shrink-0 rounded-full ${
                     activity.type === 'success' ? 'bg-green-500' :
                     activity.type === 'warning' ? 'bg-yellow-500' :
                     activity.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
                   }`}></div>
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{activity.title}</p>
-                    <p className="text-xs text-gray-500">{activity.message}</p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-gray-500 break-words">{activity.message}</p>
+                    <p className="hidden text-xs text-gray-400 mt-1 md:block">
                       {new Date(activity.created_at).toLocaleString()}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
                     <Clock className="h-3 w-3 text-gray-400" />
                     <span className="text-xs text-gray-400">{timeAgo(activity.created_at)}</span>
                   </div>

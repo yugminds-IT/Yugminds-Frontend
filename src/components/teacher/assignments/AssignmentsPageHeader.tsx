@@ -29,7 +29,7 @@ export default function AssignmentsPageHeader({
 }: Props) {
   return (
     <div className="border-b border-gray-200 bg-white">
-      <div className="px-6 pt-6 pb-4 flex items-start justify-between gap-4">
+      <div className="px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
             Assignments
@@ -50,7 +50,7 @@ export default function AssignmentsPageHeader({
         )}
       </div>
 
-      <div className="px-6 flex items-center gap-1 overflow-x-auto">
+      <div className="px-2 md:px-6 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map(({ key, label, icon: Icon }) => {
           const active = tab === key;
           return (
@@ -58,7 +58,7 @@ export default function AssignmentsPageHeader({
               key={key}
               type="button"
               onClick={() => onTabChange(key)}
-              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+              className={`relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
                 active
                   ? "text-gray-900"
                   : "text-gray-500 hover:text-gray-800"

@@ -3,17 +3,21 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { Bot } from "lucide-react";
 import { BRAND_ORIGINS, ROBOCODERS_HOST, brandFromHostname, normalizeHost } from "../lib/brand-host";
 
-/* `editorial` matches the public landing page's cream/ink/blue theme.
-   Everything else (Robocoders pages) keeps the original blue pill. */
-export default function BrandSwitcherBar({
-  fixed = false,
-  editorial = false,
-}: {
-  fixed?: boolean;
-  editorial?: boolean;
-}) {
+const LOGO_MASK = {
+  maskImage: 'url("/Yugminds_Official_Logo-preview.png")',
+  WebkitMaskImage: 'url("/Yugminds_Official_Logo-preview.png")',
+  maskSize: "contain",
+  WebkitMaskSize: "contain",
+  maskRepeat: "no-repeat",
+  WebkitMaskRepeat: "no-repeat",
+  maskPosition: "center",
+  WebkitMaskPosition: "center",
+} as const;
+
+export default function BrandSwitcherBar({ fixed = false }: { fixed?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [onRobocodersHost, setOnRobocodersHost] = useState(false);
@@ -55,83 +59,65 @@ export default function BrandSwitcherBar({
     }, 260);
   };
 
-  const round = editorial ? "rounded-none" : "rounded-full";
-  const labelCls = editorial
-    ? "text-[0.6rem] font-light uppercase tracking-[0.22em]"
-    : "text-xs font-semibold";
-  const onColor = editorial ? "#F4EFE6" : "#ffffff";
-  const offColor = editorial ? "#8A8578" : "#94a3b8";
+  const options = [
+    {
+      robo: false,
+      href: "/",
+      label: "YugMinds",
+      icon: <span aria-hidden className="block h-3.5 w-3.5 bg-current" style={LOGO_MASK} />,
+    },
+    {
+      robo: true,
+      href: "/robocoders",
+      label: "Robocoders™",
+      icon: <Bot aria-hidden className="h-3.5 w-3.5" />,
+    },
+  ];
 
   return (
     <div
-      className={`py-1.5 px-4 w-full h-9 flex items-center transition-opacity duration-300 ${
-        editorial
-          ? "bg-ym-ink text-ym-cream border-b border-ym-cream/20"
-          : "bg-slate-900 text-white"
-      } ${fixed ? "fixed top-0 left-0 right-0 z-50" : ""} ${
-        atTop ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-      }`}
+      className={`relative h-9 w-full bg-ym-ink text-white transition-opacity duration-300 ${
+        fixed ? "fixed top-0 left-0 right-0 z-50" : ""
+      } ${atTop ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
     >
-      <div
-        className={`w-full mx-auto flex items-center justify-between ${
-          editorial ? "max-w-[92rem] px-1 md:px-6" : "max-w-7xl"
-        }`}
-      >
-        <span
-          className={
-            editorial
-              ? "text-[0.6rem] font-light uppercase tracking-[0.28em] text-ym-cream/40"
-              : "text-xs text-slate-400 font-medium"
-          }
-        >
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-ym-blue/50 to-transparent" />
+      <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-center sm:justify-between px-4 md:px-10">
+        <span className="hidden sm:flex items-center gap-2 text-[0.7rem] font-medium tracking-wide text-white/50">
+          <span className="h-1.5 w-1.5 rounded-full bg-ym-blue-lit shadow-[0_0_8px_rgba(96,165,250,0.9)]" />
           YugMinds Pvt Ltd
+          <span className="hidden md:inline text-white/30">· Hyderabad, India</span>
         </span>
 
         <div
-          className={`relative flex items-center border p-0.5 ${round} ${
-            editorial ? "border-ym-cream/15" : "bg-white/5 border-white/10"
-          }`}
+          role="tablist"
+          aria-label="Switch site"
+          className="relative flex items-center rounded-full border border-white/10 bg-white/[0.06] p-0.5"
         >
           <motion.span
-            className={`absolute inset-y-0.5 w-24 ${round} ${
-              editorial
-                ? "bg-ym-blue"
-                : "bg-blue-600 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
-            }`}
+            aria-hidden
+            className="absolute inset-y-0.5 w-[7.25rem] rounded-full bg-gradient-to-r from-ym-blue to-ym-blue-lit shadow-[0_0_16px_-2px_rgba(37,99,235,0.8)]"
             initial={false}
-            animate={{ left: active ? "6rem" : "0.125rem" }}
+            animate={{ left: active ? "7.375rem" : "0.125rem" }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
           />
-          <button
-            type="button"
-            onClick={() => handleToggle(false, "/")}
-            className={`relative z-10 w-24 py-1 text-center transition-colors duration-200 ${round} ${labelCls}`}
-          >
-            <motion.span
-              animate={{
-                color: !active ? onColor : offColor,
-                scale: !active ? 1 : 0.96,
-              }}
-              className="inline-block"
-            >
-              YugMinds
-            </motion.span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleToggle(true, "/robocoders")}
-            className={`relative z-10 w-24 py-1 text-center transition-colors duration-200 ${round} ${labelCls}`}
-          >
-            <motion.span
-              animate={{
-                color: active ? onColor : offColor,
-                scale: active ? 1 : 0.96,
-              }}
-              className="inline-block"
-            >
-              Robocoders™
-            </motion.span>
-          </button>
+          {options.map((o) => {
+            const on = active === o.robo;
+            return (
+              <button
+                key={o.label}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => handleToggle(o.robo, o.href)}
+                className={`relative z-10 flex h-7 w-[7.25rem] items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-colors duration-200 ${
+                  on ? "text-white" : "text-white/55 hover:text-white/85"
+                }`}
+              >
+                {o.icon}
+                {o.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

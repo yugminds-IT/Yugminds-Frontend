@@ -233,19 +233,21 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="p-4 md:p-6 lg:p-8" style={{ minHeight: "100vh", backgroundColor: "#f9fafb" }}>
+    <div className="p-4 md:p-6 lg:p-8" style={{ minHeight: "100%", backgroundColor: "#f9fafb" }}>
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-5 md:mb-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-600 mt-2">Welcome back, {adminName || "Admin"}</p>
-            <div className="flex items-center gap-2 mt-1">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-300"}`}></div>
-              <span className="text-sm text-gray-500">{isConnected ? "Live" : "Reconnecting…"}</span>
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <div className="mt-1 md:mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm md:text-base text-gray-600">Welcome back, {adminName || "Admin"}</p>
+              <span className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-300"}`} />
+                <span className="text-xs md:text-sm text-gray-500">{isConnected ? "Live" : "Reconnecting…"}</span>
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid w-full grid-cols-[1fr_1fr_auto] gap-2 sm:flex sm:w-auto sm:items-center">
             <Button
               variant="outline"
               onClick={() => router.push("/lms/admin/schools?action=add")}
@@ -256,28 +258,30 @@ export default function AdminDashboard() {
             </Button>
             <Button onClick={() => setIsCreateAccountDialogOpen(true)} className="flex items-center gap-2">
               <UserPlus className="h-4 w-4" />
-              Create Account
+              <span className="sm:hidden">Account</span>
+              <span className="hidden sm:inline">Create Account</span>
             </Button>
             <Button
               variant="outline"
               onClick={handleRefresh}
               disabled={isRefreshing}
               className="flex items-center gap-2"
+              aria-label="Refresh"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              {isRefreshing ? "Refreshing..." : "Refresh"}
+              <span className="hidden sm:inline">{isRefreshing ? "Refreshing..." : "Refresh"}</span>
             </Button>
           </div>
         </div>
       </div>
 
       {/* Needs attention — real, actionable counts only */}
-      <div className="mb-6">
+      <div className="mb-5 md:mb-6">
         <NeedsAttentionPanel items={needsAttention} />
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
         {overviewStatCards.map((metric) => (
           <AreaChartAnalyticsCard
             key={metric.title}

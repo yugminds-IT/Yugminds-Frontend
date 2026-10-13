@@ -60,7 +60,7 @@ function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) return <span className="text-lg">🥇</span>;
   if (rank === 2) return <span className="text-lg">🥈</span>;
   if (rank === 3) return <span className="text-lg">🥉</span>;
-  return <span className="text-sm font-semibold text-gray-500 w-6 text-center">#{rank}</span>;
+  return <span className="text-sm font-semibold text-gray-500 min-w-6 shrink-0 text-center">#{rank}</span>;
 }
 
 function ScoreBar({ value, color = "bg-blue-500" }: { value: number; color?: string }) {

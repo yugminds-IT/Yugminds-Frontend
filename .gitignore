@@ -45,3 +45,6 @@ next-env.d.ts
 
 # Cursor IDE files
 .cursor/
+
+# copied from pdfjs-dist by postinstall
+/public/pdf.worker.min.mjs

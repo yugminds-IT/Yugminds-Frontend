@@ -274,43 +274,43 @@ export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverview
           <CardDescription>Common tasks and shortcuts</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             <Link href="/lms/teacher/reports">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-6 text-center">
-                  <FileText className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                  <h3 className="font-semibold mb-1">Submit Report</h3>
-                  <p className="text-sm text-gray-600">Daily teaching report</p>
+                <CardContent className="p-3 sm:p-6 text-center">
+                  <FileText className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-green-600" />
+                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">Submit Report</h3>
+                  <p className="hidden sm:block text-sm text-gray-600">Daily teaching report</p>
                 </CardContent>
               </Card>
             </Link>
 
             <Link href="/lms/teacher/leaves">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-6 text-center">
-                  <Clock className="h-8 w-8 mx-auto mb-2 text-orange-600" />
-                  <h3 className="font-semibold mb-1">Apply for Leave</h3>
-                  <p className="text-sm text-gray-600">Submit leave request</p>
+                <CardContent className="p-3 sm:p-6 text-center">
+                  <Clock className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-orange-600" />
+                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">Apply for Leave</h3>
+                  <p className="hidden sm:block text-sm text-gray-600">Submit leave request</p>
                 </CardContent>
               </Card>
             </Link>
 
             <Link href="/lms/teacher/attendance">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-6 text-center">
-                  <Calendar className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                  <h3 className="font-semibold mb-1">View Attendance</h3>
-                  <p className="text-sm text-gray-600">Monthly attendance chart</p>
+                <CardContent className="p-3 sm:p-6 text-center">
+                  <Calendar className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-purple-600" />
+                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">View Attendance</h3>
+                  <p className="hidden sm:block text-sm text-gray-600">Monthly attendance chart</p>
                 </CardContent>
               </Card>
             </Link>
 
             <Link href="/lms/teacher/classes">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-6 text-center">
-                  <BookOpen className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                  <h3 className="font-semibold mb-1">My Classes</h3>
-                  <p className="text-sm text-gray-600">View all classes</p>
+                <CardContent className="p-3 sm:p-6 text-center">
+                  <BookOpen className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-blue-600" />
+                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">My Classes</h3>
+                  <p className="hidden sm:block text-sm text-gray-600">View all classes</p>
                 </CardContent>
               </Card>
             </Link>

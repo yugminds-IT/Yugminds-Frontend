@@ -520,10 +520,10 @@ export default function SubmitReportPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-3 md:items-center">
+        <div className="min-w-0 flex-1">
           <h1 className="text-3xl font-bold text-gray-900">Submit Daily Report</h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
             Submit your daily teaching report for {selectedSchool.name}
           </p>
         </div>
@@ -531,10 +531,11 @@ export default function SubmitReportPage() {
           variant="outline"
           onClick={handleRefresh}
           disabled={isRefreshing || periodsLoading}
-          className="flex items-center gap-2"
+          className="flex shrink-0 items-center gap-2 max-sm:h-9 max-sm:px-3"
+          aria-label="Refresh"
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Refreshing...' : 'Refresh'}
+          <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
         </Button>
       </div>
 
@@ -871,14 +872,14 @@ export default function SubmitReportPage() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                 </div>
               ) : recentReports && recentReports.length > 0 ? (
-                <div className="space-y-3">
-                  {(recentReports as ReportRow[]).slice(0, 10).map((report: ReportRow) => (
+                <div className="space-y-2 lg:space-y-3">
+                  {(recentReports as ReportRow[]).slice(0, 10).map((report: ReportRow, index: number) => (
                     <div
                       key={report.id}
-                      className="p-3 border rounded-lg hover:bg-gray-50"
+                      className={`p-2.5 lg:p-3 border rounded-lg hover:bg-gray-50 ${index >= 5 ? 'hidden lg:block' : ''}`}
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
+                      <div className="flex items-start justify-between gap-2 mb-1.5 lg:mb-2">
+                        <div className="min-w-0 flex-1">
                           <p className="font-medium text-sm">
                             {formatGradeSection(
                               report.grade || report.classes?.[0]?.grade,

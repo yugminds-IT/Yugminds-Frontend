@@ -102,7 +102,7 @@ export default function AuditLogPage() {
     try {
       const { data } = await adminApi.auditLogs.list({
         page,
-        limit: 50,
+        limit: window.matchMedia("(max-width: 767px)").matches ? 20 : 50,
         search: debouncedSearch || undefined,
         entityType: entityType !== "all" ? entityType : undefined,
         method: method !== "all" ? method : undefined,
@@ -183,8 +183,8 @@ export default function AuditLogPage() {
       {/* Filters */}
       <Card className="mb-4">
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div className="relative lg:col-span-2">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="relative col-span-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search by path, actor email, or record ID…"
@@ -216,7 +216,7 @@ export default function AuditLogPage() {
                 <SelectItem value="DELETE">Delete</SelectItem>
               </SelectContent>
             </Select>
-            <div className="flex items-center gap-2">
+            <div className="col-span-2 flex items-center gap-2 lg:col-span-1">
               <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
               <span className="text-gray-400 text-sm">–</span>
               <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
@@ -318,7 +318,7 @@ export default function AuditLogPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-gray-600">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-sm text-gray-600">
             <span>
               {total} entr{total === 1 ? "y" : "ies"} · page {page} of {totalPages}
             </span>

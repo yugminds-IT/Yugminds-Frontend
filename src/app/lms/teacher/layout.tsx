@@ -15,6 +15,7 @@ import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
+import ResponsiveTables from "@/components/ResponsiveTables";
 import TeacherHolidayBanner from "@/components/teacher/TeacherHolidayBanner";
 
 /** Sentinel stored/selected in place of a real school id to mean "combine data across every assigned school" — every teacher hook already treats an omitted school id as "aggregate across all schools." */
@@ -448,9 +449,10 @@ export default function TeacherLayout({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
+    <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
       <ForcePasswordChange />
       <AnnouncementBanner />
+      <ResponsiveTables />
       <ImpersonationBanner />
       <Sidebar 
         userRole="teacher"
@@ -460,13 +462,16 @@ export default function TeacherLayout({
         notificationBadgeCount={unreadNotificationCount}
       />
       
-      <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
+      <div className="flex-1 min-w-0 min-h-0 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
         {/* School Selector Topbar */}
         {schools.length > 1 && (
-          <div className="bg-white border-b border-gray-200 px-6 py-3">
+          <div className="bg-white border-b border-gray-200 px-4 py-2.5 md:px-6 md:py-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-medium text-gray-700">Active School:</span>
+              <div className="flex w-full min-w-0 items-center gap-2 md:w-auto md:gap-4">
+                <span className="shrink-0 text-xs font-medium text-gray-700 md:text-sm">
+                  <span className="md:hidden">School:</span>
+                  <span className="hidden md:inline">Active School:</span>
+                </span>
                 <select
                   value={selectedSchool?.id || ALL_SCHOOLS_VALUE}
                   onChange={(e) => {
@@ -477,7 +482,7 @@ export default function TeacherLayout({
                     const school = schools.find((s: School) => s.id === e.target.value);
                     if (school) handleSchoolChange(school);
                   }}
-                  className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="min-w-0 flex-1 truncate px-2.5 py-1.5 border border-gray-300 rounded-md text-sm md:flex-none md:px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value={ALL_SCHOOLS_VALUE}>All Schools (combined)</option>
                   {schools.map((school) => {
@@ -509,13 +514,13 @@ export default function TeacherLayout({
                 selectedSchool &&
                 !todayWorkStatus.working.includes(selectedSchool.id) &&
                 todayWorkStatus.working.length > 0 && (
-                  <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1">
+                  <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 md:w-auto md:py-1">
                     <span>
-                      You&apos;re not scheduled at {selectedSchool.name} today.
+                      Not scheduled here today.
                     </span>
                     <button
                       type="button"
-                      className="underline font-medium hover:text-amber-900"
+                      className="text-left underline font-medium hover:text-amber-900"
                       onClick={() => {
                         const workingSchool = schools.find(
                           (s) => s.id === todayWorkStatus.working[0],
