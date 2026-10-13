@@ -3,14 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "copy-pdf-worker": "mkdir -p public && cp node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs public/",
+    "predev": "npm run copy-pdf-worker",
     "dev": "next dev",
+    "prebuild": "npm run copy-pdf-worker",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test:unit": "node --experimental-strip-types --test src/lib/session-utils.spec.ts src/lib/auth-cookie.spec.ts src/lib/brand-host.spec.ts src/lib/word-bank.spec.ts src/lib/student-export.spec.ts src/lib/assignment-marks.spec.ts",
     "db:migrate": "node scripts/apply-migrations.cjs",
-    "postinstall": "node scripts/patch-baseline-warning.cjs && cp node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs public/",
+    "postinstall": "node scripts/patch-baseline-warning.cjs",
     "test:e2e": "playwright test",
     "test:e2e:admin": "playwright test --config=playwright.config.admin.ts",
     "test:e2e:teacher": "playwright test --config=playwright.config.teacher.ts"

@@ -35,7 +35,7 @@ function loadPdfjs() {
   // Legacy build: the modern one needs very recent Safari/Chrome, which many school phones lack.
   pdfjsPromise ??= Promise.all([import('pdfjs-dist/legacy/build/pdf.mjs'), workersRun()]).then(
     async ([m, ok]) => {
-      // Copied into public/ by postinstall; Turbopack doesn't emit the worker from new URL(..., import.meta.url).
+      // Copied into public/ by the predev/prebuild scripts; Turbopack doesn't emit the worker from new URL(..., import.meta.url).
       m.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
       if (!ok) {
         // pdf.js parses on the main thread when this global is set.
