@@ -129,6 +129,14 @@ export function routeForHost(brand: Brand | null, path: string): HostRoute {
   }
 
   // lms
+  const lmsVerify = path.match(/^\/verify(\/.*)?$/);
+  if (lmsVerify) {
+    return {
+      kind: "redirect",
+      url: `${BRAND_ORIGINS.robocoders}/lms/verify${lmsVerify[1] ?? ""}`,
+      status: 308,
+    };
+  }
   if (path === "/") {
     return { kind: "redirect", url: `${BRAND_ORIGINS.lms}/login`, status: 307 };
   }

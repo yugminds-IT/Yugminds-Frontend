@@ -66,6 +66,12 @@ interface CertListResponse {
   certificates: Cert[];
 }
 
+function apiErrorMessage(e: unknown, fallback: string): string {
+  const msg = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (Array.isArray(msg)) return msg.join(", ");
+  return typeof msg === "string" && msg ? msg : fallback;
+}
+
 /**
  * Downloads a certificate through the authenticated backend proxy.
  * A plain `<a download>` is a no-op for cross-origin (S3/CDN) URLs, and a
@@ -259,15 +265,15 @@ export default function AdminCertificatesPage() {
       await adminApi.certificates.regenerate(cert.id);
       toast.success("Certificate regenerated");
       queryClient.invalidateQueries({ queryKey: ["adminCertificates"] });
-    } catch {
-      toast.error("Failed to regenerate certificate");
+    } catch (e) {
+      toast.error(apiErrorMessage(e, "Failed to regenerate certificate"));
     } finally {
       setRegenerating(null);
     }
   };
 
   const handleRegenerateAll = async () => {
-    const broken = certs.filter((c) => c.status === "pending");
+    const broken = certs.filter((c) => c.status === "pending" || c.status === "broken");
     if (broken.length === 0) { toast.success("No broken certificates found"); return; }
     if (!(await confirmDialog({
       title: 'Regenerate certificates?',
@@ -313,7 +319,7 @@ export default function AdminCertificatesPage() {
     setBatchLoading(true);
     try {
       const res = await adminApi.certificates.generateAllEligible();
-      const d = res.data as { generated?: number; skipped?: number; warning?: string | null };
+      const d = res.data as { generated?: number; skipped?: number; failed?: number; warning?: string | null };
       toast.success(`Generated ${d.generated ?? 0} new certificates, skipped ${d.skipped ?? 0}`);
       if (d.warning) {
         toast.error(d.warning);
@@ -333,8 +339,8 @@ export default function AdminCertificatesPage() {
   const handleDownload = async (cert: Cert) => {
     try {
       await downloadCertificate(cert.id, cert.short_id);
-    } catch {
-      toast.error("Failed to download certificate");
+    } catch (e) {
+      toast.error(apiErrorMessage(e, "Failed to download certificate"));
     }
   };
 
@@ -355,10 +361,10 @@ export default function AdminCertificatesPage() {
     setSavingTemplate(true);
     try {
       await adminApi.certificates.saveTemplate(templateContent);
-      toast.success("Template saved — new certificates will use this design");
+      toast.success("Template saved — new certificates will use this design. Use Redraw All to update existing ones.");
       await queryClient.invalidateQueries({ queryKey: ["adminCertTemplate"] });
-    } catch {
-      toast.error("Failed to save template");
+    } catch (e) {
+      toast.error(apiErrorMessage(e, "Failed to save template"));
     } finally {
       setSavingTemplate(false);
     }
@@ -508,7 +514,7 @@ export default function AdminCertificatesPage() {
                 <textarea
                   className="w-full h-64 font-mono text-xs border rounded-lg p-3 bg-gray-50 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder='<?xml version="1.0"?><svg ...>Your template with {{studentName}}, {{courseTitle}}, {{issuedAt}}, {{certificateId}}</svg>'
-                  value={templateContent || (templateData?.template ?? "")}
+                  value={templateContent}
                   onChange={(e) => setTemplateContent(e.target.value)}
                 />
 
@@ -517,15 +523,18 @@ export default function AdminCertificatesPage() {
                   <div>
                     <p className="text-xs text-gray-500 mb-2 font-medium">Preview (with sample data):</p>
                     <div className="border rounded-lg overflow-hidden bg-white">
-                      <div
+                      {/* <img> renders the SVG without running any scripts it contains. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
                         className="w-full"
-                        dangerouslySetInnerHTML={{
-                          __html: (templateContent || (templateData?.template ?? ""))
+                        alt="Certificate template preview"
+                        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+                          (templateContent || (templateData?.template ?? ""))
                             .replace(/\{\{studentName\}\}/g, "John Smith")
                             .replace(/\{\{courseTitle\}\}/g, "Introduction to Scratch")
-                            .replace(/\{\{issuedAt\}\}/g, new Date().toISOString().split("T")[0])
+                            .replace(/\{\{issuedAt\}\}/g, new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }))
                             .replace(/\{\{certificateId\}\}/g, "YM-SAMPLE1"),
-                        }}
+                        )}`}
                       />
                     </div>
                   </div>

@@ -268,9 +268,9 @@ export const adminApi = {
     verify: (ids: string[]) =>
       apiClient.post(`${ADMIN}/certificates/verify`, { ids }),
     generateAllEligible: () =>
-      apiClient.post(`${ADMIN}/certificates/generate-all-eligible`),
+      apiClient.post(`${ADMIN}/certificates/generate-all-eligible`, {}, { timeout: 300_000 }),
     batchGenerate: (data: { course_ids?: string[]; student_ids?: number[]; dry_run?: boolean } | Record<string, unknown>) =>
-      apiClient.post(`${ADMIN}/certificates/batch-generate`, data),
+      apiClient.post(`${ADMIN}/certificates/batch-generate`, data, { timeout: 300_000 }),
     getTemplate: () =>
       apiClient.get(`${ADMIN}/certificate-template`),
     saveTemplate: (template: string) =>

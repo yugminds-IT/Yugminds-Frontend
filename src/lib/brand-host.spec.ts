@@ -90,6 +90,11 @@ describe("brand-host", () => {
     );
     assert.deepEqual(routeForHost("robocoders", "/robocoders/lms/verify/abc"), redirect(canonical));
     assert.deepEqual(routeForHost("lms", "/lms/verify/abc"), redirect(canonical));
+    assert.deepEqual(routeForHost("lms", "/verify/abc"), redirect(canonical));
+    assert.deepEqual(
+      routeForHost("lms", "/verify"),
+      redirect("https://robocoders.yugminds.org/lms/verify"),
+    );
     assert.deepEqual(routeForHost("yugminds", "/robocoders/lms/verify/abc"), redirect(canonical));
     assert.equal(getVerifyCertUrl("abc"), canonical);
   });
