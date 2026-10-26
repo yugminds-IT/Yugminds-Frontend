@@ -118,34 +118,60 @@ function Nav() {
   const linksRef = useRef<HTMLElement>(null);
   const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
 
-  // Compact once the page moves; a thin line shows how far down the page you are.
+  // Compact once the page moves; a thin line shows how far down the page you are. Only reads
+  // window.scrollY (never forces a layout) — the page height is cached and resynced on resize
+  // only, not recomputed on every scroll tick.
   useEffect(() => {
     let raf = 0;
+    let max = document.documentElement.scrollHeight - window.innerHeight;
     const onScroll = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
-        const max = document.documentElement.scrollHeight - window.innerHeight;
         if (barRef.current) barRef.current.style.transform = `scaleX(${max > 0 ? Math.min(1, window.scrollY / max) : 0})`;
         setScrolled(window.scrollY > 8);
-        // Which section is under the top third of the screen, for the nav and the address bar.
-        let current = "";
-        for (const id of SECTION_IDS) {
-          const el = document.getElementById(id);
-          if (el && el.getBoundingClientRect().top <= window.innerHeight * 0.33) current = id;
+      });
+    };
+    const onResize = () => {
+      max = document.documentElement.scrollHeight - window.innerHeight;
+      onScroll();
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // Which section is under the top third of the screen, for the nav and the address bar.
+  // IntersectionObserver instead of a per-frame getBoundingClientRect loop over every section:
+  // that loop forced a synchronous layout read on every scroll tick, site-wide, which is what
+  // was reading as "shaking" during scroll on iOS and on slower laptops.
+  useEffect(() => {
+    const visible = new Set<string>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const en of entries) {
+          if (en.isIntersecting) visible.add(en.target.id);
+          else visible.delete(en.target.id);
         }
+        let current = "";
+        for (const id of SECTION_IDS) if (visible.has(id)) current = id;
         setSection(current);
         if (window.location.pathname === "/" && window.location.hash !== (current ? `#${current}` : "")) {
           window.history.replaceState(null, "", current ? `#${current}` : "/");
         }
-      });
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      cancelAnimationFrame(raf);
-    };
+      },
+      { rootMargin: "0px 0px -67% 0px", threshold: 0 },
+    );
+    for (const id of SECTION_IDS) {
+      const el = document.getElementById(id);
+      if (el) io.observe(el);
+    }
+    return () => io.disconnect();
   }, []);
 
   // Close the mobile menu on Esc, and keep the page from scrolling behind it.
@@ -895,7 +921,11 @@ function Divisions() {
 
   return (
     <section ref={sectionRef} id="divisions" aria-labelledby="divisions-title" className="relative overflow-x-clip bg-slate-50" style={{ height: "calc(100svh + 420svh)" }}>
-      <div className="sticky top-16 h-[calc(100svh-4rem)] overflow-hidden">
+      {/* [transform:translateZ(0)] forces Safari to give this sticky element its own stable
+          compositing layer. Without it, WebKit recomposites the sticky box (and the WebGL canvas
+          inside it) against scroll every frame instead of just translating it — the cause of the
+          shake reported on iOS; Chromium doesn't have this bug, so it never showed up there. */}
+      <div className="sticky top-16 h-[calc(100svh-4rem)] overflow-hidden [backface-visibility:hidden] [transform:translateZ(0)]">
         <div className="mx-auto grid h-full max-w-7xl grid-rows-[minmax(0,1fr)_auto] px-5 md:px-10 lg:grid-cols-[0.8fr_1.2fr] lg:grid-rows-1 lg:gap-10">
           {/* The build, in 3D. */}
           {buildNear ? (
