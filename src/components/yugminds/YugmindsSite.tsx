@@ -821,7 +821,8 @@ const STAGES: { key: DivisionKey; verb: string; unit: string; desc: string; see:
 function Divisions() {
   const sectionRef = useRef<HTMLElement>(null);
   const progressRef = useRef(0);
-  const [prog, setProg] = useState(0); // 0..5, rounded for the rail
+  const fillRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const [active, setActive] = useState(0); // which step's text shows; only changes 5 times total
   // The 3D build scene (its own WebGL canvas) mounts only once the section is a screen away, and stays.
   const [buildNear, setBuildNear] = useState(false);
   useEffect(() => {
@@ -841,6 +842,11 @@ function Divisions() {
     // toolbar collapse.
     let vh = window.innerHeight;
     let vw = window.innerWidth;
+    // The per-frame progress (camera position, rail fill) is written straight to refs/DOM, not
+    // React state — a setState here would re-render the whole step list up to 60x/sec during
+    // scroll, which on top of the WebGL canvas's own compositing is what was reading as "shaking"
+    // on slower laptops and phones. React only re-renders when the active step actually changes.
+    let lastActive = -1;
     const measure = () => {
       raf = 0;
       const el = sectionRef.current;
@@ -849,7 +855,15 @@ function Divisions() {
       const total = r.height - vh;
       const p = total > 0 ? Math.max(0, Math.min(1, -r.top / total)) * 5 : 0;
       progressRef.current = p;
-      setProg(Math.round(p * 100) / 100);
+      const nextActive = Math.min(4, Math.floor(p));
+      for (let i = 0; i < fillRefs.current.length; i++) {
+        const local = i === nextActive ? Math.max(0, Math.min(1, p - i)) : i < nextActive ? 1 : 0;
+        fillRefs.current[i]?.style.setProperty("transform", `scaleX(${local})`);
+      }
+      if (nextActive !== lastActive) {
+        lastActive = nextActive;
+        setActive(nextActive);
+      }
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(measure);
@@ -871,7 +885,6 @@ function Divisions() {
     };
   }, []);
 
-  const active = Math.min(4, Math.floor(prog));
   const goTo = (i: number) => {
     const el = sectionRef.current;
     if (!el) return;
@@ -907,7 +920,6 @@ function Divisions() {
               {STAGES.map((st, i) => {
                 const on = i === active;
                 const done = i < active;
-                const local = on ? Math.max(0, Math.min(1, prog - i)) : done ? 1 : 0;
                 return (
                   <li key={st.key} id={st.key} className={`scroll-mt-24 max-lg:col-start-1 max-lg:row-start-1 ${on ? "" : "max-lg:invisible"}`}>
                     <button
@@ -929,8 +941,15 @@ function Divisions() {
                         <span className={`block font-acdisplay text-2xl font-bold leading-none tracking-tight lg:text-xl ${on ? "text-ym-text" : "text-slate-500"}`}>{st.verb}</span>
                         <span className={`mt-1 block text-sm font-semibold ${on ? "text-ym-blue" : "text-slate-500"}`}>{st.unit}</span>
                       </span>
-                      {/* How far this step has got. */}
-                      <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 origin-left bg-ym-blue" style={{ transform: `scaleX(${local})` }} />
+                      {/* How far this step has got. Updated straight on the DOM from the scroll loop (see measure()), not via React state. */}
+                      <span
+                        aria-hidden
+                        ref={(el) => {
+                          fillRefs.current[i] = el;
+                        }}
+                        className="absolute inset-x-0 bottom-0 h-1 origin-left bg-ym-blue"
+                        style={{ transform: `scaleX(${done ? 1 : 0})` }}
+                      />
                     </button>
                   </li>
                 );
