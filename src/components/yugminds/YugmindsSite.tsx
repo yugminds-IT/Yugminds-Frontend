@@ -390,6 +390,12 @@ function Hero() {
       <div aria-hidden className="h-[min(100vw,500px)] sm:h-[min(72vw,600px)] lg:hidden" />
       {/* Phones and tablets drive themselves (no controls there); desktop with a mouse is drivable. */}
       <div className={HERO_STAGE}>
+        {/* The car takes a moment to warm up (idle wait, then its geometry builds in idle-time
+            steps). Show a quiet pulse where it'll appear instead of blank space; the 3D canvas
+            paints fully opaque once ready, so it covers this without any coordination needed. */}
+        <div aria-hidden className="absolute inset-0 flex items-center justify-center bg-white">
+          <div className="h-[38%] w-[62%] max-w-md animate-pulse rounded-2xl bg-slate-100" />
+        </div>
         {heroReady && (
           <HeroRobot className="h-full w-full">
             <DrivePrompt />
@@ -828,12 +834,19 @@ function Divisions() {
 
   useEffect(() => {
     let raf = 0;
+    // Mobile browsers resize the window as their toolbar hides/shows while you scroll, but the
+    // section's CSS height is set in `svh` (stable). Measuring against the live window.innerHeight
+    // instead would make `total`/`prog` jitter every scroll frame — read as the whole section
+    // shaking. So we only resync this to a real device resize (width change), not a scroll-driven
+    // toolbar collapse.
+    let vh = window.innerHeight;
+    let vw = window.innerWidth;
     const measure = () => {
       raf = 0;
       const el = sectionRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      const total = r.height - window.innerHeight;
+      const total = r.height - vh;
       const p = total > 0 ? Math.max(0, Math.min(1, -r.top / total)) * 5 : 0;
       progressRef.current = p;
       setProg(Math.round(p * 100) / 100);
@@ -841,13 +854,20 @@ function Divisions() {
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(measure);
     };
+    const onResize = () => {
+      if (window.innerWidth !== vw) {
+        vw = window.innerWidth;
+        vh = window.innerHeight;
+      }
+      onScroll();
+    };
     measure();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", onResize);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
     };
   }, []);
 
