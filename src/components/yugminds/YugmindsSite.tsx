@@ -367,14 +367,14 @@ function Hero() {
       {/* The car's stage fills the whole hero on large screens; the copy sits over its left side. */}
       <div className="pointer-events-none relative z-10 mx-auto flex w-full max-w-7xl flex-col px-5 pt-6 md:px-10 lg:min-h-[calc(100svh-4rem)] lg:justify-start lg:pb-20 lg:pt-16">
         <div className="pointer-events-auto max-w-xl">
-          <h1 id="hero-title" className="font-acdisplay text-[clamp(3.6rem,5.6vw,5.5rem)] font-bold leading-[0.92] tracking-[-0.035em] text-ym-text">
+          <h1 id="hero-title" className="font-acdisplay text-[clamp(4.1rem,6.8vw,6.6rem)] font-bold leading-[0.92] tracking-[-0.035em] text-ym-text">
             {/* One heading, read once: "We build robots." on load, then the second word rotates for sighted visitors. */}
             <span className="block overflow-hidden pb-[0.06em]">
               <span className="ym-line block" style={{ animationDelay: "100ms" }}>We build</span>
             </span>{" "}
             <BuildWord />
           </h1>
-          <p className="ym-rise mt-5 max-w-[42ch] text-[15px] leading-relaxed text-slate-700 sm:text-lg md:text-xl lg:mt-6" style={{ animationDelay: "450ms" }}>
+          <p className="ym-rise mt-5 max-w-[44ch] text-sm leading-relaxed text-slate-700 sm:text-base md:text-lg lg:mt-6" style={{ animationDelay: "450ms" }}>
             YugMinds designs and makes technology end to end: apps, electronics and machines for companies, and
             Robocoders robotics lessons for schools.
           </p>
@@ -879,13 +879,16 @@ function Divisions() {
             <p className="mt-3 max-w-[44ch] text-slate-600 max-lg:hidden">
               Labs, Hardware, Software, Manufacturing and Robocoders each add their part to the car from the top of the page. Scroll to watch it come together.
             </p>
-            <ol className="mt-6 flex flex-col gap-1.5 lg:mt-8">
+            {/* Phones show one step at a time. All five share one grid cell (the rest invisible, not
+                removed), so the panel is always as tall as the longest step: moving between steps never
+                resizes it, and the 3D stage above never jumps. */}
+            <ol className="mt-6 grid lg:mt-8 lg:flex lg:flex-col lg:gap-1.5">
               {STAGES.map((st, i) => {
                 const on = i === active;
                 const done = i < active;
                 const local = on ? Math.max(0, Math.min(1, prog - i)) : done ? 1 : 0;
                 return (
-                  <li key={st.key} id={st.key} className={`scroll-mt-24 ${on ? "" : "max-lg:hidden"}`}>
+                  <li key={st.key} id={st.key} className={`scroll-mt-24 max-lg:col-start-1 max-lg:row-start-1 ${on ? "" : "max-lg:invisible"}`}>
                     <button
                       type="button"
                       onClick={() => goTo(i)}
@@ -908,17 +911,17 @@ function Divisions() {
                       {/* How far this step has got. */}
                       <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 origin-left bg-ym-blue" style={{ transform: `scaleX(${local})` }} />
                     </button>
-                    {on && (
-                      <div key={st.key} className="ym-rise bg-white px-4 pb-4 pl-[4.25rem]">
-                        <p className="leading-relaxed text-slate-700">{st.desc}</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-500">{st.see}</p>
-                        {st.href && (
-                          <Link href={st.href} className={`mt-3 inline-block font-semibold text-ym-blue underline decoration-blue-200 decoration-2 underline-offset-4 hover:decoration-ym-blue ${focusRing}`}>
-                            Visit Robocoders
-                          </Link>
-                        )}
-                      </div>
-                    )}
+                    {/* Every step keeps its description in the layout on phones (for the stable height);
+                        desktop shows only the current one, as an accordion. */}
+                    <div className={`bg-white px-4 pb-4 pl-[4.25rem] ${on ? "ym-rise" : "lg:hidden"}`}>
+                      <p className="leading-relaxed text-slate-700">{st.desc}</p>
+                      <p className="mt-2 text-sm font-semibold text-slate-500">{st.see}</p>
+                      {st.href && (
+                        <Link href={st.href} className={`mt-3 inline-block font-semibold text-ym-blue underline decoration-blue-200 decoration-2 underline-offset-4 hover:decoration-ym-blue ${focusRing}`}>
+                          Visit Robocoders
+                        </Link>
+                      )}
+                    </div>
                   </li>
                 );
               })}
@@ -1010,7 +1013,7 @@ function Products() {
   // IDLE_MS with no input. "off": they pressed Pause, so it waits for Play.
   const TOUR_MS = 5000;
   const IDLE_MS = 15000;
-  const [tab, setTab] = useState<keyof typeof DEMOS>("simulator");
+  const [tab, setTab] = useState<keyof typeof DEMOS>(PRODUCTS[0].id); // the tour starts at Studio
   const [mode, setMode] = useState<"on" | "hold" | "off">("on");
   const [resumeIn, setResumeIn] = useState(0);
   const lastInput = useRef(0);
@@ -1036,6 +1039,11 @@ function Products() {
     io.observe(el);
     return () => io.disconnect();
   }, []);
+  // Each time the section comes into view with the tour running, it starts again at Studio.
+  useEffect(() => {
+    if (inView && mode === "on") setTab(PRODUCTS[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView]);
   useEffect(() => {
     if (!touring || !inView) return;
     const t = window.setTimeout(() => {
@@ -1062,6 +1070,30 @@ function Products() {
     if (!strip || !btn || strip.scrollWidth <= strip.clientWidth) return;
     strip.scrollTo({ left: btn.offsetLeft - (strip.clientWidth - btn.offsetWidth) / 2, behavior: "smooth" });
   }, [tab]);
+  // The stage keeps the height of the tallest product it has shown, so the page below never jumps
+  // as the tour moves on (the demos differ in height, by up to ~500px on phones). Starts over only
+  // when the width changes (rotation); the phone's address bar showing or hiding doesn't count.
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    let tallest = 0;
+    let width = window.innerWidth;
+    const ro = new ResizeObserver(() => {
+      if (window.innerWidth !== width) {
+        width = window.innerWidth;
+        tallest = 0;
+        el.style.minHeight = "";
+      }
+      const h = el.offsetHeight;
+      if (h > tallest) {
+        tallest = h;
+        el.style.minHeight = `${h}px`;
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const p = PRODUCTS.find((x) => x.id === tab) ?? PRODUCTS[0];
   const Demo = DEMOS[p.id];
 
@@ -1155,7 +1187,8 @@ function Products() {
 
         {/* The stage: the chosen product and its demo. Using the demo stops the tour. */}
         <div
-          className="mt-2 grid gap-5 bg-[#172f74] p-3 sm:gap-8 sm:p-5 md:p-8 lg:grid-cols-[0.75fr_1.25fr] lg:gap-10"
+          ref={stageRef}
+          className="mt-2 grid content-start gap-5 bg-[#172f74] p-3 sm:gap-8 sm:p-5 md:p-8 lg:grid-cols-[0.75fr_1.25fr] lg:gap-10"
           onPointerDown={hold}
           onFocusCapture={hold}
         >

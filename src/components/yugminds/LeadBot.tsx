@@ -479,7 +479,7 @@ export function LeadBot() {
         <button
           type="button"
           onClick={openPanel}
-          className="ym-rise absolute bottom-6 right-[88px] whitespace-nowrap rounded-full bg-[#1e3a8a] px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-[#1b3786] focus-visible:ring-2 focus-visible:ring-ym-blue focus-visible:ring-offset-2"
+          className="ym-rise absolute bottom-4 right-[76px] whitespace-nowrap sm:bottom-6 sm:right-[88px] rounded-full bg-[#1e3a8a] px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-[#1b3786] focus-visible:ring-2 focus-visible:ring-ym-blue focus-visible:ring-offset-2"
         >
           Need a call back?
         </button>
@@ -496,7 +496,7 @@ export function LeadBot() {
         onBlur={() => setHover(false)}
         aria-expanded={open}
         aria-label={open ? "Close the call-back panel" : "Talk to a person at YugMinds"}
-        className={`relative size-[84px] rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ym-blue focus-visible:ring-offset-2 ${happy ? "ym-hop" : ""}`}
+        className={`relative size-[68px] rounded-full sm:size-[84px] outline-none focus-visible:ring-2 focus-visible:ring-ym-blue focus-visible:ring-offset-2 ${happy ? "ym-hop" : ""}`}
       >
         {/* Attention cue: a soft ring that pulses until they've interacted. */}
         {!engaged && !open && <span aria-hidden className="lb-attn absolute inset-2 rounded-full border-2 border-ym-blue" />}

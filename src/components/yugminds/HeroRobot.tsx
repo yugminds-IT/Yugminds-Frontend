@@ -252,20 +252,23 @@ export function perfLog(tag: string, renderer: THREE.WebGLRenderer, ms: number) 
   perfStats.set(tag, st);
 }
 
-/* Holds a scene to a steady frame rate. Starts at the pixel ratio the device can afford (1.5,
-   or 1.25 on phones and small CPUs), steps down 0.25 when frames average over 20 ms across a
-   second, and back up after 3 calm seconds under 12 ms. Call tick(ms between frames) per frame. */
+/* Keeps a scene sharp first and smooth second. Renders at the screen's full pixel ratio (up to
+   2); only if frames stay slow (over 24 ms on average for 2 seconds running, ignoring the
+   load) does it ease down 0.25 at a time, never below 1.25, and it climbs back as soon as
+   frames keep pace again. Call tick(ms between frames) once per frame. */
 export function adaptiveDpr(renderer: THREE.WebGLRenderer) {
-  const small = window.matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4;
-  const max = Math.min(window.devicePixelRatio, small ? 1.25 : 1.5);
+  const max = Math.min(window.devicePixelRatio, 2);
+  const floor = Math.min(max, 1.25);
+  const started = performance.now();
   let ratio = max;
   let sum = 0;
   let n = 0;
+  let slow = 0;
   let calm = 0;
   renderer.setPixelRatio(ratio);
   return {
     tick(ms: number) {
-      if (ms > 250) return; // a stall (tab switch, scroll jump), not the render
+      if (ms > 250 || performance.now() - started < 4000) return; // stalls and the page load aren't the render
       sum += ms;
       n++;
       if (sum < 1000) return;
@@ -273,12 +276,18 @@ export function adaptiveDpr(renderer: THREE.WebGLRenderer) {
       sum = 0;
       n = 0;
       let next = ratio;
-      if (avg > 20) {
-        next = Math.max(0.75, ratio - 0.25);
+      if (avg > 24) {
         calm = 0;
-      } else if (avg < 12 && ++calm >= 3) {
-        next = Math.min(max, ratio + 0.25);
-        calm = 0;
+        if (++slow >= 2) {
+          next = Math.max(floor, ratio - 0.25);
+          slow = 0;
+        }
+      } else {
+        slow = 0;
+        if (avg < 18 && ++calm >= 2) {
+          next = Math.min(max, ratio + 0.25); // keeping pace at the 60 fps cap: go back up
+          calm = 0;
+        }
       }
       if (next !== ratio) {
         ratio = next;
@@ -400,7 +409,7 @@ function buildShellGeometry() {
   const sides = ext.groups[1];
   const sidePos = ext.attributes.position.array.slice(sides.start * 3, (sides.start + sides.count) * 3);
   ext.dispose();
-  const tris = fineTriangles(s, 2, 36);
+  const tris = fineTriangles(s, 3, 36); // fine enough for smooth, unfaceted panels
   const capPos: number[] = [];
   for (const t of tris) {
     for (const k of [0, 1, 2]) capPos.push(t[k].x, t[k].y, depth + bt); // faces +Z
@@ -642,7 +651,7 @@ export function buildRaceShell(
   };
   const livery = keep(new THREE.MeshPhysicalMaterial({ map: keep(liveryTexture()), roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }));
   const paintWhite = keep(new THREE.MeshPhysicalMaterial({ color: 0xf8fafc, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }));
-  const carbonMat = keep(new THREE.MeshStandardMaterial({ map: keep(carbon()), roughness: 0.3 }));
+  const carbonMat = keep(new THREE.MeshPhysicalMaterial({ map: keep(carbon()), roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08 }));
   const glass = keep(new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.18, metalness: 0.2, envMapIntensity: 0.25 })); // tinted: dark from every angle
   const rubberDeep = keep(new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.95 }));
   const silver = keep(new THREE.MeshStandardMaterial({ color: 0xe5e7eb, metalness: 1, roughness: 0.2 }));
