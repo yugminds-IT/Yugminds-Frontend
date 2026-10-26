@@ -490,10 +490,12 @@ body:has([data-dashboard-content]) {
   .ym-drive { animation: ym-drive 16s linear infinite; }
 }
 
-/* The YugMinds one-page site: links to its sections glide there. */
-@media (prefers-reduced-motion: no-preference) {
-  html:has([data-landing]) { scroll-behavior: smooth; }
-}
+/* `scroll-behavior: smooth` used to be set here globally for the landing page's anchor links to
+   glide. Dropped: on iOS Safari (and anything iOS, since every browser there is WebKit) it doesn't
+   only ease programmatic/anchor jumps — it also feeds into ordinary touch-driven scrolling, and
+   WebKit's smooth-scroll interpolation fighting its native momentum/rubber-band physics is what
+   was reading as the whole page vibrating on every scroll. jumpTo() in YugmindsSite.tsx already
+   requests `behavior: "smooth"` explicitly per call, so nav links still glide without this. */
 
 /* ── YugMinds site on phones: platform fixes (mobile-native) ──────────────── */
 [data-landing] {

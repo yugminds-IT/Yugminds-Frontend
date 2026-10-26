@@ -406,7 +406,7 @@ function Hero() {
           </p>
           <div className="ym-rise mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 lg:mt-8 lg:gap-x-6" style={{ animationDelay: "550ms" }}>
             <Link href="/#contact" onClick={(e) => jumpTo(e, "/#contact")} className={`${BTN_PRIMARY} min-h-11 px-4 py-2.5 text-[15px] active:scale-[0.98] sm:min-h-12 sm:px-5 sm:py-3 sm:text-base`}>Start a project</Link>
-            <a href="#divisions" className={`text-[15px] font-semibold text-ym-text underline decoration-slate-300 decoration-2 underline-offset-4 transition-colors hover:decoration-ym-blue sm:text-base ${focusRing}`}>
+            <a href="/#divisions" onClick={(e) => jumpTo(e, "/#divisions")} className={`text-[15px] font-semibold text-ym-text underline decoration-slate-300 decoration-2 underline-offset-4 transition-colors hover:decoration-ym-blue sm:text-base ${focusRing}`}>
               See what we make
             </a>
           </div>
@@ -522,14 +522,17 @@ function TeamPanel({ picked, inline = false }: { picked: (typeof PROJECTS)[numbe
       <div className={`mt-auto flex flex-wrap items-center gap-x-6 gap-y-3 ${inline ? "pt-5" : "pt-8"}`}>
         {/* Jumps to the brief form below, with this project already picked. */}
         <a
-          href="#contact"
-          onClick={() => window.dispatchEvent(new CustomEvent("ym:brief", { detail: picked.id }))}
+          href="/#contact"
+          onClick={(e) => {
+            window.dispatchEvent(new CustomEvent("ym:brief", { detail: picked.id }));
+            jumpTo(e, "/#contact");
+          }}
           className={`${BTN_PRIMARY} min-h-12 ${inline ? "w-full" : ""}`}
         >
           {picked.cta}
         </a>
         {!inline && (
-          <Link href="#divisions" className={`font-semibold text-ym-text underline decoration-slate-300 decoration-2 underline-offset-4 transition-colors hover:decoration-ym-blue ${focusRing}`}>
+          <Link href="/#divisions" onClick={(e) => jumpTo(e, "/#divisions")} className={`font-semibold text-ym-text underline decoration-slate-300 decoration-2 underline-offset-4 transition-colors hover:decoration-ym-blue ${focusRing}`}>
             See what each company does
           </Link>
         )}
@@ -2007,7 +2010,7 @@ function Footer() {
 
         <div className="mt-14 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-6 text-sm text-blue-200/70 sm:flex-row sm:items-center">
           <span>© {new Date().getFullYear()} YugMinds Private Limited, Hyderabad</span>
-          <a href="#top" className={`group inline-flex items-center gap-1.5 rounded hover:text-white ${focusRing} focus-visible:ring-offset-[#0b1a45]`}>
+          <a href="/#top" onClick={(e) => jumpTo(e, "/#top")} className={`group inline-flex items-center gap-1.5 rounded hover:text-white ${focusRing} focus-visible:ring-offset-[#0b1a45]`}>
             <ArrowUp className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5" aria-hidden /> Back to top
           </a>
         </div>
