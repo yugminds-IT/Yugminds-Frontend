@@ -48,6 +48,16 @@ const CARDS: Record<Brand, Card> = {
     pills: ["Courses", "Assignments", "Attendance", "Certificates"],
     domain: "lms.yugminds.org",
   },
+  academy: {
+    logo: "robocoders-logo.png",
+    logoWidth: 380,
+    logoHeight: 161,
+    eyebrow: "RoboCoders Academy",
+    headline: "Online Courses & Live 1:1 Classes",
+    tagline: "Self-paced coding, robotics and AI courses, plus live sessions with expert tutors.",
+    pills: ["Self-paced", "Live 1:1", "Certificates", "Ages 6–18"],
+    domain: "academy.yugminds.org",
+  },
 };
 
 export function generateStaticParams() {

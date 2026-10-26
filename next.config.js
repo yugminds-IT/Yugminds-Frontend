@@ -41,6 +41,18 @@ const nextConfig = {
   // The S3 bucket sends no CORS headers, so the in-app PDF renderer (pdf.js)
   // loads course files through this same-origin path instead. beforeFiles so
   // it wins over the /api/[...path] backend proxy.
+  // YugMinds is a single page: its old pages send a real 308 to the matching
+  // section. Host-limited, because robocoders.yugminds.org has its own /about
+  // and /contact (rewritten to /robocoders/* by the middleware).
+  async redirects() {
+    const yugmindsHost = [{ type: 'host', value: '(www\\.)?yugminds\\.org|localhost|127\\.0\\.0\\.1' }];
+    return [
+      { source: '/about', destination: '/#about', permanent: true, has: yugmindsHost },
+      { source: '/divisions', destination: '/#divisions', permanent: true, has: yugmindsHost },
+      { source: '/contact', destination: '/#contact', permanent: true, has: yugmindsHost },
+      { source: '/work', destination: '/', permanent: true, has: yugmindsHost },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [

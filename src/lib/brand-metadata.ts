@@ -83,6 +83,13 @@ const BRAND_COPY: Record<Brand, BrandCopy> = {
       "Sign in to RoboCoders LMS — courses, assignments, attendance, and certificates for schools, teachers, and students.",
     keywords: ["RoboCoders LMS", "LMS login", "student portal"],
   },
+  academy: {
+    siteName: "RoboCoders Academy",
+    title: "RoboCoders Academy — Online Coding & Robotics Courses, Live 1:1 Classes",
+    description:
+      "Learn coding, robotics and AI online with self-paced courses and live 1:1 sessions with RoboCoders tutors. Certificates included.",
+    keywords: ["online coding course for kids", "robotics course online", "1:1 coding classes", "RoboCoders Academy"],
+  },
 };
 
 export async function buildBrandMetadata(
@@ -112,7 +119,9 @@ export async function buildBrandMetadata(
   const robots: Metadata["robots"] =
     !isProductionHost ||
     isCertificatePage ||
-    (brand === "lms" && !isLmsIndexablePath(internalPath))
+    (brand === "lms" && !isLmsIndexablePath(internalPath)) ||
+    // Academy dashboards, auth and checkout are private; storefront pages are indexed.
+    (brand === "academy" && /^\/academy\/(learn|tutor|admin|checkout|login|signup)(\/|$)/.test(internalPath))
       ? { index: false, follow: false }
       : { index: true, follow: true };
 

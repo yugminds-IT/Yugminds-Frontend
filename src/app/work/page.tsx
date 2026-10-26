@@ -1,5 +1,6 @@
-"use client";
+import { permanentRedirect } from "next/navigation";
 
-import { YugmindsWorkPage } from "../../components/yugminds/YugmindsSite";
-
-export default YugmindsWorkPage;
+// YugMinds is a single page now; this old address points to its section.
+export default function Page() {
+  permanentRedirect("/");
+}

@@ -10,19 +10,24 @@ import {
   readInternalPathname,
   readRequestHost,
 } from "../lib/brand-metadata";
+import { BUSINESS, HAS_FULL_ADDRESS } from "../lib/business-info";
 
+// Built from the single business-facts source, so the site, the schema and
+// every listing say the same thing. Unknown fields are simply left out.
+const A = BUSINESS.address;
 const ADDRESS = {
   "@type": "PostalAddress",
-  addressLocality: "Begumpet, Hyderabad",
-  addressRegion: "Telangana",
-  addressCountry: "IN",
+  ...(A.street ? { streetAddress: `${A.street}, ${A.locality}`, addressLocality: A.city } : { addressLocality: `${A.locality}, ${A.city}` }),
+  addressRegion: A.region,
+  ...(A.postalCode ? { postalCode: A.postalCode } : {}),
+  addressCountry: A.country,
 };
 
 const CONTACT_POINT = {
   "@type": "ContactPoint",
   contactType: "customer support",
-  email: "info@yugminds.org",
-  telephone: "+91-85003-45655",
+  email: BUSINESS.email,
+  telephone: BUSINESS.phone,
   areaServed: "IN",
   availableLanguage: ["en"],
 };
@@ -37,17 +42,19 @@ export async function StructuredData() {
     const organization = {
       "@context": "https://schema.org",
       "@type": "Organization",
-      name: "YugMinds",
-      legalName: "YugMinds Private Limited",
+      "@id": `${url}/#organization`,
+      name: BUSINESS.name,
+      legalName: BUSINESS.legalName,
       url,
       logo: `${url}/Yugminds_Official_Logo-preview.png`,
       description:
-        "YugMinds builds software, electronics, and machines under one roof — and teaches the next generation through RoboCoders STEM programs.",
-      foundingDate: "2024",
-      email: "info@yugminds.org",
-      telephone: "+91-85003-45655",
+        "YugMinds is five companies under one roof in Hyderabad: Labs, Hardware, Software, Manufacturing, and Robocoders robotics lessons for schools.",
+      foundingDate: BUSINESS.foundingYear,
+      email: BUSINESS.email,
+      telephone: BUSINESS.phone,
       address: ADDRESS,
       contactPoint: CONTACT_POINT,
+      ...(BUSINESS.sameAs.length ? { sameAs: BUSINESS.sameAs } : {}),
       subOrganization: {
         "@type": "Organization",
         name: "RoboCoders",
@@ -61,8 +68,66 @@ export async function StructuredData() {
       url,
       publisher: { "@type": "Organization", name: "YugMinds", url },
     };
+    // YugMinds is one page: name its sections so search engines can link to them.
+    const sections = [
+      { id: "divisions", name: "Our companies", about: "Labs, Hardware, Software, Manufacturing and Robocoders, and what each one builds." },
+      { id: "products", name: "Products", about: "RoboCoders Studio, Simulator, ESP32 Robotics Kit and Play Kit, with live demos." },
+      { id: "about", name: "About YugMinds", about: "Why build with YugMinds: one roof, every part made in-house." },
+      { id: "build", name: "What do you need built?", about: "Pick a project and see which YugMinds companies build it." },
+      { id: "contact", name: "Contact", about: "Send a project brief or call the team in Begumpet, Hyderabad." },
+    ];
+    const webpage = {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "YugMinds",
+      url,
+      hasPart: sections.map((s) => ({
+        "@type": "WebPageElement",
+        name: s.name,
+        description: s.about,
+        url: `${url}/#${s.id}`,
+      })),
+    };
+    const navigation = {
+      "@context": "https://schema.org",
+      "@type": "SiteNavigationElement",
+      name: sections.map((s) => s.name),
+      url: sections.map((s) => `${url}/#${s.id}`),
+    };
+    const localBusiness = HAS_FULL_ADDRESS
+      ? {
+          "@context": "https://schema.org",
+          "@type": "ProfessionalService",
+          "@id": `${url}/#office`,
+          name: BUSINESS.name,
+          url,
+          image: `${url}/og/yugminds.png`,
+          telephone: BUSINESS.phone,
+          email: BUSINESS.email,
+          address: ADDRESS,
+          ...(BUSINESS.geo ? { geo: { "@type": "GeoCoordinates", ...BUSINESS.geo } } : {}),
+          ...(BUSINESS.openingHours.length ? { openingHours: BUSINESS.openingHours } : {}),
+          ...(BUSINESS.sameAs.length ? { sameAs: BUSINESS.sameAs } : {}),
+          areaServed: { "@type": "Country", name: "India" },
+          parentOrganization: { "@id": `${url}/#organization` },
+        }
+      : null;
     return (
       <>
+        {localBusiness && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusiness) }}
+          />
+        )}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(webpage) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(navigation) }}
+        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organization) }}

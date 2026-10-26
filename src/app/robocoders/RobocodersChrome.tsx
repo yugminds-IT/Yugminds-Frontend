@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import BrandSwitcherBar from "../../components/BrandSwitcherBar";
 import ResizableNavbar from "../../components/ResizableNavbar";
 
 export default function RobocodersChrome({
@@ -18,9 +17,7 @@ export default function RobocodersChrome({
 
   return (
     <>
-      <BrandSwitcherBar fixed />
-      <div className="h-9" />
-      <ResizableNavbar offsetForBrandBar />
+      <ResizableNavbar />
       {children}
     </>
   );

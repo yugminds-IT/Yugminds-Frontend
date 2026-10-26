@@ -35,6 +35,15 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
+  // Paint under the notch; fixed bars pad themselves back out with env(safe-area-inset-*).
+  viewportFit: "cover",
+  // Android: the keyboard shrinks the layout, so the brief form and bot panel stay reachable.
+  interactiveWidget: "resizes-content",
+  // Browser chrome matches the white header in both OS schemes (the sites have no OS-driven dark mode).
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#ffffff" },
+  ],
 };
 
 export default function RootLayout({

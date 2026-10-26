@@ -2,6 +2,8 @@ import type { Config } from "tailwindcss";
 import typography from "@tailwindcss/typography";
 
 const config: Config = {
+  // hover: styles only where the device can really hover, so a tap doesn't leave them stuck on phones.
+  future: { hoverOnlyWhenSupported: true },
   darkMode: "class",
   content: [
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
@@ -23,6 +25,8 @@ const config: Config = {
       fontFamily: {
         sans: ['var(--font-abeezee)', 'sans-serif'],
         abeezee: ['var(--font-abeezee)', 'sans-serif'],
+        // Academy headings, prices and progress numbers (loaded in app/academy/layout.tsx).
+        acdisplay: ['var(--font-ac-display)', 'var(--font-abeezee)', 'sans-serif'],
       },
       colors: {
         /* Public landing page palette — blue / white / black only, no
@@ -39,6 +43,16 @@ const config: Config = {
           "blue-deep": "#172554",
           "blue-lit": "#1D4ED8",
           "blue-soft": "#93C5FD",
+        },
+        // Academy — same palette as RoboCoders / LMS / YugMinds: blue-600 primary,
+        // blue-700 hover, blue-50 tint, slate ink, amber accent.
+        ac: {
+          brand: "#2563EB",
+          "brand-dark": "#1D4ED8",
+          soft: "#EFF6FF",
+          ink: "#0F172A",
+          muted: "#64748B",
+          accent: "#F59E0B",
         },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",

@@ -83,6 +83,30 @@ describe("brand-host", () => {
     );
   });
 
+  it("academy host serves clean URLs", () => {
+    assert.equal(brandFromHostname("academy.yugminds.org"), "academy");
+    assert.deepEqual(routeForHost("academy", "/"), rewrite("/academy"));
+    assert.deepEqual(routeForHost("academy", "/learn/courses"), rewrite("/academy/learn/courses"));
+    assert.deepEqual(
+      routeForHost("academy", "/academy/tutors"),
+      redirect("https://academy.yugminds.org/tutors"),
+    );
+    assert.deepEqual(
+      routeForHost("academy", "/lms/login"),
+      redirect("https://lms.yugminds.org/login"),
+    );
+    assert.deepEqual(
+      routeForHost("yugminds", "/academy/courses"),
+      redirect("https://academy.yugminds.org/courses"),
+    );
+    assert.deepEqual(
+      routeForHost("lms", "/academy"),
+      redirect("https://academy.yugminds.org/"),
+    );
+    assert.equal(toPublicPath("academy", "/academy/admin"), "/admin");
+    assert.equal(canonicalUrl("academy", "/academy"), "https://academy.yugminds.org");
+  });
+
   it("verify has one canonical URL", () => {
     const canonical = "https://robocoders.yugminds.org/lms/verify/abc";
     assert.deepEqual(

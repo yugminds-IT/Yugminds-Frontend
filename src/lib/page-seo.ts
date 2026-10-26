@@ -14,52 +14,18 @@ export type PageSeo = {
 export const PAGE_SEO: Record<string, PageSeo> = {
   "/": {
     primaryKeyword: "YugMinds",
-    title: "YugMinds — Software, Electronics & STEM Education",
+    title: "YugMinds | Robotics, Electronics & Software, Hyderabad",
     description:
-      "YugMinds builds software, electronics, and machines under one roof — and teaches the next generation through RoboCoders STEM programs across India.",
+      "Five companies under one roof in Hyderabad: robots, electronics, software and manufacturing, plus Robocoders robotics labs for schools. Send us a brief.",
     keywords: [
       "YugMinds",
-      "YugMinds software",
-      "electronics manufacturing",
-      "STEM education India",
+      "YugMinds Hyderabad",
+      "robotics company Hyderabad",
+      "electronics design and manufacturing",
+      "software development Hyderabad",
       "RoboCoders",
-      "EdTech",
+      "robotics lab for schools",
     ],
-  },
-  "/about": {
-    primaryKeyword: "About YugMinds",
-    title: "About YugMinds | Software, Electronics & Machines — Hyderabad",
-    description:
-      "About YugMinds — founded in 2024 in Hyderabad. One team building software, electronics and machines, and teaching the next generation through Robocoders.",
-    keywords: ["About YugMinds", "YugMinds Hyderabad", "YugMinds Private Limited", "YugMinds story"],
-  },
-  "/divisions": {
-    primaryKeyword: "YugMinds divisions",
-    title: "Our Divisions | Software, Manufacturing, Hardware & Labs — YugMinds",
-    description:
-      "Five YugMinds divisions under one roof: Software, Manufacturing, Hardware, Research Labs and Robocoders EdTech — from design to product to classroom.",
-    keywords: [
-      "YugMinds divisions",
-      "YugMinds Software",
-      "YugMinds Manufacturing",
-      "YugMinds Hardware",
-      "YugMinds Labs",
-      "Robocoders EdTech",
-    ],
-  },
-  "/work": {
-    primaryKeyword: "YugMinds work",
-    title: "Our Work | Projects & Stories — YugMinds",
-    description:
-      "Explore YugMinds work — hands-on robotics in classrooms, a STEM curriculum from first circuits to competitions, and software and machines built by one team.",
-    keywords: ["YugMinds work", "YugMinds projects", "YugMinds journal", "Robocoders robotics"],
-  },
-  "/contact": {
-    primaryKeyword: "Contact YugMinds",
-    title: "Contact YugMinds | Begumpet, Hyderabad",
-    description:
-      "Contact YugMinds in Begumpet, Hyderabad — email info@yugminds.org or call +91 85003 45655 for software, electronics, manufacturing or Robocoders enquiries.",
-    keywords: ["Contact YugMinds", "YugMinds Hyderabad", "YugMinds email", "YugMinds phone"],
   },
   "/robocoders": {
     primaryKeyword: "RoboCoders",
@@ -149,6 +115,19 @@ export const PAGE_SEO: Record<string, PageSeo> = {
       "STEM courses for kids",
     ],
   },
+  "/robocoders/online-classes": {
+    primaryKeyword: "online coding classes for kids",
+    title: "Online Coding & Robotics Classes for Kids | Free Demo — RoboCoders",
+    description:
+      "Learn coding, robotics and AI online with RoboCoders: self-paced courses and live 1:1 classes. Start with a free demo course or a free 1:1 trial class.",
+    keywords: [
+      "online coding classes for kids",
+      "online robotics course",
+      "1:1 coding tutor",
+      "free coding class for kids",
+      "RoboCoders online",
+    ],
+  },
   "/robocoders/contact": {
     primaryKeyword: "Contact RoboCoders",
     title: "Contact Us | RoboCoders",
@@ -225,5 +204,6 @@ export function lookupPageSeo(internalPath: string): PageSeo | null {
 export function brandSiteName(brand: Brand): string {
   if (brand === "yugminds") return "YugMinds";
   if (brand === "robocoders") return "RoboCoders";
+  if (brand === "academy") return "RoboCoders Academy";
   return "RoboCoders LMS";
 }

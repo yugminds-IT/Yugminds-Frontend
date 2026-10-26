@@ -17,6 +17,7 @@ import {
 	toPublicPath,
 	type Brand,
 } from './lib/brand-host'
+import { academyArea, academyRedirect } from './lib/academy/access'
 
 const PUBLIC_PATHS: RegExp[] = [
 	/^\/$/,
@@ -27,6 +28,8 @@ const PUBLIC_PATHS: RegExp[] = [
 	/^\/careers(?:\/.*)?$/,
 	/^\/not-found(?:\/.*)?$/,
 	/^\/robocoders(?:\/.*)?$/,
+	/^\/academy$/,
+	/^\/academy\/(?:courses|tutors|checkout|login|signup|forgot-password|verify)(?:\/.*)?$/,
 	/^\/lms\/login(?:\/.*)?$/,
 	/^\/lms\/signup(?:\/.*)?$/,
 	/^\/lms\/forgot-password(?:\/.*)?$/,
@@ -57,6 +60,18 @@ const ROLE_ROUTES: { prefix: string; roles: string[] }[] = [
 	{ prefix: '/lms/teacher', roles: ['teacher'] },
 	{ prefix: '/lms/student', roles: ['student'] },
 ]
+
+/** Academy (separate app): its own access cookie + secret, never the LMS ones. */
+async function academyPayload(token: string | undefined): Promise<{ role?: string } | null> {
+	const secret = process.env.ACADEMY_JWT_SECRET
+	if (!token || !secret) return null
+	try {
+		const { payload } = await jwtVerify(token, new TextEncoder().encode(secret))
+		return payload.typ === 'access' ? (payload as { role?: string }) : null
+	} catch {
+		return null
+	}
+}
 
 function isPublicPath(pathname: string) {
 	return PUBLIC_PATHS.some((re) => re.test(pathname))
@@ -143,6 +158,13 @@ export async function middleware(req: NextRequest) {
 			NextResponse.next({ request: { headers: requestHeaders } }),
 			req,
 		)
+	}
+
+	if (academyArea(internalPath)) {
+		// Expired/missing access cookie → Academy login, which silently refreshes and comes back.
+		const dest = academyRedirect(internalPath, await academyPayload(req.cookies.get('ac_at')?.value))
+		if (dest) return finish(NextResponse.redirect(publicUrl(req, hostBrand, dest)), req)
+		return respondNext()
 	}
 
 	if (isPublicPath(internalPath)) {

@@ -64,6 +64,16 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     };
   }
 
+  if (brand === "academy") {
+    return {
+      rules: withAiCrawlers({
+        allow: "/",
+        disallow: [...sharedDisallow, "/learn", "/tutor", "/admin", "/checkout", "/login", "/signup"],
+      }),
+      sitemap,
+    };
+  }
+
   return {
     rules: withAiCrawlers({ allow: "/", disallow: sharedDisallow }),
     sitemap,

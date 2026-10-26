@@ -137,40 +137,55 @@ section, main, article, aside {
   background: var(--ym-cream);
 }
 
-/* Hyperspeed's renderer sets the canvas's internal resolution but not its
-   CSS size (setSize is called with updateStyle:false), so the canvas needs
-   an explicit width/height rule to actually fill its container. */
-.ym-hyperspeed canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
 [data-landing] ::selection {
   background: #2563eb;
   color: #ffffff;
 }
 
-/* Concentric-ring field used behind the hero. */
-.ym-rings {
-  background-image: repeating-radial-gradient(
-    circle at 50% 45%,
-    rgba(255, 255, 255, 0.028) 0px,
-    rgba(255, 255, 255, 0.028) 1px,
-    transparent 1px,
-    transparent 68px
-  );
+/* Hero entrance in CSS, so the headline shows even if script is slow or fails. */
+@media (prefers-reduced-motion: no-preference) {
+  .ym-line { animation: ym-line 900ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .ym-rise { animation: ym-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@keyframes ym-line { from { transform: translateY(105%); } }
+@keyframes ym-rise { from { opacity: 0; transform: translateY(12px); } }
+/* Project picker auto-tour: the active option's timer bar. */
+@keyframes ym-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.ym-progress { transform-origin: left; animation: ym-progress var(--ym-tour, 4500ms) linear both; }
+/* Play Kit demo: the robot bumping into something, and the star when reached. */
+@keyframes ym-shake { 0%, 100% { translate: 0 0; } 20% { translate: -4px 0; } 40% { translate: 4px 0; } 60% { translate: -3px 0; } 80% { translate: 2px 0; } }
+@keyframes ym-pop { 0% { scale: 1; } 40% { scale: 1.45; } 100% { scale: 1.15; } }
+/* Site assistant: a wave when it greets, a hop when a call back is sent, typing dots. */
+@keyframes ym-wave { 0%, 60%, 100% { rotate: 0deg; } 10%, 30% { rotate: -10deg; } 20%, 40% { rotate: 10deg; } }
+@keyframes ym-hop { 0%, 100% { translate: 0 0; } 30% { translate: 0 -10px; } 55% { translate: 0 0; } 70% { translate: 0 -4px; } }
+@keyframes ym-dot { 0%, 80%, 100% { opacity: 0.3; translate: 0 0; } 40% { opacity: 1; translate: 0 -3px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .ym-wave { animation: ym-wave 1.6s ease-in-out 2; }
+  .ym-hop { animation: ym-hop 700ms ease-out; }
+  .ym-dot { animation: ym-dot 1s ease-in-out infinite; }
+  .ym-shake { animation: ym-shake 400ms ease-in-out; }
+  .ym-pop { animation: ym-pop 600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 }
 
-/* Grain keeps the large flat blue/cream fields from banding. */
-.ym-grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.28;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.32'/%3E%3C/svg%3E");
+/* Hero exploded device: text fallback when WebGL is unavailable. */
+.ym-device-fallback { display: none; }
+[data-failed] .ym-device-fallback {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: #475569;
+}
+
+/* YugMinds products band sits on a blueprint. */
+.ym-graph-blue {
+  background-color: #1e3a8a;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -375,3 +390,154 @@ body:has([data-dashboard-content]) {
   height: 100%;
   overflow: hidden;
 }
+
+/* Academy: graph-paper texture — the "build manual" page the Academy is drawn on. */
+.ac-graph {
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(#dbeafe 1px, transparent 1px),
+    linear-gradient(90deg, #dbeafe 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.ac-graph-blue {
+  background-color: #2563eb;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.12) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* About section reveal: hidden only once JS has armed it ("ready"), shown on "in".
+   The observer watches the section itself, which is never clipped. */
+.ym-about[data-anim] .ym-about-tile { transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms); }
+.ym-about[data-anim] .ym-about-point { transition: opacity 600ms ease var(--d, 0ms), translate 600ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms); }
+.ym-about[data-anim="ready"] .ym-about-tile { clip-path: inset(100% 0 0 0); }
+.ym-about[data-anim="ready"] .ym-about-point { opacity: 0; translate: 0 14px; }
+
+/* Site assistant robot (LeadBot). Parts rotate about their own joints. */
+.lb-head, .lb-bob, .lb-arm-l, .lb-arm-r, .lb-sway-l, .lb-sway-r, .lb-body, .lb-chest, .lb-shadow, .lb-wheel, .lb-halo { transform-box: fill-box; }
+.lb-head, .lb-bob, .lb-body { transform-origin: 50% 100%; }
+.lb-head { transition: rotate 300ms ease; }
+.lb-arm-l, .lb-arm-r, .lb-sway-l, .lb-sway-r { transform-origin: 50% 6%; }
+.lb-arm-l, .lb-arm-r { transition: rotate 300ms ease; }
+.lb-chest, .lb-shadow, .lb-wheel, .lb-halo { transform-origin: 50% 50%; }
+.lb-arm-l-up { rotate: 35deg; }
+@keyframes lb-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
+@keyframes lb-shadow { 0%, 100% { scale: 1; opacity: 0.18; } 50% { scale: 0.85; opacity: 0.12; } }
+@keyframes lb-wave-arm { 0% { rotate: 0deg; } 20% { rotate: -150deg; } 35% { rotate: -125deg; } 50% { rotate: -155deg; } 65% { rotate: -125deg; } 80% { rotate: -150deg; } 100% { rotate: 0deg; } }
+@keyframes lb-tilt { 0%, 100% { rotate: 0deg; } 30%, 70% { rotate: -12deg; } }
+@keyframes lb-lookaround { 0%, 100% { rotate: 0deg; } 25% { rotate: 7deg; } 65% { rotate: -7deg; } }
+@keyframes lb-eyes-scan { 0%, 100% { translate: 0 0; } 25% { translate: 3px 0; } 65% { translate: -3px 0; } }
+@keyframes lb-hop { 0%, 100% { translate: 0 0; } 30% { translate: 0 -9px; } 55% { translate: 0 0; } 70% { translate: 0 -3px; } }
+@keyframes lb-ping { 0%, 100% { fill: #f59e0b; } 25%, 75% { fill: #fde68a; } 50% { fill: #f59e0b; } }
+@keyframes lb-heart { 0%, 100% { scale: 1; } 15% { scale: 1.25; } 30% { scale: 1; } 45% { scale: 1.18; } }
+@keyframes lb-attn { 0% { scale: 0.85; opacity: 0.7; } 100% { scale: 1.35; opacity: 0; } }
+/* Always-on: arm sway, head bob, antenna beacon. */
+@keyframes lb-sway-l { 0%, 100% { rotate: 0deg; } 50% { rotate: 8deg; } }
+@keyframes lb-sway-r { 0%, 100% { rotate: 0deg; } 50% { rotate: -8deg; } }
+@keyframes lb-bob { 0%, 100% { rotate: -3deg; } 50% { rotate: 3deg; } }
+@keyframes lb-halo { 0% { scale: 1; opacity: 0.8; } 100% { scale: 2.6; opacity: 0; } }
+/* Gestures. */
+@keyframes lb-dance { 0%, 100% { rotate: 0deg; translate: 0 0; } 15% { rotate: -7deg; translate: 0 -3px; } 35% { rotate: 7deg; translate: 0 0; } 55% { rotate: -7deg; translate: 0 -3px; } 75% { rotate: 7deg; translate: 0 0; } }
+@keyframes lb-dance-l { 0%, 100% { rotate: 0deg; } 20%, 60% { rotate: 130deg; } 40%, 80% { rotate: 30deg; } }
+@keyframes lb-dance-r { 0%, 100% { rotate: 0deg; } 20%, 60% { rotate: -30deg; } 40%, 80% { rotate: -130deg; } }
+@keyframes lb-cheer-l { 0%, 100% { rotate: 0deg; } 20%, 80% { rotate: 150deg; } 40%, 60% { rotate: 135deg; } }
+@keyframes lb-cheer-r { 0%, 100% { rotate: 0deg; } 20%, 80% { rotate: -150deg; } 40%, 60% { rotate: -135deg; } }
+@keyframes lb-think-arm { 0%, 100% { rotate: 0deg; } 20%, 85% { rotate: -120deg; } }
+@keyframes lb-nod { 0%, 100% { translate: 0 0; } 20%, 60% { translate: 0 3px; } 40%, 80% { translate: 0 -1px; } }
+@keyframes lb-roll { 0%, 100% { translate: 0 0; } 25% { translate: -7px 0; } 70% { translate: 7px 0; } }
+@keyframes lb-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: no-preference) {
+  .lb-sway-l { animation: lb-sway-l 2.8s ease-in-out infinite; }
+  .lb-sway-r { animation: lb-sway-r 2.8s ease-in-out -1.4s infinite; }
+  .lb-bob { animation: lb-bob 4.6s ease-in-out infinite; }
+  .lb-halo { animation: lb-halo 2s ease-out infinite; }
+  .lb-dance { animation: lb-dance 2.2s ease-in-out; }
+  .lb-dance-l { animation: lb-dance-l 2.2s ease-in-out; }
+  .lb-dance-r { animation: lb-dance-r 2.2s ease-in-out; }
+  .lb-cheer-l { animation: lb-cheer-l 1.7s ease-in-out; }
+  .lb-cheer-r { animation: lb-cheer-r 1.7s ease-in-out; }
+  .lb-think-arm { animation: lb-think-arm 2.4s ease-in-out; }
+  .lb-nod { animation: lb-nod 1.3s ease-in-out; }
+  .lb-roll { animation: lb-roll 2.1s ease-in-out; }
+  .lb-spin { animation: lb-spin 0.7s linear infinite; }
+  .lb-float { animation: lb-float 3.2s ease-in-out infinite; }
+  .lb-shadow { animation: lb-shadow 3.2s ease-in-out infinite; }
+  .lb-chest { animation: lb-heart 2.4s ease-in-out infinite; }
+  .lb-wave-arm { animation: lb-wave-arm 1.6s ease-in-out; }
+  .lb-tilt { animation: lb-tilt 1.6s ease-in-out; }
+  .lb-lookaround { animation: lb-lookaround 1.7s ease-in-out; }
+  .lb-eyes-scan { animation: lb-eyes-scan 1.7s ease-in-out; }
+  .lb-hop { animation: lb-hop 800ms ease-out; }
+  .lb-ping { animation: lb-ping 1s ease-in-out 2; }
+  .lb-attn { animation: lb-attn 2.2s ease-out infinite; }
+}
+
+/* Brief form: steps slide in from the side they come from; the stamp lands. */
+@keyframes ym-step-in { from { opacity: 0; translate: 28px 0; } }
+@keyframes ym-step-back { from { opacity: 0; translate: -28px 0; } }
+@keyframes ym-stamp { 0% { opacity: 0; scale: 1.8; } 60% { opacity: 1; scale: 0.92; } 100% { opacity: 1; scale: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .ym-step-in { animation: ym-step-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .ym-step-back { animation: ym-step-back 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .ym-stamp { animation: ym-stamp 520ms cubic-bezier(0.22, 1, 0.36, 1) 200ms both; }
+}
+
+/* Footer: the Robocoders car drives along the line track. */
+@keyframes ym-drive { from { left: -80px; } to { left: 100%; } }
+.ym-drive { left: 8%; }
+@media (prefers-reduced-motion: no-preference) {
+  .ym-drive { animation: ym-drive 16s linear infinite; }
+}
+
+/* The YugMinds one-page site: links to its sections glide there. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has([data-landing]) { scroll-behavior: smooth; }
+}
+
+/* ── YugMinds site on phones: platform fixes (mobile-native) ──────────────── */
+[data-landing] {
+  -webkit-tap-highlight-color: transparent; /* no grey flash on tap; controls give their own :active feedback */
+  -webkit-text-size-adjust: 100%;           /* no font inflation in landscape */
+}
+/* Controls: no 300 ms double-tap wait, and a long-press doesn't select their label. */
+[data-landing] :is(button, [role="button"], [role="radio"], label:has(> input[type="radio"]), nav a, .ym-control) {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Press feedback the instant a finger lands (the tap flash used to stand in for it). */
+[data-landing] :is(button, a[class*="bg-"]):not(:disabled) { transition-property: scale, transform, background-color, color, opacity; }
+/* `scale` (not transform) so it stacks with any translate/rotate the element already has. */
+[data-landing] :is(button, a[class*="bg-"]):not(:disabled):active { scale: 0.97; }
+/* iOS zooms into any field under 16px and never zooms back out. */
+@media (pointer: coarse) {
+  [data-landing] :is(input, textarea, select) { font-size: 16px; }
+}
+/* Landscape phones: keep text clear of the notch / rounded corners. Same gutters as px-5 / md:px-10, never less. */
+[data-landing] .max-w-7xl {
+  padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 768px) {
+  [data-landing] .max-w-7xl {
+    padding-left: max(2.5rem, env(safe-area-inset-left, 0px));
+    padding-right: max(2.5rem, env(safe-area-inset-right, 0px));
+  }
+}
+
+/* Hero car: driving needs a keyboard or mouse and the full-width stage, so its controls only
+   exist on large screens with a fine pointer. Everywhere else the car runs on autopilot as a
+   showcase, and the stage ignores touches so a swipe over it always scrolls the page. */
+.ym-drive-ui { display: none !important; }
+@media (min-width: 1024px) and (pointer: fine) {
+  .ym-drive-ui { display: flex !important; }
+}
+@media not ((min-width: 1024px) and (pointer: fine)) {
+  [data-drive-surface] canvas { pointer-events: none; }
+}
+
+/* The swipeable product strip on phones/tablets: no visible scrollbar. */
+.ym-strip { scrollbar-width: none; }
+.ym-strip::-webkit-scrollbar { display: none; }

@@ -36,13 +36,8 @@ function mapRoutes(origin: string, routes: Route[]): MetadataRoute.Sitemap {
   }));
 }
 
-const YUGMINDS_ROUTES: Route[] = [
-  { path: "/", changeFrequency: "weekly", priority: 1.0 },
-  { path: "/about", changeFrequency: "monthly", priority: 0.8 },
-  { path: "/divisions", changeFrequency: "monthly", priority: 0.8 },
-  { path: "/work", changeFrequency: "monthly", priority: 0.7 },
-  { path: "/contact", changeFrequency: "monthly", priority: 0.7 },
-];
+// YugMinds is a single page; its sections are named in the page's structured data.
+const YUGMINDS_ROUTES: Route[] = [{ path: "/", changeFrequency: "weekly", priority: 1.0 }];
 
 const ROBOCODERS_ROUTES: Route[] = [
   { path: "/", changeFrequency: "weekly", priority: 1.0 },
@@ -52,6 +47,7 @@ const ROBOCODERS_ROUTES: Route[] = [
   { path: "/community", changeFrequency: "weekly", priority: 0.85 },
   { path: "/for-schools", changeFrequency: "monthly", priority: 0.85 },
   { path: "/for-parents", changeFrequency: "monthly", priority: 0.85 },
+  { path: "/online-classes", changeFrequency: "weekly", priority: 0.9 },
   { path: "/contact", changeFrequency: "monthly", priority: 0.75 },
   { path: "/lms/verify", changeFrequency: "monthly", priority: 0.4 },
 ];
@@ -63,10 +59,18 @@ const LMS_ROUTES: Route[] = [
   { path: "/forgot-password", changeFrequency: "yearly", priority: 0.3 },
 ];
 
+// ponytail: static list; add per-course /courses/<slug> entries once the catalog grows.
+const ACADEMY_ROUTES: Route[] = [
+  { path: "/", changeFrequency: "weekly", priority: 1.0 },
+  { path: "/courses", changeFrequency: "weekly", priority: 0.9 },
+  { path: "/tutors", changeFrequency: "weekly", priority: 0.8 },
+];
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const { brand, origin } = await resolveBrandAndOrigin();
 
   if (brand === "robocoders") return mapRoutes(origin, ROBOCODERS_ROUTES);
   if (brand === "lms") return mapRoutes(origin, LMS_ROUTES);
+  if (brand === "academy") return mapRoutes(origin, ACADEMY_ROUTES);
   return mapRoutes(origin, YUGMINDS_ROUTES);
 }

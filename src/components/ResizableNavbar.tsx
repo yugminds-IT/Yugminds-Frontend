@@ -26,14 +26,13 @@ const PATH_NAV = [
   { name: "Community", link: "/robocoders/community", publicPath: "/community" },
   { name: "For Schools", link: "/robocoders/for-schools", publicPath: "/for-schools" },
   { name: "For Parents", link: "/robocoders/for-parents", publicPath: "/for-parents" },
+  { name: "Online Classes", link: "/robocoders/online-classes", publicPath: "/online-classes" },
   { name: "Contact Us", link: "/robocoders/contact", publicPath: "/contact" },
 ];
 
 export default function ResizableNavbar({
-  offsetForBrandBar = false,
   solid = false,
 }: {
-  offsetForBrandBar?: boolean;
   /** Opaque white bar, for pages where content sits under the navbar (e.g. full-bleed login image). */
   solid?: boolean;
 }) {
@@ -41,6 +40,8 @@ export default function ResizableNavbar({
   const [onRobocodersHost, setOnRobocodersHost] = useState(false);
   const pathname = usePathname();
   const lmsLoginHref = brandHref("/lms/login");
+  // RoboCoders Online Classes (Academy) has its own login, separate from the school portal.
+  const academyLoginHref = brandHref("/academy/login");
 
   useEffect(() => {
     setOnRobocodersHost(normalizeHost(window.location.host) === ROBOCODERS_HOST);
@@ -60,12 +61,13 @@ export default function ResizableNavbar({
   };
 
   return (
-    <Navbar className={cn(offsetForBrandBar && "!top-9", solid && "bg-white shadow-sm")}>
+    <Navbar className={cn(solid && "bg-white shadow-sm")}>
       {/* Desktop Navigation */}
       <NavBody>
         <NavbarLogo />
         <NavItems items={navItems} />
         <div className="flex items-center gap-1.5 ml-1.5 flex-shrink-0">
+          <NavbarButton href={academyLoginHref} variant="secondary" className="text-sm px-2.5 py-1">Academy Login</NavbarButton>
           <NavbarButton href={lmsLoginHref} variant="secondary" className="text-sm px-2.5 py-1">Student Portal</NavbarButton>
         </div>
       </NavBody>
@@ -131,6 +133,14 @@ export default function ResizableNavbar({
             );
           })}
           <div className="flex w-full flex-col gap-4">
+            <NavbarButton
+              href={academyLoginHref}
+              onClick={() => setIsMobileMenuOpen(false)}
+              variant="secondary"
+              className="w-full"
+            >
+              Academy Login
+            </NavbarButton>
             <NavbarButton
               href={lmsLoginHref}
               onClick={() => setIsMobileMenuOpen(false)}

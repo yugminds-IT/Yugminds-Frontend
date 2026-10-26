@@ -3,16 +3,19 @@
  * Internal routes stay `/`, `/robocoders/*`, `/lms/*`; see `routeForHost` for public URLs.
  */
 
-export type Brand = "yugminds" | "robocoders" | "lms";
+export type Brand = "yugminds" | "robocoders" | "lms" | "academy";
 
 export const YUGMINDS_HOSTS = ["yugminds.org", "www.yugminds.org"] as const;
 export const ROBOCODERS_HOST = "robocoders.yugminds.org";
 export const LMS_HOST = "lms.yugminds.org";
+// ponytail: placeholder brand name/host, rename once the Academy brand is final.
+export const ACADEMY_HOST = "academy.yugminds.org";
 
 export const BRAND_ORIGINS: Record<Brand, string> = {
   yugminds: "https://yugminds.org",
   robocoders: `https://${ROBOCODERS_HOST}`,
   lms: `https://${LMS_HOST}`,
+  academy: `https://${ACADEMY_HOST}`,
 };
 
 /** Canonical public verify URL (single indexable location). */
@@ -44,17 +47,19 @@ export function brandFromHostname(hostname: string): Brand | null {
   }
   if (h === ROBOCODERS_HOST) return "robocoders";
   if (h === LMS_HOST) return "lms";
+  if (h === ACADEMY_HOST) return "academy";
   return null;
 }
 
 /** Brand for metadata/schema: host first, else path prefix (path-based access on root). */
 export function resolveBrand(hostname: string, pathname: string): Brand {
   const fromHost = brandFromHostname(hostname);
-  if (fromHost === "robocoders" || fromHost === "lms") return fromHost;
+  if (fromHost && fromHost !== "yugminds") return fromHost;
   if (pathname === "/robocoders" || pathname.startsWith("/robocoders/")) {
     return "robocoders";
   }
   if (pathname === "/lms" || pathname.startsWith("/lms/")) return "lms";
+  if (pathname === "/academy" || pathname.startsWith("/academy/")) return "academy";
   return "yugminds";
 }
 
@@ -88,6 +93,7 @@ function hasPrefix(path: string, prefix: string): boolean {
  * - yugminds.org: root site; `/robocoders*` and `/lms*` move to their subdomains.
  * - robocoders.yugminds.org: clean URLs rewritten under `/robocoders`.
  * - lms.yugminds.org: clean URLs rewritten under `/lms`; legacy `/lms/*` links 308 to the clean URL.
+ * - academy.yugminds.org: clean URLs rewritten under `/academy`.
  * `/lms/verify` is canonical on the RoboCoders host.
  */
 export function routeForHost(brand: Brand | null, path: string): HostRoute {
@@ -116,15 +122,30 @@ export function routeForHost(brand: Brand | null, path: string): HostRoute {
     status: 308,
   });
 
+  const toAcademy = (): HostRoute => ({
+    kind: "redirect",
+    url: `${BRAND_ORIGINS.academy}${path.slice("/academy".length) || "/"}`,
+    status: 308,
+  });
+
   if (brand === "yugminds") {
     if (hasPrefix(path, "/robocoders")) return toRobocoders();
     if (hasPrefix(path, "/lms")) return toLms();
+    if (hasPrefix(path, "/academy")) return toAcademy();
     return { kind: "pass" };
+  }
+
+  if (brand === "academy") {
+    if (hasPrefix(path, "/academy")) return toAcademy();
+    if (hasPrefix(path, "/lms")) return toLms();
+    if (hasPrefix(path, "/robocoders")) return toRobocoders();
+    return { kind: "rewrite", path: path === "/" ? "/academy" : `/academy${path}` };
   }
 
   if (brand === "robocoders") {
     if (hasPrefix(path, "/robocoders")) return toRobocoders();
     if (hasPrefix(path, "/lms")) return toLms();
+    if (hasPrefix(path, "/academy")) return toAcademy();
     return { kind: "rewrite", path: path === "/" ? "/robocoders" : `/robocoders${path}` };
   }
 
@@ -142,12 +163,13 @@ export function routeForHost(brand: Brand | null, path: string): HostRoute {
   }
   if (hasPrefix(path, "/lms")) return toLms();
   if (hasPrefix(path, "/robocoders")) return toRobocoders();
+  if (hasPrefix(path, "/academy")) return toAcademy();
   return { kind: "rewrite", path: toLmsPath(path) };
 }
 
 /** Browser-visible path for an internal route on that brand's host. */
 export function toPublicPath(brand: Brand, internalPath: string): string {
-  const prefix = brand === "robocoders" ? "/robocoders" : brand === "lms" ? "/lms" : null;
+  const prefix = brand === "yugminds" ? null : `/${brand}`;
   if (prefix && hasPrefix(internalPath, prefix)) {
     return internalPath.slice(prefix.length) || "/";
   }

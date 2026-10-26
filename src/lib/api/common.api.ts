@@ -50,6 +50,10 @@ export const commonApi = {
   contact: (data: Record<string, unknown>) =>
     apiClient.post('/contact', data),
 
+  /** Call-back request from the YugMinds site assistant */
+  callback: (data: { name: string; phone: string; topic: string }) =>
+    apiClient.post('/contact/callback', data),
+
   /** Public logos */
   logos: {
     list: () => apiClient.get('/api/logos'),
