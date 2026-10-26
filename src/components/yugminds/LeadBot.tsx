@@ -164,6 +164,18 @@ export function LeadBot() {
   const [engaged, setEngaged] = useState(false); // stops the attention cue once they've interacted
   const [nudge, setNudge] = useState(false);
   const [onForm, setOnForm] = useState(false); // the brief form is on screen: don't talk over it
+  // The hero has its own car and controls in that corner; the robot arrives once you scroll past it.
+  const [onHero, setOnHero] = useState(true);
+  useEffect(() => {
+    const hero = document.getElementById("top");
+    if (!hero) {
+      setOnHero(false); // pages without the hero
+      return;
+    }
+    const io = new IntersectionObserver(([en]) => setOnHero(en.isIntersecting), { rootMargin: "-35% 0px 0px 0px" }); // gone once its bottom passes the top third
+    io.observe(hero);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     const form = document.getElementById("contact");
@@ -322,7 +334,7 @@ export function LeadBot() {
 
   return (
     // On phones it steps aside over the brief form, whose Continue bar sits in that corner.
-    <div className={`${onForm && !open ? "max-lg:hidden" : ""} fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1rem+env(safe-area-inset-right))] z-[70] flex flex-col items-end gap-3 md:bottom-[calc(1.25rem+env(safe-area-inset-bottom))] md:right-[calc(1.25rem+env(safe-area-inset-right))]`}>
+    <div className={`${onHero && !open ? "hidden" : "ym-rise"} ${onForm && !open ? "max-lg:hidden" : ""} fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1rem+env(safe-area-inset-right))] z-[70] flex flex-col items-end gap-3 md:bottom-[calc(1.25rem+env(safe-area-inset-bottom))] md:right-[calc(1.25rem+env(safe-area-inset-right))]`}>
       {/* The panel. */}
       {open && (
         <div

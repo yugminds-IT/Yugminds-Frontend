@@ -48,7 +48,7 @@ export async function StructuredData() {
       url,
       logo: `${url}/Yugminds_Official_Logo-preview.png`,
       description:
-        "YugMinds is five companies under one roof in Hyderabad: Labs, Hardware, Software, Manufacturing, and Robocoders robotics lessons for schools.",
+        "YugMinds is five companies under one roof in Hyderabad: Labs, Hardware, Software (custom software, websites, apps and complete IT services, built to each client's requirements), Manufacturing, and Robocoders robotics lessons for schools.",
       foundingDate: BUSINESS.foundingYear,
       email: BUSINESS.email,
       telephone: BUSINESS.phone,

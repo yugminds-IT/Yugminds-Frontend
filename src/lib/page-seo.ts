@@ -14,15 +14,18 @@ export type PageSeo = {
 export const PAGE_SEO: Record<string, PageSeo> = {
   "/": {
     primaryKeyword: "YugMinds",
-    title: "YugMinds | Robotics, Electronics & Software, Hyderabad",
+    title: "YugMinds | Software, IT, Robotics & Electronics, Hyderabad",
     description:
-      "Five companies under one roof in Hyderabad: robots, electronics, software and manufacturing, plus Robocoders robotics labs for schools. Send us a brief.",
+      "Custom software, websites, apps and IT services, plus robots, electronics and manufacturing, from one Hyderabad team. Robocoders labs for schools.",
     keywords: [
       "YugMinds",
       "YugMinds Hyderabad",
       "robotics company Hyderabad",
       "electronics design and manufacturing",
       "software development Hyderabad",
+      "custom software development",
+      "website development Hyderabad",
+      "IT services Hyderabad",
       "RoboCoders",
       "robotics lab for schools",
     ],

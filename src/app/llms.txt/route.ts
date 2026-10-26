@@ -17,15 +17,15 @@ const CONTACT =
 
 // yugminds.org is one page; these are its named sections.
 const YUGMINDS_SECTIONS =
-  "- [Our companies](https://yugminds.org/#divisions): YugMinds Labs (prototypes), Hardware (electronics and circuit boards), Software (apps and business systems), Manufacturing (bodies, chassis and parts in volume) and Robocoders (robotics lessons for schools).\n" +
+  "- [Our companies](https://yugminds.org/#divisions): YugMinds Labs (prototypes), Hardware (electronics and circuit boards), Software (custom software, websites, apps and complete IT services, built to each client's requirements), Manufacturing (bodies, chassis and parts in volume) and Robocoders (robotics lessons for schools).\n" +
   "- [Products](https://yugminds.org/#products): RoboCoders Studio (block and Python coding), RoboCoders Simulator (test ESP32 circuits before building), ESP32 Robotics Kit and the screen-free Play Kit.\n" +
   "- [About](https://yugminds.org/#about): why build with YugMinds: one brief covers every part, and prototypes go straight to production.\n" +
-  "- [What do you need built?](https://yugminds.org/#build): which companies build a robot, a school robotics lab, an app, an idea to test, or parts in volume.\n" +
+  "- [What do you need built?](https://yugminds.org/#build): which companies build a robot, a school robotics lab, software, a website or an app, an idea to test, or parts in volume.\n" +
   "- [Contact](https://yugminds.org/#contact): send a project brief or request a call back.";
 
 const SUMMARY: Record<Brand, string> = {
   yugminds:
-    "YugMinds is five companies under one roof in Begumpet, Hyderabad, India: Labs, Hardware, Software and Manufacturing build robots, electronics, software and machines for clients, and Robocoders (https://robocoders.yugminds.org) teaches kids to build and code robots in schools.",
+    "YugMinds is five companies under one roof in Begumpet, Hyderabad, India: Labs, Hardware, Software and Manufacturing build robots, electronics, machines, and custom software, websites and apps (with complete IT services) to each client's requirements, and Robocoders (https://robocoders.yugminds.org) teaches kids to build and code robots in schools.",
   robocoders:
     "RoboCoders is the STEM education initiative of YugMinds (https://yugminds.org). Students aged 6–18 learn coding, robotics, and AI through hands-on programs delivered in partner schools across India, with kits, textbooks, certificates, and the RoboCoders LMS.",
   lms:

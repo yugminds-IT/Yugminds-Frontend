@@ -375,7 +375,7 @@ function Hero() {
             <BuildWord />
           </h1>
           <p className="ym-rise mt-5 max-w-[44ch] text-sm leading-relaxed text-slate-700 sm:text-base md:text-lg lg:mt-6" style={{ animationDelay: "450ms" }}>
-            YugMinds designs and makes technology end to end: apps, electronics and machines for companies, and
+            YugMinds designs and makes technology end to end: custom software, websites and apps, electronics and machines for companies, and
             Robocoders robotics lessons for schools.
           </p>
           <div className="ym-rise mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 lg:mt-8 lg:gap-x-6" style={{ animationDelay: "550ms" }}>
@@ -438,9 +438,9 @@ const PROJECTS: { id: string; label: string; cta: string; steps: { key: Division
   },
   {
     id: "app",
-    label: "An app or business system",
-    cta: "Start an app project",
-    steps: [{ key: "software", role: "Designs, builds and runs your app or system, start to finish." }],
+    label: "Software, a website or an app",
+    cta: "Start a software project",
+    steps: [{ key: "software", role: "Builds your custom software, website or app to your requirements, then runs the IT behind it: hosting, support and updates." }],
   },
   {
     id: "idea",
@@ -686,7 +686,7 @@ const ABOUT_POINTS: { icon: LucideIcon; title: string; text: string }[] = [
 const ABOUT_PHOTOS = [
   { src: "/images/landing/factory-engineer.jpg", alt: "An engineer on a manufacturing floor", name: "Manufacturing", role: "Bodies, chassis and parts", cls: "col-start-1 row-span-2 row-start-1" },
   { src: "/images/landing/circuit-board.jpg", alt: "A close-up of a circuit board", name: "Hardware", role: "Electronics and circuit boards", cls: "col-start-2 row-start-1" },
-  { src: "/images/landing/software-code.jpg", alt: "Code on a screen", name: "Software", role: "Code, apps and systems", cls: "col-start-2 row-start-2" },
+  { src: "/images/landing/software-code.jpg", alt: "Code on a screen", name: "Software", role: "Custom software, websites, apps and IT", cls: "col-start-2 row-start-2" },
   { src: "/images/landing/dev-team.jpg", alt: "A team testing a prototype together", name: "Labs", role: "Prototypes, built and tested", cls: "col-start-1 row-start-3" },
   { src: "/child-making-robot.jpg", alt: "A student building a robot in a Robocoders class", name: "Robocoders", role: "Teaches kids to build robots", cls: "col-start-2 row-start-3" },
 ];
@@ -807,7 +807,7 @@ const PipelineScene = dynamic(() => import("./PipelineScene").then((m) => m.Pipe
 const STAGES: { key: DivisionKey; verb: string; unit: string; desc: string; see: string; href?: string }[] = [
   { key: "labs", verb: "Research", unit: "YugMinds Labs", desc: "Every product starts here. We sketch it, build a prototype and test it until the idea works.", see: "The blueprint is drawn." },
   { key: "hardware", verb: "Design", unit: "YugMinds Hardware", desc: "We design the electronics: custom circuit boards (PCBs), the microcontroller, and the motors and sensors wired to it.", see: "Chassis, motors, board and sensor go in." },
-  { key: "software", verb: "Build", unit: "YugMinds Software", desc: "We write the code it runs, so it can sense, decide and drive. The same team builds apps and business systems.", see: "The program loads and the sensor wakes up." },
+  { key: "software", verb: "Build", unit: "YugMinds Software", desc: "We write the code it runs, so it can sense, decide and drive. For clients, the same team builds custom software, websites and apps to their requirements, with complete IT services.", see: "The program loads and the sensor wakes up." },
   { key: "manufacturing", verb: "Make", unit: "YugMinds Manufacturing", desc: "We 3D print, machine and assemble the body, chassis and parts, then make them in volume.", see: "Wheels on. The shell prints layer by layer." },
   { key: "robocoders", verb: "Teach", unit: "Robocoders™", desc: "Then we teach kids to build and code the same robot, in their own classroom.", see: "On the line track, with its lesson card.", href: brandHref("/robocoders") },
 ];
@@ -876,13 +876,14 @@ function Divisions() {
             <h2 id="divisions-title" className="font-acdisplay text-[clamp(1.75rem,3.2vw,2.75rem)] font-bold leading-tight tracking-tight text-ym-text">
               Watch an idea become a robot.
             </h2>
-            <p className="mt-3 max-w-[44ch] text-slate-600 max-lg:hidden">
+            <p className="mt-3 max-w-[44ch] text-slate-600 max-lg:hidden [@media(max-height:780px)]:hidden">
               Labs, Hardware, Software, Manufacturing and Robocoders each add their part to the car from the top of the page. Scroll to watch it come together.
             </p>
-            {/* Phones show one step at a time. All five share one grid cell (the rest invisible, not
-                removed), so the panel is always as tall as the longest step: moving between steps never
-                resizes it, and the 3D stage above never jumps. */}
-            <ol className="mt-6 grid lg:mt-8 lg:flex lg:flex-col lg:gap-1.5">
+            {/* Fixed layout, so nothing moves while scrolling. The step rows never open or close (phones
+                show only the current row, all five sharing one cell). The current step's details sit in
+                one panel below; it holds all five (the rest invisible, not removed), so it is always
+                as tall as the longest and never resizes as the steps change. */}
+            <ol className="mt-6 grid lg:mt-5 lg:gap-1">
               {STAGES.map((st, i) => {
                 const on = i === active;
                 const done = i < active;
@@ -893,7 +894,7 @@ function Divisions() {
                       type="button"
                       onClick={() => goTo(i)}
                       aria-current={on ? "step" : undefined}
-                      className={`relative flex w-full items-center gap-4 overflow-hidden px-4 py-3 text-left transition-colors duration-200 ${focusRing} ${
+                      className={`relative flex w-full items-center gap-4 overflow-hidden px-4 py-3 text-left transition-colors duration-200 lg:py-2 ${focusRing} ${
                         on ? "bg-white" : "hover:bg-white/70"
                       }`}
                     >
@@ -905,27 +906,32 @@ function Divisions() {
                         {i + 1}
                       </span>
                       <span className="min-w-0">
-                        <span className={`block font-acdisplay text-2xl font-bold leading-none tracking-tight ${on ? "text-ym-text" : "text-slate-500"}`}>{st.verb}</span>
+                        <span className={`block font-acdisplay text-2xl font-bold leading-none tracking-tight lg:text-xl ${on ? "text-ym-text" : "text-slate-500"}`}>{st.verb}</span>
                         <span className={`mt-1 block text-sm font-semibold ${on ? "text-ym-blue" : "text-slate-500"}`}>{st.unit}</span>
                       </span>
                       {/* How far this step has got. */}
                       <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 origin-left bg-ym-blue" style={{ transform: `scaleX(${local})` }} />
                     </button>
-                    {/* Every step keeps its description in the layout on phones (for the stable height);
-                        desktop shows only the current one, as an accordion. */}
-                    <div className={`bg-white px-4 pb-4 pl-[4.25rem] ${on ? "ym-rise" : "lg:hidden"}`}>
-                      <p className="leading-relaxed text-slate-700">{st.desc}</p>
-                      <p className="mt-2 text-sm font-semibold text-slate-500">{st.see}</p>
-                      {st.href && (
-                        <Link href={st.href} className={`mt-3 inline-block font-semibold text-ym-blue underline decoration-blue-200 decoration-2 underline-offset-4 hover:decoration-ym-blue ${focusRing}`}>
-                          Visit Robocoders
-                        </Link>
-                      )}
-                    </div>
                   </li>
                 );
               })}
             </ol>
+            <div className="mt-1.5 grid border-l-4 border-ym-blue bg-white" aria-live="polite">
+              {STAGES.map((st, i) => {
+                const on = i === active;
+                return (
+                  <div key={st.key} className={`col-start-1 row-start-1 px-4 py-4 transition-opacity duration-300 lg:py-3 lg:pl-[3.75rem] ${on ? "opacity-100" : "invisible opacity-0"}`} aria-hidden={!on}>
+                    <p className="leading-relaxed text-slate-700">{st.desc}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-500">{st.see}</p>
+                    {st.href && (
+                      <Link href={st.href} tabIndex={on ? undefined : -1} className={`mt-3 inline-block font-semibold text-ym-blue underline decoration-blue-200 decoration-2 underline-offset-4 hover:decoration-ym-blue ${focusRing}`}>
+                        Visit Robocoders
+                      </Link>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             {/* Phones show one step at a time; these dots show where you are. */}
             <div className="mt-3 flex gap-1.5 lg:hidden" aria-hidden>
               {STAGES.map((st, i) => (
@@ -1240,7 +1246,7 @@ const NEXT_STEPS = [
 const BRIEF_PROJECTS: { id: string; label: string; icon: LucideIcon; hint: string }[] = [
   { id: "robot", label: "A robot or smart device", icon: Bot, hint: "Prototype to product" },
   { id: "school", label: "A robotics lab for a school", icon: School, hint: "Kits, lessons, training" },
-  { id: "app", label: "An app or business system", icon: AppWindow, hint: "Web, mobile, internal tools" },
+  { id: "app", label: "Software, a website or an app", icon: AppWindow, hint: "Built to your requirements" },
   { id: "idea", label: "An idea to test first", icon: Lightbulb, hint: "Prove it before you build" },
   { id: "volume", label: "Parts made in volume", icon: Factory, hint: "From your drawings" },
   { id: "other", label: "Something else", icon: Sparkles, hint: "Tell us and we'll see" },
@@ -1830,18 +1836,28 @@ const FOOTER_COLS = [
 
 /* The Robocoders car from the hero, top-down, small enough to drive along the footer's track. */
 function TrackCar() {
+  // The hero's race car in side profile, facing right (the way it drives): long hood, fastback
+  // cabin, swan-neck wing, the three livery stripes, bronze wheels and a headlight.
   return (
-    <svg viewBox="0 0 64 34" className="h-7 w-auto" aria-hidden>
-      <rect x="8" y="1" width="12" height="6" rx="2" fill="#0f172a" />
-      <rect x="40" y="1" width="12" height="6" rx="2" fill="#0f172a" />
-      <rect x="8" y="27" width="12" height="6" rx="2" fill="#0f172a" />
-      <rect x="40" y="27" width="12" height="6" rx="2" fill="#0f172a" />
-      <path d="M4 10 Q4 5 12 5 H50 Q62 6 62 17 Q62 28 50 29 H12 Q4 29 4 24 Z" fill="#f8fafc" />
-      <rect x="6" y="11" width="52" height="3" rx="1.5" fill="#2563eb" />
-      <rect x="6" y="20" width="52" height="3" rx="1.5" fill="#2563eb" />
-      <ellipse cx="32" cy="17" rx="10" ry="6" fill="#0f172a" />
-      <circle cx="60" cy="13" r="1.8" fill="#fde68a" />
-      <circle cx="60" cy="21" r="1.8" fill="#fde68a" />
+    <svg viewBox="0 0 120 40" className="h-9 w-auto" aria-hidden>
+      <path d="M14 18 L13 11 H30 V13 H26 L24 18 Z" fill="#0f172a" />
+      <path d="M6 30 Q4 22 9 19 L34 16 Q44 7 60 6 Q76 6 86 14 L108 18 Q116 20 116 27 L115 31 Q114 33 110 33 H8 Q6 33 6 30 Z" fill="#f8fafc" />
+      <path d="M39 16 Q47 9 60 8.5 Q72 8.5 80 14 Z" fill="#0f172a" />
+      <path d="M60 8.6 L60.5 14.6" stroke="#f8fafc" strokeWidth="1.4" />
+      <path d="M8 25 H44 Q52 25 56 21 Q60 18 70 18.5 L108 21" fill="none" stroke="#0ea5e9" strokeWidth="1.6" />
+      <path d="M8 27 H44 Q53 27 57 23 Q61 20 70 20.5 L110 23" fill="none" stroke="#1e3a8a" strokeWidth="1.6" />
+      <path d="M8 29 H44 Q54 29 58 25 Q62 22 70 22.5 L112 25" fill="none" stroke="#dc2626" strokeWidth="1.6" />
+      <path d="M108 20 L115 22.5 L114.5 25 L107 23 Z" fill="#0f172a" />
+      <path d="M109 21.6 L114 23.2" stroke="#e0f2fe" strokeWidth="1" />
+      <rect x="4" y="21" width="4" height="3" fill="#ef4444" />
+      <path d="M9 33 H113" stroke="#0f172a" strokeWidth="2" />
+      {[28, 94].map((cx) => (
+        <g key={cx}>
+          <circle cx={cx} cy="31" r="8" fill="#0b1220" />
+          <circle cx={cx} cy="31" r="5" fill="#a8834a" />
+          <circle cx={cx} cy="31" r="1.6" fill="#0b1220" />
+        </g>
+      ))}
     </svg>
   );
 }
@@ -1882,7 +1898,7 @@ function Footer() {
               <span className="font-acdisplay text-2xl font-bold tracking-tight">YugMinds</span>
             </Link>
             <p className="mt-4 max-w-sm leading-relaxed text-blue-100/80">
-              Five companies under one roof in Hyderabad: software, electronics, machines, and Robocoders™ robotics lessons for schools.
+              Five companies under one roof in Hyderabad: custom software and IT services, electronics, machines, and Robocoders™ robotics lessons for schools.
             </p>
             <ul className="mt-6 flex flex-col gap-2.5 text-sm">
               {CONTACT.map(({ icon: Icon, value, href }) => (

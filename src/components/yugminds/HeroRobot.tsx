@@ -29,12 +29,6 @@ const TAGS: Tag[] = [
 type Layer = { o: THREE.Object3D; base: THREE.Vector3; out: THREE.Vector3; delay: number; tilt?: number };
 
 const PCB = "#1e40af";
-const PAD = [
-  { key: "left", label: "Steer left", rot: -90 },
-  { key: "up", label: "Drive forward", rot: 0 },
-  { key: "down", label: "Reverse", rot: 180 },
-  { key: "right", label: "Steer right", rot: 90 },
-] as const;
 export const R = 0.46; // tyre radius
 export const WHEEL_X = 0.86;
 export const AXLE_Z = 1.55;
@@ -743,10 +737,12 @@ export function buildRaceShell(
     for (let i = 0; i < pp.count; i++) uv.setXY(i, pp.getX(i) / w + 0.5, pp.getY(i) / h + 0.5);
     return geo;
   };
-  const surroundGeo = kidneyGeo(0.4, 0.38, 0.035);
-  const insideGeo = kidneyGeo(0.34, 0.32, 0.02);
+  // Proportions from the reference front view: two tall kidneys, each about a fifth of the
+  // car's width, side by side with a small gap; their tops line up with the headlights.
+  const surroundGeo = kidneyGeo(0.34, 0.4, 0.035);
+  const insideGeo = kidneyGeo(0.29, 0.35, 0.02);
   for (const sx of [-1, 1]) {
-    const h = front(sx * 0.215, 0.5);
+    const h = front(sx * 0.19, 0.48);
     if (!h) continue;
     const k = new THREE.Group();
     k.add(mesh(surroundGeo, darkChrome));
@@ -772,23 +768,39 @@ export function buildRaceShell(
     seat(lg, low.p, low.n);
   }
 
-  // The headlights: slim smoked-chrome wedges, inner ends dipping toward the kidneys, each
-  // with a light line along its top edge and two X-shaped light elements.
+  // The headlights, the car's signature: slim dark units that start just outside the kidneys'
+  // frames (never over them) and run out to the corners, level with the kidney tops, rising a
+  // little toward the outside. Each has two X-shaped light elements and a light line along its
+  // lower edge. Measured on the face: inner end at 0.42, outer at 0.86 (kidney frames end at 0.37).
+  const LAMP_IN = 0.42;
+  const LAMP_OUT = 0.86;
   for (const sx of [-1, 1]) {
-    const p1 = front(sx * 0.42, 0.63);
-    const p2 = front(sx * 0.84, 0.7);
+    const p1 = front(sx * LAMP_IN, 0.645);
+    const p2 = front(sx * LAMP_OUT, 0.69);
     if (!p1 || !p2) continue;
     const lamp = new THREE.Group();
-    // Narrow and pointed at the kidney end, deeper at the outer corner.
-    const wedge = [[-0.27, -0.065], [-0.22, 0.012], [0.13, 0.075], [0.24, 0.068], [0.27, 0.0], [0.21, -0.072], [0.02, -0.072]];
-    const housing = keep(new THREE.ExtrudeGeometry(flatShape(wedge, sx), { depth: 0.022, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.006, bevelSegments: 2 }));
+    const half = p1.p.distanceTo(p2.p) / 2;
+    // Outline in the lamp's own plane: u along it (inner -> outer), v up. Pointed at the inner
+    // end, squared off and a touch deeper at the outer corner.
+    const outline = [
+      [-half, -0.028],
+      [-half + 0.03, 0.024],
+      [half - 0.07, 0.046],
+      [half - 0.01, 0.044],
+      [half + 0.004, 0.0],
+      [half - 0.04, -0.042],
+      [-half + 0.11, -0.046],
+    ];
+    const housing = keep(new THREE.ExtrudeGeometry(flatShape(outline, sx), { depth: 0.018, bevelEnabled: true, bevelThickness: 0.005, bevelSize: 0.005, bevelSegments: 2 }));
     lamp.add(mesh(housing, smoked));
-    const brow = box(0.36, 0.011, 0.008, drl, sx * -0.03, 0.032, 0.032); // light line along the top edge
-    brow.rotation.z = sx * 0.15;
-    lamp.add(brow);
-    for (const u of [-0.02, 0.12]) {
-      for (const a of [0.6, -0.6]) {
-        const stroke = box(0.11, 0.014, 0.008, drl, sx * u, -0.012, 0.032);
+    // Light line along the lower edge.
+    const line = box(half * 2 - 0.13, 0.009, 0.006, drl, sx * 0.04, -0.034, 0.026);
+    line.rotation.z = sx * 0.012;
+    lamp.add(line);
+    // Two X-shaped light elements toward the inner half.
+    for (const u of [-half * 0.42, -half * 0.05]) {
+      for (const a of [0.55, -0.55]) {
+        const stroke = box(0.075, 0.011, 0.006, drl, sx * u, 0.006, 0.026);
         stroke.rotation.z = a;
         lamp.add(stroke);
       }
@@ -796,7 +808,7 @@ export function buildRaceShell(
     const mid = p1.p.clone().lerp(p2.p, 0.5);
     const n = p1.n.clone().add(p2.n).normalize();
     const along = sx > 0 ? p2.p.clone().sub(p1.p) : p1.p.clone().sub(p2.p);
-    seat(lamp, mid, n, along, 0.012);
+    seat(lamp, mid, n, along, 0.01);
   }
   // Nostril vents in the hood, just behind the lights.
   for (const sx of [-1, 1]) {
@@ -2040,12 +2052,6 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
   };
 
   // `at` uses the event's timestamp, which shares performance.now()'s clock.
-  const press = (k: "up" | "down" | "left" | "right", down: boolean, at: number) => {
-    driveRef.current[k] = down;
-    driveRef.current.at = at;
-    kickRef.current();
-  };
-
   return (
     <div ref={rootRef} tabIndex={-1} aria-label="Robot car test drive" role="region" className={`relative outline-none ${className}`}>
       <div
@@ -2119,7 +2125,7 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
           {children}
         </div>
       )}
-      <div className="ym-drive-ui absolute bottom-4 right-28 z-10 max-w-[calc(100%-7rem)] flex-col items-end gap-2">
+      <div className="ym-drive-ui absolute bottom-4 right-4 z-10 max-w-[calc(100%-2rem)] flex-col items-end gap-2">
         <div data-tone="ok" className="group flex min-h-10 items-center gap-2.5 bg-white px-3.5">
           <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-ym-blue group-data-[tone=stop]:bg-red-500 group-data-[tone=warn]:bg-amber-500" />
           <p ref={readoutRef} aria-live="polite" className="text-sm font-semibold text-ym-text">
@@ -2127,28 +2133,6 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
-          <div role="group" aria-label="Drive the car" className="flex gap-1">
-            {PAD.map((b) => (
-              <button
-                key={b.key}
-                type="button"
-                aria-label={b.label}
-                onPointerDown={(ev) => {
-                  ev.currentTarget.setPointerCapture(ev.pointerId);
-                  press(b.key, true, ev.timeStamp);
-                }}
-                onPointerUp={(ev) => press(b.key, false, ev.timeStamp)}
-                onPointerCancel={(ev) => press(b.key, false, ev.timeStamp)}
-                onKeyDown={(ev) => (ev.key === " " || ev.key === "Enter") && press(b.key, true, ev.timeStamp)}
-                onKeyUp={(ev) => (ev.key === " " || ev.key === "Enter") && press(b.key, false, ev.timeStamp)}
-                className="grid size-11 touch-none select-none place-items-center bg-slate-100 text-ym-text outline-none transition-colors hover:bg-slate-200 active:bg-slate-300 focus-visible:ring-2 focus-visible:ring-ym-blue"
-              >
-                <svg viewBox="0 0 24 24" className="size-5" style={{ transform: `rotate(${b.rot}deg)` }} aria-hidden>
-                  <path d="M12 5l7 8h-4.5v6h-5v-6H5z" fill="currentColor" />
-                </svg>
-              </button>
-            ))}
-          </div>
           <button
             type="button"
             aria-pressed={autopilot}
