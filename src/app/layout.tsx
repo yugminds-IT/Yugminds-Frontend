@@ -51,8 +51,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // No `scroll-smooth` here: scroll-behavior: smooth on <html> leaks into native touch-driven
+  // scrolling on WebKit (Safari and every iOS browser, which are all WebKit under the hood),
+  // causing visible jitter on every scroll, not just anchor jumps. See globals.css for the same
+  // reasoning — this was a second, site-wide copy of the same bug this app's jumpTo() helper
+  // already works around with an explicit `behavior: "smooth"` per call.
   return (
-    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${abeezee.variable} font-abeezee antialiased`}
         suppressHydrationWarning

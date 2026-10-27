@@ -1504,9 +1504,23 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
       camera.position.set(0.6, dist * (0.48 - 0.12 * k), dist);
       camera.lookAt(AHEAD.x * (1 - k), 0.5 + 1.4 * k, AHEAD.z * (1 - k));
     };
+    // The exploded-view tags' viewport size and box dimensions, cached here and only remeasured on
+    // resize — not every animation frame. Reading clientWidth/offsetWidth inside the render loop
+    // (as this used to) forces a synchronous layout on every frame, interleaved with the transform
+    // writes right after: textbook layout thrashing, and continuous since this loop runs the whole
+    // time the hero is on screen. That's what a real-device Timeline recording caught as constant
+    // Layout/Style-Recalculate activity.
+    let stageW = 0;
+    let stageH = 0;
+    let labelSizes: { w: number; h: number }[] = [];
+    const remeasureLabels = () => {
+      labelSizes = labelRefs.current.map((el) => (el ? { w: el.offsetWidth, h: el.offsetHeight } : { w: 0, h: 0 }));
+    };
     const resize = () => {
       const w = mount.clientWidth || 1;
       const h = mount.clientHeight || 1;
+      stageW = w;
+      stageH = h;
       renderer.setSize(w, h, false);
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
@@ -1942,22 +1956,22 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
       if (narrowStage) frameNarrow(ease(clamp01(e)));
       renderer.render(scene, camera);
 
-      // Tags follow each part, fading in as it separates.
-      const vw = mount.clientWidth;
-      const vh = mount.clientHeight;
+      // Tags follow each part, fading in as it separates. vw/vh and each label's size come from
+      // the resize-time cache (stageW/stageH/labelSizes) — read, never measured here.
       const placed: { el: HTMLDivElement; x: number; y: number; w: number; h: number }[] = [];
       TAGS.forEach((l, i) => {
         const el = labelRefs.current[i];
-        if (!el) return;
+        const size = labelSizes[i];
+        if (!el || !size) return;
         anchor.set(...l.anchor);
         obj[l.key].localToWorld(anchor);
         anchor.project(camera);
-        const x = ((anchor.x + 1) / 2) * vw;
-        const y = ((1 - anchor.y) / 2) * vh;
-        const want = l.side === "r" ? x : x - el.offsetWidth;
+        const x = ((anchor.x + 1) / 2) * stageW;
+        const y = ((1 - anchor.y) / 2) * stageH;
+        const want = l.side === "r" ? x : x - size.w;
         // Keep the whole tag inside the panel.
-        const lx = Math.max(12, Math.min(want, vw - el.offsetWidth - 24));
-        placed.push({ el, x: lx, y: Math.max(8, Math.min(y - el.offsetHeight / 2, vh - el.offsetHeight - 8)), w: el.offsetWidth, h: el.offsetHeight });
+        const lx = Math.max(12, Math.min(want, stageW - size.w - 24));
+        placed.push({ el, x: lx, y: Math.max(8, Math.min(y - size.h / 2, stageH - size.h - 8)), w: size.w, h: size.h });
       });
       // Top to bottom, push any tag that collides with one above it down below it.
       placed.sort((a, b) => a.y - b.y);
@@ -1998,6 +2012,7 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
     io.observe(mount);
     const ro = new ResizeObserver(() => {
       resize();
+      remeasureLabels();
       draw(performance.now());
     });
     ro.observe(mount);
@@ -2010,6 +2025,7 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
     document.addEventListener("visibilitychange", onVis);
 
     resize();
+    remeasureLabels();
     const t0 = performance.now();
     const compiling = renderer
       .compileAsync(scene, camera)

@@ -1953,7 +1953,7 @@ function Footer() {
       {/* The line track, with the car driving along it. */}
       <div className="relative h-12 overflow-hidden" aria-hidden>
         <span className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 bg-[repeating-linear-gradient(90deg,#334a8a_0_18px,transparent_18px_30px)]" />
-        <span className="ym-drive absolute top-1/2 -translate-y-1/2">
+        <span className="ym-drive absolute top-1/2">
           <TrackCar />
         </span>
       </div>
