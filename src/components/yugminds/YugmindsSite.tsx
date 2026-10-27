@@ -871,6 +871,20 @@ function Divisions() {
     // toolbar collapse.
     let vh = window.innerHeight;
     let vw = window.innerWidth;
+    // The section's document-relative top and height, cached and only resynced on resize — not
+    // read every scroll frame. getBoundingClientRect() forces a synchronous layout; calling it on
+    // every scroll tick (even just once, for this one element) is exactly what a motion-performance
+    // audit flags as a "never" pattern for scroll-linked animation. window.scrollY, by contrast,
+    // costs nothing: it's already known to the compositor.
+    let elTop = 0;
+    let height = 0;
+    const remeasure = () => {
+      const el = sectionRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      elTop = r.top + window.scrollY;
+      height = r.height;
+    };
     // The per-frame progress (camera position, rail fill) is written straight to refs/DOM, not
     // React state — a setState here would re-render the whole step list up to 60x/sec during
     // scroll, which on top of the WebGL canvas's own compositing is what was reading as "shaking"
@@ -878,11 +892,8 @@ function Divisions() {
     let lastActive = -1;
     const measure = () => {
       raf = 0;
-      const el = sectionRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const total = r.height - vh;
-      const p = total > 0 ? Math.max(0, Math.min(1, -r.top / total)) * 5 : 0;
+      const total = height - vh;
+      const p = total > 0 ? Math.max(0, Math.min(1, (window.scrollY - elTop) / total)) * 5 : 0;
       progressRef.current = p;
       const nextActive = Math.min(4, Math.floor(p));
       for (let i = 0; i < fillRefs.current.length; i++) {
@@ -902,8 +913,10 @@ function Divisions() {
         vw = window.innerWidth;
         vh = window.innerHeight;
       }
+      remeasure();
       onScroll();
     };
+    remeasure();
     measure();
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onResize);
