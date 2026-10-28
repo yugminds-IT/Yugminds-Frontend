@@ -30,11 +30,23 @@ export type Submission = {
   max_score: number | null;
   feedback?: string | null;
   submitted_at?: string | null;
+  graded_at?: string | null;
   is_retake?: boolean;
   grade?: string | null;
   section?: string | null;
   school_name?: string | null;
 };
+
+/** Targeted student with no submission at all. */
+export type NotSubmittedStudent = {
+  student_id: number;
+  student_name: string;
+  email?: string | null;
+  grade: string | null;
+  section: string | null;
+};
+
+export type SubFilter = "all" | "graded" | "pending" | "not_submitted";
 
 export type StudentRow = {
   student_id: number;

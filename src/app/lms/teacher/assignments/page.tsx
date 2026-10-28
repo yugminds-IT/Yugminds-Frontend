@@ -26,6 +26,8 @@ import {
   type TeacherAssignment,
   type Submission,
   type StudentRow,
+  type NotSubmittedStudent,
+  type SubFilter,
   type AssignmentDetail,
   type AssignmentsTab,
   type DetailTab,
@@ -92,6 +94,7 @@ export default function TeacherAssignmentsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [retakeGrants, setRetakeGrants] = useState<RetakeGrantInfo[]>([]);
+  const [notSubmitted, setNotSubmitted] = useState<NotSubmittedStudent[]>([]);
   const [grading, setGrading] = useState<Record<string, { score: string; feedback: string }>>({});
   const [grantingStudentId, setGrantingStudentId] = useState<number | null>(null);
   const [grantSearch, setGrantSearch] = useState("");
@@ -107,7 +110,7 @@ export default function TeacherAssignmentsPage() {
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [subSearch, setSubSearch] = useState("");
-  const [subFilter, setSubFilter] = useState<"all" | "graded" | "pending">("all");
+  const [subFilter, setSubFilter] = useState<SubFilter>("all");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [createPayload, setCreatePayload] = useState(emptyCreatePayload);
   const [schoolsWithExistingCopy, setSchoolsWithExistingCopy] = useState<string[]>([]);
@@ -227,6 +230,22 @@ export default function TeacherAssignmentsPage() {
     return rows;
   }, [studentRows, subFilter, subSearch]);
 
+  const filteredNotSubmitted = useMemo(() => {
+    const q = subSearch.trim().toLowerCase();
+    const rows = q
+      ? notSubmitted.filter((r) =>
+          [r.student_name, r.grade, r.section].some((v) =>
+            (v ?? "").toLowerCase().includes(q)
+          )
+        )
+      : notSubmitted;
+    return [...rows].sort(
+      (a, b) =>
+        `${a.grade ?? ""}-${a.section ?? ""}`.localeCompare(`${b.grade ?? ""}-${b.section ?? ""}`) ||
+        a.student_name.localeCompare(b.student_name)
+    );
+  }, [notSubmitted, subSearch]);
+
   const filteredGrantRows = useMemo(() => {
     let rows = studentRows;
     if (grantFilter === "graded") rows = rows.filter((r) => r.best !== null);
@@ -269,8 +288,10 @@ export default function TeacherAssignmentsPage() {
     const payload = data as {
       submissions?: Submission[];
       retake_grants?: RetakeGrantInfo[];
+      not_submitted?: NotSubmittedStudent[];
     };
     setSubmissions(payload.submissions ?? []);
+    setNotSubmitted(payload.not_submitted ?? []);
     setRetakeGrants(payload.retake_grants ?? []);
   }, []);
 
@@ -350,6 +371,7 @@ export default function TeacherAssignmentsPage() {
   useEffect(() => {
     setSelectedId("");
     setSubmissions([]);
+    setNotSubmitted([]);
     setAssignmentDetail(null);
     setAnalyticsData(null);
   }, [activeSchoolId]);
@@ -361,6 +383,7 @@ export default function TeacherAssignmentsPage() {
       setDetailTab("submissions");
     } else {
       setSubmissions([]);
+      setNotSubmitted([]);
       setAssignmentDetail(null);
     }
   }, [selectedId, loadSubmissions, loadAssignmentDetail]);
@@ -368,6 +391,7 @@ export default function TeacherAssignmentsPage() {
   useEffect(() => {
     setSelectedId("");
     setSubmissions([]);
+    setNotSubmitted([]);
     setAssignmentDetail(null);
     setSearchQuery("");
   }, [tab]);
@@ -881,6 +905,7 @@ export default function TeacherAssignmentsPage() {
       if (selectedId === assignmentId) {
         setSelectedId("");
         setSubmissions([]);
+        setNotSubmitted([]);
         setAssignmentDetail(null);
       }
       await loadAssignments("DAILY");
@@ -1033,6 +1058,8 @@ export default function TeacherAssignmentsPage() {
               grantingStudentId={grantingStudentId}
               studentRows={studentRows}
               filteredStudentRows={filteredStudentRows}
+              notSubmitted={notSubmitted}
+              filteredNotSubmitted={filteredNotSubmitted}
               subSearch={subSearch}
               onSubSearchChange={setSubSearch}
               subFilter={subFilter}
