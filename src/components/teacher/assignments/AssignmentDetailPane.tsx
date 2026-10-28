@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   Users,
   RotateCcw,
@@ -29,6 +31,7 @@ import {
   type SubFilter,
   type DetailTab,
 } from "./assignments-shared";
+import ReportDownloadDialog from "./ReportDownloadDialog";
 
 type Props = {
   tab: "daily" | "course";
@@ -111,126 +114,6 @@ function FilterChips<K extends SubFilter>({
   );
 }
 
-const fmtDate = (iso?: string | null) =>
-  iso ? new Date(iso).toLocaleString("en-IN") : "";
-
-/** Full marks report: every targeted student, submitted or not, plus a per-class summary. */
-async function downloadAssignmentReport(
-  assignment: TeacherAssignment,
-  rows: StudentRow[],
-  missing: NotSubmittedStudent[],
-) {
-  const ExcelJS = await import("exceljs");
-  const workbook = new ExcelJS.Workbook();
-
-  type Line = {
-    name: string;
-    grade: string;
-    section: string;
-    status: string;
-    score: number | null;
-    max: number | null;
-    pct: number | null;
-    attempts: number;
-    submitted: string;
-    graded: string;
-  };
-  const lines: Line[] = [
-    ...rows.map((r) => {
-      const b = r.best;
-      return {
-        name: r.student_name,
-        grade: r.grade ?? "",
-        section: r.section ?? "",
-        status: b ? "Graded" : "Awaiting grading",
-        score: b?.score ?? null,
-        max: b?.max_score ?? null,
-        pct:
-          b && b.max_score ? Math.round((b.score! / b.max_score) * 100) : null,
-        attempts: r.attempts.length,
-        submitted: fmtDate(r.latest.submitted_at),
-        graded: fmtDate(b?.graded_at),
-      };
-    }),
-    ...missing.map((m) => ({
-      name: m.student_name,
-      grade: m.grade ?? "",
-      section: m.section ?? "",
-      status: "Not submitted",
-      score: null,
-      max: null,
-      pct: null,
-      attempts: 0,
-      submitted: "",
-      graded: "",
-    })),
-  ];
-  const classOf = (l: Line) => [l.grade, l.section].filter(Boolean).join("-") || "—";
-  lines.sort(
-    (a, b) =>
-      classOf(a).localeCompare(classOf(b), undefined, { numeric: true }) ||
-      a.name.localeCompare(b.name),
-  );
-
-  const sheet = workbook.addWorksheet("Students");
-  sheet.columns = [
-    { header: "Student", key: "name", width: 28 },
-    { header: "Grade", key: "grade", width: 12 },
-    { header: "Section", key: "section", width: 10 },
-    { header: "Status", key: "status", width: 18 },
-    { header: "Score", key: "score", width: 8 },
-    { header: "Max", key: "max", width: 8 },
-    { header: "%", key: "pct", width: 8 },
-    { header: "Attempts", key: "attempts", width: 10 },
-    { header: "Submitted at", key: "submitted", width: 22 },
-    { header: "Graded at", key: "graded", width: 22 },
-  ];
-  sheet.getRow(1).font = { bold: true };
-  sheet.views = [{ state: "frozen", ySplit: 1 }];
-  lines.forEach((l) => {
-    const row = sheet.addRow(l);
-    if (l.status === "Not submitted") row.getCell("status").font = { color: { argb: "FFDC2626" } };
-  });
-  sheet.autoFilter = { from: "A1", to: "J1" };
-
-  const avg = (ls: Line[]) => {
-    const p = ls.filter((l) => l.pct != null).map((l) => l.pct!);
-    return p.length ? Math.round(p.reduce((a, b) => a + b, 0) / p.length) : null;
-  };
-  const summary = workbook.addWorksheet("Summary");
-  summary.columns = [{ width: 22 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 14 }];
-  [
-    ["Assignment", assignment.title],
-    ["Subject", assignment.subject ?? ""],
-    ["Due date", assignment.due_date ? new Date(assignment.due_date).toLocaleDateString("en-IN") : ""],
-    ["Total marks", assignment.total_marks ?? ""],
-    ["Targeted students", lines.length],
-    ["Submitted", rows.length],
-    ["Not submitted", missing.length],
-    ["Average %", avg(lines) ?? ""],
-    ["Generated", new Date().toLocaleString("en-IN")],
-  ].forEach((r) => (summary.addRow(r).getCell(1).font = { bold: true }));
-  summary.addRow([]);
-  summary.addRow(["Class", "Targeted", "Submitted", "Not submitted", "Average %"]).font = { bold: true };
-  const byClass = new Map<string, Line[]>();
-  lines.forEach((l) => byClass.set(classOf(l), [...(byClass.get(classOf(l)) ?? []), l]));
-  byClass.forEach((ls, cls) => {
-    const notSub = ls.filter((l) => l.status === "Not submitted").length;
-    summary.addRow([cls, ls.length, ls.length - notSub, notSub, avg(ls) ?? ""]);
-  });
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${assignment.title.replace(/[^\w-]+/g, "_")}_report_${new Date().toISOString().slice(0, 10)}.xlsx`;
-  anchor.click();
-  window.URL.revokeObjectURL(url);
-}
-
 export default function AssignmentDetailPane(props: Props) {
   const {
     tab,
@@ -272,6 +155,7 @@ export default function AssignmentDetailPane(props: Props) {
     onGrantFilterChange,
     filteredGrantRows,
   } = props;
+  const [reportOpen, setReportOpen] = useState(false);
 
   if (!selectedAssignment) {
     return (
@@ -444,22 +328,21 @@ export default function AssignmentDetailPane(props: Props) {
               />
               <button
                 type="button"
-                onClick={() =>
-                  void downloadAssignmentReport(
-                    selectedAssignment,
-                    studentRows,
-                    notSubmitted,
-                  ).catch((e) => {
-                    console.error("Report export failed", e);
-                    alert("Failed to generate the report");
-                  })
-                }
+                onClick={() => setReportOpen(true)}
                 disabled={studentRows.length + notSubmitted.length === 0}
                 className="h-9 inline-flex items-center gap-1.5 text-xs font-medium px-3 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" /> Download report
               </button>
             </div>
+            {reportOpen && (
+              <ReportDownloadDialog
+                assignment={selectedAssignment}
+                rows={studentRows}
+                missing={notSubmitted}
+                onClose={() => setReportOpen(false)}
+              />
+            )}
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               {subFilter === "not_submitted" ? (
