@@ -560,10 +560,3 @@ body:has([data-dashboard-content]) {
 /* The swipeable product strip on phones/tablets: no visible scrollbar. */
 .ym-strip { scrollbar-width: none; }
 .ym-strip::-webkit-scrollbar { display: none; }
-
-/* Temporary on-device bisect (?diag=noanim): freeze every CSS animation/transition on the page. */
-[data-noanim], [data-noanim] * { animation: none !important; transition: none !important; }
-/* Temporary on-device bisect: structure flags. */
-[data-nosticky] .sticky, [data-nosticky] [class*="sticky"] { position: static !important; }
-[data-nofixed] header { position: absolute !important; }
-html:has([data-noclip]) body, [data-noclip] main, [data-noclip] section, [data-noclip] { overflow-x: visible !important; }

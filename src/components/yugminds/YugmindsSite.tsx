@@ -122,7 +122,6 @@ function Nav() {
   // window.scrollY (never forces a layout) — the page height is cached and resynced on resize
   // only, not recomputed on every scroll tick.
   useEffect(() => {
-    if (diagHas("noscroll")) return;
     let raf = 0;
     let max = document.documentElement.scrollHeight - window.innerHeight;
     const onScroll = () => {
@@ -291,34 +290,9 @@ function Nav() {
 // headline too (the speed trails cross the copy), with the car framed in the space below it.
 const HERO_STAGE = "absolute inset-x-0 bottom-0 top-0 lg:top-16";
 
-/* True once the browser is idle after load (or after `timeout` ms at the latest). */
-function useIdle(timeout = 1500) {
-  const [idle, setIdle] = useState(false);
-  useEffect(() => {
-    if (typeof window.requestIdleCallback === "function") {
-      const id = window.requestIdleCallback(() => setIdle(true), { timeout });
-      return () => window.cancelIdleCallback(id);
-    }
-    const t = setTimeout(() => setIdle(true), 300); // Safari has no requestIdleCallback
-    return () => clearTimeout(t);
-  }, [timeout]);
-  return idle;
-}
-
-/* Temporary on-device bisect switchboard: /?diag=nohero,nopipe,nobot,noanim turns subsystems off so a
-   real iPhone run shows which one causes the scroll shake. Remove once found. */
-const diagHas = (n: string) => typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("diag") ?? "").split(",").includes(n);
-
-function useDiag() {
-  const [flags, setFlags] = useState<ReadonlySet<string>>(new Set());
-  useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get("diag");
-    if (v) setFlags(new Set(v.split(",")));
-  }, []);
-  return flags;
-}
-
 const LeadBot = dynamic(() => import("./LeadBot").then((m) => m.LeadBot), { ssr: false });
+// Start downloading the car's code (three.js and all) while the page hydrates, not after.
+if (typeof window !== "undefined") void import("./HeroRobot");
 const HeroRobot = dynamic(() => import("./HeroRobot").then((m) => m.HeroRobot), {
   ssr: false,
   loading: () => <div className="h-full w-full" />,
@@ -399,11 +373,52 @@ function DrivePrompt() {
   );
 }
 
+/* The car's very first frame, rendered once from the live scene (same camera, same pixels) and
+   shipped as a still, so the stage is not blank while three.js and the car's geometry load. It sits
+   above the canvas and fades out once the live scene has drawn that same first frame, so nothing
+   jumps. Only phones (under 640px) and desktops (1024px and up) have one: the framing in between
+   differs. If WebGL never starts, the still simply stays. */
+function HeroPoster() {
+  const [fading, setFading] = useState(false);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    const fade = () => {
+      setFading(true);
+      window.setTimeout(() => setGone(true), 700);
+    };
+    if (performance.getEntriesByName("ym-hero-first-frame").length) {
+      fade();
+      return;
+    }
+    window.addEventListener("ym:hero-ready", fade, { once: true });
+    return () => window.removeEventListener("ym:hero-ready", fade);
+  }, []);
+  if (gone) return null;
+  return (
+    <div aria-hidden className={`pointer-events-none absolute inset-0 z-[5] overflow-hidden transition-opacity duration-500 ease-out sm:max-lg:hidden ${fading ? "opacity-0" : "opacity-100"}`}>
+      <picture>
+        <source media="(min-width: 1024px)" srcSet="/hero-poster-wide.webp" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/hero-poster-narrow.webp"
+          alt=""
+          width={750}
+          height={1087}
+          fetchPriority="high"
+          decoding="async"
+          className="absolute bottom-0 left-0 h-auto w-full lg:inset-0 lg:h-full lg:object-cover"
+        />
+      </picture>
+    </div>
+  );
+}
+
 function Hero() {
   // The car starts once the page has a quiet moment, so the headline and buttons are usable first.
-  const idle = useIdle();
-  const diag = useDiag();
-  const heroReady = idle && !diag.has("nohero");
+  // The car mounts as soon as the page has hydrated (its heavy work yields between steps, so the
+  // headline and buttons stay usable); the three.js chunk is already downloading by then.
+  const [heroReady, setHeroReady] = useState(false);
+  useEffect(() => setHeroReady(true), []);
   return (
     <section id="top" aria-labelledby="hero-title" className="relative flex flex-col bg-white pt-[calc(4rem+env(safe-area-inset-top))] lg:block">
       {/* The car's stage fills the whole hero on large screens; the copy sits over its left side. */}
@@ -432,17 +447,12 @@ function Hero() {
       <div aria-hidden className="h-[min(100vw,500px)] sm:h-[min(72vw,600px)] lg:hidden" />
       {/* Phones and tablets drive themselves (no controls there); desktop with a mouse is drivable. */}
       <div className={HERO_STAGE}>
-        {/* The car takes a moment to warm up (idle wait, then its geometry builds in idle-time
-            steps). Show a quiet pulse where it'll appear instead of blank space; the 3D canvas
-            paints fully opaque once ready, so it covers this without any coordination needed. */}
-        <div aria-hidden className="absolute inset-0 flex items-center justify-center bg-white">
-          <div className="h-[38%] w-[62%] max-w-md animate-pulse rounded-2xl bg-slate-100" />
-        </div>
         {heroReady && (
           <HeroRobot className="h-full w-full">
             <DrivePrompt />
           </HeroRobot>
         )}
+        <HeroPoster />
       </div>
     </section>
   );
@@ -864,13 +874,28 @@ const STAGES: { key: DivisionKey; verb: string; unit: string; desc: string; see:
 ];
 
 function Divisions() {
-  const diag = useDiag();
   const sectionRef = useRef<HTMLElement>(null);
   const progressRef = useRef(0);
   const fillRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [active, setActive] = useState(0); // which step's text shows; only changes 5 times total
   // The 3D build scene (its own WebGL canvas) mounts only once the section is a screen away, and stays.
   const [buildNear, setBuildNear] = useState(false);
+  // ...and only after the hero car's first frame, so the two WebGL scenes don't build at once and
+  // slow each other down (a fallback timer covers browsers where the hero never draws).
+  const [heroDone, setHeroDone] = useState(false);
+  useEffect(() => {
+    if (performance.getEntriesByName("ym-hero-first-frame").length) {
+      setHeroDone(true);
+      return;
+    }
+    const done = () => setHeroDone(true);
+    window.addEventListener("ym:hero-ready", done, { once: true });
+    const t = window.setTimeout(done, 6000);
+    return () => {
+      window.removeEventListener("ym:hero-ready", done);
+      window.clearTimeout(t);
+    };
+  }, []);
   useEffect(() => {
     const el = sectionRef.current;
     if (!el || buildNear) return;
@@ -880,7 +905,6 @@ function Divisions() {
   }, [buildNear]);
 
   useEffect(() => {
-    if (diagHas("noscroll")) return;
     let raf = 0;
     // Mobile browsers resize the window as their toolbar hides/shows while you scroll, but the
     // section's CSS height is set in `svh` (stable). Measuring against the live window.innerHeight
@@ -962,7 +986,7 @@ function Divisions() {
       <div className="sticky top-16 h-[calc(100svh-4rem)] overflow-hidden [backface-visibility:hidden] [transform:translateZ(0)]">
         <div className="mx-auto grid h-full max-w-7xl grid-rows-[minmax(0,1fr)_auto] px-5 md:px-10 lg:grid-cols-[0.8fr_1.2fr] lg:grid-rows-1 lg:gap-10">
           {/* The build, in 3D. */}
-          {buildNear && !diag.has("nopipe") ? (
+          {buildNear && heroDone ? (
             <PipelineScene progress={progressRef} className="order-1 h-full min-h-0 w-full lg:order-2" />
           ) : (
             <div className="order-1 h-full min-h-0 w-full lg:order-2" aria-hidden />
@@ -1938,26 +1962,44 @@ const FOOTER_COLS = [
 
 /* The Robocoders car from the hero, top-down, small enough to drive along the footer's track. */
 function TrackCar() {
-  // The hero's race car in side profile, facing right (the way it drives): long hood, fastback
-  // cabin, swan-neck wing, the three livery stripes, bronze wheels and a headlight.
+  // A BMW-style sedan in side profile, facing right (the way it drives): long hood, cabin set
+  // back, short deck, kidney grille at the nose, slim headlight and taillight, and the Hofmeister
+  // kink at the foot of the rear quarter window. Robocoders livery: three stripes, gold wheels.
+  // Proportions follow a 3-series: length about 3.4x height, wheelbase about 0.6x length.
+  const body =
+    "M7 31 Q5.5 31 5.5 28.5 L6.5 23 Q7 21 10 20.6 L22 19.2 Q27 18.6 33 12.8 Q37 8.4 46 7.6 L62 7.6 Q71 8 77 13.6 L82 18.2 Q85 19.2 90 19.8 L108 21.6 Q111.5 22.4 112 26 L112 30 Q112 32.6 109.4 33 L102.5 33 A10.5 10.5 0 0 0 81.5 33 L36.5 33 A10.5 10.5 0 0 0 15.5 33 L10 33 Q7 33 7 31 Z";
   return (
-    <svg viewBox="0 0 120 40" className="h-9 w-auto" aria-hidden>
-      <path d="M14 18 L13 11 H30 V13 H26 L24 18 Z" fill="#0f172a" />
-      <path d="M6 30 Q4 22 9 19 L34 16 Q44 7 60 6 Q76 6 86 14 L108 18 Q116 20 116 27 L115 31 Q114 33 110 33 H8 Q6 33 6 30 Z" fill="#f8fafc" />
-      <path d="M39 16 Q47 9 60 8.5 Q72 8.5 80 14 Z" fill="#0f172a" />
-      <path d="M60 8.6 L60.5 14.6" stroke="#f8fafc" strokeWidth="1.4" />
-      <path d="M8 25 H44 Q52 25 56 21 Q60 18 70 18.5 L108 21" fill="none" stroke="#0ea5e9" strokeWidth="1.6" />
-      <path d="M8 27 H44 Q53 27 57 23 Q61 20 70 20.5 L110 23" fill="none" stroke="#1e3a8a" strokeWidth="1.6" />
-      <path d="M8 29 H44 Q54 29 58 25 Q62 22 70 22.5 L112 25" fill="none" stroke="#dc2626" strokeWidth="1.6" />
-      <path d="M108 20 L115 22.5 L114.5 25 L107 23 Z" fill="#0f172a" />
-      <path d="M109 21.6 L114 23.2" stroke="#e0f2fe" strokeWidth="1" />
-      <rect x="4" y="21" width="4" height="3" fill="#ef4444" />
-      <path d="M9 33 H113" stroke="#0f172a" strokeWidth="2" />
-      {[28, 94].map((cx) => (
+    <svg viewBox="0 0 118 42" className="h-9 w-auto" aria-hidden>
+      <defs>
+        <clipPath id="ym-sedan-body">
+          <path d={body} />
+        </clipPath>
+      </defs>
+      <path d={body} fill="#f8fafc" />
+      <g clipPath="url(#ym-sedan-body)">
+        <path d="M5 26 H114" stroke="#0ea5e9" strokeWidth="1.6" />
+        <path d="M5 27.7 H114" stroke="#1e3a8a" strokeWidth="1.6" />
+        <path d="M5 29.4 H114" stroke="#dc2626" strokeWidth="1.6" />
+        <path d="M12 22.6 H100" stroke="#cbd5e1" strokeWidth="0.7" />
+      </g>
+      <path d="M28 18.4 Q31.6 17.7 32 14.6 Q33.6 12 37 11 Q41 9.4 47 9 L61.5 9 Q69 9.4 74 14 L78.5 18.4 Z" fill="#0f172a" />
+      <path d="M53 9 V18.4" stroke="#f8fafc" strokeWidth="1.8" />
+      <path d="M28 18.4 Q31.6 17.7 32 14.6" fill="none" stroke="#f8fafc" strokeWidth="0.8" />
+      <path d="M74.6 17 L79.4 17.6 L79.2 19.2 L74.8 18.8 Z" fill="#0f172a" />
+      <rect x="39" y="21" width="5" height="1.2" rx="0.6" fill="#cbd5e1" />
+      <rect x="60" y="21" width="5" height="1.2" rx="0.6" fill="#cbd5e1" />
+      <path d="M109.6 23.4 Q112 23.8 112 26.6 V29 Q112 30.4 110.8 30.4 H109.4 Z" fill="#0f172a" />
+      <path d="M110.2 25 V29.4 M111.4 25 V29.4" stroke="#475569" strokeWidth="0.5" />
+      <path d="M100 21.6 L108.4 22.8 L108.6 24.6 L101.4 23.8 Z" fill="#0f172a" />
+      <path d="M102 22.7 L108 23.5" stroke="#e0f2fe" strokeWidth="0.9" />
+      <path d="M5.8 22.6 L9.8 21.8 L10 24 L5.6 25.2 Z" fill="#ef4444" />
+      <path d="M10 33 H15.5 M36.5 33 H81.5 M102.5 33 H109" stroke="#0f172a" strokeWidth="1.6" />
+      {[26, 92].map((cx) => (
         <g key={cx}>
-          <circle cx={cx} cy="31" r="8" fill="#0b1220" />
-          <circle cx={cx} cy="31" r="5" fill="#a8834a" />
-          <circle cx={cx} cy="31" r="1.6" fill="#0b1220" />
+          <circle cx={cx} cy="31.5" r="8" fill="#0b1220" />
+          <circle cx={cx} cy="31.5" r="5.2" fill="#a8834a" />
+          <path d={`M${cx} 26.6 V36.4 M${cx - 4.7} 28 L${cx + 4.7} 35 M${cx + 4.7} 28 L${cx - 4.7} 35`} stroke="#0b1220" strokeWidth="0.9" />
+          <circle cx={cx} cy="31.5" r="1.5" fill="#0b1220" />
         </g>
       ))}
     </svg>
@@ -2053,83 +2095,21 @@ function Footer() {
    PAGES
 ───────────────────────────────────────────── */
 function Shell({ children }: { children: React.ReactNode }) {
-  const diag = useDiag();
-  const [probe, setProbe] = useState("");
-  useEffect(() => {
-    if (diag.size === 0) return;
-    // Inject the bisect overrides at runtime (not via globals.css, which Safari on the phone wasn't applying).
-    const css = [
-      diag.has("noanim") && '[data-landing], [data-landing] * { animation: none !important; transition: none !important; }',
-      diag.has("nosticky") && '[data-landing] .sticky, [data-landing] [class*="sticky"] { position: static !important; }',
-      diag.has("nofixed") && '[data-landing] header { position: absolute !important; }',
-      diag.has("noclip") && '[data-landing] main, [data-landing] section, body { overflow-x: visible !important; }',
-    ].filter(Boolean).join("\n");
-    const st = document.createElement("style");
-    st.textContent = css;
-    document.head.appendChild(st);
-    const t = window.setTimeout(() => {
-      const pos = (el: Element | null) => (el ? getComputedStyle(el).position : "none");
-      setProbe(`hdr:${pos(document.querySelector("header"))} pin:${pos(document.querySelector("#divisions > div"))} main:${getComputedStyle(document.querySelector("main")!).overflowX} body:${getComputedStyle(document.body).overflowX} sec:${getComputedStyle(document.querySelector("#divisions")!).overflowX}`);
-    }, 1500);
-    return () => {
-      window.clearTimeout(t);
-      st.remove();
-    };
-  }, [diag]);
   return (
     // Reduced-motion users get the schematic fully drawn, no animation.
     <MotionConfig reducedMotion="user">
-      <div data-landing data-noanim={diag.has("noanim") || undefined} data-nosticky={diag.has("nosticky") || undefined} data-nofixed={diag.has("nofixed") || undefined} data-noclip={diag.has("noclip") || undefined} className={`${displayFont.variable} min-h-screen bg-white font-abeezee text-ym-text`}>
-        {diag.size > 0 && (
-          <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 99999, background: "#facc15", color: "#000", font: "700 11px/1.3 monospace", padding: "3px 6px" }}>
-            <div style={{ display: "flex", gap: 6, marginBottom: 3 }}>
-              {["nosticky", "nofixed", "noclip", "noanim"].map((f) => {
-                const on = diag.has(f);
-                return (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => {
-                      const next = new Set(diag);
-                      if (on) next.delete(f);
-                      else next.add(f);
-                      window.location.search = next.size ? `?diag=${Array.from(next).join(",")}` : "";
-                    }}
-                    style={{ padding: "6px 8px", border: "2px solid #000", background: on ? "#000" : "#fff", color: on ? "#facc15" : "#000", font: "inherit" }}
-                  >
-                    {on ? "OFF " : "ON "}{f.replace("no", "")}
-                  </button>
-                );
-              })}
-            </div>
-            {probe}
-          </div>
-        )}
+      <div data-landing className={`${displayFont.variable} min-h-screen bg-white font-abeezee text-ym-text`}>
         <Nav />
         {/* No overflow-x clip on main/sections: it made iOS Safari shake while scrolling (see globals.css). */}
         <main>{children}</main>
         <Footer />
-        {!diag.has("nobot") && <LeadBot />}
+        <LeadBot />
       </div>
     </MotionConfig>
   );
 }
 
 export function YugmindsHomePage() {
-  const diag = useDiag();
-  if (diag.has("plain")) {
-    // Temporary: a bare long page, to tell "our code" from "the phone".
-    const colors = ["#f8fafc", "#1e3a8a", "#ffffff", "#e0f2fe"];
-    return (
-      <main>
-        {Array.from({ length: 12 }).map((_, i) => (
-          <section key={i} style={{ height: "100svh", background: colors[i % 4], color: i % 4 === 1 ? "#fff" : "#0f172a", padding: 24, fontSize: 28, fontWeight: 700 }}>
-            Plain block {i + 1}
-          </section>
-        ))}
-      </main>
-    );
-  }
   return (
     <Shell>
       {/* Hook, what we do, what we make, why us, start your project, talk to us. */}

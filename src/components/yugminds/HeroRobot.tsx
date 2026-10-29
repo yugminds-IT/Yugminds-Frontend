@@ -964,7 +964,9 @@ export const liveryTexture = () => {
 /* Builds the shared body pieces a step at a time, giving the page a breather between steps, so
    no single task blocks scrolling for long. The scenes wait for this before building. */
 export async function warmCarBody() {
-  const breathe = () => new Promise<void>((r) => (typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(() => r(), { timeout: 200 }) : setTimeout(r, 0)));
+  // Yield to the event loop (so taps and scrolls get a turn between steps) without waiting for the
+  // browser to go idle: on a busy page an idle callback can sit for its whole timeout, six times over.
+  const breathe = () => new Promise<void>((r) => setTimeout(r, 0));
   for (const step of [shellSource, cabinSource, glassSource, frontProbe, liverySource, blueprintSource]) {
     step();
     await breathe();
@@ -2037,6 +2039,8 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
         last = performance.now();
         draw(last);
         kick();
+        performance.mark("ym-hero-first-frame");
+        window.dispatchEvent(new Event("ym:hero-ready"));
       });
 
     return () => {
