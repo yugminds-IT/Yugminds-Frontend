@@ -122,6 +122,7 @@ function Nav() {
   // window.scrollY (never forces a layout) — the page height is cached and resynced on resize
   // only, not recomputed on every scroll tick.
   useEffect(() => {
+    if (diagHas("noscroll")) return;
     let raf = 0;
     let max = document.documentElement.scrollHeight - window.innerHeight;
     const onScroll = () => {
@@ -304,6 +305,19 @@ function useIdle(timeout = 1500) {
   return idle;
 }
 
+/* Temporary on-device bisect switchboard: /?diag=nohero,nopipe,nobot,noanim turns subsystems off so a
+   real iPhone run shows which one causes the scroll shake. Remove once found. */
+const diagHas = (n: string) => typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("diag") ?? "").split(",").includes(n);
+
+function useDiag() {
+  const [flags, setFlags] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("diag");
+    if (v) setFlags(new Set(v.split(",")));
+  }, []);
+  return flags;
+}
+
 const LeadBot = dynamic(() => import("./LeadBot").then((m) => m.LeadBot), { ssr: false });
 const HeroRobot = dynamic(() => import("./HeroRobot").then((m) => m.HeroRobot), {
   ssr: false,
@@ -387,9 +401,11 @@ function DrivePrompt() {
 
 function Hero() {
   // The car starts once the page has a quiet moment, so the headline and buttons are usable first.
-  const heroReady = useIdle();
+  const idle = useIdle();
+  const diag = useDiag();
+  const heroReady = idle && !diag.has("nohero");
   return (
-    <section id="top" aria-labelledby="hero-title" className="relative flex flex-col overflow-hidden bg-white pt-[calc(4rem+env(safe-area-inset-top))] lg:block">
+    <section id="top" aria-labelledby="hero-title" className="relative flex flex-col bg-white pt-[calc(4rem+env(safe-area-inset-top))] lg:block">
       {/* The car's stage fills the whole hero on large screens; the copy sits over its left side. */}
       <div className="pointer-events-none relative z-10 mx-auto flex w-full max-w-7xl flex-col px-5 pt-6 md:px-10 lg:min-h-[calc(100svh-4rem)] lg:justify-start lg:pb-20 lg:pt-16">
         <div className="pointer-events-auto max-w-xl">
@@ -848,6 +864,7 @@ const STAGES: { key: DivisionKey; verb: string; unit: string; desc: string; see:
 ];
 
 function Divisions() {
+  const diag = useDiag();
   const sectionRef = useRef<HTMLElement>(null);
   const progressRef = useRef(0);
   const fillRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -863,6 +880,7 @@ function Divisions() {
   }, [buildNear]);
 
   useEffect(() => {
+    if (diagHas("noscroll")) return;
     let raf = 0;
     // Mobile browsers resize the window as their toolbar hides/shows while you scroll, but the
     // section's CSS height is set in `svh` (stable). Measuring against the live window.innerHeight
@@ -936,7 +954,7 @@ function Divisions() {
   };
 
   return (
-    <section ref={sectionRef} id="divisions" aria-labelledby="divisions-title" className="relative overflow-x-clip bg-slate-50" style={{ height: "calc(100svh + 420svh)" }}>
+    <section ref={sectionRef} id="divisions" aria-labelledby="divisions-title" className="relative bg-slate-50" style={{ height: "calc(100svh + 420svh)" }}>
       {/* [transform:translateZ(0)] forces Safari to give this sticky element its own stable
           compositing layer. Without it, WebKit recomposites the sticky box (and the WebGL canvas
           inside it) against scroll every frame instead of just translating it — the cause of the
@@ -944,7 +962,7 @@ function Divisions() {
       <div className="sticky top-16 h-[calc(100svh-4rem)] overflow-hidden [backface-visibility:hidden] [transform:translateZ(0)]">
         <div className="mx-auto grid h-full max-w-7xl grid-rows-[minmax(0,1fr)_auto] px-5 md:px-10 lg:grid-cols-[0.8fr_1.2fr] lg:grid-rows-1 lg:gap-10">
           {/* The build, in 3D. */}
-          {buildNear ? (
+          {buildNear && !diag.has("nopipe") ? (
             <PipelineScene progress={progressRef} className="order-1 h-full min-h-0 w-full lg:order-2" />
           ) : (
             <div className="order-1 h-full min-h-0 w-full lg:order-2" aria-hidden />
@@ -1193,8 +1211,7 @@ function Products() {
       ref={sectionRef}
       id="products"
       aria-labelledby="products-title"
-      // overflow-x-clip (not the global section overflow:hidden) so the product strip can stick.
-      className="ym-graph-blue scroll-mt-16 overflow-x-clip text-white"
+      className="ym-graph-blue scroll-mt-16 text-white"
       onPointerMove={nudge}
       onPointerDown={nudge}
       onKeyDown={nudge}
@@ -1840,7 +1857,7 @@ function BriefForm() {
 
 function ContactBlock() {
   return (
-    <section id="contact" aria-labelledby="contact-title" className="scroll-mt-16 overflow-x-clip border-t border-slate-200 bg-slate-50">
+    <section id="contact" aria-labelledby="contact-title" className="scroll-mt-16 border-t border-slate-200 bg-slate-50">
       <div className="mx-auto max-w-7xl px-5 py-16 md:px-10 md:py-28">
         <div className="flex flex-col gap-y-6 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between lg:gap-x-12">
           <div className="max-w-xl">
@@ -2036,21 +2053,83 @@ function Footer() {
    PAGES
 ───────────────────────────────────────────── */
 function Shell({ children }: { children: React.ReactNode }) {
+  const diag = useDiag();
+  const [probe, setProbe] = useState("");
+  useEffect(() => {
+    if (diag.size === 0) return;
+    // Inject the bisect overrides at runtime (not via globals.css, which Safari on the phone wasn't applying).
+    const css = [
+      diag.has("noanim") && '[data-landing], [data-landing] * { animation: none !important; transition: none !important; }',
+      diag.has("nosticky") && '[data-landing] .sticky, [data-landing] [class*="sticky"] { position: static !important; }',
+      diag.has("nofixed") && '[data-landing] header { position: absolute !important; }',
+      diag.has("noclip") && '[data-landing] main, [data-landing] section, body { overflow-x: visible !important; }',
+    ].filter(Boolean).join("\n");
+    const st = document.createElement("style");
+    st.textContent = css;
+    document.head.appendChild(st);
+    const t = window.setTimeout(() => {
+      const pos = (el: Element | null) => (el ? getComputedStyle(el).position : "none");
+      setProbe(`hdr:${pos(document.querySelector("header"))} pin:${pos(document.querySelector("#divisions > div"))} main:${getComputedStyle(document.querySelector("main")!).overflowX} body:${getComputedStyle(document.body).overflowX} sec:${getComputedStyle(document.querySelector("#divisions")!).overflowX}`);
+    }, 1500);
+    return () => {
+      window.clearTimeout(t);
+      st.remove();
+    };
+  }, [diag]);
   return (
     // Reduced-motion users get the schematic fully drawn, no animation.
     <MotionConfig reducedMotion="user">
-      <div data-landing className={`${displayFont.variable} min-h-screen bg-white font-abeezee text-ym-text`}>
+      <div data-landing data-noanim={diag.has("noanim") || undefined} data-nosticky={diag.has("nosticky") || undefined} data-nofixed={diag.has("nofixed") || undefined} data-noclip={diag.has("noclip") || undefined} className={`${displayFont.variable} min-h-screen bg-white font-abeezee text-ym-text`}>
+        {diag.size > 0 && (
+          <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 99999, background: "#facc15", color: "#000", font: "700 11px/1.3 monospace", padding: "3px 6px" }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 3 }}>
+              {["nosticky", "nofixed", "noclip", "noanim"].map((f) => {
+                const on = diag.has(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => {
+                      const next = new Set(diag);
+                      if (on) next.delete(f);
+                      else next.add(f);
+                      window.location.search = next.size ? `?diag=${Array.from(next).join(",")}` : "";
+                    }}
+                    style={{ padding: "6px 8px", border: "2px solid #000", background: on ? "#000" : "#fff", color: on ? "#facc15" : "#000", font: "inherit" }}
+                  >
+                    {on ? "OFF " : "ON "}{f.replace("no", "")}
+                  </button>
+                );
+              })}
+            </div>
+            {probe}
+          </div>
+        )}
         <Nav />
-        {/* overflow-x-clip (not the global hidden) so the showcase can pin with position: sticky. */}
-        <main className="overflow-x-clip">{children}</main>
+        {/* No overflow-x clip on main/sections: it made iOS Safari shake while scrolling (see globals.css). */}
+        <main>{children}</main>
         <Footer />
-        <LeadBot />
+        {!diag.has("nobot") && <LeadBot />}
       </div>
     </MotionConfig>
   );
 }
 
 export function YugmindsHomePage() {
+  const diag = useDiag();
+  if (diag.has("plain")) {
+    // Temporary: a bare long page, to tell "our code" from "the phone".
+    const colors = ["#f8fafc", "#1e3a8a", "#ffffff", "#e0f2fe"];
+    return (
+      <main>
+        {Array.from({ length: 12 }).map((_, i) => (
+          <section key={i} style={{ height: "100svh", background: colors[i % 4], color: i % 4 === 1 ? "#fff" : "#0f172a", padding: 24, fontSize: 28, fontWeight: 700 }}>
+            Plain block {i + 1}
+          </section>
+        ))}
+      </main>
+    );
+  }
   return (
     <Shell>
       {/* Hook, what we do, what we make, why us, start your project, talk to us. */}
