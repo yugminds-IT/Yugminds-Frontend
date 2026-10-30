@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { commonApi, authApi, setAuthToken } from "@/lib/api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
+import { LmsDevices } from "@/components/settings/LmsDevices";
 
 type PasswordVisibility = { current: boolean; new: boolean; confirm: boolean };
 type CurrentPasswordStatus = null | "checking" | "valid" | "invalid";
@@ -442,6 +443,11 @@ function StudentSettingsInner() {
               Save Profile
             </Button>
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="pt-6">
+          <LmsDevices />
         </CardContent>
       </Card>
     </div>

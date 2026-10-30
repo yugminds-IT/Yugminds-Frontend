@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { commonApi, authApi, setAuthToken } from "@/lib/api";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
+import { LmsDevices } from "@/components/settings/LmsDevices";
 
 type PasswordVisibility = { current: boolean; new: boolean; confirm: boolean };
 type CurrentPasswordStatus = null | "checking" | "valid" | "invalid";
@@ -377,6 +378,11 @@ export default function SchoolAdminSettings() {
               Save Profile
             </Button>
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="pt-6">
+          <LmsDevices />
         </CardContent>
       </Card>
     </div>

@@ -47,6 +47,11 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   });
   if (res.status === 401 && retry && !path.startsWith("/auth/")) {
     if (await refreshSession()) return request<T>(method, path, body, false);
+    // Session ended (logged out from another device, or expired): back to login
+    // instead of leaving a half-working page.
+    if (typeof window !== "undefined" && /^\/academy\/(learn|admin|tutor)(\/|$)/.test(window.location.pathname)) {
+      window.location.href = `/academy/login?next=${encodeURIComponent(window.location.pathname)}`;
+    }
   }
   if (!res.ok) throw new AcademyApiError(await messageOf(res), res.status);
   const text = await res.text();

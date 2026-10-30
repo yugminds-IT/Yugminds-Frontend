@@ -510,7 +510,7 @@ function paintLivery() {
         g.fillText(str, 0, 0);
         g.restore();
       };
-      text("24", -0.3, 0.72, 0.46, "#0f172a", "italic 800", "#f8fafc"); // door number: the year we started
+      text("32", -0.3, 0.72, 0.46, "#0f172a", "italic 800", "#f8fafc"); // door number
       text("RoboCoders", 0, 0.42, 0.17, "#1d4ed8", "800"); // on the sill, between the wheels
       if (right) {
         // Hood number, on one side only, turned to run across the hood and read from the front.
@@ -518,7 +518,7 @@ function paintLivery() {
         g.translate(X(1.85), T(1.62));
         g.rotate(Math.PI / 2);
         g.translate(-X(1.85), -T(1.62));
-        text("24", 1.85, 1.62, 0.32, "#0f172a", "italic 800", "#f8fafc");
+        text("32", 1.85, 1.62, 0.32, "#0f172a", "italic 800", "#f8fafc");
         g.restore();
       }
       g.restore();

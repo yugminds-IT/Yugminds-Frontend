@@ -4,6 +4,7 @@
  */
 import { http, qs } from "./client";
 
+import type { DeviceSession } from "@/components/settings/DevicesAndSessions";
 export type Role = "LEARNER" | "TUTOR" | "ADMIN";
 export type LessonType = "VIDEO" | "PDF" | "TEXT" | "QUIZ" | "LINK";
 export type ProductType = "COURSE" | "SESSION_PACK";
@@ -240,6 +241,12 @@ export const academy = {
       http.post<Account>("/auth/signup", data),
     logout: () => http.post<{ ok: boolean }>("/auth/logout"),
     updateMe: (data: { fullName?: string; phone?: string; parentName?: string }) => http.patch<Account>("/auth/me", data),
+    sessions: {
+      list: () => http.get<{ sessions: DeviceSession[] }>("/auth/sessions").then((r) => r.sessions),
+      revoke: (id: string) => http.del(`/auth/sessions/${id}`),
+      revokeOthers: () => http.post("/auth/sessions/revoke-others"),
+      revokeAll: () => http.post("/auth/sessions/revoke-all"),
+    },
     changePassword: (currentPassword: string, newPassword: string) =>
       http.post<{ ok: boolean }>("/auth/change-password", { currentPassword, newPassword }),
   },

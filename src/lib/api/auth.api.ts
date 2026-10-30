@@ -1,5 +1,6 @@
 import { apiClient, setAuthToken } from './axios';
 import type { AuthResponse, LoginRequest, SignupRequest } from './types';
+import type { DeviceSession } from '@/components/settings/DevicesAndSessions';
 
 const AUTH_BASE = '/auth';
 
@@ -92,5 +93,12 @@ export const authApi = {
     apiClient.post(`${AUTH_BASE}/update-password`, data),
   verifyPassword: (data: { current_password: string }) =>
     apiClient.post<{ valid: boolean }>(`${AUTH_BASE}/verify-password`, data),
+  sessions: {
+    list: () => apiClient.get<{ sessions: DeviceSession[] }>(`${AUTH_BASE}/sessions`).then((r) => r.data.sessions),
+    revoke: (id: string) => apiClient.delete(`${AUTH_BASE}/sessions/${id}`),
+    revokeOthers: () => apiClient.post(`${AUTH_BASE}/sessions/revoke-others`),
+    // Same-origin Next route: also clears this browser's httpOnly cookies.
+    revokeAll: () => apiClient.post('/api/auth/sessions/revoke-all', {}, { baseURL: '' }),
+  },
   keepPassword: () => apiClient.post<{ success: boolean }>(`${AUTH_BASE}/keep-password`),
 };

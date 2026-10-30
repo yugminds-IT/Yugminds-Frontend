@@ -22,6 +22,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { adminApi, commonApi, authApi, setAuthToken } from "@/lib/api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
+import { LmsDevices } from "@/components/settings/LmsDevices";
 
 type PasswordVisibility = {
   current: boolean;
@@ -451,6 +452,11 @@ export default function AdminSettings() {
               Save Profile
             </Button>
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="pt-6">
+          <LmsDevices />
         </CardContent>
       </Card>
     </div>

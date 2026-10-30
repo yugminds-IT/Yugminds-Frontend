@@ -5,6 +5,7 @@ import { academy } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DevicesAndSessions } from "@/components/settings/DevicesAndSessions";
 import { PageHeader, useAccount } from "./AcademyShell";
 
 /** Profile + password, shared by every Academy dashboard. */
@@ -73,6 +74,10 @@ export function AccountSettings() {
           {pwMsg && <span className={`whitespace-pre-line text-sm ${pwMsg.startsWith("Password changed") ? "text-emerald-600" : "text-red-600"}`}>{pwMsg}</span>}
         </div>
       </form>
+
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+        <DevicesAndSessions api={academy.auth.sessions} onSignedOut={() => (window.location.href = "/academy/login")} />
+      </div>
     </div>
   );
 }

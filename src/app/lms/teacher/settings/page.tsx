@@ -25,6 +25,7 @@ import {
 import { commonApi, authApi, setAuthToken } from "@/lib/api";
 import { getSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useTeacherSchool } from "../context";
+import { LmsDevices } from "@/components/settings/LmsDevices";
 
 type PasswordVisibility = { current: boolean; new: boolean; confirm: boolean };
 type CurrentPasswordStatus = null | "checking" | "valid" | "invalid";
@@ -382,6 +383,12 @@ export default function TeacherSettings() {
                   Save Profile
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardContent className="pt-6">
+              <LmsDevices />
             </CardContent>
           </Card>
         </div>

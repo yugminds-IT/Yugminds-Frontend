@@ -17,6 +17,10 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        // Device/IP shown in Settings → Devices & sessions.
+        ...(request.headers.get('user-agent')
+          ? { 'user-agent': request.headers.get('user-agent')! }
+          : {}),
         ...(request.headers.get('x-forwarded-for')
           ? { 'x-forwarded-for': request.headers.get('x-forwarded-for')! }
           : {}),

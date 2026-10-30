@@ -16,6 +16,12 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         Cookie: `refresh_token=${refreshToken}`,
+        ...(request.headers.get('user-agent')
+          ? { 'user-agent': request.headers.get('user-agent')! }
+          : {}),
+        ...(request.headers.get('x-forwarded-for')
+          ? { 'x-forwarded-for': request.headers.get('x-forwarded-for')! }
+          : {}),
       },
       body: JSON.stringify({ refresh_token: refreshToken, refreshToken }),
     });
