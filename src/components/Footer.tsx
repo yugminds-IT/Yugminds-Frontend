@@ -1,103 +1,78 @@
 import Link from "next/link";
-import Image from "next/image";
-import { Instagram, Youtube, Facebook, Mail, Phone, MapPin } from "lucide-react";
-import { Reveal, HoverLift } from "./public/robo-motion";
+import { Instagram, Youtube, Facebook, MessageCircle, Mail, Phone, MapPin } from "lucide-react";
+import { SOCIAL_LINKS } from "@/lib/social-links";
 import FooterVisitCount from "./FooterVisitCount";
+import FooterTop from "./FooterTop";
+import FooterLogo from "./FooterLogo";
+import { display, body } from "../app/robocoders/robo-fonts";
+import "./public/robo-home.css";
+import "./public/droid.css";
+
+const QUICK = [
+  { href: "/about", label: "About Us" },
+  { href: "/programs", label: "Our Programs" },
+  { href: "/products", label: "Products" },
+  { href: "/community", label: "Community" },
+  { href: "/for-schools", label: "For Schools" },
+  { href: "/for-parents", label: "For Parents" },
+  { href: "/contact", label: "Contact Us" },
+];
+const SOCIAL_ICON = { instagram: Instagram, youtube: Youtube, facebook: Facebook, whatsapp: MessageCircle } as const;
+const SOCIAL = SOCIAL_LINKS.map(({ platform, label, url }) => ({ href: url, label, Icon: SOCIAL_ICON[platform as keyof typeof SOCIAL_ICON] }));
 
 export default function Footer() {
-  const quickLinks = [
-    { href: "/about", label: "About Us" },
-    { href: "/programs", label: "Our Programs" },
-    { href: "/products", label: "Products" },
-    { href: "/community", label: "Community" },
-    { href: "/for-schools", label: "For Schools" },
-    { href: "/for-parents", label: "For Parents" },
-    { href: "/contact", label: "Contact Us" },
-  ];
-
   return (
-    <footer id="contact" className="footer-section bg-gray-900 text-white pt-20 pb-8 w-full relative z-10 mt-0 overflow-hidden">
-      <div className="container mx-auto px-4 md:px-6 lg:px-8 relative">
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
-          <Reveal className="lg:col-span-2">
-            <div className="inline-block bg-white rounded-xl px-4 py-3 mb-6">
-              <Image
-                src="/robocoders-logo.png"
-                alt="RoboCoders — An EdTech initiative by YugMinds"
-                width={803}
-                height={341}
-                className="h-16 md:h-20 w-auto"
-              />
-            </div>
-            <p className="text-gray-400 mb-8 max-w-lg text-base md:text-lg leading-relaxed">An EdTech initiative by YugMinds, empowering the next generation with cutting‑edge STEM education through AI, robotics, and programming.</p>
-            <div className="space-y-3 text-base text-gray-300">
-              <div className="flex items-center gap-3">
-                <span className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-600/20 text-blue-400">
-                  <Mail className="h-4 w-4" />
-                </span>
-                <span>robocoders07@gmail.com</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-600/20 text-blue-400">
-                  <Phone className="h-4 w-4" />
-                </span>
-                <span>+91 85003 45655</span>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-600/20 text-blue-400 mt-0.5 flex-shrink-0">
-                  <MapPin className="h-4 w-4" />
-                </span>
-                <span>Begumpet,<br/>Hyderabad, Telangana, India.</span>
-              </div>
-            </div>
-          </Reveal>
+    <footer id="contact" className={`rf ${display.variable} ${body.variable}`}>
+      <FooterTop />
+      <div className="rf-wrap">
+        <div className="rf-cta">
+          <div>
+            <h2>Ready to build something?</h2>
+            <p>Book a free trial class and meet a tutor one on one.</p>
+          </div>
+          <Link href="/robocoders/online-classes" className="rf-btn">Book a free trial</Link>
+        </div>
 
-          <Reveal delay={0.1}>
-            <div className="font-semibold text-xl mb-6 text-white">Quick Links</div>
-            <ul className="space-y-3 text-base text-gray-300">
-              {quickLinks.map((l) => (
-                <li key={l.href}>
-                  <Link href={l.href} className="group inline-flex items-center hover:text-white transition-colors">
-                    <span className="relative">
-                      {l.label}
-                      <span className="absolute -bottom-0.5 left-0 h-px w-0 bg-blue-400 transition-all duration-300 group-hover:w-full" />
-                    </span>
-                  </Link>
+        <div className="rf-grid">
+          <div className="rf-brand">
+            <FooterLogo />
+            <p>An EdTech initiative by YugMinds, empowering the next generation with cutting-edge STEM education through AI, robotics, and programming.</p>
+          </div>
+
+          <nav aria-label="Quick links">
+            <h3>Quick links</h3>
+            <ul className="rf-links">
+              {QUICK.map((l) => (
+                <li key={l.href}><Link href={l.href}>{l.label}</Link></li>
+              ))}
+            </ul>
+          </nav>
+
+          <div>
+            <h3>Contact</h3>
+            <ul className="rf-contact">
+              <li><Mail size={16} aria-hidden="true" /><a href="mailto:robocoders@yugminds.org">robocoders@yugminds.org</a></li>
+              <li><Phone size={16} aria-hidden="true" /><a href="tel:+918500345655">+91 85003 45655</a></li>
+              <li><MapPin size={16} aria-hidden="true" /><span>Begumpet, Hyderabad, Telangana, India.</span></li>
+            </ul>
+          </div>
+
+          <div>
+            <h3>Follow us</h3>
+            <ul className="rf-social">
+              {SOCIAL.map(({ href, label, Icon }) => (
+                <li key={label}>
+                  <a href={href} target="_blank" rel="noopener noreferrer" aria-label={label}><Icon size={20} aria-hidden="true" /></a>
                 </li>
               ))}
             </ul>
-          </Reveal>
-
-          <Reveal delay={0.2}>
-            <div className="font-semibold text-xl mb-6 text-white">Follow Us</div>
-            <div className="flex gap-4 mb-10">
-              <HoverLift>
-                <a href="https://www.instagram.com/robocoders?igsh=MTJweGVsMzg5M2I3MQ==" target="_blank" rel="noopener noreferrer" className="w-12 h-12 flex items-center justify-center rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 hover:opacity-90 transition-opacity shadow-lg" aria-label="Instagram">
-                  <Instagram className="h-6 w-6 text-white" />
-                </a>
-              </HoverLift>
-              <HoverLift delay={0.05}>
-                <a href="https://youtube.com/@robocoders?si=KcRjT1jfLJg7jMkq" target="_blank" rel="noopener noreferrer" className="w-12 h-12 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-700 transition-colors shadow-lg" aria-label="YouTube">
-                  <Youtube className="h-6 w-6 text-white" />
-                </a>
-              </HoverLift>
-              <HoverLift delay={0.1}>
-                <a href="https://www.facebook.com/share/1V8yjknAGv/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" className="w-12 h-12 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg" aria-label="Facebook">
-                  <Facebook className="h-6 w-6 text-white" />
-                </a>
-              </HoverLift>
-            </div>
             <FooterVisitCount />
-          </Reveal>
+          </div>
         </div>
 
-        <div className="border-t border-white/10 pt-8 mt-8">
-          <div className="flex flex-col md:flex-row justify-center items-center gap-4 text-sm text-gray-400">
-            <p className="text-center">
-              © 2024 Robo Coders™ by Yugminds. All rights reserved. |{" "}
-              <span>Privacy Policy</span> | <span>Terms of Service</span>
-            </p>
-          </div>
+        <div className="rf-base">
+          <p>© 2024 Robo Coders™ by Yugminds. All rights reserved.</p>
+          <p>Privacy Policy · Terms of Service</p>
         </div>
       </div>
     </footer>

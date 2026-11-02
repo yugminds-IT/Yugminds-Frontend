@@ -1,7 +1,10 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import ResizableNavbar from "../../components/ResizableNavbar";
+import { display, body } from "./robo-fonts";
+import HomeNav from "../../components/public/HomeNav";
+import RoboLeadBot from "../../components/public/RoboLeadBot";
+import "../../components/public/robo-home.css";
 
 export default function RobocodersChrome({
   children,
@@ -15,10 +18,14 @@ export default function RobocodersChrome({
     return <>{children}</>;
   }
 
+  // Every RoboCoders page uses the same navbar, set in the home page's two typefaces.
   return (
     <>
-      <ResizableNavbar />
+      <div className={`rh-nav ${display.variable} ${body.variable}`}>
+        <HomeNav />
+      </div>
       {children}
+      <RoboLeadBot />
     </>
   );
 }

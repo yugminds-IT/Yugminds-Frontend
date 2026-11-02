@@ -1,307 +1,79 @@
 import Link from "next/link";
 import { brandHref } from "@/lib/brand-host";
-import Image from "next/image";
-import { Button } from "../../../components/ui/button";
-import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
-import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
+import AboutStory from "../../../components/public/AboutStory";
+import AboutTeach from "../../../components/public/AboutTeach";
+import AboutWhy from "../../../components/public/AboutWhy";
+import AboutBuildStage from "../../../components/public/AboutBuildStage";
+import HomeCount from "../../../components/public/HomeCount";
+import HomeCta from "../../../components/public/HomeCta";
 import { RoboBreadcrumbs } from "../../../components/seo/JsonLd";
-import {
-  Target,
-  Eye,
-  Heart,
-  Lightbulb,
-  Users,
-  Trophy,
-  BookOpen,
-  Network,
-  Hammer,
-  Globe,
-  Rocket,
-  GraduationCap
-} from "lucide-react";
+import "../../../components/public/robo-home.css";
+import "../../../components/public/about.css";
+import { display, body } from "../robo-fonts";
 
 // Enable ISR - revalidate every hour
 export const revalidate = 3600;
 
 export default function AboutPage() {
-
-  const ourValues = [
-    {
-      icon: Hammer,
-      title: "Hands-on Learning",
-      desc: "Every concept is taught by building something real. Students leave each session with a project they created themselves — not just notes in a book.",
-      accent: "Build, not just read.",
-    },
-    {
-      icon: Globe,
-      title: "Inclusive Education",
-      desc: "We believe every child deserves access to quality tech education, regardless of background, ability, or prior experience. Our doors are open to all.",
-      accent: "Education for everyone.",
-    },
-    {
-      icon: Rocket,
-      title: "Innovation First",
-      desc: "We stay ahead of the curve — constantly refreshing our curriculum with the latest in AI, robotics, and software so students are always learning what matters tomorrow.",
-      accent: "Always one step ahead.",
-    },
-    {
-      icon: GraduationCap,
-      title: "Student-Centred",
-      desc: "Our teaching pace, content, and support are shaped around each student's progress. Every child is unique, and we teach that way.",
-      accent: "You define the journey.",
-    },
-  ];
-
-  const whyChoose = [
-    { 
-      icon: Heart, 
-      title: "Student-Centric", 
-      desc: "Every decision we make prioritizes student success, engagement, and well-being." 
-    },
-    { 
-      icon: Lightbulb, 
-      title: "Innovation", 
-      desc: "We continuously evolve our curriculum to reflect the latest technological advances." 
-    },
-    { 
-      icon: Users, 
-      title: "Inclusivity", 
-      desc: "Technology education should be accessible to all, regardless of background or ability." 
-    },
-    { 
-      icon: Trophy, 
-      title: "Excellence", 
-      desc: "We maintain the highest standards in teaching, content, and student outcomes." 
-    },
-    { 
-      icon: BookOpen, 
-      title: "Practical Learning", 
-      desc: "Theory meets practice through hands-on projects and real-world applications." 
-    },
-    { 
-      icon: Network, 
-      title: "Community", 
-      desc: "Building a supportive network of learners, educators, and innovators." 
-    }
-  ];
-
   return (
-    <div className="min-h-screen bg-white">
+    <div className={`rh ${display.variable} ${body.variable}`}>
       <RoboBreadcrumbs
         crumbs={[
           { name: "RoboCoders", path: "/" },
           { name: "About", path: "/about" },
         ]}
       />
-
-      {/* Combined Hero & Mission & Vision Section */}
-      <section className="min-h-screen flex flex-col justify-center bg-gray-50 py-12 md:py-20">
-        <div className="container flex-1 flex flex-col justify-center py-8 md:py-12">
-          {/* Hero Content */}
-          <Reveal>
-            <div className="text-center mb-8 md:mb-12">
-              <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto">
-                About <span className="text-blue-600">Robo Coders™</span>
-              </h1>
-              <p className="text-lg md:text-xl lg:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-                Transforming education through innovative coding and robotics programs powered by YugMinds.
-                Explore our{" "}
-                <Link href="/robocoders/programs" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
-                  programs
-                </Link>{" "}
-                or{" "}
-                <Link href={brandHref("/robocoders/contact")} className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
-                  get in touch
-                </Link>
-                .
-              </p>
-            </div>
-          </Reveal>
-
-          {/* Mission & Vision Cards */}
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8 lg:gap-10 mt-5">
-            {/* Mission Card */}
-            <HoverLift delay={0.1}>
-            <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full">
-              <CardContent className="p-8 md:p-12 lg:p-16">
-                <div className="flex items-start gap-6">
-                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                    <Target className="h-8 w-8 md:h-10 md:w-10 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4">Our Mission</h2>
-                    <p className="text-white/90 leading-relaxed text-sm md:text-base lg:text-lg">
-                      To empower the next generation with essential coding and robotics skills, fostering creativity, critical thinking, and innovation. We strive to make technology education accessible, engaging, and transformative for every student.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </HoverLift>
-
-            {/* Vision Card */}
-            <HoverLift delay={0.2}>
-            <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full">
-              <CardContent className="p-8 md:p-12 lg:p-16">
-                <div className="flex items-start gap-6">
-                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                    <Eye className="h-8 w-8 md:h-10 md:w-10 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4">Our Vision</h2>
-                    <p className="text-white/90 leading-relaxed text-sm md:text-base lg:text-lg">
-                      To be the leading EdTech platform that bridges the gap between traditional education and future technology needs. We envision a world where every student has the opportunity to become a confident creator and problem solver in the digital age.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </HoverLift>
-          </div>
-        </div>
-      </section>
-
-      {/* Our Story Section — BLUE */}
-      <section className="min-h-screen flex items-center justify-center bg-blue-600 py-20">
-        <div className="container">
-          <Reveal>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-8 md:mb-12 text-center text-white max-w-5xl mx-auto">Our Story</h2>
-          </Reveal>
-          <div className="grid md:grid-cols-2 gap-10 md:gap-12 items-center">
-            <RevealX x={-48} className="space-y-6 md:space-y-8">
-              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
-                Founded by Yugminds, Robo Coders™ was born from a simple observation: students were eager to learn technology, but lacked engaging, practical programs that truly prepared them for the future.
-              </p>
-              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
-                Since our inception, we&apos;ve trained over 2,000 students across 10+ partner schools, delivering hands-on coding and robotics education that sparks curiosity and builds confidence.
-              </p>
-              <p className="text-white leading-relaxed text-base md:text-lg lg:text-xl">
-                Our team of expert instructors combines industry experience with a passion for teaching, creating an environment where students don&apos;t just learn, they thrive.
-              </p>
-            </RevealX>
-            <RevealX x={48} className="rounded-2xl overflow-hidden bg-gray-100 aspect-[4/3] relative max-h-[600px] shadow-2xl">
-              <Image
-                src={`/${encodeURI('About Us.jpg')}`}
-                alt="Students learning robotics and coding with RoboCoders"
-                fill
-                className="object-cover max-w-full max-h-full hover:scale-105 transition-transform duration-700"
-                sizes="(max-width: 768px) 100vw, 50vw"
-              />
-            </RevealX>
-          </div>
-        </div>
-      </section>
-
-      {/* Our Values Section — WHITE */}
-      <section className="py-20 md:py-28 bg-white">
-        <div className="container mx-auto px-4 md:px-6 lg:px-8">
-
-          {/* Heading */}
-          <Reveal>
-          <div className="text-center mb-14">
-            <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 text-sm font-semibold px-4 py-2 rounded-full border border-blue-100 mb-4">
-              <Heart className="h-4 w-4 fill-blue-600" />
-              What We Stand For
-            </span>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 max-w-3xl mx-auto leading-tight">
-              Our Core <span className="text-blue-600">Values</span>
-            </h2>
-            <p className="text-gray-500 text-lg md:text-xl max-w-2xl mx-auto">
-              The principles that guide every class, every project, and every interaction at Robo Coders™.
-            </p>
-            <div className="w-16 h-1 bg-blue-600 rounded-full mx-auto mt-6" />
-          </div>
-          </Reveal>
-
-          {/* Value Cards */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
-            {ourValues.map(({ icon: Icon, title, desc, accent }, idx) => (
-              <HoverLift key={title} delay={idx * 0.1}>
-              <div
-                className="group flex flex-col h-full bg-white border-2 border-blue-100 rounded-2xl p-6 md:p-8 hover:border-blue-400 hover:shadow-xl transition-all duration-300"
-              >
-                {/* Icon */}
-                <div className="w-14 h-14 rounded-xl bg-blue-600 flex items-center justify-center mb-5 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
-                  <Icon className="h-7 w-7 text-white" />
-                </div>
-
-                {/* Title */}
-                <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-3">{title}</h3>
-
-                {/* Description */}
-                <p className="text-gray-500 text-sm leading-relaxed flex-1">{desc}</p>
-
-                {/* Accent tagline */}
-                <div className="mt-5 pt-4 border-t border-blue-100">
-                  <span className="text-blue-600 text-sm font-semibold">{accent}</span>
-                </div>
+      <main className="ab-main">
+        <section className="ab-hero" aria-labelledby="ab-h1">
+          <div className="rh-wrap ab-hero-grid">
+            <div className="ab-hero-copy">
+              <h1 id="ab-h1">We teach students to build.</h1>
+              <p className="rh-lede">RoboCoders is a coding, robotics and AI program from YugMinds, for students aged 6 to 18.</p>
+              <div className="rh-actions">
+                <Link href="/robocoders/programs" className="rh-btn rh-btn--primary">Explore programs</Link>
+                <Link href={brandHref("/robocoders/contact")} className="rh-btn rh-btn--ghost">Get in touch</Link>
               </div>
-              </HoverLift>
-            ))}
+              <dl className="rh-facts">
+                <div>
+                  <dt><HomeCount to={2000} suffix="+" /></dt>
+                  <dd>students trained across India</dd>
+                </div>
+                <div>
+                  <dt><HomeCount to={20} suffix="+" /></dt>
+                  <dd>partner schools nationwide</dd>
+                </div>
+                <div>
+                  <dt>6 to 18</dt>
+                  <dd>the ages we teach</dd>
+                </div>
+              </dl>
+            </div>
+            <AboutBuildStage />
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Join Our Mission CTA Section — BLUE */}
-      <section className="flex items-center justify-center bg-blue-600 text-white py-16 md:py-20 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(#fff 2px, transparent 2px)", backgroundSize: "30px 30px" }} />
-        <Reveal className="container text-center relative z-10">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold mb-4 md:mb-6 max-w-5xl mx-auto">Join Our Mission</h2>
-          <p className="text-blue-100 mb-8 md:mb-10 max-w-3xl mx-auto text-base md:text-lg lg:text-xl leading-relaxed">
-            Be part of the educational revolution that&apos;s preparing students for tomorrow&apos;s world
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/contact">
-              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 text-base py-6 rounded-full shadow-lg transition-transform hover:scale-105">
-                Partner With Us
-              </Button>
-            </Link>
-            <Link href="/programs">
-              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 text-base py-6 rounded-full shadow-lg transition-transform hover:scale-105">
-                Explore Programs
-              </Button>
-            </Link>
+        <section className="rh-sec rh-dark" aria-labelledby="ab-why">
+          <AboutWhy />
+        </section>
+
+        <section className="rh-sec" aria-labelledby="ab-story">
+          <AboutStory />
+        </section>
+
+        <section className="rh-sec rh-wash" aria-labelledby="ab-values">
+          <div className="rh-wrap">
+            <div className="rh-head">
+              <h2 id="ab-values">How we teach.</h2>
+              <p className="rh-lede">Four principles shape every class, project and conversation.</p>
+            </div>
+            <AboutTeach />
           </div>
-        </Reveal>
-      </section>
+        </section>
 
-      {/* Why Choose Robo Coders™? Section — WHITE */}
-      <section className="min-h-screen flex items-center justify-center bg-white py-20">
-        <div className="container">
-          <Reveal>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-center mb-4 md:mb-6 max-w-5xl mx-auto">
-              Why Choose <span className="text-blue-600">Robo Coders™</span>?
-            </h2>
-            <p className="text-gray-600 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
-              Experience the future of education with our innovative approach to STEM learning
-            </p>
-          </Reveal>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-            {whyChoose.map(({ icon: Icon, title, desc }, idx) => (
-              <HoverLift key={title} delay={idx * 0.08}>
-              <Card className="bg-blue-600 text-white border-0 rounded-3xl h-full">
-                <CardContent className="p-6 md:p-8">
-                  <div className="flex items-start gap-4 md:gap-5">
-                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                      <Icon className="h-6 w-6 md:h-7 md:w-7 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg md:text-xl lg:text-2xl mb-2 md:mb-3">{title}</h3>
-                      <p className="text-white/90 text-sm md:text-base leading-relaxed">{desc}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              </HoverLift>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
+        <HomeCta />
+      </main>
       <Footer />
     </div>
   );
 }
-

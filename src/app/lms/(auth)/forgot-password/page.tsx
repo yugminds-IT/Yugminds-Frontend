@@ -2,18 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle, Mail, Clock, Shield, ArrowLeft } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle } from "lucide-react";
 import { commonApi } from "@/lib/api";
-import AuthSplitLayout from "@/components/AuthSplitLayout";
+import AuthShell from "@/components/public/AuthShell";
+import AuthSteps from "@/components/public/AuthSteps";
+
+const STEPS = [
+  { name: "You send a request", text: "Enter your email and submit it." },
+  { name: "Your administrator reviews it", text: "They set a temporary password for your account." },
+  { name: "You get the temporary password", text: "You get an in-app notification, and your administrator gives you the password directly." },
+  { name: "You choose a new password", text: "Sign in with the temporary one. You'll be asked to set a new password straight away." },
+];
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -28,158 +29,68 @@ export default function ForgotPasswordPage() {
 
     try {
       const { data } = await commonApi.auth.passwordResetRequest({ email: email.trim() });
-      setMessage((data as { message?: string })?.message || 'Password reset request submitted successfully.');
+      setMessage((data as { message?: string })?.message || "Your request has been submitted.");
       setSubmitted(true);
-     
     } catch (error: unknown) {
-      console.error('Error submitting password reset request:', error);
-      setError(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.');
+      console.error("Error submitting password reset request:", error);
+      setError(error instanceof Error ? error.message : "An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AuthSplitLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-4xl md:text-5xl font-semibold leading-tight tracking-tight text-gray-900">
-            Forgot your password?
-          </h1>
-          <p className="mt-3 text-muted-foreground">
-            Submit a password reset request. An administrator will review and approve it.
-          </p>
-        </div>
+    <AuthShell
+      sideTitle="Locked out? It takes four steps."
+      sideText="Your administrator helps you back in. Here is how a reset works."
+      side={<AuthSteps steps={STEPS} stage={1} auto={!submitted} label="How a password reset works" />}
+    >
+      <h1>Forgot your password?</h1>
+      <p className="rh-lede">Submit a reset request. Your administrator will review it and set a temporary password.</p>
 
-        <Card className="border-0 shadow-none py-0 gap-4">
-          <CardHeader className="!px-0">
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-blue-600" />
-              Request Password Reset
-            </CardTitle>
-            <CardDescription>
-              {submitted 
-                ? "Your request has been submitted and will be reviewed by an administrator."
-                : "Enter your email address to submit a password reset request"
-              }
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-0">
-            {submitted ? (
-              <div className="space-y-4">
-                <Alert className="bg-green-50 border-green-200">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertTitle className="text-green-800 font-semibold">Request Submitted Successfully</AlertTitle>
-                  <AlertDescription className="text-green-700 mt-2">
-                    Your password reset request has been submitted. Your administrator will review it and get back to you directly.
-                  </AlertDescription>
-                </Alert>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <Mail className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-blue-900 mb-2">What happens next?</h4>
-                      <ol className="list-decimal list-inside space-y-1.5 text-sm text-blue-800">
-                        <li>Your request will be reviewed by your administrator</li>
-                        <li>Your administrator will set a temporary password for your account</li>
-                        <li>You will receive an in-app notification confirming the reset</li>
-                        <li>Your administrator will provide the temporary password to you directly</li>
-                        <li>Log in with the temporary password — you will be asked to set a new one immediately</li>
-                      </ol>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setSubmitted(false);
-                      setEmail("");
-                      setMessage("");
-                    }}
-                  >
-                    Submit Another Request
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={() => router.push('/lms/login')}
-                  >
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Login
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-
-                {message && !submitted && (
-                  <Alert className="bg-green-50 border-green-200">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <AlertTitle className="text-green-800">Success</AlertTitle>
-                    <AlertDescription className="text-green-700">{message}</AlertDescription>
-                  </Alert>
-                )}
-
-                <div>
-                  <Label htmlFor="email">Email address</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="mt-1"
-                    placeholder="Enter your email address"
-                    disabled={loading}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Enter the email address associated with your account
-                  </p>
-                </div>
-
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={loading || !email.trim()}
-                >
-                  {loading ? (
-                    <>
-                      <Clock className="h-4 w-4 mr-2 animate-spin" />
-                      Submitting Request...
-                    </>
-                  ) : (
-                    <>
-                      <Mail className="h-4 w-4 mr-2" />
-                      Submit Reset Request
-                    </>
-                  )}
-                </Button>
-              </form>
-            )}
-
-            <div className="mt-6 text-center border-t pt-4">
-              <Link
-                href="/lms/login"
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1"
-              >
-                <ArrowLeft className="h-3 w-3" />
-                Back to login
-              </Link>
+      {submitted ? (
+        <>
+          <div className="lg-note" data-tone="ok" role="status">
+            <CheckCircle size={18} aria-hidden="true" />
+            <div>
+              <b>Request submitted</b>
+              <p>{message} Your administrator will review it and get back to you directly.</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="lg-actions">
+            <button type="button" className="rh-btn rh-btn--ghost" onClick={() => { setSubmitted(false); setEmail(""); setMessage(""); }}>
+              Submit another request
+            </button>
+            <Link href="/lms/login" className="rh-btn rh-btn--primary">Back to sign in</Link>
+          </div>
+        </>
+      ) : (
+        <form className="lg-form" onSubmit={handleResetPassword}>
+          {error && (
+            <div className="lg-note" data-tone="error" role="alert">
+              <AlertCircle size={18} aria-hidden="true" />
+              <div><b>We couldn&apos;t send the request</b><p>{error}</p></div>
+            </div>
+          )}
+          <div className="lg-field">
+            <label htmlFor="email">Email address</label>
+            <div className="lg-input">
+              <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" disabled={loading} />
+            </div>
+            <span className="lg-hint">Use the email address linked to your account.</span>
+          </div>
+          <button type="submit" className="rh-btn rh-btn--primary lg-submit" disabled={loading || !email.trim()} aria-busy={loading}>
+            {loading && <span className="lg-spin" aria-hidden="true" />}
+            {loading ? "Sending request" : "Send reset request"}
+          </button>
+        </form>
+      )}
+
+      <div className="lg-helps">
+        <p className="lg-help">
+          <Link href="/lms/login" className="rh-link"><ArrowLeft size={14} aria-hidden="true" style={{ display: "inline", verticalAlign: "-2px" }} /> Back to sign in</Link>
+        </p>
       </div>
-    </AuthSplitLayout>
+    </AuthShell>
   );
 }

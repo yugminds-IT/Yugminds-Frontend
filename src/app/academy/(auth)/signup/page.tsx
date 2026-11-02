@@ -36,12 +36,10 @@ function SignupForm() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-acdisplay text-3xl font-bold leading-tight text-ac-ink sm:text-4xl">Create your account</h1>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">Free to join — start with a demo course or a free 1:1 trial class.</p>
-      </div>
-      <form onSubmit={onSubmit} className="space-y-4">
+    <>
+      <h1>Create your account.</h1>
+      <p className="rh-lede">Free to join. Start with a demo course or a free 1:1 trial class.</p>
+      <form onSubmit={onSubmit} className="lg-form">
         <GlassField label="Learner's full name" htmlFor="fullName" hint="Printed on certificates.">
           <input id="fullName" name="fullName" autoComplete="name" required minLength={2} placeholder="e.g. Aarav Sharma" className={glassInput} />
         </GlassField>
@@ -60,13 +58,15 @@ function SignupForm() {
           <PasswordInput id="password" name="password" autoComplete="new-password" required minLength={8} placeholder="Create a password" />
         </GlassField>
         <AuthError message={error} />
-        <AuthSubmit busy={busy}>{busy ? "Creating account…" : "Create Account"}</AuthSubmit>
+        <AuthSubmit busy={busy}>{busy ? "Creating account" : "Create account"}</AuthSubmit>
       </form>
-      <p className="text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <Link href={`/academy/login${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="font-medium text-ac-brand hover:underline">Sign in</Link>
-      </p>
-    </div>
+      <div className="lg-helps">
+        <p className="lg-help">
+          Already have an account?{" "}
+          <Link href={`/academy/login${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="rh-link">Sign in</Link>
+        </p>
+      </div>
+    </>
   );
 }
 

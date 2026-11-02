@@ -1,0 +1,491 @@
+/* Droid anatomy diagram: head = AI and ML, ball = Robotics, block card = Coding. Built from the Uiverse.io BB-8 CSS by Galahhad. */
+
+.droid-wrap {
+  --size: clamp(24px, min(3.85vw, 7.4svh), 66px);
+  font-size: var(--size);
+  position: relative;
+  width: 13.6em;
+  height: 10.2em;
+}
+
+.droid {
+  --accent: var(--rh-amber-deep);
+  --body-bg: var(--rh-paper);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 13.6em;
+  height: 10.2em;
+}
+.droid,
+.droid *,
+.droid *::before,
+.droid *::after { box-sizing: border-box; }
+
+/* backdrop: the night scene, a starry sky over a strip of sand, clipped to a disc */
+.droid::before {
+  content: "";
+  position: absolute;
+  left: 2.1em;
+  bottom: 0.3em;
+  width: 9.4em;
+  height: 9.4em;
+  border-radius: 50%;
+  background:
+    linear-gradient(#b18d71, #b18d71) bottom / 100% 27% no-repeat,
+    linear-gradient(#070e2b 0%, #0a1f4d 50%, #2c4770 73%);
+  box-shadow:
+    inset 0 0 0 0.1em rgb(255 255 255 / 0.18),
+    0 1.4em 3.2em rgb(10 31 77 / 0.35);
+}
+.droid__sky {
+  position: absolute;
+  left: 2.1em;
+  bottom: 0.3em;
+  width: 9.4em;
+  height: 9.4em;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.droid__stars {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0.1em;
+  height: 0.1em;
+  border-radius: 50%;
+  background: #fff;
+  color: #fff;
+  filter: drop-shadow(0 0 0.06em #fff);
+  animation: droid-twinkle 4s ease-in-out infinite alternate;
+  box-shadow:
+    1.2em 0.9em, 2.4em 0.5em, 3.6em 1.3em, 4.9em 0.7em, 6.1em 1.1em, 7.3em 0.6em,
+    0.7em 2.3em, 2em 2.7em, 6.9em 2.4em, 7.8em 3.1em, 0.5em 3.8em, 1.6em 4.4em, 7.5em 4.3em;
+}
+.droid__stars--b {
+  animation-delay: 2s;
+  width: 0.14em;
+  height: 0.14em;
+  box-shadow:
+    1.8em 0.3em, 3.1em 0.9em, 4.2em 0.4em, 5.5em 1.5em, 6.6em 0.3em,
+    0.9em 1.5em, 2.7em 1.8em, 7.4em 1.5em, 1em 3.1em, 6.3em 3.6em, 2.2em 3.5em;
+}
+
+.droid__moon {
+  position: absolute;
+  border-radius: 50%;
+  background: linear-gradient(#fff, #6e8ea2);
+  box-shadow: 0 0 0.3em rgb(255 255 255 / 0.32), 0 0 0.3em rgb(110 142 162 / 0.3);
+}
+.droid__moon--big { left: 0.9em; top: 1em; width: 2.3em; height: 2.3em; }
+.droid__moon--big::before,
+.droid__moon--big::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  background: rgb(184 196 200);
+  box-shadow: inset 0 0 0.08em rgb(140 162 169);
+}
+.droid__moon--big::before { left: 0.38em; top: 0.38em; width: 0.54em; height: 0.54em; }
+.droid__moon--big::after { left: 1.5em; top: 0.92em; width: 0.3em; height: 0.3em; }
+.droid__moon--mid { left: 6.6em; top: 2.3em; width: 0.85em; height: 0.85em; }
+.droid__moon--small { left: 7.3em; top: 3.7em; width: 0.6em; height: 0.6em; }
+
+.droid__shadow {
+  position: absolute;
+  left: 4.4em;
+  bottom: 1.15em;
+  width: 4.8em;
+  height: 0.7em;
+  border-radius: 50%;
+  background: rgb(5 15 60);
+  opacity: 0.38;
+  filter: blur(0.2em);
+}
+
+/* AI: radar pings spread from the eye */
+.droid__ping {
+  position: absolute;
+  left: 6.35em;
+  top: 2.65em;
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 50%;
+  border: 0.06em solid rgb(255 255 255 / 0.85);
+  opacity: 0;
+  animation: droid-ping 3.2s ease-out infinite;
+}
+.droid__ping + .droid__ping { animation-delay: 1.6s; }
+
+/* The three modules circle the rim of the disc. Where the rim runs under a label card, the icon fades and shrinks away and
+   comes back once past, so it never collides with a card. */
+.droid__orbit {
+  position: absolute;
+  left: 2.1em;
+  bottom: 0.3em;
+  width: 9.4em;
+  height: 9.4em;
+  border-radius: 50%;
+  border: 1px dashed rgb(255 255 255 / 0.4);
+  animation: droid-orbit 48s linear infinite;
+}
+.droid__orbiter {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.4em;
+  height: 1.4em;
+  margin: -0.7em;
+  transform: rotate(var(--a)) translateY(-4.7em);
+}
+.droid__orbiter > span {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--rh-paper);
+  border: 0.07em solid var(--rh-amber);
+  color: var(--rh-ink);
+  box-shadow: 0 0.2em 0.6em rgb(11 27 58 / 0.12);
+  animation: droid-orbit-back 48s linear infinite, droid-dip 48s linear infinite;
+  animation-delay: 0s, var(--d);
+}
+.droid__orbiter svg { width: 0.75em; height: 0.75em; }
+
+/* the floor slides left under the ball, so the ball reads as rolling right */
+.droid__ground {
+  position: absolute;
+  left: 2.4em;
+  bottom: 1.42em;
+  width: 8.8em;
+  height: 0.07em;
+  background: repeating-linear-gradient(90deg, #fff 0 0.9em, transparent 0.9em 1.8em);
+  opacity: 0.5;
+  mask-image: linear-gradient(90deg, transparent, #000 18% 82%, transparent);
+  animation: droid-floor 0.79s linear infinite;
+}
+
+.droid__unit {
+  position: absolute;
+  left: 4.6125em;
+  bottom: 1.5em;
+  transform: scale(1.12);
+  transform-origin: 50% 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.droid__head-container {
+  position: relative;
+  z-index: 2;
+  transform-origin: 1.25em 3.75em;
+  animation: droid-lean 6s ease-in-out infinite;
+}
+
+/* AI: scan brackets around the head with a line sweeping across */
+.droid__scan {
+  position: absolute;
+  inset: -0.3em -0.4em -0.1em;
+  z-index: 3;
+  pointer-events: none;
+  --b: linear-gradient(var(--accent), var(--accent));
+  background:
+    var(--b) 0 0 / 0.55em 0.07em no-repeat, var(--b) 0 0 / 0.07em 0.55em no-repeat,
+    var(--b) 100% 0 / 0.55em 0.07em no-repeat, var(--b) 100% 0 / 0.07em 0.55em no-repeat,
+    var(--b) 0 100% / 0.55em 0.07em no-repeat, var(--b) 0 100% / 0.07em 0.55em no-repeat,
+    var(--b) 100% 100% / 0.55em 0.07em no-repeat, var(--b) 100% 100% / 0.07em 0.55em no-repeat;
+}
+.droid__scan::after {
+  content: "";
+  position: absolute;
+  left: 0.1em;
+  right: 0.1em;
+  height: 0.05em;
+  background: var(--accent);
+  opacity: 0.7;
+  box-shadow: 0 0 0.3em var(--accent);
+  animation: droid-scan 3s ease-in-out infinite;
+}
+
+.droid__head {
+  overflow: hidden;
+  margin-bottom: -0.188em;
+  width: 2.5em;
+  height: 1.688em;
+  background:
+    linear-gradient(
+      transparent 0.063em,
+      dimgray 0.063em 0.313em,
+      transparent 0.313em 0.375em,
+      var(--accent) 0.375em 0.5em,
+      transparent 0.5em 1.313em,
+      silver 1.313em 1.438em,
+      transparent 1.438em
+    ),
+    linear-gradient(45deg, transparent 0.188em, var(--body-bg) 0.188em 1.25em, transparent 1.25em),
+    linear-gradient(-45deg, transparent 0.188em, var(--body-bg) 0.188em 1.25em, transparent 1.25em),
+    linear-gradient(var(--body-bg) 1.25em, transparent 1.25em);
+  border-radius: 99em 99em 0 0;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0.063em 0.125em gray);
+}
+
+/* the eye */
+.droid__head::before {
+  content: "";
+  position: absolute;
+  width: 0.563em;
+  height: 0.563em;
+  background:
+    radial-gradient(0.125em circle at 0.25em 0.375em, red, transparent),
+    radial-gradient(0.063em circle at 0.375em 0.188em, var(--body-bg) 50%, transparent 100%),
+    linear-gradient(45deg, #000 0.188em, dimgray 0.313em 0.375em, #000 0.5em);
+  border-radius: 99em;
+  top: 0.413em;
+  left: 50%;
+  transform: translate(-50%);
+  box-shadow:
+    0 0 0 0.089em lightgray,
+    0.563em 0.281em 0 -0.148em,
+    0.563em 0.281em 0 -0.1em var(--body-bg),
+    0.563em 0.281em 0 -0.063em;
+  z-index: 1;
+  animation: droid-gaze 6s ease-in-out infinite;
+}
+
+/* the orange stripe, sliding with the gaze */
+.droid__head::after {
+  content: "";
+  position: absolute;
+  bottom: 0.375em;
+  left: 0;
+  width: 100%;
+  height: 0.188em;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0.125em,
+    transparent 0.125em 0.188em,
+    var(--accent) 0.188em 0.313em,
+    transparent 0.313em 0.375em,
+    var(--accent) 0.375em 0.938em,
+    transparent 0.938em 1em,
+    var(--accent) 1em 1.125em,
+    transparent 1.125em 1.875em,
+    var(--accent) 1.875em 2em,
+    transparent 2em 2.063em,
+    var(--accent) 2.063em 2.25em,
+    transparent 2.25em 2.313em,
+    var(--accent) 2.313em 2.375em,
+    transparent 2.375em 2.438em,
+    var(--accent) 2.438em
+  );
+  animation: droid-stripe 6s ease-in-out infinite;
+}
+
+.droid__antenna {
+  position: absolute;
+  width: 0.059em;
+  border-radius: 99em 99em 0 0;
+  transform: translateY(-90%);
+  transform-origin: 50% 100%;
+  animation: droid-sway 3s ease-in-out infinite;
+}
+.droid__antenna:nth-child(1) {
+  height: 0.938em;
+  right: 0.938em;
+  background: linear-gradient(#000 0.188em, silver 0.188em);
+}
+.droid__antenna:nth-child(2) {
+  height: 0.375em;
+  left: 50%;
+  transform: translate(-50%, -90%);
+  background: silver;
+}
+
+.droid__body {
+  position: relative;
+  z-index: 1;
+  width: 4.375em;
+  height: 4.375em;
+  border-radius: 99em;
+  overflow: hidden;
+  transform: rotate(45deg);
+  animation: droid-spin 6s linear infinite;
+  background:
+    linear-gradient(-90deg, var(--body-bg) 4%, var(--accent) 4% 10%, transparent 10% 90%, var(--accent) 90% 96%, var(--body-bg) 96%),
+    linear-gradient(var(--body-bg) 4%, var(--accent) 4% 10%, transparent 10% 90%, var(--accent) 90% 96%, var(--body-bg) 96%),
+    linear-gradient(to right, transparent 2.156em, silver 2.156em 2.219em, transparent 2.188em),
+    linear-gradient(transparent 2.156em, silver 2.156em 2.219em, transparent 2.188em);
+  background-color: var(--body-bg);
+  box-shadow: inset -0.35em -0.45em 0.7em rgb(11 27 58 / 0.14);
+}
+.droid__body::after {
+  content: "";
+  bottom: 1.5em;
+  left: 0.563em;
+  position: absolute;
+  width: 0.188em;
+  height: 0.188em;
+  background: rgb(236, 236, 236);
+  color: rgb(236, 236, 236);
+  border-radius: 50%;
+  box-shadow:
+    0.875em 0.938em,
+    0 -1.25em,
+    0.875em -2.125em,
+    2.125em -2.125em,
+    3.063em -1.25em,
+    3.063em 0,
+    2.125em 0.938em;
+}
+.droid__body::before {
+  content: "";
+  width: 2.625em;
+  height: 2.625em;
+  position: absolute;
+  border-radius: 50%;
+  overflow: hidden;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 0.313em solid var(--accent);
+  background:
+    radial-gradient(1em circle at center, rgb(236, 236, 236) 50%, transparent 51%),
+    radial-gradient(1.25em circle at center, var(--body-bg) 50%, transparent 51%),
+    linear-gradient(-90deg, transparent 42%, var(--accent) 42% 58%, transparent 58%),
+    linear-gradient(var(--body-bg) 42%, var(--accent) 42% 58%, var(--body-bg) 58%);
+}
+
+/* Ball turns once every 6s; its surface speed (about 2.3em/s) sets how fast the floor dashes slide. */
+@keyframes droid-spin {
+  from { transform: rotate(45deg); }
+  to { transform: rotate(405deg); }
+}
+@keyframes droid-floor {
+  to { background-position-x: -1.8em; }
+}
+@keyframes droid-lean {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(5deg); }
+  70% { transform: rotate(-4deg); }
+}
+@keyframes droid-gaze {
+  0%, 100% { left: 24%; }
+  50% { left: 76%; }
+}
+@keyframes droid-stripe {
+  0%, 100% { background-position: -1.375em 0; }
+  50% { background-position: 1.375em 0; }
+}
+@keyframes droid-sway {
+  0%, 100% { rotate: 0deg; }
+  25% { rotate: -5deg; }
+  75% { rotate: 5deg; }
+}
+@keyframes droid-scan {
+  0%, 100% { top: 0.1em; }
+  50% { top: calc(100% - 0.15em); }
+}
+@keyframes droid-twinkle {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+@keyframes droid-ping {
+  0% { transform: scale(0.6); opacity: 0.5; }
+  100% { transform: scale(7); opacity: 0; }
+}
+@keyframes droid-orbit { to { transform: rotate(360deg); } }
+@keyframes droid-orbit-back {
+  from { transform: rotate(calc(var(--a) * -1)); }
+  to { transform: rotate(calc(-360deg - var(--a))); }
+}
+/* One lap, as a fraction of the angle around the rim (clockwise from the top): hidden over the AI and Robotics cards
+   (28 to 129 degrees) and the Coding card (205 to 266 degrees), fading over about 8 degrees either side. */
+@keyframes droid-dip {
+  0%, 5.6% { opacity: 1; scale: 1; }
+  7.8%, 35.8% { opacity: 0; scale: 0.5; }
+  38.1%, 54.4% { opacity: 1; scale: 1; }
+  56.8%, 73.8% { opacity: 0; scale: 0.5; }
+  76.1%, 100% { opacity: 1; scale: 1; }
+}
+@keyframes droid-step {
+  0%, 30% { background: var(--rh-amber); color: var(--rh-ink); }
+  34%, 100% { background: var(--rh-blue); color: #fff; }
+}
+
+/* Coding: a block-code card inside the Coding label; the blocks light up in turn, as if the program is running the droid */
+.droid__code {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.4rem;
+  border-radius: 0.7rem;
+  background: var(--rh-ink);
+}
+.droid__code span {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.45rem;
+  font: 700 var(--rh-t-xs)/1 var(--rh-body);
+  white-space: nowrap;
+  background: var(--rh-blue);
+  color: #fff;
+  animation: droid-step 3s linear infinite;
+  animation-delay: calc(var(--i) * 1s);
+}
+
+.droid__leaders {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 10.2em;
+  pointer-events: none;
+  overflow: visible;
+}
+.droid__leaders path { fill: none; stroke: var(--rh-amber-deep); stroke-width: 0.55; }
+.droid__leaders circle { fill: var(--rh-amber); stroke: var(--rh-ink); stroke-width: 0.3; }
+
+/* hovering a label lights up the part it describes */
+.droid-wrap:has(.rh-mod--ai:hover) .droid__scan { filter: drop-shadow(0 0 0.3em var(--accent)); }
+.droid-wrap:has(.rh-mod--robotics:hover) .droid__body {
+  box-shadow: 0 0 0 0.1em var(--accent), 0 0 1.2em var(--accent), inset -0.35em -0.45em 0.7em rgb(11 27 58 / 0.14);
+}
+
+/* Below 1280px the label cards stack under the droid instead of sitting around it */
+@media (max-width: 1280px) {
+  .droid-wrap { --size: min(3.6vw, 40px); width: 100%; height: auto; }
+  .droid { position: relative; margin-left: calc(50% - 6.8em); }
+  .droid__leaders { display: none; }
+  .droid__orbiter > span { animation: droid-orbit-back 48s linear infinite; }
+}
+
+@media (max-width: 960px) {
+  .droid-wrap { --size: min(5.2vw, 40px); }
+}
+
+@media (max-width: 720px) {
+  .droid-wrap { --size: min(31px, 8.4vw); }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .droid__ground,
+  .droid__ping,
+  .droid__stars,
+  .droid__orbit,
+  .droid__orbiter > span,
+  .droid__head-container,
+  .droid__head::before,
+  .droid__head::after,
+  .droid__antenna,
+  .droid__body,
+  .droid__scan::after,
+  .droid__code span { animation: none; }
+  .droid__ping { display: none; }
+  .droid__orbiter { display: none; }
+  .droid__code span:first-child { background: var(--rh-amber); color: var(--rh-ink); }
+}

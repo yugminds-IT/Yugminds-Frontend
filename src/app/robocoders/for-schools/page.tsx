@@ -1,108 +1,55 @@
 import Link from "next/link";
 import { brandHref } from "@/lib/brand-host";
-import Image from "next/image";
-import { Button } from "../../../components/ui/button";
-import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
-import FAQAccordion from "../../../components/FAQAccordion";
-import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
+import HomeCount from "../../../components/public/HomeCount";
+import HomeSchools from "../../../components/public/HomeSchools";
+import ProductsFaq from "../../../components/public/ProductsFaq";
+import SchoolGets from "../../../components/public/SchoolGets";
+import SchoolLearn from "../../../components/public/SchoolLearn";
+import SchoolLaunch from "../../../components/public/SchoolLaunch";
+import SchoolTimetable from "../../../components/public/SchoolTimetable";
 import { JsonLd, RoboBreadcrumbs, faqPageJsonLd } from "../../../components/seo/JsonLd";
-import {
-  BookOpen,
-  User,
-  Rocket,
-  Trophy,
-  Tag,
-  Info,
-  ArrowRight
-} from "lucide-react";
+import "../../../components/public/robo-home.css";
+import "../../../components/public/about.css";
+import "../../../components/public/schools.css";
+import { display, body } from "../robo-fonts";
 
 // Enable ISR - revalidate every hour
 export const revalidate = 3600;
 
+const schoolFaqs = [
+  {
+    question: "How does RoboCoders integrate with our school timetable?",
+    answer:
+      "We customize delivery around your periods — weekly clubs, semester modules, or full STEM periods. Our team maps a program plan that fits your academic calendar.",
+  },
+  {
+    question: "Do you provide instructors and materials?",
+    answer:
+      "Yes. Trained RoboCoders instructors can teach independently or co-teach with your staff. Kits, textbooks, and LMS access are included so your school can launch ready to run.",
+  },
+  {
+    question: "What grades do you cover?",
+    answer:
+      "Programs span ages 6–18, from block coding and Scratch through Arduino robotics and introductory AI — suitable for primary through senior secondary.",
+  },
+  {
+    question: "How do we get started?",
+    answer:
+      "Schedule a free consultation via our contact page. We assess goals, propose a pilot or full rollout, and handle setup and teacher orientation.",
+  },
+  {
+    question: "Can our school order RoboCoders products in bulk?",
+    answer:
+      "Yes. Schools can contact the RoboCoders team for bulk orders, product demos and classroom packages for RoboCoders Studio, the ESP32 Robotics Kit and the Play Kit.",
+  },
+];
+
 export default function ForSchoolsPage() {
-
-  const whyChooseUs = [
-    {
-      icon: BookOpen,
-      title: "Curriculum Integration",
-      description: "Seamlessly integrate our programs into your existing curriculum with flexible scheduling options."
-    },
-    {
-      icon: User,
-      title: "Trained Instructors",
-      description: "Our certified educators work alongside your staff or deliver classes independently."
-    },
-    {
-      icon: Rocket,
-      title: "Enhanced Reputation",
-      description: "Position your school as a technology leader with cutting-edge STEM programs."
-    },
-    {
-      icon: Trophy,
-      title: "Student Success",
-      description: "Boost student engagement and achievement with hands-on, project-based learning."
-    },
-    {
-      icon: Tag,
-      title: "Flexible Pricing",
-      description: "Affordable, scalable solutions for any budget, from pilot programs to district-wide implementations."
-    },
-    {
-      icon: Info,
-      title: "24/7 Tech Support",
-      description: "24/7 tech support and troubleshooting for smooth program operation."
-    }
-  ];
-
-  const onboardingSteps = [
-    {
-      number: "1",
-      title: "Consultation",
-      description: "Discuss your school's needs and goals"
-    },
-    {
-      number: "2",
-      title: "Customize",
-      description: "Tailor programs to your requirements"
-    },
-    {
-      number: "3",
-      title: "Setup",
-      description: "We handle logistics and training"
-    },
-    {
-      number: "4",
-      title: "Launch",
-      description: "Start classes and track progress"
-    }
-  ];
-
-  const schoolFaqs = [
-    {
-      question: "How does RoboCoders integrate with our school timetable?",
-      answer:
-        "We customize delivery around your periods — weekly clubs, semester modules, or full STEM periods. Our team maps a program plan that fits your academic calendar.",
-    },
-    {
-      question: "Do you provide instructors and materials?",
-      answer:
-        "Yes. Trained RoboCoders instructors can teach independently or co-teach with your staff. Kits, textbooks, and LMS access are included so your school can launch ready to run.",
-    },
-    {
-      question: "What grades do you cover?",
-      answer:
-        "Programs span ages 6–18, from block coding and Scratch through Arduino robotics and introductory AI — suitable for primary through senior secondary.",
-    },
-    {
-      question: "How do we get started?",
-      answer:
-        "Schedule a free consultation via our contact page. We assess goals, propose a pilot or full rollout, and handle setup and teacher orientation.",
-    },
-  ];
+  const contactHref = brandHref("/robocoders/contact");
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className={`rh ${display.variable} ${body.variable}`}>
       <JsonLd data={faqPageJsonLd(schoolFaqs)} />
       <RoboBreadcrumbs
         crumbs={[
@@ -110,164 +57,89 @@ export default function ForSchoolsPage() {
           { name: "For Schools", path: "/for-schools" },
         ]}
       />
-
-      {/* Hero Section */}
-      <section className="min-h-screen flex items-center relative overflow-hidden pt-24 lg:pt-20">
-        <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-          style={{ backgroundImage: "url('/robotics-coding-doodle-bg.png')", opacity: 0.1 }}
-          role="presentation"
-          aria-hidden="true"
-        />
-        <div className="w-full relative z-10">
-          <div className="flex flex-col lg:flex-row items-center lg:items-center gap-0">
-            {/* Left Column - Text */}
-            <div className="flex-1 w-full flex flex-col justify-center pl-8 pr-4 md:pl-16 md:pr-8 lg:pl-24 lg:pr-12 xl:pl-32 xl:pr-16 py-12 md:py-16 lg:py-16 text-center lg:text-left">
-              <RevealX x={-48} className="relative z-10 max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto lg:mx-0">
-                <h1 className="text-4xl md:text-5xl lg:text-5xl xl:text-6xl 2xl:text-7xl font-extrabold leading-tight max-w-full">
-                  <span className="block lg:whitespace-nowrap">Empower Your</span>
-                  <span className="block lg:whitespace-nowrap">School with</span>
-                  <span className="block text-blue-600 font-extrabold lg:whitespace-nowrap">World-Class</span>
-                  <span className="block text-blue-600 font-extrabold lg:whitespace-nowrap">Tech Education</span>
-                </h1>
-                <p className="mt-6 text-gray-700 text-lg md:text-xl lg:text-2xl leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                  Partner with Robo Coders™ to bring comprehensive coding and robotics programs to your
-                  students. Join 10+ schools already transforming their STEM education —{" "}
-                  <Link href="/robocoders/programs" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
-                    view programs
-                  </Link>{" "}
-                  or{" "}
-                  <Link href={brandHref("/robocoders/contact")} className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
-                    schedule a consultation
-                  </Link>
-                  .
-                </p>
-                <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                  <Link href={brandHref("/robocoders/contact")} className="w-full sm:w-auto">
-                    <Button size="lg" className="w-full sm:w-auto px-8 text-lg bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/25 group">
-                      Schedule a Consultation <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
-                    </Button>
-                  </Link>
-                  <Link href="/robocoders/programs" className="w-full sm:w-auto">
-                    <Button variant="outline" className="w-full sm:w-auto px-8 text-lg border-blue-600 text-blue-600 hover:bg-blue-50 rounded-full" size="lg">
-                      View Programs
-                    </Button>
-                  </Link>
+      <main className="ab-main">
+        <section className="ab-hero" aria-labelledby="sc-h1">
+          <div className="rh-wrap ab-hero-grid">
+            <div className="ab-hero-copy">
+              <h1 id="sc-h1">Bring coding, robotics and AI to your school.</h1>
+              <p className="rh-lede">We handle setup, instructors and support, so your students start building from the first class.</p>
+              <div className="rh-actions">
+                <Link href={contactHref} className="rh-btn rh-btn--primary">Book a school demo</Link>
+                <Link href="/robocoders/programs" className="rh-btn rh-btn--ghost">See the programs</Link>
+              </div>
+              <dl className="rh-facts">
+                <div>
+                  <dt><HomeCount to={20} suffix="+" /></dt>
+                  <dd>partner schools nationwide</dd>
                 </div>
-              </RevealX>
+                <div>
+                  <dt>6 to 18</dt>
+                  <dd>the ages we teach</dd>
+                </div>
+                <div>
+                  <dt>24/7</dt>
+                  <dd>tech support for your classes</dd>
+                </div>
+              </dl>
             </div>
-            {/* Right Column - Image */}
-            <RevealX x={48} className="w-full lg:w-[45%] xl:w-[50%] relative h-[300px] sm:h-[400px] md:h-[450px] lg:h-[calc(100vh-8rem)] lg:min-h-[480px] lg:max-h-[820px] rounded-none lg:rounded-l-[61px] overflow-hidden bg-white shadow-2xl">
-              <Image
-                src="/For School.png"
-                alt="Students learning STEM with RoboCoders at school"
-                fill
-                sizes="(max-width: 1023px) 100vw, (max-width: 1279px) 45vw, 50vw"
-                className="object-cover max-w-full max-h-full"
-                priority
-              />
-              <div className="absolute left-0 top-0 bottom-0 w-[10px] lg:w-[20px] bg-blue-600 lg:rounded-l-[61px] z-20 pointer-events-none"></div>
-            </RevealX>
+            <SchoolTimetable />
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Why Schools Choose Us Section */}
-      <section className="min-h-screen flex items-center justify-center bg-blue-600 text-white py-20">
-        <div className="container">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 max-w-5xl mx-auto">Why Schools Choose Us</h2>
-            <p className="text-center text-blue-100 mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
-              We make it easy to bring cutting-edge technology education to your campus
-            </p>
-          </Reveal>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-            {whyChooseUs.map(({ icon: Icon, title, description }, idx) => (
-              <HoverLift key={title} delay={idx * 0.08}>
-              <Card className="bg-white text-gray-900 border-2 border-blue-200 rounded-3xl h-full group">
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                      <Icon className="h-6 w-6 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-2">{title}</h3>
-                      <p className="text-gray-700 text-sm leading-relaxed">{description}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              </HoverLift>
-            ))}
+        <section className="rh-sec" aria-labelledby="sc-gets">
+          <div className="rh-wrap">
+            <div className="rh-head">
+              <h2 id="sc-gets">What your school gets.</h2>
+              <p className="rh-lede">One partner for the program, the people and the equipment.</p>
+            </div>
+            <SchoolGets />
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Combined Simple Onboarding Process & CTA Section */}
-      <section className="min-h-screen flex flex-col m-0">
-        {/* Simple Onboarding Process Section */}
-        <div className="flex-1 flex items-center justify-center bg-white py-12 md:py-16 lg:py-20 px-4 sm:px-6 md:px-8">
-          <div className="container w-full max-w-7xl mx-auto">
-            <Reveal>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 max-w-5xl mx-auto px-2">
-                <span className="text-gray-900">Simple</span>{" "}
-                <span className="text-blue-600">Onboarding Process</span>
-              </h2>
-              <p className="text-center text-gray-600 mb-8 md:mb-12 max-w-2xl mx-auto text-sm md:text-base lg:text-lg px-2">
-                Get started in just 4 easy steps
-              </p>
-            </Reveal>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 px-2">
-              {onboardingSteps.map(({ number, title, description }, idx) => (
-                <Reveal key={number} delay={idx * 0.12}>
-                <div className="group text-center">
-                  <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-900 text-white flex items-center justify-center mx-auto mb-3 md:mb-4 transition-all duration-300 group-hover:bg-blue-600 group-hover:scale-110">
-                    <span className="text-xl md:text-2xl font-extrabold">{number}</span>
-                  </div>
-                  <h3 className="font-bold text-base md:text-lg mb-2">{title}</h3>
-                  <p className="text-gray-600 text-xs md:text-sm">{description}</p>
-                </div>
-                </Reveal>
-              ))}
+        <section className="rh-sec rh-dark" aria-labelledby="sc-launch">
+          <div className="rh-wrap">
+            <div className="rh-head sc-launch-head">
+              <h2 id="sc-launch">From first call to first class.</h2>
+              <p className="rh-lede">Four steps, and we do the heavy lifting in each one.</p>
+            </div>
+            <SchoolLaunch />
+          </div>
+        </section>
+
+        <HomeSchools />
+
+        <section className="rh-sec rh-wash" aria-labelledby="sc-learn">
+          <div className="rh-wrap">
+            <div className="rh-head">
+              <h2 id="sc-learn">What your students learn.</h2>
+              <p className="rh-lede">From first blocks in primary school to machine learning in senior secondary.</p>
+            </div>
+            <SchoolLearn />
+          </div>
+        </section>
+
+        <section className="rh-sec" aria-labelledby="sc-faq">
+          <div className="rh-wrap">
+            <div className="rh-head">
+              <h2 id="sc-faq">Questions from schools.</h2>
+              <p className="rh-lede">What schools ask before they partner with us.</p>
+            </div>
+            <ProductsFaq faqs={schoolFaqs} />
+          </div>
+        </section>
+
+        <section className="rh-sec rh-dark" aria-labelledby="sc-close">
+          <div className="rh-wrap sc-close">
+            <h2 id="sc-close">Let&apos;s plan your first class.</h2>
+            <p className="rh-lede">Book a free consultation. We look at your goals, then propose a pilot or a full rollout and handle setup and teacher orientation.</p>
+            <div className="rh-actions">
+              <Link href={contactHref} className="rh-btn rh-btn--primary">Book a school demo</Link>
+              <Link href={brandHref("/robocoders/products")} className="rh-btn rh-btn--ghost">See the products</Link>
             </div>
           </div>
-        </div>
-
-        {/* Call to Action Section */}
-        <div className="flex-1 flex items-center justify-center bg-blue-600 text-white py-12 md:py-16 lg:py-20 px-4 sm:px-6 md:px-8">
-          <Reveal className="container w-full max-w-7xl mx-auto text-center">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold mb-4 md:mb-6 max-w-5xl mx-auto px-2">
-              Ready to Transform Your School&apos;s Tech Education?
-            </h2>
-            <p className="text-blue-100 mb-6 md:mb-8 max-w-2xl mx-auto text-base md:text-lg lg:text-xl px-2">
-              Schedule a free consultation to discuss how we can support your students
-            </p>
-            <Link href={brandHref("/robocoders/contact")}>
-              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 rounded-full shadow-lg transition-transform hover:scale-105 group">
-                Get Started Today <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Button>
-            </Link>
-          </Reveal>
-        </div>
-      </section>
-
-      <section className="bg-white py-16 md:py-20 px-4">
-        <div className="container">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 max-w-5xl mx-auto">
-              School Partnership <span className="text-blue-600">FAQs</span>
-            </h2>
-            <p className="text-center text-gray-600 mb-10 max-w-2xl mx-auto text-base md:text-lg">
-              Common questions from schools adopting our coding curriculum
-            </p>
-          </Reveal>
-          <FAQAccordion faqs={schoolFaqs} />
-        </div>
-      </section>
-
-      {/* Footer */}
+        </section>
+      </main>
       <Footer />
     </div>
   );
 }
-

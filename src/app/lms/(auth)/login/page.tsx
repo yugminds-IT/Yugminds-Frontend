@@ -1,255 +1,220 @@
- "use client";
+"use client";
 
- import React, { useState, useEffect } from "react";
- import { useRouter } from "next/navigation";
- import { AlertCircle, Info, ShieldAlert, Clock } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AlertCircle, Eye, EyeOff, Info, ShieldAlert, Clock } from "lucide-react";
 
- import ResizableNavbar from "@/components/ResizableNavbar";
- import { SignInPage, type Testimonial } from "@/components/ui/sign-in";
- import { markFreshLogin } from "@/hooks/useSessionValidation";
- import { shortenUserId } from "@/lib/utils";
- import { setStoredSession, waitForSession, consumeLogoutReason, safeNextPath } from "@/lib/session-utils";
- import { authApi, commonApi } from "@/lib/api";
- 
- const sampleTestimonials: Testimonial[] = [
-   {
-     avatarSrc: "https://randomuser.me/api/portraits/women/57.jpg",
-     name: "Ananya Sharma",
-     handle: "Student, Grade 9",
-     text: "Robo Coders made coding click for me. I built my first robot and even won my school science fair!",
-   },
-   {
-     avatarSrc: "https://randomuser.me/api/portraits/men/64.jpg",
-     name: "Rahul Mehta",
-     handle: "Parent",
-     text: "My son's confidence has soared. The instructors genuinely care about every student's progress.",
-   },
-   {
-     avatarSrc: "https://randomuser.me/api/portraits/men/32.jpg",
-     name: "Vikram Reddy",
-     handle: "Student, Grade 8",
-     text: "The coding skills I learned here helped me build my own games. Thank you Robo Coders!",
-   },
- ];
- 
- const LOGOUT_ICONS = {
-   logged_out: <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />,
-   session_expired: <ShieldAlert className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />,
-   session_timeout: <Clock className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />,
-   wrong_role: <ShieldAlert className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />,
-   error: <Info className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />,
- };
+import AuthShell from "@/components/public/AuthShell";
+import LoginShowcase from "@/components/public/LoginShowcase";
+import { brandHref } from "@/lib/brand-host";
+import { markFreshLogin } from "@/hooks/useSessionValidation";
+import { shortenUserId } from "@/lib/utils";
+import { setStoredSession, waitForSession, consumeLogoutReason, safeNextPath } from "@/lib/session-utils";
+import { authApi, commonApi } from "@/lib/api";
 
- export default function LoginPage() {
-   const [loading, setLoading] = useState(false);
-   const [error, setError] = useState("");
-   const [logoutNotice, setLogoutNotice] = useState<{ title: string; detail: string; icon: React.ReactNode } | null>(null);
-   const router = useRouter();
+const LOGOUT_ICONS = {
+  logged_out: <Info size={18} aria-hidden="true" />,
+  session_expired: <ShieldAlert size={18} aria-hidden="true" />,
+  session_timeout: <Clock size={18} aria-hidden="true" />,
+  wrong_role: <ShieldAlert size={18} aria-hidden="true" />,
+};
 
-   useEffect(() => {
-     const reason = consumeLogoutReason();
-     if (reason) {
-       // Map reason title back to icon type — consumeLogoutReason returns {title, detail} so
-       // we infer the icon by looking at the stored sessionStorage key before it's consumed.
-       // Since consumeLogoutReason already removed the key we pass a sensible default icon.
-       const icon = reason.title.toLowerCase().includes('signed out')
-         ? LOGOUT_ICONS.logged_out
-         : reason.title.toLowerCase().includes('access')
-         ? LOGOUT_ICONS.wrong_role
-         : reason.title.toLowerCase().includes('timed')
-         ? LOGOUT_ICONS.session_timeout
-         : LOGOUT_ICONS.session_expired;
-       setLogoutNotice({ ...reason, icon });
-     }
-   }, []);
- 
-   function ErrorMessage() {
-     if (!error) return null;
-     const errorLines = error.split("\n");
-     return (
-       <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-50 border-2 border-red-300 text-red-700 px-4 py-3 sm:px-6 sm:py-4 rounded-lg text-sm z-50 shadow-lg max-w-md w-[calc(100%-2rem)]">
-         <div className="flex items-start gap-2">
-           <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-           <div className="flex-1">
-             {errorLines.map((line, idx) => (
-               <p key={idx} className={idx === 0 ? "font-medium" : ""}>
-                 {line}
-               </p>
-             ))}
-           </div>
-         </div>
-       </div>
-     );
-   }
- 
-   const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
-     event.preventDefault();
-     setLoading(true);
-     setError("");
- 
-     let loginTimeout: NodeJS.Timeout | null = null;
- 
-     try {
-       const formData = new FormData(event.currentTarget);
-       const email = String(formData.get("email") || "").trim();
-       const password = String(formData.get("password") || "");
- 
-       if (!email || !password) {
-         setError("Email and password are required.");
-         return;
-       }
- 
-       loginTimeout = setTimeout(() => {
-         setError("Login is taking too long. Please try again.");
-         setLoading(false);
-       }, 60000);
- 
-       const authRes = await authApi.login({ email, password });
-       if (loginTimeout) clearTimeout(loginTimeout);
- 
-       setStoredSession({
-         access_token: authRes.tokens.accessToken,
-         user: {
-           id: String(authRes.user.id),
-           email: authRes.user.email,
-           mustChangePassword: (authRes.user as { mustChangePassword?: boolean }).mustChangePassword ?? false,
-         },
-       });
- 
-       commonApi.auth
-         .trackLogin({
-           user_id: String(authRes.user.id),
-           email,
-           success: true,
-           ip_address: null,
-           user_agent: typeof window !== "undefined" ? window.navigator.userAgent : null,
-         })
-         .catch(() => {});
- 
-       await waitForSession(3, 300);
-       markFreshLogin();
- 
-       const role = String(authRes.user.role || "").trim().toLowerCase();
-       const roleRoutes: Record<string, string> = {
-         admin: "/lms/admin",
-         super_admin: "/lms/admin",
-         school_admin: "/lms/school-admin",
-         teacher: "/lms/teacher",
-         student: "/lms/student",
-       };
+export default function LoginPage() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [logoutNotice, setLogoutNotice] = useState<{ title: string; detail: string; icon: React.ReactNode } | null>(null);
+  const router = useRouter();
 
-       const next = safeNextPath(
-         typeof window !== "undefined"
-           ? new URLSearchParams(window.location.search).get("next")
-           : null,
-       );
- 
-       console.log("✅ Login successful:", {
-         userId: shortenUserId(String(authRes.user.id)),
-         role,
-       });
- 
-       router.push(next || roleRoutes[role] || "/lms/login");
-     } catch (err: unknown) {
-       if (loginTimeout) clearTimeout(loginTimeout);
-       const apiErr = err as Error & { status?: number };
-       const rawMsg = err instanceof Error ? err.message : String(err);
+  useEffect(() => {
+    const reason = consumeLogoutReason();
+    if (reason) {
+      // consumeLogoutReason already removed the stored key, so the icon is inferred from the title.
+      const t = reason.title.toLowerCase();
+      const icon = t.includes("signed out")
+        ? LOGOUT_ICONS.logged_out
+        : t.includes("access")
+        ? LOGOUT_ICONS.wrong_role
+        : t.includes("timed")
+        ? LOGOUT_ICONS.session_timeout
+        : LOGOUT_ICONS.session_expired;
+      setLogoutNotice({ ...reason, icon });
+    }
+  }, []);
 
-       // Always show a clean, user-friendly message for wrong credentials
-       const is401 =
-         apiErr.status === 401 ||
-         rawMsg.toLowerCase().includes("invalid email") ||
-         rawMsg.toLowerCase().includes("unauthorized") ||
-         rawMsg === "[object Object]";
+  const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
 
-       const msg = is401
-         ? "Invalid email or password"
-         : rawMsg || "Login failed. Please try again.";
+    let loginTimeout: NodeJS.Timeout | null = null;
 
-       setError(msg);
+    try {
+      const formData = new FormData(event.currentTarget);
+      const email = String(formData.get("email") || "").trim();
+      const password = String(formData.get("password") || "");
 
-       commonApi.auth
-         .trackLogin({
-           email: (() => {
-             try {
-               const fd = new FormData(event.currentTarget);
-               return String(fd.get("email") || "").trim();
-             } catch {
-               return "";
-             }
-           })(),
-           success: false,
-           failure_reason: rawMsg,
-           ip_address: null,
-           user_agent: typeof window !== "undefined" ? window.navigator.userAgent : null,
-         })
-         .catch(() => {});
-     } finally {
-       setLoading(false);
-     }
-   };
- 
-   const handleResetPassword = () => router.push("/lms/forgot-password");
-   const handleCreateAccount = () => router.push("/lms/signup");
- 
-   return (
-     <div className="bg-background min-h-screen min-w-full text-foreground flex flex-col">
-       <ResizableNavbar solid />
-       <ErrorMessage />
+      if (!email || !password) {
+        setError("Email and password are required.");
+        return;
+      }
 
-       {/* Logout reason banner — shown when user was auto-redirected from a dashboard */}
-       {logoutNotice && (
-         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
-           {(() => {
-             const isNeutral = logoutNotice.title.toLowerCase().includes('signed out');
-             return (
-               <div className={`flex items-start gap-3 px-5 py-4 rounded-xl shadow-lg text-sm border ${
-                 isNeutral
-                   ? 'bg-blue-50 border-blue-200 text-blue-900'
-                   : 'bg-amber-50 border-amber-300 text-amber-900'
-               }`}>
-                 {logoutNotice.icon}
-                 <div className="flex-1">
-                   <p className="font-semibold">{logoutNotice.title}</p>
-                   <p className={`mt-0.5 text-xs leading-relaxed ${isNeutral ? 'text-blue-700' : 'text-amber-800'}`}>{logoutNotice.detail}</p>
-                 </div>
-                 <button
-                   onClick={() => setLogoutNotice(null)}
-                   className={`ml-2 mt-0.5 flex-shrink-0 ${isNeutral ? 'text-blue-400 hover:text-blue-600' : 'text-amber-500 hover:text-amber-700'}`}
-                   aria-label="Dismiss"
-                 >
-                   ✕
-                 </button>
-               </div>
-             );
-           })()}
-         </div>
-       )}
-       <SignInPage
-         title={
-           <span className="font-semibold text-foreground tracking-tight">
-             Welcome to RoboCoders LMS
-           </span>
-         }
-         description={
-           <span className="text-muted-foreground">
-             Sign in to access your courses, assignments, and certificates.
-           </span>
-         }
-         onSignIn={handleSignIn}
-         testimonials={sampleTestimonials}
-         onResetPassword={handleResetPassword}
-         onCreateAccount={handleCreateAccount}
-         heroImageSrc="/image.png"
-       />
-       {loading && (
-         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-           <div className="bg-white p-6 rounded-lg shadow-lg">
-             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
-             <p className="mt-2 text-sm text-gray-600">Signing in...</p>
-           </div>
-         </div>
-       )}
-     </div>
-   );
- }
+      loginTimeout = setTimeout(() => {
+        setError("Login is taking too long. Please try again.");
+        setLoading(false);
+      }, 60000);
+
+      const authRes = await authApi.login({ email, password });
+      if (loginTimeout) clearTimeout(loginTimeout);
+
+      setStoredSession({
+        access_token: authRes.tokens.accessToken,
+        user: {
+          id: String(authRes.user.id),
+          email: authRes.user.email,
+          mustChangePassword: (authRes.user as { mustChangePassword?: boolean }).mustChangePassword ?? false,
+        },
+      });
+
+      commonApi.auth
+        .trackLogin({
+          user_id: String(authRes.user.id),
+          email,
+          success: true,
+          ip_address: null,
+          user_agent: typeof window !== "undefined" ? window.navigator.userAgent : null,
+        })
+        .catch(() => {});
+
+      await waitForSession(3, 300);
+      markFreshLogin();
+
+      const role = String(authRes.user.role || "").trim().toLowerCase();
+      const roleRoutes: Record<string, string> = {
+        admin: "/lms/admin",
+        super_admin: "/lms/admin",
+        school_admin: "/lms/school-admin",
+        teacher: "/lms/teacher",
+        student: "/lms/student",
+      };
+
+      const next = safeNextPath(
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null,
+      );
+
+      console.log("✅ Login successful:", {
+        userId: shortenUserId(String(authRes.user.id)),
+        role,
+      });
+
+      router.push(next || roleRoutes[role] || "/lms/login");
+    } catch (err: unknown) {
+      if (loginTimeout) clearTimeout(loginTimeout);
+      const apiErr = err as Error & { status?: number };
+      const rawMsg = err instanceof Error ? err.message : String(err);
+
+      // Always show a clean, user-friendly message for wrong credentials
+      const is401 =
+        apiErr.status === 401 ||
+        rawMsg.toLowerCase().includes("invalid email") ||
+        rawMsg.toLowerCase().includes("unauthorized") ||
+        rawMsg === "[object Object]";
+
+      const msg = is401
+        ? "Invalid email or password"
+        : rawMsg || "Login failed. Please try again.";
+
+      setError(msg);
+
+      commonApi.auth
+        .trackLogin({
+          email: (() => {
+            try {
+              const fd = new FormData(event.currentTarget);
+              return String(fd.get("email") || "").trim();
+            } catch {
+              return "";
+            }
+          })(),
+          success: false,
+          failure_reason: rawMsg,
+          ip_address: null,
+          user_agent: typeof window !== "undefined" ? window.navigator.userAgent : null,
+        })
+        .catch(() => {});
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = () => router.push("/lms/forgot-password");
+  const handleCreateAccount = () => router.push("/lms/signup");
+
+  const neutral = logoutNotice?.title.toLowerCase().includes("signed out");
+
+  return (
+    <AuthShell sideTitle="Pick up where you left off." sideText="Your courses, assignments and certificates are one sign-in away." side={<LoginShowcase />}>
+      <h1 id="lg-h1">Sign in to RoboCoders LMS.</h1>
+      <p className="rh-lede">Use your school account to reach your courses, assignments and certificates.</p>
+
+      {logoutNotice && (
+        <div className="lg-note" data-tone={neutral ? "info" : "warn"} role="status">
+          {logoutNotice.icon}
+          <div>
+            <b>{logoutNotice.title}</b>
+            <p>{logoutNotice.detail}</p>
+          </div>
+          <button type="button" onClick={() => setLogoutNotice(null)} aria-label="Dismiss">✕</button>
+        </div>
+      )}
+
+      {error && (
+        <div className="lg-note" data-tone="error" role="alert">
+          <AlertCircle size={18} aria-hidden="true" />
+          <div>
+            {error.split("\n").map((line, i) => (
+              <p key={i} style={i === 0 ? { fontWeight: 600 } : undefined}>{line}</p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <form className="lg-form" onSubmit={handleSignIn} noValidate>
+        <div className="lg-field">
+          <label htmlFor="email">Email address</label>
+          <div className="lg-input">
+            <input id="email" name="email" type="email" autoComplete="email" placeholder="you@example.com" />
+          </div>
+        </div>
+        <div className="lg-field">
+          <label htmlFor="password">Password</label>
+          <div className="lg-input lg-input--pw">
+            <input id="password" name="password" type={showPw ? "text" : "password"} autoComplete="current-password" placeholder="Your password" />
+            <button type="button" className="lg-eye" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Hide password" : "Show password"}>
+              {showPw ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
+            </button>
+          </div>
+        </div>
+        <div className="lg-row">
+          <label className="lg-check">
+            <input type="checkbox" name="rememberMe" autoComplete="off" />
+            Keep me signed in
+          </label>
+          <button type="button" className="rh-link" onClick={handleResetPassword}>Reset password</button>
+        </div>
+        <button type="submit" className="rh-btn rh-btn--primary lg-submit" disabled={loading} aria-busy={loading}>
+          {loading && <span className="lg-spin" aria-hidden="true" />}
+          {loading ? "Signing in" : "Sign in"}
+        </button>
+      </form>
+
+      <div className="lg-helps">
+        <p className="lg-help">New to the platform? <button type="button" className="rh-link" onClick={handleCreateAccount}>Create an account</button></p>
+        <p className="lg-help">Taking online classes instead? <Link href={brandHref("/academy/login")} className="rh-link">Use Academy login</Link></p>
+      </div>
+    </AuthShell>
+  );
+}

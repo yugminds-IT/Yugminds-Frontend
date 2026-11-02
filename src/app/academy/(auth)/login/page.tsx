@@ -43,35 +43,33 @@ function LoginForm() {
   };
 
   if (checking) {
-    return <div className="flex justify-center py-24"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-ac-brand" /></div>;
+    return <div className="lg-checking" role="status"><span className="lg-spin lg-spin--lg" aria-hidden="true" /> Checking your session</div>;
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-acdisplay text-3xl font-bold leading-tight text-ac-ink sm:text-4xl">Welcome back</h1>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">Sign in to continue your courses, classes and certificates.</p>
-      </div>
-      <form onSubmit={onSubmit} className="space-y-5">
+    <>
+      <h1>Welcome back.</h1>
+      <p className="rh-lede">Sign in to continue your courses, classes and certificates.</p>
+      <form onSubmit={onSubmit} className="lg-form">
         <GlassField label="Email address" htmlFor="email">
-          <input id="email" name="email" type="email" autoComplete="email" required placeholder="Enter your email address" className={glassInput} />
+          <input id="email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className={glassInput} />
         </GlassField>
         <GlassField label="Password" htmlFor="password">
-          <PasswordInput id="password" name="password" autoComplete="current-password" required placeholder="Enter your password" />
+          <PasswordInput id="password" name="password" autoComplete="current-password" required placeholder="Your password" />
         </GlassField>
-        <div className="flex justify-end text-sm">
-          <Link href="/academy/forgot-password" className="text-ac-brand hover:underline">Forgot password?</Link>
+        <div className="lg-row" style={{ justifyContent: "flex-end" }}>
+          <Link href="/academy/forgot-password" className="rh-link">Forgot password?</Link>
         </div>
         <AuthError message={error} />
-        <AuthSubmit busy={busy}>{busy ? "Signing in…" : "Sign In"}</AuthSubmit>
+        <AuthSubmit busy={busy}>{busy ? "Signing in" : "Sign in"}</AuthSubmit>
       </form>
-      <p className="text-center text-sm text-muted-foreground">
-        New to RoboCoders Academy?{" "}
-        <Link href={`/academy/signup${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="font-medium text-ac-brand hover:underline">
-          Create a free account
-        </Link>
-      </p>
-    </div>
+      <div className="lg-helps">
+        <p className="lg-help">
+          New to RoboCoders Academy?{" "}
+          <Link href={`/academy/signup${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="rh-link">Create a free account</Link>
+        </p>
+      </div>
+    </>
   );
 }
 

@@ -1,443 +1,76 @@
 import Link from "next/link";
 import { brandHref } from "@/lib/brand-host";
-import Image from "next/image";
-import { Button } from "../../../components/ui/button";
-import { Card, CardContent } from "../../../components/ui/card";
 import Footer from "../../../components/Footer";
-import Book3DModal from "../../../components/Book3DModal";
-import { Reveal, RevealX, HoverLift } from "../../../components/public/robo-motion";
-import { level1KidsTextBook, level1TextBook, level2TextBook } from "../../../data/books";
+import HomeCount from "../../../components/public/HomeCount";
+import ProgramsTracks from "../../../components/public/ProgramsTracks";
+import HomeJourney from "../../../components/public/HomeJourney";
+import HomeFaq from "../../../components/public/HomeFaq";
+import HomeCta from "../../../components/public/HomeCta";
+import ProgramsPath from "../../../components/public/ProgramsPath";
+import ProgramsBooks from "../../../components/public/ProgramsBooks";
+import ProgramsKit from "../../../components/public/ProgramsKit";
 import { JsonLd, RoboBreadcrumbs, courseListJsonLd } from "../../../components/seo/JsonLd";
-import {
-  Code,
-  Cpu,
-  Brain,
-  Award,
-  Rocket,
-  RefreshCw,
-  Check,
-  WifiOff,
-  MonitorPlay,
-  Layers,
-  ImageIcon
-} from "lucide-react";
+import "../../../components/public/robo-home.css";
+import "../../../components/public/about.css";
+import "../../../components/public/programs.css";
+import { display, body } from "../robo-fonts";
 
 // Enable ISR - revalidate every hour
 export const revalidate = 3600;
 
+const programs = [
+  { name: "Coding Fundamentals", description: "Learn the logic behind coding through block and text programming. Perfect for beginners to build strong computational thinking skills." },
+  { name: "Robotics & Electronics", description: "Build and program robots using Arduino, Esp32 and sensors. Learn electronics fundamentals while creating interactive projects." },
+  { name: "AI & Machine Learning", description: "Explore artificial intelligence and machine learning concepts. Build intelligent applications and understand neural networks." },
+];
+
 export default function ProgramsPage() {
-
-  const programs = [
-    {
-      icon: Code,
-      title: "Coding Fundamentals",
-      description: "Learn the logic behind coding through block and text programming. Perfect for beginners to build strong computational thinking skills.",
-      badges: ["Ages 6-18", "8-12 weeks", "Beginner to Advanced"]
-    },
-    {
-      icon: Cpu,
-      title: "Robotics & Electronics",
-      description: "Build and program robots using Arduino, Esp32 and sensors. Learn electronics fundamentals while creating interactive projects.",
-      badges: ["Ages 6-18", "8-12 weeks", "Beginner to Advanced"]
-    },
-    {
-      icon: Brain,
-      title: "AI & Machine Learning",
-      description: "Explore artificial intelligence and machine learning concepts. Build intelligent applications and understand neural networks.",
-      badges: ["Ages 6-18", "8-12 weeks", "Beginner to Advanced"]
-    }
-  ];
-
-  const kitContents = [
-    "Esp32-compatible microcontroller board",
-    "30+ electronic components & sensors",
-    "Motors, wheels, and chassis",
-    "USB cable and power supply",
-    "Complete assembly instructions",
-    "Access to online video tutorials",
-    "Project ideas and coding examples"
-  ];
-
-  const whatsIncluded = [
-    {
-      icon: Award,
-      title: "Certification",
-      description: "Recognized certificate upon successful completion."
-    },
-    {
-      icon: Rocket,
-      title: "Project Portfolio",
-      description: "Build real projects to showcase your skills."
-    },
-    {
-      icon: RefreshCw,
-      title: "Lifetime Access",
-      description: "Access to course materials even after completion."
-    }
-  ];
-
   return (
-    <div className="min-h-screen bg-white">
-      <JsonLd
-        data={courseListJsonLd(
-          programs.map((p) => ({
-            name: p.title,
-            description: p.description,
-            audience: "Students ages 6–18",
-          })),
-        )}
-      />
+    <div className={`rh ${display.variable} ${body.variable}`}>
+      <JsonLd data={courseListJsonLd(programs.map((p) => ({ ...p, audience: "Students ages 6–18" })))} />
       <RoboBreadcrumbs
         crumbs={[
           { name: "RoboCoders", path: "/" },
           { name: "Programs", path: "/programs" },
         ]}
       />
-
-      {/* 1. Programs Section — full-screen white heading + cards */}
-      <section className="min-h-screen flex flex-col bg-white">
-
-        {/* White: heading + cards */}
-        <div className="flex-1 flex items-center pt-24 lg:pt-28 pb-16 px-4">
-          <div className="container">
-
-            {/* Heading */}
-            <Reveal>
-              <div className="text-center mb-10 md:mb-14">
-                <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-extrabold mb-4 md:mb-6 max-w-6xl mx-auto text-gray-900">
-                  Our <span className="text-blue-600">Programs</span>
-                </h1>
-                <p className="text-lg md:text-xl lg:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-                  Discover the perfect STEM learning journey for every student, from coding basics to
-                  advanced AI and robotics.{" "}
-                  <Link href="/robocoders/for-schools" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
-                    For schools
-                  </Link>
-                  {" · "}
-                  <Link href="/robocoders/for-parents" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">
-                    For parents
-                  </Link>
-                </p>
+      <main className="ab-main">
+        <section className="ab-hero" aria-labelledby="pg-h1">
+          <div className="rh-wrap ab-hero-grid">
+            <div className="ab-hero-copy">
+              <h1 id="pg-h1">Learn to code, build robots and train AI.</h1>
+              <p className="rh-lede">Three tracks for students aged 6 to 18, from the first block to a robot that thinks.</p>
+              <div className="rh-actions">
+                <Link href="#tracks" className="rh-btn rh-btn--primary">See what is inside</Link>
+                <Link href={brandHref("/robocoders/contact")} className="rh-btn rh-btn--ghost">Book a trial class</Link>
               </div>
-            </Reveal>
-
-            {/* Cards */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-              {programs.map(({ icon: Icon, title, description, badges }, idx) => (
-                <HoverLift key={title} delay={idx * 0.1}>
-                <Card className="bg-blue-600 border-0 shadow-lg rounded-3xl h-full group">
-                  <CardContent className="p-6 md:p-8 flex flex-col">
-                    <div className="flex items-start gap-4 md:gap-5 mb-4 md:mb-5">
-                      <div className="w-16 h-16 md:w-18 md:h-18 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                        <Icon className="h-8 w-8 md:h-9 md:w-9 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold mb-2 md:mb-3 text-white">{title}</h3>
-                      </div>
-                    </div>
-                    <p className="text-blue-100 text-sm md:text-base leading-relaxed mb-6 md:mb-8">{description}</p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {badges.map((badge, idx) => (
-                        <span
-                          key={idx}
-                          className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 text-white rounded-full text-xs md:text-sm font-medium whitespace-nowrap"
-                        >
-                          {badge}
-                        </span>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-                </HoverLift>
-              ))}
-            </div>
-
-          </div>
-        </div>
-
-      </section>
-
-      {/* 2. Offline Software — BLUE */}
-      <section className="py-24 bg-blue-600 px-4">
-        <div className="container max-w-7xl mx-auto">
-
-          <Reveal>
-          <div className="flex justify-center mb-6">
-            <span className="inline-flex items-center gap-2 bg-white/20 text-white text-sm font-semibold px-4 py-2 rounded-full border border-white/30">
-              <WifiOff className="h-4 w-4" />
-              New — Offline Learning Platform
-            </span>
-          </div>
-
-          <div className="text-center mb-14">
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-5 max-w-4xl mx-auto leading-tight">
-              One Platform. Coding, AI &amp; Robotics.{" "}
-              <span className="text-amber-300">Completely Offline.</span>
-            </h2>
-            <p className="text-lg md:text-xl text-blue-100 max-w-3xl mx-auto leading-relaxed">
-              Our brand-new desktop software brings everything kids need to learn
-              programming, artificial intelligence, and robotics — all in one place,
-              with zero internet required. Built for young minds aged 8 and above.
-            </p>
-          </div>
-          </Reveal>
-
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-
-            {/* Image placeholder */}
-            <RevealX x={-48} className="relative rounded-3xl overflow-hidden border-2 border-dashed border-white/30 bg-white/10 flex flex-col items-center justify-center min-h-[380px] md:min-h-[460px]">
-              <div className="text-center px-8 py-12">
-                <div className="w-20 h-20 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-5">
-                  <ImageIcon className="h-9 w-9 text-white/70" />
+              <dl className="rh-facts">
+                <div>
+                  <dt><HomeCount to={3} /></dt>
+                  <dd>tracks to choose from</dd>
                 </div>
-                <p className="text-white font-semibold text-lg">Software screenshot</p>
-                <p className="text-blue-200 text-sm mt-1">Image coming soon</p>
-              </div>
-              {/* Replace the div above with an <Image> once ready:
-                  <Image src="/offline-software.png" alt="Offline Software" fill className="object-cover rounded-3xl" />
-              */}
-            </RevealX>
-
-            {/* Feature list */}
-            <RevealX x={48} className="flex flex-col gap-6">
-              {[
-                {
-                  icon: Layers,
-                  title: "Coding, AI & Robotics — All in One",
-                  description:
-                    "Switch between block coding, Python, AI experiments, and robotics controls without juggling multiple apps. Everything lives under one roof.",
-                },
-                {
-                  icon: WifiOff,
-                  title: "Works 100% Offline",
-                  description:
-                    "No internet? No problem. The software runs entirely on the device — perfect for classrooms with limited connectivity or at-home learning.",
-                },
-                {
-                  icon: MonitorPlay,
-                  title: "Interactive & Guided Learning",
-                  description:
-                    "Step-by-step lessons, live visual feedback, and built-in project challenges keep students engaged from their very first session.",
-                },
-                {
-                  icon: Brain,
-                  title: "Designed for Ages 8+",
-                  description:
-                    "A carefully crafted experience that grows with the student — beginner-friendly enough to start, deep enough to keep them challenged for years.",
-                },
-              ].map(({ icon: Icon, title, description }) => (
-                <div key={title} className="group flex gap-4 items-start">
-                  <div className="flex-shrink-0 w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                    <Icon className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white mb-1">{title}</h3>
-                    <p className="text-blue-100 text-sm leading-relaxed">{description}</p>
-                  </div>
+                <div>
+                  <dt>8 to 12</dt>
+                  <dd>weeks in each program</dd>
                 </div>
-              ))}
-
-              <div className="mt-4 flex flex-col sm:flex-row gap-4">
-                <Link href={brandHref("/robocoders/contact")}>
-                  <Button size="lg" className="bg-white hover:bg-gray-100 text-blue-600 h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full transition-transform hover:scale-105">
-                    Get Early Access
-                  </Button>
-                </Link>
-                <Link href={brandHref("/robocoders/products#studio")}>
-                  <Button size="lg" variant="outline" className="bg-transparent border-white text-white hover:bg-white/10 hover:text-white h-12 px-8 text-base font-bold w-full sm:w-auto rounded-full">
-                    Learn More
-                  </Button>
-                </Link>
-              </div>
-            </RevealX>
-          </div>
-        </div>
-      </section>
-
-      {/* 3. Latest Textbooks — WHITE */}
-      <section className="min-h-screen flex items-center justify-center bg-white py-20">
-        <div className="container">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-center mb-4 md:mb-6 text-gray-900 max-w-5xl mx-auto">Our Latest Textbooks</h2>
-            <p className="text-gray-600 text-center mb-10 md:mb-12 max-w-2xl mx-auto text-base md:text-lg lg:text-xl">
-              Comprehensive learning materials designed by experts.
-            </p>
-          </Reveal>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 mb-8 md:mb-12">
-            {[1, 2, 3].map((i) => (
-              <HoverLift key={i} delay={(i - 1) * 0.1} className="bg-white rounded-xl shadow-md aspect-[3/4] overflow-hidden hover:shadow-2xl transition-shadow border-[5px] border-blue-100 max-w-full relative group">
-                {i === 1 ? (
-                  <Book3DModal
-                    book={level1KidsTextBook}
-                    trigger={
-                      <div className="relative w-full h-full cursor-pointer">
-                        <Image
-                          src="/kids Level 1 TextBook.png"
-                          alt="ROBO CODERS TECH EXPLORERS LEVEL - 1 KIDS EDITION"
-                          width={400}
-                          height={533}
-                          className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                          <div className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold text-lg shadow-lg transform transition-transform group-hover:scale-105">
-                            Click Here to View
-                          </div>
-                        </div>
-                      </div>
-                    }
-                  />
-                ) : i === 2 ? (
-                  <Book3DModal
-                    book={level1TextBook}
-                    trigger={
-                      <div className="relative w-full h-full cursor-pointer">
-                        <Image
-                          src="/Level 1 TextBook.png"
-                          alt="ROBO CODERS TECH EXPLORERS LEVEL - 1"
-                          width={400}
-                          height={533}
-                          className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                          <div className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold text-lg shadow-lg transform transition-transform group-hover:scale-105">
-                            Click Here to View
-                          </div>
-                        </div>
-                      </div>
-                    }
-                  />
-                ) : (
-                  <Book3DModal
-                    book={level2TextBook}
-                    trigger={
-                      <div className="relative w-full h-full cursor-pointer">
-                        <Image
-                          src="/Level 2 TextBook .png"
-                          alt="ROBO CODERS TECH EXPLORERS LEVEL - 2"
-                          width={400}
-                          height={533}
-                          className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                          <div className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold text-lg shadow-lg transform transition-transform group-hover:scale-105">
-                            Click Here to View
-                          </div>
-                        </div>
-                      </div>
-                    }
-                  />
-                )}
-              </HoverLift>
-            ))}
-          </div>
-          <p className="text-center text-gray-600 max-w-3xl mx-auto text-base md:text-lg lg:text-xl">
-            A complete beginner-friendly guide to Programming, AI, and Robotics concepts, featuring hands-on exercises and projects for all the books we offer.
-          </p>
-        </div>
-      </section>
-
-      {/* 4. Robotics Kit — BLUE */}
-      <section className="min-h-screen flex items-center justify-center bg-blue-600 py-20 px-4 md:px-8 lg:px-12 xl:px-20 2xl:px-32">
-        <div className="container max-w-7xl mx-auto w-full">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-center mb-10 md:mb-16 max-w-5xl mx-auto text-white">Our Robotics Kit</h2>
-          </Reveal>
-          <div className="grid lg:grid-cols-2 gap-6 md:gap-8 items-center">
-            <RevealX x={-48} className="order-2 lg:order-1 pl-0 lg:pl-8 xl:pl-12 2xl:pl-16 pr-0 lg:pr-4 xl:pr-8 2xl:pr-12">
-              <p className="text-lg text-blue-100 leading-relaxed mb-8">
-                Everything you need to start building and programming robots. Our comprehensive kit includes high-quality components and step-by-step tutorials.
-              </p>
-              <ul className="space-y-4 mb-8">
-                {kitContents.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-3">
-                    <div className="mt-1 bg-white/20 rounded-full p-1">
-                      <Check className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-white font-medium">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Link href={brandHref("/robocoders/products#robotics-kit")}>
-                  <Button size="lg" className="w-full sm:w-auto bg-white hover:bg-gray-100 text-blue-600 h-12 text-lg font-bold rounded-full transition-transform hover:scale-105">
-                    Order Robotics Kit
-                  </Button>
-                </Link>
-                <Link href="/contact">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto bg-transparent border-white text-white hover:bg-white/10 hover:text-white h-12 text-lg font-bold rounded-full">
-                    For More Information
-                  </Button>
-                </Link>
-              </div>
-            </RevealX>
-            <RevealX x={48} className="order-1 lg:order-2 bg-white/10 rounded-3xl overflow-hidden w-full max-w-[408px] mx-auto lg:mx-auto pl-0 lg:pl-4 xl:pl-8 2xl:pl-12 pr-0 lg:pr-8 xl:pr-12 2xl:pr-16 shadow-xl">
-              <video
-                src="/instagram-reel.mp4"
-                autoPlay
-                loop
-                muted
-                playsInline
-                title="RoboCoders robotics kit demo for school STEM classes"
-                aria-label="RoboCoders robotics kit demo for school STEM classes"
-                className="w-full h-auto"
-              >
-                Your browser does not support the video tag.
-              </video>
-            </RevealX>
-          </div>
-        </div>
-      </section>
-
-      {/* Combined What's Included & CTA Section */}
-      <section className="min-h-screen flex flex-col m-0 overflow-hidden">
-        {/* What's Included Section — WHITE */}
-        <div className="flex-1 flex items-center justify-center bg-white min-h-0 py-8 md:py-12 overflow-y-auto">
-          <div className="container py-4 md:py-8">
-            <Reveal>
-              <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold text-center mb-3 md:mb-4 lg:mb-6 text-gray-900 max-w-5xl mx-auto">What&apos;s Included</h2>
-              <p className="text-gray-600 text-center mb-6 md:mb-8 lg:mb-12 max-w-2xl mx-auto text-sm md:text-base lg:text-lg xl:text-xl px-4">
-                Every program comes with comprehensive support.
-              </p>
-            </Reveal>
-            <div className="grid md:grid-cols-3 gap-4 md:gap-6 lg:gap-8 px-4">
-              {whatsIncluded.map(({ icon: Icon, title, description }, idx) => (
-                <HoverLift key={title} delay={idx * 0.1}>
-                <Card className="border-2 border-blue-100 shadow-md hover:shadow-2xl transition-shadow bg-white rounded-3xl h-full group">
-                  <CardContent className="p-6 md:p-8 text-center h-full flex flex-col items-center">
-                    <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-50 rounded-full flex items-center justify-center mb-4 md:mb-6 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                      <Icon className="h-8 w-8 md:h-10 md:w-10 text-blue-600" />
-                    </div>
-                    <h3 className="text-lg md:text-xl font-bold mb-3 md:mb-4 text-gray-900">{title}</h3>
-                    <p className="text-sm md:text-base text-gray-600 leading-relaxed">{description}</p>
-                  </CardContent>
-                </Card>
-                </HoverLift>
-              ))}
+                <div>
+                  <dt>6 to 18</dt>
+                  <dd>the ages we teach</dd>
+                </div>
+              </dl>
             </div>
+            <ProgramsPath />
           </div>
-        </div>
+        </section>
 
-        {/* CTA Section — BLUE */}
-        <div className="flex-1 flex items-center justify-center bg-blue-600 min-h-0 py-8 md:py-12 overflow-y-auto">
-          <Reveal className="container text-center py-4 md:py-8 px-4">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-extrabold mb-3 md:mb-4 lg:mb-6 text-white max-w-5xl mx-auto">
-              Ready to Start Your STEM Journey?
-            </h2>
-            <p className="text-blue-100 mb-6 md:mb-8 lg:mb-10 max-w-2xl mx-auto text-sm md:text-base lg:text-lg xl:text-xl">
-              Schedule a free consultation with our education counselors.
-            </p>
-            <Link href="/contact">
-              <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100 px-8 md:px-10 py-5 md:py-6 text-base md:text-lg h-auto font-bold shadow-xl rounded-full transition-transform hover:scale-105">
-                Book Free Consultation
-              </Button>
-            </Link>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* Footer */}
+        <ProgramsTracks />
+        <ProgramsBooks />
+        <HomeJourney />
+        <ProgramsKit />
+        <HomeFaq />
+        <HomeCta />
+      </main>
       <Footer />
     </div>
   );
 }
-
