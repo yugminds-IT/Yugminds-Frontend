@@ -1074,12 +1074,12 @@ function Divisions() {
 
 /* ─────────────────────────────────────────────
    PRODUCTS: a showroom. One tab per product, in the order students use them
-   (code it, test the circuit, build it; and the Play Kit for younger kids),
+   (code it, test the circuit, build it; and the Junior and Play Kits for younger kids),
    each with a small hands-on demo.
 ───────────────────────────────────────────── */
-const demo = (name: "StudioDemo" | "SimulatorDemo" | "KitDemo" | "PlayKitDemo") =>
+const demo = (name: "StudioDemo" | "SimulatorDemo" | "KitDemo" | "JuniorKitDemo" | "PlayKitDemo") =>
   dynamic(() => import("./ProductDemos").then((m) => m[name]), { ssr: false, loading: () => <div className="min-h-[360px] bg-[#0b1a45]" /> });
-const DEMOS = { studio: demo("StudioDemo"), simulator: demo("SimulatorDemo"), kit: demo("KitDemo"), play: demo("PlayKitDemo") };
+const DEMOS = { studio: demo("StudioDemo"), simulator: demo("SimulatorDemo"), kit: demo("KitDemo"), junior: demo("JuniorKitDemo"), play: demo("PlayKitDemo") };
 
 const PRODUCTS: {
   id: keyof typeof DEMOS;
@@ -1121,11 +1121,23 @@ const PRODUCTS: {
     icon: Cpu,
     step: "Build it",
     title: "ESP32 Robotics Kit",
-    desc: "Our own ESP32 board with a built-in motor driver, and 15 plug-in modules. Every module clicks into a labelled port: no breadboard, no loose wires.",
-    points: ["Plug-and-play ports, labelled with their pins", "Sensors for distance, lines, light, sound, touch, rain, soil and temperature", "40+ guided projects in block and C coding"],
+    desc: "Our own ESP32 board with a built-in motor driver and plug-in modules. Every module clicks into place: no breadboard, no loose wires.",
+    points: ["Plug-and-play, easy and safe to build", "Sensors and outputs for many kinds of robot", "40+ guided projects in block and C coding"],
     cta: "See the kit",
     href: brandHref("/robocoders/products#robotics-kit"),
     tryIt: "Try it: pick a project, plug in the two modules it needs, then press Run and play with the sensor.",
+  },
+  {
+    id: "junior",
+    icon: Lightbulb,
+    step: "Plug in, no code",
+    title: "Junior Robotics Kit",
+    isNew: true,
+    desc: "A no-code robotics kit for grades 1 to 3. Children press a button and make lights and sounds happen.",
+    points: ["No code and no typing", "Parts that click together", "Learn inputs and outputs by pressing and watching"],
+    cta: "See the Junior Kit",
+    href: brandHref("/robocoders/products#junior-kit"),
+    tryIt: "Try it: put the button and the light in the same number, switch ON and hold the button. Then move the light to a different number.",
   },
   {
     id: "play",
@@ -1270,10 +1282,10 @@ function Products() {
         </div>
 
         {/* Every product, always in view. Phones and tablets: a swipeable strip that sticks under
-            the header while you scroll the panel. Desktop: four tiles in a row. */}
+            the header while you scroll the panel. Desktop: five tiles in a row. */}
         <div
           ref={stripRef}
-          className="ym-strip sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-5 mt-8 flex snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain bg-[#1e3a8a] px-5 py-2 md:-mx-10 md:px-10 lg:static lg:mx-0 lg:mt-10 lg:grid lg:grid-cols-4 lg:overflow-visible lg:bg-transparent lg:px-0 lg:py-0"
+          className="ym-strip sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 -mx-5 mt-8 flex snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain bg-[#1e3a8a] px-5 py-2 md:-mx-10 md:px-10 lg:static lg:mx-0 lg:mt-10 lg:grid lg:grid-cols-5 lg:overflow-visible lg:bg-transparent lg:px-0 lg:py-0"
           role="group"
           aria-label="Choose a product"
         >

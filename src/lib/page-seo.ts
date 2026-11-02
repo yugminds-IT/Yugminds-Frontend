@@ -70,14 +70,16 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
   "/robocoders/products": {
     primaryKeyword: "RoboCoders products",
-    title: "Products | RoboCoders Studio, ESP32 Robotics Kit & Play Kit",
+    title: "Products | RoboCoders Studio, Robotics Kits & Play Kit",
     description:
-      "RoboCoders products by YugMinds: Studio offline coding software, the ESP32 Robotics Kit with 40+ projects, and a screen-free card-coding Play Kit for kids.",
+      "RoboCoders products by YugMinds: Studio offline coding software, the ESP32 Robotics Kit with 40+ projects, the no-code Junior Robotics Kit for grades 1 to 3, and a screen-free card-coding Play Kit for kids.",
     keywords: [
       "RoboCoders products",
       "RoboCoders Studio",
       "ESP32 robotics kit",
       "robotics kit for kids",
+      "Junior Robotics Kit",
+      "no-code robotics kit for kids",
       "screen-free coding robot",
       "coding cards robot",
     ],

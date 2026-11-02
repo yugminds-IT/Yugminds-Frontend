@@ -7,10 +7,10 @@ import { brandHref } from "@/lib/brand-host";
 
 const ITEMS = [
   { Icon: Cpu, name: "ESP32-compatible microcontroller board", note: "The robot's brain. It runs your code, reads sensors and drives motors, with Wi-Fi and Bluetooth." },
-  { Icon: Radar, name: "30+ electronic components and sensors", note: "IR, ultrasonic, light and temperature sensors, plus an OLED display, LEDs and a buzzer." },
-  { Icon: Cog, name: "Motors, wheels and chassis", note: "Gear motors, a servo, four wheels and an acrylic chassis that holds it all together." },
+  { Icon: Radar, name: "30+ electronic components and sensors", note: "Sensors and outputs that plug into the board." },
+  { Icon: Cog, name: "Motors, wheels and chassis", note: "Everything the robot needs to move." },
   { Icon: Plug, name: "USB cable and power supply", note: "Power and signal connections to the board." },
-  { Icon: ListChecks, name: "Step-by-step assembly instructions", note: "Follow along to put the robot together. Pins are labelled for easy, safe connections." },
+  { Icon: ListChecks, name: "Step-by-step assembly instructions", note: "Follow along to put the robot together." },
   { Icon: PlayCircle, name: "Online video tutorials", note: "Watch each build before you try it yourself." },
   { Icon: Lightbulb, name: "Project ideas and coding examples", note: "40+ guided projects, from a first LED to a maze-solving robot." },
 ];
@@ -95,7 +95,7 @@ export default function ProgramsKit() {
             <Link href={brandHref("/robocoders/contact")} className="rh-btn rh-btn--ghost">Ask about the kit</Link>
           </div>
           <p className="pg-kit-note">
-            Prefer software? See the <Link href="/robocoders/products" className="rh-link">offline learning platform</Link>.
+            For grades 1 to 3, there is the no-code <Link href="/robocoders/products#junior-kit" className="rh-link">Junior Robotics Kit</Link>. Prefer software? See the <Link href="/robocoders/products" className="rh-link">offline learning platform</Link>.
           </p>
         </div>
       </div>

@@ -290,3 +290,65 @@
   .sg-grow p { opacity: 0; } .sg-g3 { opacity: 1; }
   .sg-list li button, .sg-list .rh-chip-ico, .sg-note, .sg-strip li { transition: none; }
 }
+
+/* Schools hero on phones and tablets: headline, buttons, then the timetable planner right away; the three facts follow
+   it. (display: contents lets the facts move below the planner, which is a sibling of the copy.) */
+@media (max-width: 960px) {
+  .sc-hero .ab-hero-grid { gap: 1.25rem; justify-items: start; }
+  .sc-hero .ab-hero-copy { display: contents; }
+  .rh .sc-hero h1 { margin-bottom: 0; }
+  .sc-hero .rh-actions { margin-top: 0.25rem; }
+  .sc-hero .ab-hero-grid > :last-child { order: 4; width: 100%; }
+  .rh .sc-hero dl.rh-facts { order: 5; margin-top: 0.5rem; }
+}
+@media (max-width: 560px) {
+  .ab-hero.sc-hero { padding-top: 6rem; }
+  /* planner controls: 44px day buttons and a taller slider track to grab */
+  .sc-days > div { gap: 0.4rem; }
+  .sc-days button { width: 2.75rem; height: 2.75rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .sc-range input { height: 2rem; touch-action: pan-y; }
+}
+
+/* "What your school gets" on phones and tablets: the checklist panel moves above the list so tapping a row changes
+   something you can see, and it is shorter so panel and list fit on one screen. */
+@media (max-width: 960px) {
+  .sg { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+  .rh .sg-bench { order: -1; position: static; }
+}
+@media (max-width: 560px) {
+  .sg-screen { min-height: 11.5rem; padding: 1rem; }
+  .sg-list li button { min-height: 3rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+}
+
+/* "From first call to first class" on phones and tablets: the screen that acts out the open step moves above the four
+   steps, so tapping a step changes something you can see, and it is shorter so both fit together. */
+@media (max-width: 960px) {
+  .sl { gap: 1.25rem; }
+  .rh .sl-bench { order: -1; }
+}
+@media (max-width: 560px) {
+  .sl-screen { min-height: 12.5rem; padding: 1rem; }
+  .sl-steps button { min-height: 3rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .sl-steps b { font-size: 1.25rem; }
+}
+
+/* "What your students learn" on phones: the three modules become compact rows (number beside the text) instead of tall
+   stacked cards, the grade-group tabs get 44px+ targets, and the lifted active module stays in place. */
+@media (max-width: 560px) {
+  .sx-bands button { min-height: 2.75rem; padding-block: 0.6rem 0.4rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .sx-track ol button { touch-action: manipulation; }
+  .sx-card { gap: 1rem; padding: 1.1rem; }
+  .rh .sx-mods { gap: 0.6rem; }
+  .sx-mods > li { grid-template-columns: auto minmax(0, 1fr); column-gap: 0.75rem; row-gap: 0.2rem; padding: 0.9rem; }
+  .sx-mods > li > * { grid-column: 2; }
+  .sx-mods > li > .sx-mod-n { grid-column: 1; grid-row: 1 / span 4; align-self: start; }
+  .sx-mods > li[data-state="active"] { transform: none; }
+}
+
+/* The `.rh ol` reset (padding: 0) outranks `.sg-strip`, so the 1-to-6 progress strip sat flush against the panel's
+   rounded corners. Same weight as the reset, so the padding applies. */
+.rh .sg-strip { padding: 0.85rem 1.25rem; }
+@media (max-width: 560px) {
+  .rh .sg-strip { padding: 0.75rem 1rem; }
+  .sg-strip li { height: 2.1rem; }
+}

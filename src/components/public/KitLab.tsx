@@ -159,13 +159,13 @@ function GateSim({ run }: SimProps) {
   );
 }
 
-type Item = { name: string; Icon: LucideIcon; use: string; project: string; also: string; Sim: React.ComponentType<SimProps> };
+type Item = { name: string; Icon: LucideIcon; use: string; project: string; Sim: React.ComponentType<SimProps> };
 const ITEMS: Item[] = [
-  { name: "IR sensors", Icon: Route, use: "Line following, edge detection and maze solving.", project: "Line follower", also: "Table-edge detector, maze solvers", Sim: RoboticsSim as unknown as React.ComponentType<SimProps> },
-  { name: "Ultrasonic sensor", Icon: Waves, use: "Obstacle avoiding, object following and distance meters.", project: "Obstacle avoider", also: "Object follower, distance-measuring robot", Sim: UltrasonicSim },
-  { name: "LDR light sensor", Icon: Sun, use: "Light-following robots and light alerts.", project: "Light follower", also: "Light follower with buzzer, obstacle and light follower", Sim: LightSim },
-  { name: "DHT11 sensor", Icon: Thermometer, use: "Temperature and humidity monitoring, smart fans.", project: "Smart fan", also: "Temperature-monitoring bot, fire control", Sim: FanSim },
-  { name: "Servo motor", Icon: ToggleRight, use: "Toll gates, switches and small robotic arms.", project: "Toll gate", also: "Switch-on using a servo", Sim: GateSim },
+  { name: "Line sensing", Icon: Route, use: "Follows a path on the floor.", project: "Line follower", Sim: RoboticsSim as unknown as React.ComponentType<SimProps> },
+  { name: "Distance sensing", Icon: Waves, use: "Steers round things in the way.", project: "Obstacle avoider", Sim: UltrasonicSim },
+  { name: "Light sensing", Icon: Sun, use: "Heads towards the light.", project: "Light follower", Sim: LightSim },
+  { name: "Temperature sensing", Icon: Thermometer, use: "Reacts when it gets hot.", project: "Smart fan", Sim: FanSim },
+  { name: "Moving parts", Icon: ToggleRight, use: "Opens and closes by itself.", project: "Toll gate", Sim: GateSim },
 ];
 const DWELL = 9;
 const RESUME_MS = 12000; // how long switching waits after someone picks a part
@@ -197,6 +197,13 @@ export default function KitLab() {
     return () => clearTimeout(id);
   }, [picked, active]);
 
+  // On phones the parts are a swipeable row: slide the open one into view (sideways only, never the page)
+  useEffect(() => {
+    const row = box.current?.querySelector<HTMLElement>(".pg-tabs");
+    const btn = row?.children[active] as HTMLElement | undefined;
+    if (!row || !btn || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: btn.offsetLeft - 16, behavior: "smooth" });
+  }, [active]);
   const cur = ITEMS[active];
   const Sim = cur.Sim;
   const auto = !picked && !still;
@@ -204,7 +211,7 @@ export default function KitLab() {
 
   return (
     <div className="kl" ref={box}>
-      <div className="pg-tabs" role="tablist" aria-label="Kit parts" aria-orientation="vertical">
+      <div className="pg-tabs" role="tablist" aria-label="Skills" aria-orientation="vertical">
         {ITEMS.map(({ name, Icon, use }, i) => (
           <button key={name} type="button" role="tab" id={`kl-tab-${i}`} aria-selected={active === i} aria-controls="kl-panel" tabIndex={active === i ? 0 : -1} onClick={() => { setPicked(true); setActive(i); }}>
             <span className="rh-chip-ico"><Icon size={18} aria-hidden="true" /></span>
@@ -220,14 +227,14 @@ export default function KitLab() {
       <div className="bs kl-bench" id="kl-panel" role="tabpanel" aria-labelledby={`kl-tab-${active}`}>
         <div className="bs-bar">
           <span>Project: {cur.project}</span>
-          <em>Made with the {cur.name.toLowerCase()}</em>
+          <em>{cur.name}</em>
         </div>
-        <div className="kl-screen" key={active} role="img" aria-label={`${cur.project} simulation using the ${cur.name}.`}>
+        <div className="kl-screen" key={active} role="img" aria-label={`${cur.project} simulation, using ${cur.name.toLowerCase()}.`}>
           <Sim run={run} />
         </div>
         <div className="bs-foot">
-          <p className="sw-hint">Also with this part: {cur.also}.</p>
-          <button type="button" className="bs-pause" aria-pressed={paused} aria-label={paused ? "Resume switching between parts" : "Pause switching between parts"} onClick={() => setPaused((x) => !x)}>
+          <p className="sw-hint">A live simulation, not a recording.</p>
+          <button type="button" className="bs-pause" aria-pressed={paused} aria-label={paused ? "Resume switching between skills" : "Pause switching between skills"} onClick={() => setPaused((x) => !x)}>
             {paused ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />}
           </button>
         </div>

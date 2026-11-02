@@ -46,7 +46,7 @@ const blocked = ({ x, y }: Robot) => x < 0 || y < 0 || x >= SIZE || y >= SIZE ||
 /* The Play Kit as a simulator. The droid stands on a 5 by 5 board; cards go into a path and Run plays them one by one:
    Forward steps ahead, the others turn on the spot. While nobody has touched it, a demo lays out a route, runs it and
    starts over. Tapping any card takes over. The three steps beside it light up with what the droid is doing. */
-export default function PlayKit() {
+export default function PlayKit({ bare = false, onWin, title = "Play Kit simulator" }: { bare?: boolean; onWin?: () => void; title?: string }) {
   const [program, setProgram] = useState<Move[]>([]);
   const [robot, setRobot] = useState<Robot>(START);
   const [step, setStep] = useState<number | null>(null);
@@ -85,6 +85,9 @@ export default function PlayKit() {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [step, program]);
 
+  // a win only counts once a person has taken over from the demo (the Academy's Lesson One listens for it)
+  useEffect(() => { if (status === "win" && !demo) onWin?.(); }, [status, demo]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const resetBoard = () => { setStep(null); robotRef.current = START; setRobot(START); setStatus("idle"); setPhase("read"); };
   const run = () => { robotRef.current = START; setRobot(START); setStatus("running"); setPhase("read"); setStep(0); };
 
@@ -118,19 +121,19 @@ export default function PlayKit() {
   const cx = (n: number) => (n + 0.5) * 20;
 
   return (
-    <div className="pk" ref={box}>
-      <ol className="pk-steps" aria-label="How the Play Kit works">
+    <div className="pk" ref={box} data-bare={bare}>
+      {!bare && <ol className="pk-steps" aria-label="How the Play Kit works">
         {STEPS.map((s, i) => (
           <li key={s.name} data-state={i < stage ? "done" : i === stage ? "active" : "todo"}>
             <span>{i + 1}</span>
             <div><b>{s.name}</b><p>{s.text}</p></div>
           </li>
         ))}
-      </ol>
+      </ol>}
 
       <div className="bs pk-bench">
         <div className="bs-bar">
-          <span>Play Kit simulator</span>
+          <span>{title}</span>
           <em aria-live="polite">{demo ? "Demo: tap a card to play" : MESSAGES[status]}</em>
         </div>
 

@@ -18,7 +18,7 @@ const CONTACT =
 // yugminds.org is one page; these are its named sections.
 const YUGMINDS_SECTIONS =
   "- [Our companies](https://yugminds.org/#divisions): YugMinds Labs (prototypes), Hardware (electronics and circuit boards), Software (custom software, websites, apps and complete IT services, built to each client's requirements), Manufacturing (bodies, chassis and parts in volume) and Robocoders (robotics lessons for schools).\n" +
-  "- [Products](https://yugminds.org/#products): RoboCoders Studio (block and Python coding), RoboCoders Simulator (test ESP32 circuits before building), ESP32 Robotics Kit and the screen-free Play Kit.\n" +
+  "- [Products](https://yugminds.org/#products): RoboCoders Studio (block and Python coding), RoboCoders Simulator (test ESP32 circuits before building), ESP32 Robotics Kit, the no-code Junior Robotics Kit for grades 1 to 3 and the screen-free Play Kit.\n" +
   "- [About](https://yugminds.org/#about): why build with YugMinds: one brief covers every part, and prototypes go straight to production.\n" +
   "- [What do you need built?](https://yugminds.org/#build): which companies build a robot, a school robotics lab, software, a website or an app, an idea to test, or parts in volume.\n" +
   "- [Contact](https://yugminds.org/#contact): send a project brief or request a call back.";

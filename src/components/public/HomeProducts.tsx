@@ -1,7 +1,12 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check } from "lucide-react";
-import StudioCard from "./StudioCard";
-import SimulatorCard from "./SimulatorCard";
+import { Check, ExternalLink } from "lucide-react";
+import { brandHref } from "@/lib/brand-host";
+import JuniorArt from "./JuniorArt";
+import { SimArt } from "./SimulatorCard";
+import { StudioArt } from "./StudioCard";
 
 export function KitArt() {
   return (
@@ -56,8 +61,15 @@ export function PlayArt() {
       ))}
       <path className="pv-flag" d="M163 78 V102 M163 78 L181 85 L163 92" />
       <g className="pv-walker">
-        <circle r="15" className="pv-bot" />
-        <circle r="4.5" cx="5" className="pv-bot-eye" />
+        <g transform="scale(.92)">
+          <path className="pv-bot-line" d="M-3 -21 L-4 -27 M3 -21 L4 -27" />
+          <circle className="pv-bot" r="14" cy="6" />
+          <circle className="pv-bot-ring" r="7" cy="6" />
+          <circle className="pv-bot-core" r="3" cy="6" />
+          <path className="pv-bot" d="M-9 -7 A9 9 0 0 1 9 -7 Z" transform="translate(0 -4)" />
+          <path className="pv-bot-band" d="M-9 -11 H9" />
+          <circle className="pv-bot-eye" r="2.6" cx="2" cy="-14" />
+        </g>
       </g>
       {/* direction cards laid out in order; each lights as the robot does it */}
       {CARDS.map(({ dir, x }, i) => (
@@ -70,32 +82,113 @@ export function PlayArt() {
   );
 }
 
-const PRODUCTS = [
+
+const STUDIO_URL = "https://rcstudio.yugminds.org";
+const DWELL_MS = 5200; // a little over one full 5s loop of each product's animation
+const RESUME_MS = 12000;
+
+// Ordered from the youngest learners up, so the list reads as a ladder: screen-free, no-code, hardware, then software.
+const LADDER = [
   {
-    name: "Robotics Kit, ESP32 Edition",
-    text: "A custom ESP32 board, sensors, motors and chassis with 40+ guided projects.",
-    tags: ["40+ projects", "Block and C coding"],
-    Art: KitArt,
-    list: {
-      title: "In the box",
-      ordered: false,
-      items: ["Custom ESP32 board", "Four kinds of sensor", "Motors, servo and chassis"],
-    },
-  },
-  {
+    id: "play",
     name: "RoboCoders Play Kit",
+    kind: "Kit",
+    who: "Young kids",
     text: "Screen-free coding for young kids. Lay out direction cards and the robot follows.",
     tags: ["Screen-free", "Learn by playing"],
     Art: PlayArt,
-    list: {
-      title: "How it plays",
-      ordered: true,
-      items: ["Lay out the direction cards", "Place a card on the robot", "Watch it make the move"],
-    },
+    list: { title: "How it plays", ordered: true, items: ["Lay out the direction cards", "Place a card on the robot", "Watch it make the move"] },
+    href: "/robocoders/products#play-kit",
+    cta: "See the Play Kit",
   },
-];
+  {
+    id: "junior",
+    name: "Junior Robotics Kit",
+    kind: "Kit",
+    who: "Grades 1 to 3",
+    text: "No-code robotics. Press a button and make lights and sounds happen.",
+    tags: ["Grades 1 to 3", "No code needed"],
+    Art: JuniorArt,
+    list: { title: "How it works", ordered: true, items: ["Plug the button in", "Plug a light or buzzer in", "Press and watch it work"] },
+    href: "/robocoders/products#junior-kit",
+    cta: "Try it on the board",
+  },
+  {
+    id: "esp32",
+    name: "Robotics Kit, ESP32 Edition",
+    kind: "Kit",
+    who: "Grades 4 to 12",
+    text: "A custom ESP32 board, sensors, motors and chassis with 40+ guided projects.",
+    tags: ["40+ projects", "Block and C coding"],
+    Art: KitArt,
+    list: { title: "What students do", ordered: false, items: ["Build a robot that moves", "Add sensors that react", "Code it in blocks or C"] },
+    href: "/robocoders/products#robotics-kit",
+    cta: "See the robotics kit",
+  },
+  {
+    id: "studio",
+    name: "RoboCoders Studio",
+    kind: "Software",
+    who: "Ages 8+",
+    text: "Software for block coding, Python, AI experiments and robot control.",
+    tags: ["Ages 8+", "Works offline", "For schools"],
+    Art: () => <StudioArt v="school" />,
+    list: { title: "Where it runs", ordered: false, items: ["At school, offline, with no internet needed", "At home, online, for extra practice"] },
+    href: "/robocoders/products#studio",
+    cta: "See Studio",
+    extra: { href: STUDIO_URL, label: "Open Studio online" },
+  },
+  {
+    id: "sim",
+    name: "RoboCoders Simulator",
+    kind: "Software",
+    who: "New",
+    isNew: true,
+    text: "Wire circuits on a virtual ESP32 and breadboard, and test them before you build.",
+    tags: ["Virtual ESP32", "Same pins as the real board"],
+    Art: SimArt,
+    list: { title: "Why use it", ordered: false, items: ["LEDs, buttons, sensors and motors to wire up", "Live pin readings, so mistakes show before a part burns"] },
+    href: "/robocoders/contact",
+    cta: "Get early access",
+    primary: true,
+  },
+] as const;
 
+/* The products as an age ladder: the list runs from the youngest kit up to the software, and the stage shows the picked
+   one with its own animation. The ladder moves on by itself while on screen (the bar on the open row shows when);
+   picking a product holds it and the turns resume after a pause. Reduced motion never advances. */
 export default function HomeProducts() {
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState(false);
+  const [inView, setInView] = useState(false);
+  const [still, setStill] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const N = LADDER.length;
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
+    const el = box.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.25 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (still || picked || !inView) return;
+    const id = setTimeout(() => setI((n) => (n + 1) % N), DWELL_MS);
+    return () => clearTimeout(id);
+  }, [i, still, picked, inView, N]);
+  useEffect(() => {
+    if (!picked) return;
+    const id = setTimeout(() => setPicked(false), RESUME_MS);
+    return () => clearTimeout(id);
+  }, [picked, i]);
+
+  const p = LADDER[i];
+  const List = p.list.ordered ? "ol" : "ul";
+  const Art = p.Art;
+  const href = p.href.startsWith("/robocoders/contact") ? brandHref(p.href) : p.href;
+
   return (
     <section className="rh-sec rh-wash" aria-labelledby="rh-products">
       <div className="rh-wrap">
@@ -103,33 +196,47 @@ export default function HomeProducts() {
           <h2 id="rh-products">Software and kits for every age.</h2>
           <p className="rh-lede">Start on screen, test your circuit, build with hardware, or learn away from the screen.</p>
         </div>
-        <div className="rh-pv-grid">
-          <StudioCard />
-          {PRODUCTS.map(({ name, text, tags, Art, list }) => {
-            const List = list.ordered ? "ol" : "ul";
-            return (
-              <article key={name} className="rh-pv">
-                <div className="rh-pv-art"><Art /></div>
-                <div className="rh-pv-body">
-                  <h3>{name}</h3>
-                  <p>{text}</p>
-                  <ul className="rh-tags">
-                    {tags.map((t) => <li key={t} className="rh-tag">{t}</li>)}
-                  </ul>
-                  <div className="rh-pv-list">
-                    <h4>{list.title}</h4>
-                    <List className={list.ordered ? "rh-pv-steps" : "rh-sm-points"}>
-                      {list.items.map((t, i) => (
-                        <li key={t}><span>{list.ordered ? i + 1 : <Check size={14} aria-hidden="true" />}</span>{t}</li>
-                      ))}
-                    </List>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-          <SimulatorCard />
+
+        <div className="ph" ref={box}>
+          <ol className="ph-ladder" aria-label="Products, from the youngest learners up" style={{ "--ms": `${DWELL_MS}ms` } as React.CSSProperties}>
+            {LADDER.map((x, k) => (
+              <li key={x.id} data-state={k < i ? "done" : k === i ? "active" : "todo"}>
+                <button type="button" aria-pressed={k === i} onClick={() => { setPicked(true); setI(k); }}>
+                  <span className="ph-dot" aria-hidden="true" />
+                  <span className="ph-row">
+                    <b>{x.name}{"isNew" in x && x.isNew ? <em>New</em> : null}</b>
+                    <small>{x.who}<i aria-hidden="true" />{x.kind}</small>
+                  </span>
+                </button>
+                {k === i && !still && !picked && inView && <i className="of-bar" aria-hidden="true" />}
+              </li>
+            ))}
+          </ol>
+
+          <article className="ph-stage" key={p.id} aria-live="polite">
+            <div className="rh-pv-art ph-art"><Art /></div>
+            <div className="ph-body">
+              <h3>{p.name}</h3>
+              <p>{p.text}</p>
+              <ul className="rh-tags">{p.tags.map((t) => <li key={t} className="rh-tag">{t}</li>)}</ul>
+              <div className="rh-pv-list">
+                <h4>{p.list.title}</h4>
+                <List className={p.list.ordered ? "rh-pv-steps" : "rh-sm-points"}>
+                  {p.list.items.map((t, k) => (
+                    <li key={t}><span>{p.list.ordered ? k + 1 : <Check size={14} aria-hidden="true" />}</span>{t}</li>
+                  ))}
+                </List>
+              </div>
+              <div className="ph-act">
+                <Link href={href} className={`rh-btn ${"primary" in p && p.primary ? "rh-btn--primary" : "rh-btn--ghost"}`}>{p.cta}</Link>
+                {"extra" in p && p.extra && (
+                  <a className="rh-link pv-open" href={p.extra.href} target="_blank" rel="noopener noreferrer">{p.extra.label} <ExternalLink size={14} aria-hidden="true" /></a>
+                )}
+              </div>
+            </div>
+          </article>
         </div>
+
         <p className="rh-more">
           <Link href="/robocoders/products" className="rh-link">Explore the products</Link>
         </p>

@@ -248,3 +248,32 @@
   .ol-go, .ol-run { transform: translateX(calc(100cqw - 3rem)); }
   .ol-prod, .ol-tutor, .ol-card { transition: none; }
 }
+
+/* Online hero on phones and tablets: headline, buttons, then the live-class panel right away; the three facts follow
+   it. (display: contents lets the facts move below the panel, which is a sibling of the copy.) */
+@media (max-width: 960px) {
+  .ol-hero .ab-hero-grid { gap: 1.25rem; justify-items: start; }
+  .ol-hero .ab-hero-copy { display: contents; }
+  .rh .ol-hero h1 { margin-bottom: 0; }
+  .ol-hero .rh-actions { margin-top: 0.25rem; }
+  .ol-hero .ab-hero-grid > :last-child { order: 4; width: 100%; }
+  .rh .ol-hero dl.rh-facts { order: 5; margin-top: 0.5rem; }
+}
+@media (max-width: 560px) {
+  .ab-hero.ol-hero { padding-top: 6rem; }
+  /* with the copy flattened, the buttons need the full width back (the grid uses justify-items: start) */
+  .ol-hero .rh-actions { width: 100%; }
+}
+
+/* "Try it before you pay" on phones and tablets: the panel that shows the open option moves above the list, so
+   opening an option changes something you can see (and the card growing below no longer pushes the panel away). */
+@media (max-width: 960px) {
+  .of { gap: 1.25rem; }
+  .rh .of-bench { order: -1; position: static; }
+}
+@media (max-width: 560px) {
+  .rh .of-bench { min-height: 0; }
+  .of-screen { padding: 1rem; }
+  .of-list button { min-height: 3.5rem; padding: 0.9rem 1rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .of-more .rh-btn { justify-self: stretch; touch-action: manipulation; }
+}

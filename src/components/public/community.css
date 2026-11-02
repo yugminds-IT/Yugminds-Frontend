@@ -344,3 +344,70 @@
   .cm-ring .cm-ring-fill { animation: none !important; }
   .cm-board-list li, .cm-rank { transition: none; }
 }
+
+/* Community hero on phones and tablets: headline, buttons, then the community board right away; the three facts
+   follow it. (display: contents lets the facts move below the board, which is a sibling of the copy.) */
+@media (max-width: 960px) {
+  .cm-hero .ab-hero-grid { gap: 1.25rem; justify-items: start; }
+  .cm-hero .ab-hero-copy { display: contents; }
+  .rh .cm-hero h1 { margin-bottom: 0; }
+  .rh .cm-hero .cm-by { margin-bottom: 0.25rem; }
+  .cm-hero .rh-actions { margin-top: 0.25rem; }
+  .cm-hero .ab-hero-grid > :last-child { order: 4; width: 100%; }
+  .rh .cm-hero dl.rh-facts { order: 5; margin-top: 0.5rem; }
+}
+@media (max-width: 560px) {
+  .ab-hero.cm-hero { padding-top: 6rem; }
+  /* the demo notice is a temporary banner: let it wrap and sit above the chat button instead of running off screen */
+  .rh .cm-demo { bottom: calc(6.25rem + env(safe-area-inset-bottom, 0px)); width: calc(100vw - 2rem); max-width: calc(100vw - 2rem); padding: 0.45rem 0.9rem; border-radius: 1rem; font-size: 0.78rem; line-height: 1.35; text-align: center; white-space: normal; }
+}
+
+/* "What students made" on phones: the filters and sort become single swipeable rows instead of wrapping to three
+   lines, and each project is a compact row (picture left, details right) so several fit on a screen. Hover lifts are
+   switched off on touch so a tapped card does not stay raised. */
+@media (max-width: 640px) {
+  .cm-pj { grid-template-columns: minmax(0, 1fr); } /* the no-wrap filter rows would otherwise stretch this grid's single column past the screen */
+  .cm-chips, .cm-sort { --g: clamp(1rem, 4vw, 2.5rem); flex-wrap: nowrap; margin-inline: calc(-1 * var(--g)); padding: 0.25rem var(--g); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .cm-chips::-webkit-scrollbar, .cm-sort::-webkit-scrollbar { display: none; }
+  .cm-chips button, .cm-sort button { flex: none; min-height: 2.75rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .cm-proj { grid-template-rows: none; grid-template-columns: 6.75rem minmax(0, 1fr); height: auto; border-radius: 1.1rem; }
+  .cm-proj-pic { aspect-ratio: auto; height: 100%; min-height: 7.5rem; }
+  .cm-proj-pic .cm-art svg { width: 2.5rem; height: 2.5rem; }
+  .cm-proj-tag, .cm-proj-top { left: 0.4rem; padding: 0.1rem 0.5rem; font-size: 0.7rem; max-width: calc(100% - 0.8rem); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cm-proj-tag { bottom: 0.4rem; }
+  .cm-proj-top { top: 0.4rem; }
+  .cm-proj-body { gap: 0.4rem; padding: 0.8rem 0.9rem; }
+  .rh .cm-proj-body h3 { font-size: 1.05rem; }
+  .cm-proj:active { transform: scale(0.985); }
+}
+@media (hover: none) {
+  .cm-proj:hover { transform: none; box-shadow: none; border-color: var(--rh-line); }
+  .cm-proj:hover .cm-proj-pic img, .cm-proj:hover .cm-art svg { transform: none; }
+}
+
+/* Tutorials on phones: a video-shaped player (16:10), the title with a full-width "watch" button, and the playlist as
+   a swipeable row that bleeds to the screen edges with the next lesson peeking in. */
+@media (max-width: 640px) {
+  .cm-player-screen { aspect-ratio: 16 / 10; }
+  .cm-code-win { width: min(78%, 28rem); }
+  .cm-player-bar button { width: 2.75rem; height: 2.75rem; touch-action: manipulation; }
+  .cm-ls-info .rh-btn { width: 100%; touch-action: manipulation; }
+  .rh .cm-list { --g: clamp(1rem, 4vw, 2.5rem); grid-auto-columns: 72%; margin-inline: calc(-1 * var(--g)); padding: 0.25rem var(--g) 0.75rem; scroll-snap-type: x mandatory; scroll-padding-inline: var(--g); overscroll-behavior-x: contain; scrollbar-width: none; }
+  .cm-list::-webkit-scrollbar { display: none; }
+  .cm-list li { scroll-snap-align: start; }
+  .cm-list button { min-height: 3.5rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+}
+
+/* Articles (and the other "pick one from a list" blocks) on phones: the open row used to slide 6px right, which pushed
+   it past the screen edge. It now stays in place and is marked by its border and number instead. The featured
+   article's button spans the card, and the cover is shorter so the list is on the first screen. */
+@media (max-width: 960px) {
+  .cm-ar-list li[data-on="true"], .cm-board-list li[data-on="true"], .cm-rl-list li[data-on="true"] { transform: none; }
+}
+@media (max-width: 640px) {
+  .cm-ar { gap: 1rem; }
+  .cm-ar-cover { aspect-ratio: 16 / 10; border-radius: 1.25rem; }
+  .cm-ar-main { gap: 0.6rem; }
+  .cm-ar-main .rh-btn { width: 100%; touch-action: manipulation; }
+  .cm-ar-list button { min-height: 3.5rem; padding: 0.8rem 1rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+}

@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ChevronDown, GraduationCap, Menu, School, X } from "lucide-react";
+import { ArrowRight, ChevronDown, GraduationCap, Menu, School, X } from "lucide-react";
 import { ROBOCODERS_HOST, brandHref, normalizeHost } from "../../lib/brand-host";
 
 const PATH_NAV = [
@@ -115,9 +115,20 @@ export default function HomeNav() {
               Log in <ChevronDown size={16} aria-hidden="true" />
             </button>
             {login && (
-              <div className="hn-pop" role="menu">
-                <a role="menuitem" href={lms}><School size={18} aria-hidden="true" /><span><strong>Student Portal</strong>For students at partner schools</span></a>
-                <a role="menuitem" href={academy}><GraduationCap size={18} aria-hidden="true" /><span><strong>Academy Login</strong>For online classes</span></a>
+              <div className="hn-pop" role="menu" onKeyDown={(e) => e.key === "Escape" && setLogin(false)}>
+                <a role="menuitem" href={lms} style={{ "--i": 0 } as React.CSSProperties}>
+                  <span className="hn-pop-ico"><School size={20} aria-hidden="true" /></span>
+                  <span className="hn-pop-txt"><strong>Student Portal</strong><small>For students at partner schools</small></span>
+                  <ArrowRight className="hn-pop-go" size={16} aria-hidden="true" />
+                </a>
+                <a role="menuitem" href={academy} style={{ "--i": 1 } as React.CSSProperties}>
+                  <span className="hn-pop-ico"><GraduationCap size={20} aria-hidden="true" /></span>
+                  <span className="hn-pop-txt"><strong>Academy Login</strong><small>For online classes</small></span>
+                  <ArrowRight className="hn-pop-go" size={16} aria-hidden="true" />
+                </a>
+                <p className="hn-pop-new" style={{ "--i": 2 } as React.CSSProperties}>
+                  New here? <a role="menuitem" href={brandHref("/academy/signup")}>Create a free account</a>
+                </p>
               </div>
             )}
           </div>

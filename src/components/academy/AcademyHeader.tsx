@@ -1,79 +1,138 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { GraduationCap } from "lucide-react";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { Menu, X } from "lucide-react";
+import { academy } from "@/lib/academy/api";
+import { brandHref } from "@/lib/brand-host";
 
 const NAV = [
-  { href: "/academy/courses", label: "Courses" },
-  { href: "/academy/tutors", label: "1:1 Classes" },
+  { href: "/academy/courses", label: "Courses", seg: "courses" },
+  { href: "/academy/tutors", label: "1:1 classes", seg: "tutors" },
 ];
 
+/* The Academy's navbar: the RoboCoders floating bar (same `hn` styles), with the Academy's own links and a sign-in state.
+   Signed in shows "My account"; signed out shows Log in and Start free. */
 export function AcademyHeader() {
+  const pathname = usePathname() ?? "";
+  const [menu, setMenu] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    academy.auth.me().then(() => setSignedIn(true)).catch(() => setSignedIn(false));
+  }, []);
+  useEffect(() => {
+    const on = () => setScrolled(window.scrollY > 24);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
+  useEffect(() => setMenu(false), [pathname]);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, []);
+
+  // The visible path is `/courses` on academy.yugminds.org and `/academy/courses` elsewhere.
+  const active = (seg: string) => new RegExp(`^(?:/academy)?/${seg}(?:/|$)`).test(pathname);
+
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
-        <Link href="/academy" className="flex items-center gap-2 font-bold text-ac-ink">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-ac-brand text-white">
-            <GraduationCap className="h-5 w-5" />
-          </span>
-          <span className="font-acdisplay text-lg font-semibold tracking-tight sm:text-xl">RoboCoders Academy</span>
+    <header className="hn" data-scrolled={scrolled}>
+      <div className="hn-bar">
+        <Link href="/academy" className="hn-logo" aria-label="RoboCoders Academy home">
+          <Image src="/robocoders-logo.png" alt="RoboCoders Academy" width={803} height={341} priority />
         </Link>
-        <nav className="flex items-center gap-1 sm:gap-2">
-          {NAV.map((n) => (
-            <Link
-              key={n.href}
-              href={n.href}
-              className="hidden rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-ac-soft hover:text-ac-brand sm:inline-block"
-            >
-              {n.label}
-            </Link>
-          ))}
-          <Link
-            href="/academy/learn"
-            className="rounded-lg bg-ac-brand px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-ac-brand-dark focus-visible:ring-2 focus-visible:ring-ac-brand/40"
-          >
-            My account
-          </Link>
+
+        <nav className="hn-nav" aria-label="Main">
+          <ul>
+            {NAV.map((n) => (
+              <li key={n.href}>
+                <Link href={n.href} aria-current={active(n.seg) ? "page" : undefined}>{n.label}</Link>
+              </li>
+            ))}
+            <li><a href={brandHref("/robocoders")}>RoboCoders site</a></li>
+          </ul>
         </nav>
+
+        <div className="hn-right">
+          {signedIn ? (
+            <Link href="/academy/learn" className="hn-cta">My account</Link>
+          ) : (
+            <>
+              <Link href="/academy/login" className="hn-login-link">Log in</Link>
+              <Link href="/academy/signup" className="hn-cta">Start free</Link>
+            </>
+          )}
+          <button type="button" className="hn-burger" aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu} aria-controls="ac-sheet" onClick={() => setMenu((o) => !o)}>
+            {menu ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
+          </button>
+        </div>
       </div>
-      <nav className="flex gap-1 border-t border-slate-100 px-4 py-1 sm:hidden">
-        {NAV.map((n) => (
-          <Link key={n.href} href={n.href} className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600">
-            {n.label}
-          </Link>
-        ))}
-      </nav>
+
+      <div className="hn-sheet" id="ac-sheet" data-open={menu}>
+        <ul>
+          {NAV.map((n, i) => (
+            <li key={n.href} style={{ "--i": i } as React.CSSProperties}>
+              <Link href={n.href} aria-current={active(n.seg) ? "page" : undefined} tabIndex={menu ? 0 : -1}>{n.label}</Link>
+            </li>
+          ))}
+          <li style={{ "--i": NAV.length } as React.CSSProperties}><a href={brandHref("/robocoders")} tabIndex={menu ? 0 : -1}>RoboCoders site</a></li>
+        </ul>
+        <div className="hn-sheet-actions" style={{ "--i": NAV.length + 1 } as React.CSSProperties}>
+          {signedIn ? (
+            <Link href="/academy/learn" className="hn-cta" tabIndex={menu ? 0 : -1}>My account</Link>
+          ) : (
+            <>
+              <Link href="/academy/signup" className="hn-cta" tabIndex={menu ? 0 : -1}>Start free</Link>
+              <Link href="/academy/login" tabIndex={menu ? 0 : -1}>Log in</Link>
+            </>
+          )}
+        </div>
+      </div>
     </header>
   );
 }
 
 export function AcademyFooter() {
   return (
-    <footer className="mt-20 border-t border-slate-200 bg-slate-950 text-slate-300">
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:grid-cols-3">
-        <div>
-          <p className="font-bold text-white">RoboCoders Academy</p>
-          <p className="mt-2 text-sm text-slate-400">
-            Online coding, robotics and AI — self-paced courses and live 1:1 classes. By YugMinds, Hyderabad.
-          </p>
+    <footer className="rh-dark ac-foot">
+      <div className="rh-wrap">
+        <div className="ac-foot-grid">
+          <div>
+            <Image src="/robocoders-logo.png" alt="RoboCoders Academy" width={803} height={341} style={{ filter: "brightness(0) invert(1)" }} />
+            <p>Online coding, robotics and AI. Self-paced courses and live 1:1 classes, from YugMinds in Hyderabad.</p>
+          </div>
+          <div>
+            <h3>Learn</h3>
+            <ul>
+              <li><Link href="/academy/courses">All courses</Link></li>
+              <li><Link href="/academy/tutors">1:1 classes</Link></li>
+              <li><Link href="/academy/learn">My account</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Account</h3>
+            <ul>
+              <li><Link href="/academy/login">Log in</Link></li>
+              <li><Link href="/academy/signup">Create a free account</Link></li>
+              <li><Link href="/academy#verify">Verify a certificate</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Talk to us</h3>
+            <ul>
+              <li><a href="mailto:info@yugminds.org">info@yugminds.org</a></li>
+              <li><a href="tel:+918500345655">+91 85003 45655</a></li>
+              <li><a href={brandHref("/robocoders/contact")}>Contact RoboCoders</a></li>
+            </ul>
+          </div>
         </div>
-        <div className="text-sm">
-          <p className="font-semibold text-white">Learn</p>
-          <ul className="mt-2 space-y-1.5">
-            <li><Link href="/academy/courses" className="hover:text-white">All courses</Link></li>
-            <li><Link href="/academy/tutors" className="hover:text-white">1:1 classes</Link></li>
-            <li><Link href="/academy/learn" className="hover:text-white">My account</Link></li>
-          </ul>
-        </div>
-        <div className="text-sm">
-          <p className="font-semibold text-white">Contact</p>
-          <ul className="mt-2 space-y-1.5 text-slate-400">
-            <li><a href="mailto:info@yugminds.org" className="hover:text-white">info@yugminds.org</a></li>
-            <li><a href="tel:+918500345655" className="hover:text-white">+91 85003 45655</a></li>
-          </ul>
-        </div>
+        <p className="ac-foot-legal">© {new Date().getFullYear()} YugMinds Private Limited</p>
       </div>
-      <p className="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
-        © {new Date().getFullYear()} YugMinds Private Limited
-      </p>
     </footer>
   );
 }

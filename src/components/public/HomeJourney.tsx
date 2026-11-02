@@ -11,7 +11,8 @@ const STEPS = [
   { name: "Show", text: "Every project goes into a portfolio they can share." },
   { name: "Certify", text: "Finish a course, earn a certificate and keep lifetime access to the material." },
 ];
-const STEP_MS = [1500, 1500, 1500, 2300];
+// each step lasts a little longer than its card scene (the slowest ends at about 0.9s), so every scene is seen finishing
+const STEP_MS = [1150, 1150, 1150, 1800];
 
 function Visual({ i }: { i: number }) {
   if (i === 0) {
@@ -82,6 +83,14 @@ export default function HomeJourney() {
     setMoving(true);
     const id = setTimeout(() => setMoving(false), 450);
     return () => clearTimeout(id);
+  }, [step]);
+
+  // On phones the steps are a swipeable row: slide the open card into view (sideways only, never the page)
+  useEffect(() => {
+    const row = box.current?.querySelector<HTMLElement>(".rh-jr-steps");
+    const card = row?.children[step] as HTMLElement | undefined;
+    if (!row || !card || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: card.offsetLeft - 16, behavior: "smooth" });
   }, [step]);
 
   const pos = (step * 2 + 1) * 12.5;

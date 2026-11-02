@@ -1059,3 +1059,110 @@ export function PlayKitDemo() {
     </div>
   );
 }
+
+/* ── Junior Robotics Kit: plug a button and an LED or buzzer into the board. Each input socket controls only the
+   output socket with the same number, so a mismatch stays dark. ── */
+const JX = [92, 132, 172, 212];
+const JPAIR = ["#ef4444", "#60a5fa", "#4ade80", "#facc15"];
+type JOut = "led" | "buzzer";
+
+export function JuniorKitDemo() {
+  const [power, setPower] = useState(false);
+  const [ip, setIp] = useState(0);
+  const [op, setOp] = useState(0);
+  const [out, setOut] = useState<JOut>("led");
+  const [press, setPress] = useState(false);
+  const match = ip === op;
+  const on = power && press && match;
+  const note = !power
+    ? "The board is OFF. Switch it ON, then hold the button."
+    : !press
+      ? match
+        ? "Hold the button."
+        : `Input ${ip + 1} only works with output ${ip + 1}.`
+      : match
+        ? out === "led"
+          ? "The light glows."
+          : "The buzzer beeps."
+        : `Nothing happens. Input ${ip + 1} only works with output ${ip + 1}.`;
+  const pill = (active: boolean) => `${BTN} min-h-9 ${active ? "bg-white text-ym-text" : "bg-[#10245e] text-white hover:bg-[#16307a]"}`;
+
+  return (
+    <div className={STAGE}>
+      <svg viewBox="0 0 330 210" className="mx-auto block w-full max-w-[460px]" role="img" aria-label="The Junior Robotics Kit board with a push button plugged into an input socket and an LED or buzzer plugged into an output socket.">
+        <rect x="60" y="24" width="200" height="162" rx="10" fill="#1b4ed1" stroke="#8fb3ff" strokeWidth="2" />
+        {JX.map((x, i) => (
+          <line key={i} x1={x} y1="160" x2={x} y2="62" stroke={JPAIR[i]} strokeWidth="3" strokeLinecap="round" opacity={i === ip && power ? 0.6 : 0.2} />
+        ))}
+        {power && press && <line x1={JX[ip]} y1="160" x2={JX[ip]} y2={match ? 62 : 112} stroke={JPAIR[ip]} strokeWidth="5" strokeLinecap="round" strokeDasharray="8 9" className="motion-safe:animate-pulse" />}
+        {power && press && !match && (
+          <g transform={`translate(${JX[ip]} 100)`}>
+            <circle r="9" fill="#ef4444" stroke="#fff" strokeWidth="2" />
+            <path d="M-4 -4 L4 4 M4 -4 L-4 4" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+          </g>
+        )}
+        
+        {JX.map((x, i) => (
+          <g key={i}>
+            <rect x={x - 17} y="30" width="34" height="22" rx="3" fill="#eef2fb" stroke={i === op ? "#facc15" : "#8fb3ff"} strokeWidth={i === op ? 3 : 1.5} />
+            <text x={x} y="68" textAnchor="middle" fontSize="8" fontWeight="600" fill="#cfe0ff">Out {i + 1}</text>
+            <rect x={x - 17} y="166" width="34" height="22" rx="3" fill="#eef2fb" stroke={i === ip ? "#facc15" : "#8fb3ff"} strokeWidth={i === ip ? 3 : 1.5} />
+            <text x={x} y="158" textAnchor="middle" fontSize="8" fontWeight="600" fill="#cfe0ff">In {i + 1}</text>
+          </g>
+        ))}
+        <rect x="68" y="34" width="30" height="16" rx="8" fill={power ? "#facc15" : "#0b1a45"} stroke="#8fb3ff" strokeWidth="1.5" />
+        <circle cx={power ? 90 : 76} cy="42" r="5" fill="#fff" className="motion-safe:transition-all" />
+        {/* button module and its wire */}
+        <path d={`M30 196 V204 H${JX[ip]} V190`} fill="none" stroke={power && press ? "#facc15" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" />
+        <rect x="6" y="150" width="48" height="46" rx="6" fill="#234fb4" stroke="#8fb3ff" strokeWidth="1.5" />
+        <circle cx="30" cy="172" r="11" fill="#eef2fb" />
+        <circle cx="30" cy={press ? 173 : 172} r="7" fill={press ? "#facc15" : "#0b1a45"} />
+        {/* output module and its wire */}
+        <path d={`M292 36 V10 H${JX[op]} V30`} fill="none" stroke={on ? "#facc15" : "#cbd5e1"} strokeWidth="3" strokeLinecap="round" />
+        <rect x="268" y="28" width="56" height="56" rx="6" fill="#234fb4" stroke="#8fb3ff" strokeWidth="1.5" />
+        {out === "led" ? (
+          <>
+            {on && <circle cx="296" cy="56" r="22" fill="#ef4444" opacity="0.3" className="motion-safe:animate-pulse" />}
+            <circle cx="296" cy="56" r="12" fill={on ? "#ef4444" : "#3a2a2a"} stroke="#ef4444" strokeWidth="2" />
+          </>
+        ) : (
+          <>
+            <circle cx="296" cy="56" r="14" fill="#0b1a45" stroke="#facc15" strokeWidth="2" />
+            <circle cx="296" cy="56" r="3" fill="#fff" />
+            {on && <path d="M314 46 q7 10 0 20 M320 42 q10 14 0 28" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round" className="motion-safe:animate-pulse" />}
+          </>
+        )}
+      </svg>
+
+      <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Board power">
+        <button type="button" aria-pressed={power} onClick={() => setPower((p) => !p)} className={pill(power)}>Board {power ? "ON" : "OFF"}</button>
+        {(["led", "buzzer"] as JOut[]).map((o) => (
+          <button key={o} type="button" aria-pressed={out === o} onClick={() => setOut(o)} className={pill(out === o)}>{o === "led" ? "LED" : "Buzzer"}</button>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Button plugged into">
+        <span className="text-sm text-blue-200">Button in</span>
+        {JX.map((_, i) => <button key={i} type="button" aria-pressed={ip === i} onClick={() => setIp(i)} className={pill(ip === i)}>{i + 1}</button>)}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Output plugged into">
+        <span className="text-sm text-blue-200">Output in</span>
+        {JX.map((_, i) => <button key={i} type="button" aria-pressed={op === i} onClick={() => setOp(i)} className={pill(op === i)}>{i + 1}</button>)}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          aria-pressed={press}
+          onPointerDown={() => setPress(true)}
+          onPointerUp={() => setPress(false)}
+          onPointerLeave={() => setPress(false)}
+          onKeyDown={(e) => (e.key === " " || e.key === "Enter") && setPress(true)}
+          onKeyUp={() => setPress(false)}
+          className={`${BTN_LIGHT} touch-none select-none`}
+        >
+          Press and hold the button
+        </button>
+        <p className={`text-sm ${on ? "font-semibold text-amber-300" : "text-blue-100"}`} aria-live="polite">{note}</p>
+      </div>
+    </div>
+  );
+}

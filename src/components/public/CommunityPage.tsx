@@ -409,6 +409,14 @@ function Lessons({ items }: { items: CommunityItem[] }) {
     return () => clearTimeout(id);
   }, [cur, run, N]);
 
+  // On phones the playlist is a swipeable row: slide the current lesson into view (sideways only, never the page)
+  useEffect(() => {
+    const row = box.current?.querySelector<HTMLElement>(".cm-list");
+    const li = row?.children[cur] as HTMLElement | undefined;
+    if (!row || !li || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: li.offsetLeft - 16, behavior: "smooth" });
+  }, [cur]);
+
   const v = items[cur];
   const src = thumbOf(v);
   return (
@@ -694,7 +702,7 @@ export default function CommunityPage({ data, demo }: { data: CommunityPageData;
     <main className="ab-main cm">
       {demo && <p className="cm-demo" role="note">Demo content. Nothing here is real until items are published in the admin.</p>}
 
-      <section className="ab-hero" aria-labelledby="cm-h1">
+      <section className="ab-hero cm-hero" aria-labelledby="cm-h1">
         <div className="rh-wrap ab-hero-grid">
           <div className="ab-hero-copy">
             <p className="cm-by"><i aria-hidden="true" />Built by YugMinds</p>

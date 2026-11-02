@@ -22,26 +22,36 @@ const schoolFaqs = [
     question: "How does RoboCoders integrate with our school timetable?",
     answer:
       "We customize delivery around your periods — weekly clubs, semester modules, or full STEM periods. Our team maps a program plan that fits your academic calendar.",
+    href: "#launch",
+    cta: "See the launch plan",
   },
   {
     question: "Do you provide instructors and materials?",
     answer:
       "Yes. Trained RoboCoders instructors can teach independently or co-teach with your staff. Kits, textbooks, and LMS access are included so your school can launch ready to run.",
+    href: "#gets",
+    cta: "See what you get",
   },
   {
     question: "What grades do you cover?",
     answer:
       "Programs span ages 6–18, from block coding and Scratch through Arduino robotics and introductory AI — suitable for primary through senior secondary.",
+    href: "#learn",
+    cta: "See what students learn",
   },
   {
     question: "How do we get started?",
     answer:
       "Schedule a free consultation via our contact page. We assess goals, propose a pilot or full rollout, and handle setup and teacher orientation.",
+    href: brandHref("/robocoders/contact"),
+    cta: "Book a consultation",
   },
   {
     question: "Can our school order RoboCoders products in bulk?",
     answer:
-      "Yes. Schools can contact the RoboCoders team for bulk orders, product demos and classroom packages for RoboCoders Studio, the ESP32 Robotics Kit and the Play Kit.",
+      "Yes. Schools can contact the RoboCoders team for bulk orders, product demos and classroom packages for RoboCoders Studio, the ESP32 Robotics Kit, the Junior Robotics Kit and the Play Kit.",
+    href: brandHref("/robocoders/products"),
+    cta: "See the products",
   },
 ];
 
@@ -58,7 +68,7 @@ export default function ForSchoolsPage() {
         ]}
       />
       <main className="ab-main">
-        <section className="ab-hero" aria-labelledby="sc-h1">
+        <section className="ab-hero sc-hero" aria-labelledby="sc-h1">
           <div className="rh-wrap ab-hero-grid">
             <div className="ab-hero-copy">
               <h1 id="sc-h1">Bring coding, robotics and AI to your school.</h1>
@@ -86,7 +96,7 @@ export default function ForSchoolsPage() {
           </div>
         </section>
 
-        <section className="rh-sec" aria-labelledby="sc-gets">
+        <section id="gets" className="rh-sec pd-anchor" aria-labelledby="sc-gets">
           <div className="rh-wrap">
             <div className="rh-head">
               <h2 id="sc-gets">What your school gets.</h2>
@@ -96,7 +106,7 @@ export default function ForSchoolsPage() {
           </div>
         </section>
 
-        <section className="rh-sec rh-dark" aria-labelledby="sc-launch">
+        <section id="launch" className="rh-sec rh-dark pd-anchor" aria-labelledby="sc-launch">
           <div className="rh-wrap">
             <div className="rh-head sc-launch-head">
               <h2 id="sc-launch">From first call to first class.</h2>
@@ -108,7 +118,7 @@ export default function ForSchoolsPage() {
 
         <HomeSchools />
 
-        <section className="rh-sec rh-wash" aria-labelledby="sc-learn">
+        <section id="learn" className="rh-sec rh-wash pd-anchor" aria-labelledby="sc-learn">
           <div className="rh-wrap">
             <div className="rh-head">
               <h2 id="sc-learn">What your students learn.</h2>

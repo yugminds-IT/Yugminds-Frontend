@@ -1,12 +1,11 @@
 import type { Tutor } from "@/lib/academy/api";
 
-export function TutorAvatar({ tutor, size = "h-16 w-16" }: { tutor: Pick<Tutor, "name" | "photoUrl">; size?: string }) {
+export function TutorAvatar({ tutor, size = "3.5rem" }: { tutor: Pick<Tutor, "name" | "photoUrl">; size?: string }) {
+  const style = { "--s": size } as React.CSSProperties;
   return tutor.photoUrl ? (
     // eslint-disable-next-line @next/next/no-img-element -- tutor photo URL, may be any host
-    <img src={tutor.photoUrl} alt="" className={`${size} shrink-0 rounded-full object-cover`} />
+    <img src={tutor.photoUrl} alt="" className="ac-avatar" style={style} />
   ) : (
-    <span className={`${size} flex shrink-0 items-center justify-center rounded-full bg-ac-soft text-xl font-bold text-ac-brand`}>
-      {tutor.name.charAt(0).toUpperCase() || "T"}
-    </span>
+    <span className="ac-avatar" style={style} aria-hidden="true">{tutor.name.charAt(0).toUpperCase() || "T"}</span>
   );
 }

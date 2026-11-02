@@ -16,7 +16,7 @@ const BANDS = [
     mods: [
       { title: "Scratch Jr.", text: "Snap blocks together to make a character move.", flow: ["Move", "Jump", "Say"], tag: "" },
       { title: "Drawing and interactive apps", text: "See how a computer learns by drawing and playing with apps.", flow: ["Draw it", "Computer guesses", "Try again"], tag: "" },
-      { title: "A no-code robotics kit", text: "Connect input and output modules to make things happen. No code needed.", flow: ["Input module", "Output module"], tag: "Play Kit too" },
+      { title: "The Junior Robotics Kit", text: "Press a button and make lights and sounds happen. No code needed.", flow: ["Press", "Board", "Light or sound"], tag: "Junior Robotics Kit" },
     ],
   },
   {
@@ -97,6 +97,14 @@ export default function ParentsLearn() {
     const id = setTimeout(() => setMoving(false), 500);
     return () => clearTimeout(id);
   }, [grade]);
+
+  // On phones the three modules are a swipeable row: slide the open one into view (sideways only, never the page)
+  useEffect(() => {
+    const row = box.current?.querySelector<HTMLElement>(".pl-mods");
+    const li = row?.children[mod] as HTMLElement | undefined;
+    if (!row || !li || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: li.offsetLeft - 20, behavior: "smooth" });
+  }, [mod, band]);
 
   const pick = (g: number) => { setPicked(true); setChosen(g); setBand(bandOf(g)); setMod(0); };
   const pickBand = (i: number) => pick(BANDS[i].from);

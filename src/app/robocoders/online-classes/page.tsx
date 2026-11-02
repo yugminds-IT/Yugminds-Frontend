@@ -22,11 +22,11 @@ export const revalidate = 300;
 const academy = (path = "") => brandHref(`/academy${path}`);
 
 const FAQS = [
-  { question: "Is this the same as RoboCoders classes in my school?", answer: "No. RoboCoders Online Classes are for learners anywhere, outside school. It has its own account and login, separate from the school Student Portal." },
-  { question: "What is free?", answer: "Free demo courses, one free 1:1 trial class per learner, and free preview lessons inside paid courses. No card or payment needed." },
-  { question: "How do live 1:1 classes work?", answer: "Pick a tutor and a time from their calendar. A joining link appears in your account 10 minutes before the class. Cancel 24 hours ahead and your class credit comes back." },
-  { question: "What age is it for?", answer: "Learners aged 6 to 18, from complete beginners to advanced. Each course page lists its level." },
-  { question: "What do I need?", answer: "A laptop, tablet or phone with internet. Robotics courses list any kit you'll need." },
+  { question: "Is this the same as RoboCoders classes in my school?", answer: "No. RoboCoders Online Classes are for learners anywhere, outside school. It has its own account and login, separate from the school Student Portal.", href: brandHref("/robocoders/for-schools"), cta: "See For Schools" },
+  { question: "What is free?", answer: "Free demo courses, one free 1:1 trial class per learner, and free preview lessons inside paid courses. No card or payment needed.", href: "#free", cta: "See the free options" },
+  { question: "How do live 1:1 classes work?", answer: "Pick a tutor and a time from their calendar. A joining link appears in your account 10 minutes before the class. Cancel 24 hours ahead and your class credit comes back.", href: "#how", cta: "See how it works" },
+  { question: "What age is it for?", answer: "Learners aged 6 to 18, from complete beginners to advanced. Each course page lists its level.", href: "#catalog", cta: "Browse courses" },
+  { question: "What do I need?", answer: "A laptop, tablet or phone with internet. Robotics courses list any kit you'll need.", href: "#how", cta: "See how it works" },
 ];
 
 function priceLabel(p: Product) {
@@ -55,7 +55,7 @@ export default async function OnlineClassesPage() {
         ]}
       />
       <main className="ab-main">
-        <section className="ab-hero" aria-labelledby="ol-h1">
+        <section className="ab-hero ol-hero" aria-labelledby="ol-h1">
           <div className="rh-wrap ab-hero-grid">
             <div className="ab-hero-copy">
               <h1 id="ol-h1">Learn coding, robotics and AI online, your way.</h1>
@@ -83,7 +83,7 @@ export default async function OnlineClassesPage() {
           </div>
         </section>
 
-        <section className="rh-sec" aria-labelledby="ol-free">
+        <section id="free" className="rh-sec pd-anchor" aria-labelledby="ol-free">
           <div className="rh-wrap">
             <div className="rh-head">
               <h2 id="ol-free">Try it before you pay.</h2>
@@ -101,7 +101,7 @@ export default async function OnlineClassesPage() {
           </div>
         </section>
 
-        <section className="rh-sec rh-wash" aria-labelledby="ol-how">
+        <section id="how" className="rh-sec rh-wash pd-anchor" aria-labelledby="ol-how">
           <div className="rh-wrap">
             <div className="rh-head">
               <h2 id="ol-how">How it works.</h2>
@@ -112,7 +112,7 @@ export default async function OnlineClassesPage() {
         </section>
 
         {catalog.length > 0 && (
-          <section className="rh-sec" aria-labelledby="ol-cat">
+          <section id="catalog" className="rh-sec pd-anchor" aria-labelledby="ol-cat">
             <div className="rh-wrap">
               <div className="ol-cat-head">
                 <div className="rh-head">
@@ -184,7 +184,7 @@ export default async function OnlineClassesPage() {
               <h2 id="ol-faq">Questions, answered.</h2>
               <p className="rh-lede">What learners and parents ask about online classes.</p>
             </div>
-            <ProductsFaq faqs={FAQS} />
+            <ProductsFaq faqs={FAQS.map((f) => (f.href === "#catalog" && catalog.length === 0 ? { ...f, href: "#free", cta: "See the free options" } : f))} />
           </div>
         </section>
 

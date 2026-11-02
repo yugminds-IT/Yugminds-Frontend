@@ -227,12 +227,12 @@ export default function ContactForm() {
         <div className="ct-row">
           <div className="ct-field">
             <label htmlFor="ct-firstName">First name</label>
-            <input id="ct-firstName" autoComplete="given-name" value={form.firstName} onChange={set("firstName")} onBlur={blur("firstName")} maxLength={80} {...aria("firstName")} />
+            <input id="ct-firstName" autoComplete="given-name" autoCapitalize="words" enterKeyHint="next" value={form.firstName} onChange={set("firstName")} onBlur={blur("firstName")} maxLength={80} {...aria("firstName")} />
             {err("firstName")}
           </div>
           <div className="ct-field">
             <label htmlFor="ct-lastName">Last name</label>
-            <input id="ct-lastName" autoComplete="family-name" value={form.lastName} onChange={set("lastName")} onBlur={blur("lastName")} maxLength={80} {...aria("lastName")} />
+            <input id="ct-lastName" autoComplete="family-name" autoCapitalize="words" enterKeyHint="next" value={form.lastName} onChange={set("lastName")} onBlur={blur("lastName")} maxLength={80} {...aria("lastName")} />
             {err("lastName")}
           </div>
         </div>
@@ -240,7 +240,7 @@ export default function ContactForm() {
         <div className="ct-row">
           <div className="ct-field">
             <label htmlFor="ct-email">Email</label>
-            <input id="ct-email" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={set("email")} onBlur={blur("email")} maxLength={200} {...aria("email")} />
+            <input id="ct-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" enterKeyHint="next" value={form.email} onChange={set("email")} onBlur={blur("email")} maxLength={200} {...aria("email")} />
             {err("email")}
           </div>
           <div className="ct-field">
@@ -249,7 +249,7 @@ export default function ContactForm() {
             </label>
             <div className="ct-phone">
               <input aria-label="Country code" className="ct-code" value={form.areaCode} onChange={set("areaCode")} maxLength={5} />
-              <input id="ct-phoneNumber" type="tel" inputMode="tel" autoComplete="tel-national" value={form.phoneNumber} onChange={set("phoneNumber")} onBlur={blur("phoneNumber")} {...aria("phoneNumber")} />
+              <input id="ct-phoneNumber" type="tel" inputMode="tel" autoComplete="tel-national" enterKeyHint="next" value={form.phoneNumber} onChange={set("phoneNumber")} onBlur={blur("phoneNumber")} {...aria("phoneNumber")} />
             </div>
             {err("phoneNumber")}
           </div>

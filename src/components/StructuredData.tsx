@@ -71,7 +71,7 @@ export async function StructuredData() {
     // YugMinds is one page: name its sections so search engines can link to them.
     const sections = [
       { id: "divisions", name: "Our companies", about: "Labs, Hardware, Software, Manufacturing and Robocoders, and what each one builds." },
-      { id: "products", name: "Products", about: "RoboCoders Studio, Simulator, ESP32 Robotics Kit and Play Kit, with live demos." },
+      { id: "products", name: "Products", about: "RoboCoders Studio, Simulator, ESP32 Robotics Kit, Junior Robotics Kit and Play Kit, with live demos." },
       { id: "about", name: "About YugMinds", about: "Why build with YugMinds: one roof, every part made in-house." },
       { id: "build", name: "What do you need built?", about: "Pick a project and see which YugMinds companies build it." },
       { id: "contact", name: "Contact", about: "Send a project brief or call the team in Begumpet, Hyderabad." },

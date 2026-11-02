@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { brandHref } from "@/lib/brand-host";
 import Footer from "../../../components/Footer";
 import HomeCount from "../../../components/public/HomeCount";
 import HomeCta from "../../../components/public/HomeCta";
@@ -21,26 +22,38 @@ const faqs = [
   {
     question: "Can my child try a class first?",
     answer: "Yes. Start with a free trial class, meet a tutor one on one, then choose the program that fits.",
+    href: brandHref("/robocoders/online-classes"),
+    cta: "Book a trial class",
   },
   {
     question: "What age is appropriate to start?",
     answer: "We offer programs for ages 6-18. Our Coding Fundamentals course is perfect for beginners aged 6-12, while older students can dive into more advanced topics like AI and App development.",
+    href: "#learn",
+    cta: "See what children learn",
   },
   {
     question: "Does my child need prior experience?",
     answer: "No! We have programs for complete beginners through advanced students. Our instructors assess each student's level and provide appropriate challenges.",
+    href: "#learn",
+    cta: "See what children learn",
   },
   {
     question: "What if my child falls behind?",
     answer: "We offer one-on-one guidance sessions and recorded class materials. Our instructors provide extra support to ensure no student is left behind.",
+    href: "#expect",
+    cta: "See what to expect",
   },
   {
     question: "What equipment is needed?",
     answer: "For coding classes, just a computer with internet. For robotics, we provide all kits and materials. We'll send you a detailed equipment list upon enrollment.",
+    href: "#expect",
+    cta: "See what to expect",
   },
   {
     question: "Does my child get a certificate?",
     answer: "Yes. Finishing a course earns a certificate that anyone can verify online, and students keep lifetime access to the material.",
+    href: "#plans",
+    cta: "See the plans",
   },
 ];
 
@@ -56,7 +69,7 @@ export default function ForParentsPage() {
         ]}
       />
       <main className="ab-main">
-        <section className="ab-hero" aria-labelledby="pr-h1">
+        <section className="ab-hero pr-hero" aria-labelledby="pr-h1">
           <div className="rh-wrap ab-hero-grid">
             <div className="ab-hero-copy">
               <h1 id="pr-h1">Give your child a head start in technology.</h1>
@@ -84,7 +97,7 @@ export default function ForParentsPage() {
           </div>
         </section>
 
-        <section className="rh-sec" aria-labelledby="pr-expect">
+        <section id="expect" className="rh-sec pd-anchor" aria-labelledby="pr-expect">
           <div className="rh-wrap">
             <div className="rh-head">
               <h2 id="pr-expect">What you can expect.</h2>
@@ -94,7 +107,7 @@ export default function ForParentsPage() {
           </div>
         </section>
 
-        <section className="rh-sec rh-wash" aria-labelledby="pr-learn">
+        <section id="learn" className="rh-sec rh-wash pd-anchor" aria-labelledby="pr-learn">
           <div className="rh-wrap">
             <div className="rh-head">
               <h2 id="pr-learn">What your child will learn.</h2>
@@ -104,7 +117,7 @@ export default function ForParentsPage() {
           </div>
         </section>
 
-        <section className="rh-sec" aria-labelledby="pr-plans">
+        <section id="plans" className="rh-sec pd-anchor" aria-labelledby="pr-plans">
           <div className="rh-wrap">
             <div className="rh-head">
               <h2 id="pr-plans">Plans that fit your family.</h2>

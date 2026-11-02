@@ -1,6 +1,5 @@
 /* Products page. Same tokens as the home page; the hero's product chooser is the one bold moment. */
 
-.pd-anchor { scroll-margin-top: 4.5rem; }
 
 /* Hero chooser: the picked product plays its own animation */
 .rh .pd-find { grid-template-rows: auto auto auto auto; min-height: 0; }
@@ -44,7 +43,7 @@
 .sw-run[data-on="true"] { background: #16a34a; }
 .sw-board { fill: #1b4ed1; stroke: #8fb3ff; stroke-width: 2; }
 .sw-t { fill: var(--rh-paper); font: 800 10px var(--rh-body); text-anchor: middle; }
-.sw-t--pin { font-weight: 600; font-size: 8px; fill: var(--rh-navy-soft); }
+.sw-t--pin { font-weight: 600; font-size: 8px; fill: var(--rh-navy-soft); text-anchor: end; } /* CSS beats the textAnchor attribute, so without this the pin names sit on top of the pins */
 .sw-pin { fill: var(--rh-amber); }
 .sw-bread { fill: var(--rh-paper); }
 .sw-wire { fill: none; stroke: #94a3b8; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.3s ease; }
@@ -92,12 +91,6 @@
 .pd-stats > div:first-child { padding-left: 0; border-left: 0; }
 .pd-stats dt { white-space: nowrap; font-family: var(--rh-display); font-weight: 800; font-size: var(--rh-t-num-lg); line-height: 1; letter-spacing: var(--rh-tr-h3); font-variant-numeric: tabular-nums; }
 .rh .pd-stats dd { margin-top: 0.5rem; font-size: var(--rh-t-small); color: var(--rh-ink-soft); }
-.pd-explore { display: grid; gap: 1.25rem; }
-.rh .pd-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(1.5rem, 4vw, 4rem); }
-.pd-rows li { display: grid; align-content: start; gap: 0.15rem; padding: 0.85rem 0; border-top: 1.5px solid var(--rh-line); animation: rh-rise 350ms var(--rh-ease-out) both; animation-delay: calc(var(--i) * 25ms); }
-.pd-rows b { display: flex; align-items: center; gap: 0.5rem; font: 700 var(--rh-t-body)/1.3 var(--rh-display); }
-.pd-rows b svg { flex: none; color: var(--rh-blue-deep); }
-.pd-rows span { font-size: var(--rh-t-small); line-height: var(--rh-lh-small); color: var(--rh-ink-soft); }
 
 /* Kit highlights (the intro list) */
 .rh .pg-kit-list { display: grid; width: 100%; max-width: 34rem; }
@@ -140,6 +133,7 @@
 .rh .pd-play-head h2 { color: var(--rh-paper); max-width: 16ch; }
 .pk { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: var(--rh-gap); align-items: start; }
 .rh .pk-steps { display: grid; max-width: 26rem; }
+.pk[data-bare="true"] { grid-template-columns: minmax(0, 1fr); }
 .pk-steps li { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1rem; padding-bottom: 1.6rem; }
 .pk-steps li:last-child { padding-bottom: 0; }
 .pk-steps li::before { content: ""; position: absolute; left: 1.05rem; top: 2.4rem; bottom: 0.3rem; width: 2px; background: var(--rh-navy-line); transition: background-color 0.4s ease; }
@@ -199,11 +193,171 @@
   .kl-sim { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
-  .rh .pd-rows { grid-template-columns: minmax(0, 1fr); }
-}
+  }
 @media (prefers-reduced-motion: reduce) {
-  .pd-rows li { animation: none; }
-  .pk-goal, .pk-win, .pk-path li button { animation: none; }
+    .pk-goal, .pk-win, .pk-path li button { animation: none; }
   .pk-steps li::before, .pk-steps li > span, .pk-steps b { transition: none; }
   .sw-blk, .sw-flow-line i, .sw-wire, .sw-glow, .sw-led, .sw-run { transition: none; animation: none !important; }
+}
+
+/* Junior Robotics Kit: an interactive board, the matching rule, the parts, projects and safety */
+.jk { display: grid; gap: clamp(1.75rem, 4vw, 3rem); }
+.rh .jk-bench { grid-template-rows: auto auto auto auto auto; animation: none; }
+.jk-board { display: block; width: 100%; height: auto; padding: clamp(0.5rem, 2vw, 1.25rem) clamp(0.5rem, 3vw, 2rem) 0; background-image: linear-gradient(var(--rh-grid) 1px, transparent 1px), linear-gradient(90deg, var(--rh-grid) 1px, transparent 1px); background-size: 28px 28px; }
+.jk-pcb { fill: #1b4ed1; stroke: #8fb3ff; stroke-width: 2.5; }
+.jk-pair { stroke-width: 4; stroke-linecap: round; opacity: 0.22; transition: opacity 0.3s ease; }
+.jk-pair[data-on="true"] { opacity: 0.5; }
+.jk-signal { stroke-width: 7; stroke-linecap: round; stroke-dasharray: 10 12; animation: jk-up 0.7s linear infinite; }
+@keyframes jk-up { to { stroke-dashoffset: 22; } }
+.jk-stop circle { fill: #ef4444; stroke: #fff; stroke-width: 2.5; }
+.jk-stop path { stroke: #fff; stroke-width: 3; stroke-linecap: round; }
+.jk-stop { animation: of-pop 0.4s var(--rh-ease-out) both; transform-box: fill-box; transform-origin: center; }
+.jk-chip { fill: var(--rh-ink); stroke: #fff; stroke-width: 1.5; }
+.jk-chip-t { fill: #fff; font: 800 15px var(--rh-body); }
+.jk-onled { fill: #7f1d1d; stroke: #fca5a5; stroke-width: 1.5; }
+.jk-lbl { fill: #cfe0ff; font: 600 11px var(--rh-body); }
+.jk-jack { fill: #0b1b3a; stroke: #8fb3ff; stroke-width: 2; }
+.jk-jack-hole { fill: #050d22; stroke: #cbd5e1; stroke-width: 2; }
+.jk-sock { fill: #eef2fb; stroke: #8fb3ff; stroke-width: 2; transition: stroke 0.25s ease, stroke-width 0.25s ease; }
+.jk-sock[data-pair="true"] { stroke: var(--rh-amber); stroke-width: 4; }
+.jk-sw { cursor: pointer; }
+.jk-sw:focus-visible { outline: 3px solid var(--rh-focus-dark); outline-offset: 3px; border-radius: 15px; }
+.jk-sw-track { fill: #0b1b3a; stroke: #8fb3ff; stroke-width: 2; transition: fill 0.25s ease; }
+.jk-sw[data-on="true"] .jk-sw-track { fill: var(--rh-amber); }
+.jk-sw-knob { fill: #fff; stroke: #0b1b3a; stroke-width: 2; transition: transform 0.25s var(--rh-ease-out); }
+.jk-wire { fill: none; stroke: #cbd5e1; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.jk-wire[data-flow="true"] { stroke: var(--rh-amber); stroke-dasharray: 9 9; animation: pv-flow 0.6s linear infinite; }
+.jk-mod { fill: #234fb4; stroke: #8fb3ff; stroke-width: 2; }
+.jk-btn { cursor: pointer; touch-action: none; }
+.jk-btn:focus-visible { outline: 3px solid var(--rh-focus-dark); outline-offset: 3px; }
+.jk-btn-ring { fill: #eef2fb; stroke: #0b1b3a; stroke-width: 2; }
+.jk-btn-cap { fill: #0b1b3a; stroke: #0b1b3a; stroke-width: 2; transition: fill 0.12s ease, transform 0.12s ease; }
+.jk-btn[data-down="true"] .jk-btn-cap { fill: var(--rh-amber); transform: translateY(2px) scale(0.94); transform-box: fill-box; transform-origin: center; }
+.jk-led { stroke-width: 3; transition: fill 0.2s ease; }
+.jk-glow { opacity: 0.35; animation: jk-pulse 1s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes jk-pulse { 50% { opacity: 0.12; transform: scale(1.2); } }
+.jk-buz { fill: var(--rh-ink); stroke: var(--rh-amber); stroke-width: 3; }
+.jk-wave { fill: none; stroke: var(--rh-amber); stroke-width: 3; stroke-linecap: round; animation: jk-wave 0.8s ease-in-out infinite; }
+@keyframes jk-wave { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+.jk-say { display: flex; align-items: center; gap: 0.8rem; padding: 0.8rem 1.25rem; border-top: 1.5px solid var(--rh-navy-line); background: rgb(5 15 42 / 0.45); color: var(--rh-paper); }
+.jk-say > span { display: grid; place-items: center; flex: none; width: 2rem; height: 2rem; border-radius: 50%; background: var(--rh-navy-line); color: var(--rh-paper); font-weight: 800; }
+.jk-say[data-state="ok"] > span { background: var(--rh-amber); color: var(--rh-ink); }
+.jk-say[data-state="bad"] > span { background: #ef4444; color: #fff; }
+.rh .jk-say p { flex: 1; max-width: none; color: var(--rh-paper); font: 600 var(--rh-t-small)/1.4 var(--rh-body); }
+.jk-say button { flex: none; padding: 0.3rem 0.9rem; border: 1.5px solid var(--rh-amber); border-radius: 999px; background: none; color: var(--rh-amber); font: 700 var(--rh-t-xs)/1.4 var(--rh-body); cursor: pointer; }
+.jk-say button:hover { background: var(--rh-amber); color: var(--rh-ink); }
+.rh .jk-ctl.bs-foot { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.9rem 1.5rem; padding: 1rem 1.25rem; }
+.jk-ctl fieldset { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.jk-ctl legend { width: 100%; margin-bottom: 0.3rem; padding: 0; font: 600 var(--rh-t-xs)/1 var(--rh-body); color: var(--rh-navy-soft); }
+.jk-pill { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.85rem; border: 1.5px solid var(--rh-navy-line); border-radius: 999px; background: none; color: var(--rh-paper); font: 600 var(--rh-t-small)/1.2 var(--rh-body); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 160ms var(--rh-ease-out); }
+.jk-pill[style]::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--c); }
+.jk-pill:hover { border-color: var(--rh-amber); }
+.jk-pill:active { transform: scale(0.96); }
+.jk-pill[aria-pressed="true"] { background: var(--rh-amber); border-color: var(--rh-amber); color: var(--rh-ink); }
+.jk-pill:focus-visible, .jk-hold:focus-visible { outline: 3px solid var(--rh-focus-dark); outline-offset: 2px; }
+.jk-hold { margin-left: auto; touch-action: none; user-select: none; }
+.jk-hold[aria-pressed="true"] { transform: scale(0.97); background: var(--rh-amber-deep); }
+
+/* the chooser's picture */
+.ja-sock { fill: #eef2fb; stroke: #8fb3ff; stroke-width: 1.5; }
+.ja-wire { fill: none; stroke: var(--rh-navy-line); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.ja-flow { fill: none; stroke: var(--rh-amber); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 6 8; opacity: 0; animation: pv-flow 0.6s linear infinite, ja-on 5s steps(1, end) infinite; }
+.ja-flow--2 { animation-delay: 0s, 0.5s; }
+.ja-cap { fill: var(--rh-ink); animation: ja-press 5s steps(1, end) infinite; }
+.ja-led { fill: #7a5a07; animation: ja-led 5s steps(1, end) infinite; }
+@keyframes ja-on { 0%, 20% { opacity: 0; } 24%, 70% { opacity: 1; } 74%, 100% { opacity: 0; } }
+@keyframes ja-press { 0%, 20% { fill: var(--rh-ink); } 24%, 70% { fill: var(--rh-amber); } 74%, 100% { fill: var(--rh-ink); } }
+@keyframes ja-led { 0%, 30% { fill: #7a5a07; } 34%, 70% { fill: var(--rh-amber); } 74%, 100% { fill: #7a5a07; } }
+
+@media (max-width: 640px) {
+  .jk-hold { margin-left: 0; width: 100%; }
+  .jk-say { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jk-signal, .jk-wire, .jk-glow, .jk-wave, .jk-stop, .ja-flow { animation: none; }
+  .ja-flow { opacity: 1; }
+  .jk-sw-knob, .jk-btn-cap, .jk-pill { transition: none; }
+}
+
+.rh .pd-junior-points { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem 1.5rem; margin: clamp(1.75rem, 3vw, 2.5rem) 0 clamp(1.25rem, 2.5vw, 1.75rem); }
+.rh .pd-junior-points + .rh-actions { margin-top: 0; justify-content: center; }
+.jk-lbl--in { fill: #0b1b3a; font-weight: 800; font-size: 13px; }
+.pd-junior-points li { display: inline-flex; align-items: center; gap: 0.6rem; font-size: var(--rh-t-small); color: var(--rh-ink); font-weight: 600; }
+.pd-junior-points .rh-chip-ico { width: 1.9rem; height: 1.9rem; }
+
+/* Product finder on phones: the "See it" button goes under the text instead of squeezing it into a narrow column */
+@media (max-width: 560px) {
+  .pd-info { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+  .pd-info-go { align-self: stretch; min-height: 2.75rem; display: grid; place-items: center; text-align: center; touch-action: manipulation; }
+}
+
+/* Software bench on phones and tablets: Studio on top, an upload arrow pointing down, then the circuit */
+@media (max-width: 960px) {
+  .sw-flow { grid-auto-flow: row; gap: 0.35rem; }
+  .sw-flow-line { width: 3px; height: 2.25rem; }
+  .sw-flow-line i { top: 0; left: 50%; margin: 0 0 0 -0.45rem; animation-name: sw-send-v; }
+  .sw-sim { margin-top: 0.9rem; }
+  .sw-run { top: -1.5rem; }
+}
+@keyframes sw-send-v { to { top: calc(100% - 0.9rem); } }
+@media (max-width: 560px) {
+  .sw-body { padding: 1rem; }
+  .sw-bench .bs-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+  .sw-ctrl { justify-content: space-between; }
+  .sw-ctrl .bs-steps-btn { white-space: nowrap; touch-action: manipulation; }
+}
+
+/* Studio and Simulator on phones: each product is its own card, the Offline/Online switch is a full-width segmented
+   control with 44px+ targets, and the call to action spans the card. */
+@media (max-width: 700px) {
+  .sw-info { gap: 1rem; }
+  .sw-info article, .sw-info article:first-child, .sw-info article:last-child { gap: 0.7rem; padding: 1.1rem; border: 1.5px solid var(--rh-line); border-radius: 1.25rem; background: var(--rh-paper); }
+  .rh .sw-info h3 { font-size: 1.35rem; }
+  .sw-info .pv-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-self: stretch; width: 100%; }
+  .sw-info .pv-switch button { display: grid; justify-items: center; align-content: center; gap: 0.15rem; min-height: 3rem; padding: 0.4rem 0.5rem; text-align: center; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .sw-feats li { padding: 0.5rem 0; }
+  .sw-info article .rh-btn { width: 100%; touch-action: manipulation; }
+}
+
+/* "Pick a part": the base .kl rule sits below the earlier 960px media block, so it was winning and the page stayed in
+   two columns on phones. Restated here, after it. Tablets get the four parts as a 2x2 grid above the bench; phones get
+   the swipeable row from the programs tabs. */
+@media (max-width: 960px) {
+  .kl { grid-template-columns: minmax(0, 1fr); gap: 1rem; margin-bottom: 2rem; }
+  .rh .kl-bench { position: static; }
+  .kl .pg-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .kl .pg-tabs { grid-template-columns: none; }
+  .kl-screen { min-height: 0; }
+}
+
+/* Junior kit on phones: the board's tiny labels are enlarged, the controls become full-width rows with 44px+ targets,
+   and the three selling points line up on the left instead of centring raggedly. */
+@media (max-width: 560px) {
+  .jk-lbl { font-size: 15px; }
+  .jk-chip-t { font-size: 20px; }
+  .rh .jk-ctl.bs-foot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem 0.75rem; padding: 1rem; }
+  .jk-ctl fieldset { grid-column: 1 / -1; gap: 0.4rem; }
+  .jk-ctl fieldset:first-of-type { grid-column: 1 / -1; }
+  .jk-ctl legend { font-size: 0.8rem; margin-bottom: 0.4rem; }
+  .jk-pill { min-height: 2.75rem; padding: 0.4rem 1rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .jk-ctl .jk-hold { grid-column: 1 / -1; width: 100%; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .rh .pd-junior-points { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+}
+
+/* Play Kit: the base .pk rule sits below the earlier 960px media block, so it was winning and the steps stayed in a
+   narrow column beside the simulator. Restated here, after it. The simulator comes first (it is what people came to
+   try) and the three steps follow it. */
+@media (max-width: 960px) {
+  .pk { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
+  .rh .pk-bench { order: -1; }
+}
+@media (max-width: 560px) {
+  .pk-body { padding: 1rem; }
+  .pk-board { max-width: 20rem; }
+  .pk-cards button { min-height: 3.5rem; white-space: nowrap; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .pk-path li button { width: 2.75rem; height: 2.75rem; touch-action: manipulation; }
+  .pk-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pk-actions .rh-btn { min-height: 2.75rem; padding-inline: 0.5rem; touch-action: manipulation; }
 }

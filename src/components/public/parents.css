@@ -191,3 +191,41 @@
   .pl-flow li { animation: none !important; background: var(--rh-amber); border-color: var(--rh-amber); color: var(--rh-ink); }
   .pl-mods > li, .pl-n, .pl-flow li { transition: none; }
 }
+
+/* Parents hero on phones and tablets: headline, buttons, then "Your child's year" right away; the three facts follow
+   it. (display: contents lets the facts move below the panel, which is a sibling of the copy.) */
+@media (max-width: 960px) {
+  .pr-hero .ab-hero-grid { gap: 1.25rem; justify-items: start; }
+  .pr-hero .ab-hero-copy { display: contents; }
+  .rh .pr-hero h1 { margin-bottom: 0; }
+  .pr-hero .rh-actions { margin-top: 0.25rem; }
+  .pr-hero .ab-hero-grid > :last-child { order: 4; width: 100%; }
+  .rh .pr-hero dl.rh-facts { order: 5; margin-top: 0.5rem; }
+}
+@media (max-width: 560px) {
+  .ab-hero.pr-hero { padding-top: 6rem; }
+}
+
+/* "What your child will learn" on phones: the three modules become a swipeable row inside the card (next one peeking)
+   instead of three tall cards stacked, and the open one stays in place. The grade-group tabs get 44px+ targets. */
+@media (max-width: 560px) {
+  .pl-card { gap: 1rem; padding: 1.25rem 0 1.25rem; overflow: hidden; }
+  .pl-head { padding-inline: 1.25rem; }
+  .rh .pl-mods { display: flex; gap: 0.6rem; padding: 0.5rem 1.25rem 0.75rem; scroll-snap-type: x mandatory; scroll-padding-inline: 1.25rem; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .pl-mods::-webkit-scrollbar { display: none; }
+  .pl-mods > li { flex: 0 0 82%; scroll-snap-align: start; }
+  .pl-mods > li[data-state="active"] { transform: none; }
+  .sx-bands button { min-height: 2.75rem; padding-block: 0.6rem 0.4rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+}
+
+/* Plans on phones: the three plans become a swipeable row (next one peeking) instead of three tall cards stacked, so
+   the slider, the prices and the "start" button are close together. The row bleeds to the screen edges; the top
+   padding leaves room for the "Most popular" flag, which a scrolling row would otherwise clip. */
+@media (max-width: 560px) {
+  .pr-count { padding: 1rem; }
+  .pr-count input { height: 2.75rem; touch-action: pan-y; }
+  .rh .pr-plans { --g: clamp(1rem, 4vw, 2.5rem); display: flex; gap: 0.75rem; margin-inline: calc(-1 * var(--g)); padding: 1.25rem var(--g) 1rem; scroll-snap-type: x mandatory; scroll-padding-inline: var(--g); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .pr-plans::-webkit-scrollbar { display: none; }
+  .pr-plan { flex: 0 0 84%; scroll-snap-align: start; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .pr-plans-go .rh-btn { width: 100%; touch-action: manipulation; }
+}

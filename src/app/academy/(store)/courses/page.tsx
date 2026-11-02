@@ -1,39 +1,29 @@
 import { fetchCatalog } from "@/components/academy/catalog";
-import { ProductCard } from "@/components/academy/ProductCard";
+import { Catalog } from "@/components/academy/CourseCatalog";
 import type { Product } from "@/lib/academy/api";
 
 export const revalidate = 300;
 
 export default async function CoursesPage() {
   const products = await fetchCatalog<Product[]>("/academy/products", []);
-  const courses = products.filter((p) => p.type === "COURSE");
-  const packs = products.filter((p) => p.type === "SESSION_PACK");
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12">
-      <h1 className="text-3xl font-acdisplay font-bold">Courses</h1>
-      <p className="mt-2 text-ac-muted">Self-paced courses you can start today, and live 1:1 class packs.</p>
-
-      {products.length === 0 && (
-        <p className="mt-12 rounded-2xl border border-dashed border-slate-300 p-10 text-center text-ac-muted">
-          New courses are coming soon. Check back shortly!
-        </p>
-      )}
-
-      {courses.length > 0 && (
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {courses.map((p) => <ProductCard key={p.id} product={p} />)}
+    <section className="ac-top ac-page" aria-labelledby="ac-courses-h">
+      <div className="rh-wrap">
+        <div className="ac-pagehead">
+          <h1 id="ac-courses-h" style={{ fontSize: "var(--rh-t-h2)", maxWidth: "16ch" }}>Courses and classes</h1>
+          <p className="rh-lede">Self-paced courses you can start today, and live 1:1 class packs with a tutor.</p>
         </div>
-      )}
-
-      {packs.length > 0 && (
-        <>
-          <h2 className="mt-14 text-2xl font-acdisplay font-bold">Live 1:1 class packs</h2>
-          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {packs.map((p) => <ProductCard key={p.id} product={p} />)}
+        {products.length === 0 ? (
+          <div className="ac-empty">
+            <b>New courses are on the way</b>
+            <p>Take lesson one on the home page while you wait.</p>
+            <a href="/academy" className="rh-btn rh-btn--primary">Try lesson one</a>
           </div>
-        </>
-      )}
-    </div>
+        ) : (
+          <Catalog products={products} />
+        )}
+      </div>
+    </section>
   );
 }

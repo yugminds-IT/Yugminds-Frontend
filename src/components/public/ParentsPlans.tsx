@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { brandHref } from "@/lib/brand-host";
@@ -20,6 +20,14 @@ const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 export default function ParentsPlans() {
   const [n, setN] = useState(2);
   const [chosen, setChosen] = useState<number | null>(null);
+
+  // On phones the plans are a swipeable row: slide the selected one into view (sideways only, never the page)
+  useEffect(() => {
+    const row = document.querySelector<HTMLElement>(".pr-plans");
+    const card = row?.querySelector<HTMLElement>('.pr-plan[data-on="true"]');
+    if (!row || !card || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: card.offsetLeft - 20, behavior: "smooth" });
+  }, [n, chosen]);
   const totals = PLANS.map((p) => p.cost(n));
   const best = totals.indexOf(Math.min(...totals));
   const sel = chosen ?? best;

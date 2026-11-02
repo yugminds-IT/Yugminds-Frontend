@@ -18,7 +18,7 @@ const STAGES = [
     mods: [
       { title: "Scratch Jr.", text: "Snap blocks together to make characters move.", tags: [] },
       { title: "Drawing and interactive apps", text: "See how computers learn by drawing and playing with apps.", tags: [] },
-      { title: "A no-code robotics kit", text: "Connect input and output modules to make things happen. No code needed.", tags: ["Play Kit too"] },
+      { title: "The Junior Robotics Kit", text: "Press a button and make lights and sounds happen. No code needed.", tags: ["Junior Robotics Kit", "Play Kit too"] },
     ],
   },
   {

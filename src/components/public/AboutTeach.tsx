@@ -4,15 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { GraduationCap, Hammer, Globe, Rocket, Sparkles, Code2, Bot } from "lucide-react";
 
 const LANES: [string, number, number][] = [
-  ["Never coded", 2, 5.2],
-  ["Tried block coding", 22, 4.2],
-  ["Knows some Python", 46, 3],
-  ["Just curious", 8, 4.8],
+  ["Never coded", 2, 3],
+  ["Tried block coding", 22, 2.5],
+  ["Knows some Python", 46, 1.8],
+  ["Just curious", 8, 2.8],
 ];
 const TOPICS = [
-  { Icon: Code2, name: "Coding", d: 0.3 },
-  { Icon: Bot, name: "Robotics", d: 1.3 },
-  { Icon: Sparkles, name: "AI and ML", d: 2.3 },
+  { Icon: Code2, name: "Coding", d: 0.2 },
+  { Icon: Bot, name: "Robotics", d: 0.9 },
+  { Icon: Sparkles, name: "AI and ML", d: 1.6 },
 ];
 
 /* One scene per principle, all plain CSS animations that restart when the scene mounts. Resting styles are the finished
@@ -96,7 +96,7 @@ const ITEMS = [
   { Icon: Rocket, title: "Always current", text: "We update the curriculum as AI, robotics and software change.", scene: <Current />, label: "Coding, robotics and AI cards each marked as updated." },
   { Icon: GraduationCap, title: "Paced to the student", text: "Each student moves at their own speed, with a tutor who tracks their progress.", scene: <Paced />, label: "A student stuck on loops, a tutor helping, and the student finishing." },
 ];
-const MS = 5200;
+const MS = 4200; // the slowest scene (the "open to everyone" race) ends at 3.4s, then a beat
 
 /* The four teaching principles as tabs, with a bench below that acts each one out. Tabs take turns on their own while
    the section is on screen (the bar on the open tab shows when); a click picks one and stops the turns. */
@@ -106,6 +106,14 @@ export default function AboutTeach() {
   const [inView, setInView] = useState(false);
   const [still, setStill] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+
+  // On phones the tabs are a swipeable row: slide the open one into view (sideways only, never the page)
+  useEffect(() => {
+    const row = box.current?.querySelector<HTMLElement>(".th-tabs");
+    const btn = row?.querySelectorAll("button")[tab];
+    if (!row || !btn || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: btn.offsetLeft - 16, behavior: "smooth" });
+  }, [tab]);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);

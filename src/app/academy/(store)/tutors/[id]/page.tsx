@@ -29,29 +29,31 @@ export default async function TutorPage({ params }: Props) {
   if (!tutor) notFound();
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 lg:grid-cols-[1fr_400px]">
-      <div>
-        <Link href="/academy/tutors" className="text-sm font-semibold text-ac-brand hover:underline">← All tutors</Link>
-        <div className="mt-4 flex items-center gap-5">
-          <TutorAvatar tutor={tutor} size="h-20 w-20" />
-          <div>
-            <h1 className="text-3xl font-acdisplay font-bold">{tutor.name}</h1>
-            {tutor.headline && <p className="mt-1 text-ac-muted">{tutor.headline}</p>}
+    <section className="ac-top ac-page">
+      <div className="rh-wrap ac-detail">
+        <div className="ac-detail-main">
+          <Link href="/academy/tutors" className="ac-back">← All tutors</Link>
+          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
+            <TutorAvatar tutor={tutor} size="5.5rem" />
+            <div>
+              <h1 style={{ fontSize: "var(--rh-t-h2)" }}>{tutor.name}</h1>
+              {tutor.headline && <p className="rh-lede" style={{ marginTop: "0.4rem" }}>{tutor.headline}</p>}
+            </div>
           </div>
+          {tutor.subjects.length > 0 && (
+            <div className="ac-subjects" style={{ marginTop: 0 }}>
+              {tutor.subjects.map((s) => <span key={s} className="rh-tag">{s}</span>)}
+            </div>
+          )}
+          {tutor.bio && <p className="ac-bio" style={{ maxWidth: "var(--rh-measure)", lineHeight: "var(--rh-lh-body)" }}>{tutor.bio}</p>}
         </div>
-        {tutor.subjects.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-1.5">
-            {tutor.subjects.map((s) => (
-              <span key={s} className="rounded-full bg-ac-soft px-3 py-1 text-sm font-medium text-ac-brand">{s}</span>
-            ))}
+        <aside className="ac-buy" aria-labelledby="ac-book-h">
+          <div className="ac-buy-body">
+            <h2 id="ac-book-h" style={{ fontSize: "var(--rh-t-h3)" }}>Book a class</h2>
+            <TutorBooking tutorId={tutor.id} />
           </div>
-        )}
-        {tutor.bio && <p className="mt-6 whitespace-pre-line leading-relaxed text-slate-700">{tutor.bio}</p>}
+        </aside>
       </div>
-      <aside className="rounded-2xl border border-slate-200 p-6 lg:sticky lg:top-24 lg:self-start">
-        <h2 className="mb-4 text-lg font-acdisplay font-bold">Book a class</h2>
-        <TutorBooking tutorId={tutor.id} />
-      </aside>
-    </div>
+    </section>
   );
 }

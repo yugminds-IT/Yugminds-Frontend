@@ -61,6 +61,12 @@
 .ab-node[data-state="active"] span { background: var(--rh-amber); border-color: var(--rh-amber); color: var(--rh-ink); transform: scale(1.15); }
 .ab-node[data-state="done"] span { border-color: var(--rh-amber); color: var(--rh-amber); }
 .ab-node[data-state="active"] b, .ab-node[data-state="done"] b { color: var(--rh-paper); }
+/* Narrow tracks (phones): the three nodes sit ~85px apart, so shrink their labels to fit the gap */
+@container (max-width: 26rem) {
+  .ab-node { width: 5rem; margin-left: -2.5rem; }
+  .ab-node b { font-size: 0.8rem; }
+  .ab-node small { font-size: 0.7rem; }
+}
 .ab-droid { left: 0; top: 6.1rem; font-size: 6.5px; transition: transform 0.45s var(--rh-ease-in-out); }
 .ab-droid .droid__body { animation-duration: 0.6s; animation-play-state: paused; }
 .ab-droid[data-moving="true"] .droid__body { animation-play-state: running; }
@@ -146,12 +152,12 @@
 .th-pace { position: relative; width: min(100%, 38rem); display: grid; gap: 1.1rem; padding-top: 2.5rem; }
 .th-pace-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 3rem; align-items: center; gap: 1rem; }
 .th-pace-row span { font-size: var(--rh-t-small); color: var(--rh-navy-soft); text-align: right; }
-.th-pace-row em { font: 700 var(--rh-t-small)/1 var(--rh-display); font-style: normal; color: var(--rh-amber); animation: th-done 4.55s linear both; }
+.th-pace-row em { font: 700 var(--rh-t-small)/1 var(--rh-display); font-style: normal; color: var(--rh-amber); animation: th-done 3s linear both; }
 .th-bar { height: 0.9rem; border-radius: 999px; background: var(--rh-navy-line); overflow: hidden; }
-.th-bar i { display: block; height: 100%; border-radius: inherit; background: var(--rh-amber); animation: th-pace 4.55s ease-in-out both; }
+.th-bar i { display: block; height: 100%; border-radius: inherit; background: var(--rh-amber); animation: th-pace 3s ease-in-out both; }
 .rh .th-bub { position: absolute; top: 0; max-width: none; padding: 0.35rem 0.9rem; border-radius: 999px; font: 600 var(--rh-t-xs)/1.4 var(--rh-body); opacity: 0; }
-.rh .th-bub--s { left: 22%; background: var(--rh-navy-line); color: var(--rh-paper); animation: th-bub 4.55s ease both 0s; }
-.rh .th-bub--t { left: 42%; background: var(--rh-paper); color: var(--rh-ink); animation: th-bub 4.55s ease both 0s; }
+.rh .th-bub--s { left: 22%; background: var(--rh-navy-line); color: var(--rh-paper); animation: th-bub 3s ease both 0s; }
+.rh .th-bub--t { left: 42%; background: var(--rh-paper); color: var(--rh-ink); animation: th-bub 3s ease both 0s; }
 
 @keyframes th-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes th-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
@@ -167,13 +173,30 @@
 @media (max-width: 960px) {
   .ab-hero-grid, .ab-why, .ab-story { grid-template-columns: minmax(0, 1fr); }
   .ab-hero-grid { gap: 2.5rem; }
-  .rh .ab-story-photo { position: relative; top: 0; height: auto; min-height: 0; aspect-ratio: 4 / 3; }
-  .ab-beat, .ab-beat:first-child { --pt: 1.75rem; --pb: 1.75rem; }
+  .rh .ab-hero h1 { font-size: clamp(2.6rem, 8vw, 4.5rem); max-width: none; }
+  .ab-hero-grid > :last-child { width: 100%; max-width: 38rem; justify-self: start; }
+  /* Story on phones and tablets: the photo pins as a short strip under the navbar while the beats scroll beneath it,
+     so the grey-to-colour change stays in view as each beat lights up. */
+  .ab-story { gap: 0.5rem; align-items: start; }
+  .ab-story-media { position: sticky; top: 5.25rem; z-index: 2; padding-block: 0.5rem 0.75rem; background: var(--rh-paper); }
+  .rh .ab-story-photo { position: relative; top: 0; height: clamp(10rem, 30svh, 15rem); min-height: 0; aspect-ratio: auto; }
+  .ab-story-chip { left: 0.75rem; bottom: 0.75rem; padding: 0.4rem 0.9rem; }
+  .ab-beat, .ab-beat:first-child { --pt: 1.5rem; --pb: 1.5rem; }
+  .ab-beat:last-child { --pb: 3rem; }
+  .ab-beat p { opacity: 0.8; }
+  .ab-beat[data-state="active"] p { font-size: var(--rh-t-body); line-height: var(--rh-lh-body); }
   .ab-why-list { min-height: 0; }
-  .th-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rh .th-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
-  .th-tabs { grid-template-columns: minmax(0, 1fr); }
+  /* Phones: the four principles become one swipeable row (snap, next card peeking) so the bench sits right under them */
+  .rh .th-tabs { --g: clamp(1rem, 4vw, 2.5rem); display: flex; gap: 0.6rem; margin: 0 calc(-1 * var(--g)) 1rem; padding: 0.25rem var(--g); scroll-padding-inline: var(--g); overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .th-tabs::-webkit-scrollbar { display: none; }
+  .th-tabs li { flex: 0 0 78%; scroll-snap-align: start; }
+  .th-tabs button { grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 0.75rem; row-gap: 0.4rem; padding: 0.9rem 1rem 1.15rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .th-tabs .rh-chip-ico { margin: 0; }
+  .th-tabs p { grid-column: 1 / -1; }
+  .rh .th-stage { min-height: 15rem; }
   .th-lanes li { grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.6rem; }
   .th-topics { grid-template-columns: minmax(0, 1fr); }
 }

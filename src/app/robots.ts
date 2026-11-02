@@ -42,7 +42,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   }
 
   const sitemap = `${BRAND_ORIGINS[brand]}/sitemap.xml`;
-  const sharedDisallow = ["/api/", "/sentry-example-page"];
+  const sharedDisallow = ["/api/"];
 
   if (brand === "lms") {
     return {

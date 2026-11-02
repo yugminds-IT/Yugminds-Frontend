@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { KitArt, PlayArt } from "./HomeProducts";
+import JuniorArt from "./JuniorArt";
 import { SimArt } from "./SimulatorCard";
 import { StudioArt } from "./StudioCard";
 
@@ -10,9 +11,10 @@ const OPTIONS = [
   { task: "Code on a screen", short: "Code", name: "RoboCoders Studio", href: "#studio", Art: () => <StudioArt v="school" />, text: "Block coding, Python, AI experiments and robot control in one app.", tags: ["Ages 8+", "Offline or online"] },
   { task: "Test a circuit first", short: "Test", name: "RoboCoders Simulator", href: "#simulator", Art: SimArt, text: "Wire LEDs, buttons and sensors on a virtual ESP32, with live pin readings.", tags: ["Same pins as the real board"] },
   { task: "Build a real robot", short: "Build", name: "Robotics Kit, ESP32 Edition", href: "#robotics-kit", Art: KitArt, text: "A custom ESP32 board, sensors, motors and chassis with 40+ guided projects.", tags: ["40+ projects", "Block and C coding"] },
+  { task: "Start robotics with no code", short: "Junior", name: "Junior Robotics Kit", href: "#junior-kit", Art: JuniorArt, text: "Plug a button, LEDs and a buzzer into a board and make things happen. Made for grades 1 to 3.", tags: ["Grades 1 to 3", "No code needed"] },
   { task: "Learn without a screen", short: "Play", name: "RoboCoders Play Kit", href: "#play-kit", Art: PlayArt, text: "Lay out direction cards and the robot follows them, step by step.", tags: ["Screen-free", "Learn by playing"] },
 ];
-const DWELL = 8; // seconds: one full loop of the product's own animation
+const DWELL = 5.2; // seconds: a little over one full loop (5s) of the product's own animation
 
 /* The products hero: pick what you want to do and the product that does it plays its own animation. Studio cycles its
    tabs, the Simulator lights an LED, the kit sends signals to its parts, the Play Kit's robot follows its cards. They

@@ -543,3 +543,37 @@ tr[data-today] .ct-hrs-track i { background: var(--rh-amber); opacity: 1; }
 }
 @keyframes ct-fade { from { opacity: 0; } }
 @keyframes ct-fade-out { to { opacity: 0; } }
+
+/* Contact hero on phones: the three ways to reach us are tap targets, so they respond at once, never select text on a
+   long press, and the copy-email button is a full 44px. */
+@media (max-width: 560px) {
+  .ct-way, .ct-copy { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .ct-copy { min-width: 2.75rem; min-height: 2.75rem; }
+  .ct-hero { padding-top: 6rem; }
+}
+
+/* "Know where you're headed?" is hidden on phones: the navbar menu already links to every page it lists. */
+@media (max-width: 560px) {
+  section.ct-routes { display: none; }
+}
+
+/* Contact form on phones: 44px+ topic chips and fields, a full-width send button, and chips that respond at once
+   without selecting their text on a long press. */
+@media (max-width: 560px) {
+  .ct-topics label, .ct-topics .ct-chip { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .ct-field input { min-height: 3.25rem; }
+  .ct-submit .rh-btn { width: 100%; touch-action: manipulation; }
+}
+@media (max-width: 560px) {
+  .ct-chip span { padding-block: 0.8rem; }
+}
+
+/* Visit section on phones: the heading gets its space back (the `.rh h2` reset was cancelling the margin), the map is
+   a wide strip instead of a square so the hours and buttons stay close to it, and its address card is compact. */
+.rh .ct-visit-copy h2 { margin-bottom: 1rem; }
+@media (max-width: 560px) {
+  .ct-visit-grid { gap: 1.75rem; }
+  .ct-map { aspect-ratio: 4 / 3.4; }
+  .ct-map-card { padding: 0.7rem 0.9rem; }
+  .ct-visit .rh-btn { touch-action: manipulation; }
+}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { BadgeCheck, XCircle } from "lucide-react";
+import { Award, BadgeCheck, SearchX } from "lucide-react";
 import { backendRequest } from "@/lib/backend-client";
+import { VerifyForm } from "@/components/academy/VerifyForm";
 import type { Certificate } from "@/lib/academy/api";
 
 type Props = { params: Promise<{ shortId: string }> };
@@ -13,28 +14,31 @@ export default async function VerifyCertificatePage({ params }: Props) {
   const cert = await backendRequest<Certificate>(`/academy/certificates/${encodeURIComponent(shortId)}`).catch(() => null);
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      {cert ? (
-        <>
-          <BadgeCheck className="mx-auto h-14 w-14 text-emerald-500" />
-          <h1 className="mt-4 text-2xl font-acdisplay font-bold">Verified certificate</h1>
-          <div className="mt-6 rounded-2xl border border-slate-200 p-6 text-left">
-            <p className="text-sm text-ac-muted">Awarded to</p>
-            <p className="text-xl font-bold">{cert.learnerName}</p>
-            <p className="mt-4 text-sm text-ac-muted">For completing</p>
-            <p className="text-lg font-semibold">{cert.courseTitle}</p>
-            <p className="mt-4 text-sm text-ac-muted">
-              Issued {new Date(cert.issuedAt).toLocaleDateString("en-IN", { dateStyle: "long" })}, certificate ID {cert.shortId}
-            </p>
-          </div>
-        </>
-      ) : (
-        <>
-          <XCircle className="mx-auto h-14 w-14 text-red-500" />
-          <h1 className="mt-4 text-2xl font-acdisplay font-bold">Certificate not found</h1>
-          <p className="mt-2 text-ac-muted">Check the certificate ID and try again.</p>
-        </>
-      )}
-    </div>
+    <section className="ac-top ac-page">
+      <div className="rh-wrap" style={{ maxWidth: "40rem", display: "grid", gap: "1.5rem", justifyItems: "center", textAlign: "center" }}>
+        {cert ? (
+          <>
+            <span className="ac-cert-state" data-ok="true"><BadgeCheck size={18} aria-hidden="true" /> Verified certificate</span>
+            <div className="ac-cert" style={{ width: "100%" }}>
+              <span className="ac-cert-seal"><Award size={28} aria-hidden="true" /></span>
+              <p>This certificate was awarded to</p>
+              <p className="ac-cert-name">{cert.learnerName}</p>
+              <p>for completing</p>
+              <p className="ac-cert-course">{cert.courseTitle}</p>
+              <p className="ac-cert-id">
+                Issued {new Date(cert.issuedAt).toLocaleDateString("en-IN", { dateStyle: "long" })}, certificate ID {cert.shortId}
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="ac-cert-state" data-ok="false"><SearchX size={18} aria-hidden="true" /> Certificate not found</span>
+            <h1 style={{ fontSize: "var(--rh-t-h2)" }}>We could not find that ID</h1>
+            <p className="rh-lede">Check the certificate ID for typing mistakes and try again.</p>
+            <VerifyForm autoFocus />
+          </>
+        )}
+      </div>
+    </section>
   );
 }

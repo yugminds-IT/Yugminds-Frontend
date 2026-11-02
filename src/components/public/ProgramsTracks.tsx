@@ -65,6 +65,13 @@ export default function ProgramsTracks() {
     return () => io.disconnect();
   }, []);
 
+  // On phones the tabs are a swipeable row: slide the open one into view (sideways only, never the page)
+  useEffect(() => {
+    const row = refs.current[t]?.parentElement;
+    const btn = refs.current[t];
+    if (!row || !btn || row.scrollWidth <= row.clientWidth) return;
+    row.scrollTo({ left: btn.offsetLeft - 16, behavior: "smooth" });
+  }, [t]);
   const auto = !picked && !still;
   const last = cur.topics.length - 1;
   const shown = still ? last : step;

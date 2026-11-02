@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { BRAND_ORIGINS, brandHref } from "@/lib/brand-host";
-import { Code, Lightbulb, MonitorSmartphone, Radar, Route, Zap } from "lucide-react";
+import { Code, Hand, Lightbulb, MonitorSmartphone, MousePointerClick, Radar, Route, ToggleRight, Zap } from "lucide-react";
 import Footer from "../../../components/Footer";
 import PlayKit from "../../../components/public/PlayKit";
 import HomeCount from "../../../components/public/HomeCount";
-import KitExplorer from "../../../components/public/KitExplorer";
+import JuniorKit from "../../../components/public/JuniorKit";
 import KitLab from "../../../components/public/KitLab";
 import ProductsFaq from "../../../components/public/ProductsFaq";
 import ProductsFinder from "../../../components/public/ProductsFinder";
@@ -34,6 +34,13 @@ const products = [
     badges: ["40+ projects", "Block & C coding"],
   },
   {
+    id: "junior-kit",
+    title: "Junior Robotics Kit",
+    description:
+      "No-code robotics for grades 1 to 3. Children press a button and make lights and sounds happen.",
+    badges: ["Grades 1 to 3", "No code needed"],
+  },
+  {
     id: "play-kit",
     title: "RoboCoders Play Kit",
     description:
@@ -55,42 +62,65 @@ const faqs = [
   {
     question: "What products does RoboCoders offer?",
     answer:
-      "RoboCoders, the EdTech initiative of YugMinds, offers three products: RoboCoders Studio (offline desktop software for coding, AI and robotics), the YugMinds Robotics Kit — ESP32 Edition (a hands-on robotics and IoT kit with 40+ guided projects), and the RoboCoders Play Kit (a screen-free, card-controlled coding robot for young kids).",
+      "RoboCoders, the EdTech initiative of YugMinds, offers four products: RoboCoders Studio (offline desktop software for coding, AI and robotics), the YugMinds Robotics Kit — ESP32 Edition (a hands-on robotics and IoT kit with 40+ guided projects), the Junior Robotics Kit (a no-code board kit for grades 1 to 3) and the RoboCoders Play Kit (a screen-free, card-controlled coding robot for young kids).",
+    href: "#studio",
+    cta: "See the products",
   },
   {
     question: "What is RoboCoders Studio?",
     answer:
       "RoboCoders Studio is a desktop app that brings block coding, Python, AI experiments and robot control into one place. It is designed for students aged 8 and above and works completely offline, so it suits classrooms with limited internet as well as learning at home.",
+    href: "#studio",
+    cta: "See Studio",
   },
   {
     question: "Does RoboCoders Studio need an internet connection?",
     answer:
       "No. RoboCoders Studio runs entirely on the device, so students can learn coding, AI and robotics with zero internet required.",
+    href: "#studio",
+    cta: "See Studio",
   },
   {
     question: "What is included in the YugMinds ESP32 Robotics Kit?",
     answer:
-      "The kit includes a custom ESP32 development board, IR sensors, an ultrasonic sensor, an LDR light sensor, a DHT11 temperature and humidity sensor, an OLED display, BO gear motors, a servo motor, a DC motor with propeller, a buzzer, LEDs, a 4-wheel acrylic chassis with wheels, wires, a USB cable, and screws, nuts and bolts for assembly.",
+      "The kit includes a custom ESP32 board, sensors, motors and a chassis, with guided projects that take students from a first light to a robot that moves. Contact the RoboCoders team for the full kit details.",
+    href: "#robotics-kit",
+    cta: "See the robotics kit",
   },
   {
     question: "How many projects can students build with the ESP32 Robotics Kit?",
     answer:
-      "Students can build 40+ guided projects, from LED and OLED display basics to line-following, obstacle-avoiding, light-following and maze-solving robots, Bluetooth-controlled cars, servo projects, home automation models and environment monitors.",
+      "Students can build 40+ guided projects, from simple lights and displays to line-following, obstacle-avoiding and Bluetooth-controlled robots.",
+    href: "#robotics-kit",
+    cta: "See the projects",
   },
   {
     question: "Which coding languages and devices does the robotics kit support?",
     answer:
       "The kit supports block-based coding and C programming, and works with laptops, desktops and Chromebooks. The ESP32 board also has built-in Wi-Fi and Bluetooth for wireless projects.",
+    href: "#robotics-kit",
+    cta: "See the robotics kit",
+  },
+  {
+    question: "What is the Junior Robotics Kit?",
+    answer:
+      "The Junior Robotics Kit is a no-code robotics kit for grades 1 to 3. Children press a button and make lights and sounds happen, which teaches how inputs and outputs work. It needs no screen and no coding.",
+    href: "#junior-kit",
+    cta: "Try the demo",
   },
   {
     question: "How does the RoboCoders Play Kit work?",
     answer:
       "Kids control the robot with direction cards such as Forward, Left, Right and U-Turn. They place a card on the robot and it carries out that command — a Right card turns it right, a U-Turn card turns it around. This teaches sequencing, logic and problem-solving without any screen.",
+    href: "#play-kit",
+    cta: "Try the Play Kit",
   },
   {
     question: "Can schools order RoboCoders products in bulk?",
     answer:
-      "Yes. Schools can contact the RoboCoders team for bulk orders, product demos and classroom packages for RoboCoders Studio, the ESP32 Robotics Kit and the Play Kit.",
+      "Yes. Schools can contact the RoboCoders team for bulk orders, product demos and classroom packages for RoboCoders Studio, the ESP32 Robotics Kit, the Junior Robotics Kit and the Play Kit.",
+    href: brandHref("/robocoders/contact"),
+    cta: "Request a demo",
   },
 ];
 
@@ -121,18 +151,18 @@ export default function ProductsPage() {
         ]}
       />
       <main className="ab-main">
-        <section className="ab-hero" aria-labelledby="pd-h1">
+        <section className="ab-hero pg-hero" aria-labelledby="pd-h1">
           <div className="rh-wrap ab-hero-grid">
             <div className="ab-hero-copy">
               <h1 id="pd-h1">Software and kits to build with.</h1>
-              <p className="rh-lede">Four products from YugMinds that make coding, AI and robotics hands-on at every age.</p>
+              <p className="rh-lede">Five products from YugMinds that make coding, AI and robotics hands-on at every age.</p>
               <div className="rh-actions">
                 <Link href="#studio" className="rh-btn rh-btn--primary">See the products</Link>
                 <Link href={contactHref} className="rh-btn rh-btn--ghost">Request a demo</Link>
               </div>
               <dl className="rh-facts">
                 <div>
-                  <dt><HomeCount to={4} /></dt>
+                  <dt><HomeCount to={5} /></dt>
                   <dd>products, from app to kit</dd>
                 </div>
                 <div>
@@ -192,8 +222,25 @@ export default function ProductsPage() {
               <p className="rh-lede">Each project below runs live: the readings and motor levels come from the simulation.</p>
             </div>
             <KitLab />
+          </div>
+        </section>
 
-            <KitExplorer />
+        <section id="junior-kit" className="rh-sec pd-anchor" aria-labelledby="pd-junior">
+          <div className="rh-wrap">
+            <div className="rh-head">
+              <h2 id="pd-junior">Plug in. Press. See it work.</h2>
+              <p className="rh-lede">The Junior Robotics Kit is for grades 1 to 3. Children press a button and make lights and sounds happen, with no code.</p>
+            </div>
+            <JuniorKit />
+            <ul className="pd-junior-points">
+              <li><span className="rh-chip-ico"><Hand size={16} aria-hidden="true" /></span>Hands-on from the first minute</li>
+              <li><span className="rh-chip-ico"><MousePointerClick size={16} aria-hidden="true" /></span>Learn cause and effect by pressing and watching</li>
+              <li><span className="rh-chip-ico"><ToggleRight size={16} aria-hidden="true" /></span>Inputs and outputs, with no code and no screen</li>
+            </ul>
+            <div className="rh-actions">
+              <Link href={contactHref} className="rh-btn rh-btn--primary">Request a demo</Link>
+              <Link href={brandHref("/robocoders/for-schools")} className="rh-btn rh-btn--ghost">For schools</Link>
+            </div>
           </div>
         </section>
 

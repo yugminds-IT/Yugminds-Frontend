@@ -3,10 +3,10 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock, ShieldCheck } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
 import { academy, type ProductDetail, type Role } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
-import { Price } from "@/components/academy/ProductCard";
+import { Price, kindLabel } from "@/components/academy/ProductCard";
 
 type RazorpayResponse = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
 type RazorpayCtor = new (opts: Record<string, unknown>) => { open: () => void; on: (e: string, cb: () => void) => void };
@@ -89,58 +89,91 @@ export default function CheckoutPage({ params }: { params: Promise<{ slug: strin
   };
 
   if (!product && !error) {
-    return <div className="flex justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-ac-brand" /></div>;
+    return (
+      <section className="ac-top ac-page">
+        <div className="rh-wrap"><span className="ac-spin" role="status" aria-label="Loading checkout" /></div>
+      </section>
+    );
   }
 
   const next = encodeURIComponent(`/academy/checkout/${slug}`);
+  const free = product?.priceInPaise === 0;
+  const isCourse = product?.type === "COURSE";
+  const learner = signedIn === "LEARNER";
+  const staff = !!signedIn && !learner;
+  const busy = status !== "idle";
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-12">
-      <h1 className="text-2xl font-acdisplay font-bold">Checkout</h1>
-      {product && (
-        <div className="mt-6 rounded-2xl border border-slate-200 p-6">
-          <p className="text-sm text-ac-muted">{product.type === "COURSE" ? "Self-paced course" : "Live 1:1 class pack"}</p>
-          <p className="mt-1 text-lg font-bold">{product.title}</p>
-          <div className="mt-4"><Price product={product} large /></div>
-
-          {signedIn === false ? (
-            <div className="mt-6 space-y-3">
-              <p className="text-sm text-ac-muted">Create a free account (or log in) to continue — your course will be saved there.</p>
-              <Link href={`/academy/signup?next=${next}`} className="block rounded-lg bg-ac-brand px-6 py-3 text-center font-semibold text-white hover:bg-ac-brand-dark">
-                Create account
-              </Link>
-              <Link href={`/academy/login?next=${next}`} className="block rounded-lg border border-slate-300 px-6 py-3 text-center font-semibold hover:border-ac-brand">
-                I already have an account
-              </Link>
-            </div>
-          ) : signedIn && signedIn !== "LEARNER" ? (
-            <p className="mt-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
-              You&apos;re signed in with a staff account. Log out and use a learner account to buy.
-            </p>
-          ) : (
-            <button
-              onClick={pay}
-              disabled={signedIn === null || status !== "idle"}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-ac-brand px-6 py-3.5 font-semibold text-white hover:bg-ac-brand-dark disabled:opacity-60"
-            >
-              {product.priceInPaise === 0 ? (
-                status === "paying" ? "Adding to your account…" : product.type === "COURSE" ? "Enroll free" : "Claim free class"
-              ) : (
-                <>
-                  <Lock className="h-4 w-4" />
-                  {status === "verifying" ? "Confirming payment…" : status === "paying" ? "Opening payment…" : "Pay securely"}
-                </>
-              )}
-            </button>
-          )}
-          {product.priceInPaise > 0 && (
-            <p className="mt-4 flex items-center gap-1.5 text-xs text-ac-muted">
-              <ShieldCheck className="h-4 w-4 text-emerald-500" /> UPI, cards, net banking and wallets via Razorpay.
-            </p>
-          )}
+    <section className="ac-top ac-page" aria-labelledby="ac-co-h">
+      <div className="rh-wrap">
+        <div className="ac-pagehead">
+          <h1 id="ac-co-h" style={{ fontSize: "var(--rh-t-h2)" }}>{free ? "Get it free" : "Checkout"}</h1>
         </div>
-      )}
-      {error && <p className="mt-4 whitespace-pre-line rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
-    </div>
+
+        {product && (
+          <div className="ac-co">
+            <div className="ac-sum">
+              <p className="ac-sum-kind">{kindLabel(product)}</p>
+              <h2>{product.title}</h2>
+              <Price product={product} large />
+              {!free && (
+                <p className="ac-secure"><ShieldCheck size={16} aria-hidden="true" /> UPI, cards, net banking and wallets through Razorpay.</p>
+              )}
+              <Link href={`/academy/courses/${product.slug}`} className="ac-back">← Back to details</Link>
+            </div>
+
+            <ol className="ac-steps" aria-label="Steps">
+              <li data-state={learner ? "done" : "active"}>
+                <span aria-hidden="true">1</span>
+                <div>
+                  <b>{learner ? "Signed in" : "Sign in"}</b>
+                  {signedIn === false && (
+                    <div className="ac-actions">
+                      <p className="ac-hint">Your {isCourse ? "course" : "classes"} will be saved to your account.</p>
+                      <Link href={`/academy/signup?next=${next}`} className="rh-btn rh-btn--primary">Create free account</Link>
+                      <Link href={`/academy/login?next=${next}`} className="rh-btn rh-btn--ghost">I already have an account</Link>
+                    </div>
+                  )}
+                  {staff && (
+                    <p className="ac-note" style={{ marginTop: "0.75rem" }}>
+                      You are signed in with a staff account. Log out and use a learner account to buy.
+                    </p>
+                  )}
+                </div>
+              </li>
+              <li data-state={learner ? "active" : "todo"}>
+                <span aria-hidden="true">2</span>
+                <div>
+                  <b>{free ? "Add it to your account" : "Pay"}</b>
+                  {learner && (
+                    <div className="ac-actions">
+                      <button type="button" onClick={pay} disabled={busy} aria-busy={busy} className="rh-btn rh-btn--primary">
+                        {free ? (
+                          status === "paying" ? "Adding to your account…" : isCourse ? "Enroll free" : "Claim free class"
+                        ) : (
+                          <>
+                            <Lock size={16} aria-hidden="true" style={{ marginRight: "0.5rem" }} />
+                            {status === "verifying" ? "Confirming payment…" : status === "paying" ? "Opening payment…" : "Pay securely"}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </li>
+              <li data-state="todo">
+                <span aria-hidden="true">3</span>
+                <div>
+                  <b>{isCourse ? "Start learning" : "Book your first class"}</b>
+                  <p className="ac-hint">{isCourse ? "The course opens in your account straight away." : "Pick a tutor and a time from your account."}</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        )}
+
+        {error && <p className="ac-note" data-tone="error" role="alert" style={{ marginTop: "1.5rem", whiteSpace: "pre-line" }}>{error}</p>}
+      </div>
+    </section>
   );
 }

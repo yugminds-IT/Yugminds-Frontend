@@ -118,3 +118,41 @@
   .pg-inv-bar, .pg-kit-chip { animation: none; }
   .pg-shelf > li, .pg-detail { animation: none; }
 }
+
+/* Programs hero on phones and tablets: headline, buttons, then the track simulation right away; the three facts
+   follow it. (display: contents lets the facts move below the simulation, which is a sibling of the copy.) */
+@media (max-width: 960px) {
+  .pg-hero .ab-hero-grid { gap: 1.25rem; justify-items: start; }
+  .pg-hero .ab-hero-copy { display: contents; }
+  .rh .pg-hero h1 { margin-bottom: 0; }
+  .pg-hero .rh-actions { margin-top: 0.25rem; }
+  .pg-hero .ab-hero-grid > :last-child { order: 4; width: 100%; }
+  .rh .pg-hero dl.rh-facts { order: 5; margin-top: 0.5rem; }
+}
+@media (max-width: 560px) {
+  .ab-hero.pg-hero { padding-top: 6rem; }
+}
+
+/* Tracks on phones: the three tracks become a swipeable row (next card peeking) so the syllabus is on screen with them */
+@media (max-width: 560px) {
+  .pg-explore { gap: 1rem; }
+  .pg-tabs { --g: clamp(1rem, 4vw, 2.5rem); display: flex; gap: 0.6rem; margin: 0 calc(-1 * var(--g)); padding: 0.25rem var(--g); scroll-padding-inline: var(--g); overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .pg-tabs::-webkit-scrollbar { display: none; }
+  .pg-tabs button { flex: 0 0 82%; scroll-snap-align: start; align-items: start; padding: 0.9rem 1rem 1.15rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .pg-syl { gap: 1.1rem; padding: 1.1rem; }
+  .pg-topics li { padding-bottom: 1rem; }
+}
+
+/* Robotics kit. Tablets keep the video beside the list; phones crop the tall video to a 4:5 window on the kit box so
+   the headline and the parts list are not a full screen away. */
+@media (min-width: 700px) and (max-width: 960px) {
+  .pg-kit { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 1.5rem; align-items: start; }
+  .pg-kit-video { margin-inline: 0; }
+}
+@media (max-width: 699px) {
+  .pg-kit { gap: 1.5rem; }
+  .pg-kit-video video { aspect-ratio: 4 / 5; object-fit: cover; object-position: 50% 62%; }
+  .pg-kit-copy { gap: 1rem; }
+  .pg-kit-copy .rh-actions { width: 100%; }
+  .pg-kit-copy .rh-btn { touch-action: manipulation; }
+}

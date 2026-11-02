@@ -35,7 +35,7 @@ export default function ProgramsPage() {
         ]}
       />
       <main className="ab-main">
-        <section className="ab-hero" aria-labelledby="pg-h1">
+        <section className="ab-hero pg-hero" aria-labelledby="pg-h1">
           <div className="rh-wrap ab-hero-grid">
             <div className="ab-hero-copy">
               <h1 id="pg-h1">Learn to code, build robots and train AI.</h1>

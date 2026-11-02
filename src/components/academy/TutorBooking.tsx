@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
 import { academy, type Credit } from "@/lib/academy/api";
 import { SlotPicker, whenLabel } from "./SlotPicker";
 
@@ -23,23 +22,21 @@ export function TutorBooking({ tutorId }: { tutorId: string }) {
       .catch(() => setState("guest"));
   }, []);
 
-  if (state === "loading") return null;
+  if (state === "loading") return <span className="ac-spin" role="status" aria-label="Loading" />;
 
   if (booked) {
     return (
-      <div className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
-        <CheckCircle2 className="mb-2 h-6 w-6" />
-        Booked for <b>{whenLabel(booked)}</b>. The joining link will be in{" "}
-        <Link href="/academy/learn/sessions" className="font-semibold underline">My sessions</Link>.
-      </div>
+      <p className="ac-note" data-tone="good" role="status">
+        Booked for <b>{whenLabel(booked)}</b>. The joining link will be in <Link href="/academy/learn/sessions">My sessions</Link>.
+      </p>
     );
   }
 
   if (state === "learner" && credit) {
     return (
-      <>
-        <p className="mb-3 text-sm text-ac-muted">
-          You have <b className="text-ac-ink">{credit.remaining}</b> class credit{credit.remaining > 1 ? "s" : ""} left.
+      <div style={{ display: "grid", gap: "0.9rem" }}>
+        <p className="ac-hint">
+          You have <b>{credit.remaining}</b> class credit{credit.remaining > 1 ? "s" : ""} left.
         </p>
         <SlotPicker
           tutorId={tutorId}
@@ -49,24 +46,23 @@ export function TutorBooking({ tutorId }: { tutorId: string }) {
             setBooked(startsAt);
           }}
         />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div style={{ display: "grid", gap: "0.9rem" }}>
       <SlotPicker tutorId={tutorId} minutes={60} />
-      <div className="mt-4 rounded-xl bg-ac-soft p-4 text-sm">
+      <p className="ac-note">
         {state === "learner" ? "You have no class credits left." : "To book, get a class pack first."}{" "}
-        <Link href="/academy/courses" className="font-semibold text-ac-brand underline">See class packs</Link>
+        <Link href="/academy/courses">See class packs</Link>
         {state === "guest" && (
           <>
-            {" "}or{" "}
-            <Link href="/academy/login" className="font-semibold text-ac-brand underline">log in</Link>
+            {" "}or <Link href="/academy/login">log in</Link>
           </>
         )}
         .
-      </div>
-    </>
+      </p>
+    </div>
   );
 }

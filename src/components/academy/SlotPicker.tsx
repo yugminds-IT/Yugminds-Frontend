@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { academy } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
 
@@ -54,10 +53,10 @@ export function SlotPicker({
     return [...map.entries()];
   }, [slots]);
 
-  if (error) return <p className="text-sm text-red-600">{error}</p>;
-  if (!slots) return <Loader2 className="h-5 w-5 animate-spin text-ac-brand" />;
+  if (error && !slots) return <p className="ac-note" data-tone="error" role="alert">{error}</p>;
+  if (!slots) return <span className="ac-spin" role="status" aria-label="Loading open times" />;
   if (slots.length === 0) {
-    return <p className="text-sm text-ac-muted">No open slots in the next two weeks. Please check back soon.</p>;
+    return <p className="ac-note">No open times in the next two weeks. Check back soon.</p>;
   }
 
   const book = async () => {
@@ -76,37 +75,25 @@ export function SlotPicker({
   };
 
   return (
-    <div>
-      <div className="flex gap-2 overflow-x-auto pb-2">
+    <div className="ac-slots">
+      <div className="ac-days" role="group" aria-label="Pick a day">
         {days.map(([key, list]) => (
-          <button
-            key={key}
-            onClick={() => { setDay(key); setPicked(null); }}
-            className={`shrink-0 rounded-xl border px-3 py-2 text-sm ${day === key ? "border-ac-brand bg-ac-soft font-semibold text-ac-brand" : "border-slate-200 hover:border-ac-brand"}`}
-          >
+          <button key={key} type="button" aria-pressed={day === key} onClick={() => { setDay(key); setPicked(null); }}>
             {dayLabel(list[0])}
           </button>
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+      <div className="ac-times" role="group" aria-label="Pick a time">
         {days.find(([k]) => k === day)?.[1].map((s) => (
-          <button
-            key={s}
-            disabled={!onBook}
-            onClick={() => setPicked(s)}
-            className={`rounded-lg border px-2 py-2 text-sm ${picked === s ? "border-ac-brand bg-ac-brand text-white" : "border-slate-200 enabled:hover:border-ac-brand disabled:cursor-default"}`}
-          >
+          <button key={s} type="button" disabled={!onBook} aria-pressed={picked === s} onClick={() => setPicked(s)}>
             {timeLabel(s)}
           </button>
         ))}
       </div>
-      <p className="mt-2 text-xs text-ac-muted">{minutes}-minute classes, times shown in IST</p>
+      <p className="ac-hint">{minutes}-minute classes, times shown in IST</p>
+      {error && <p className="ac-note" data-tone="error" role="alert">{error}</p>}
       {onBook && (
-        <button
-          onClick={book}
-          disabled={!picked || busy}
-          className="mt-4 w-full rounded-lg bg-ac-brand px-6 py-3 font-semibold text-white hover:bg-ac-brand-dark disabled:opacity-50"
-        >
+        <button type="button" onClick={book} disabled={!picked || busy} className="rh-btn rh-btn--primary" style={{ width: "100%" }}>
           {busy ? "Booking…" : picked ? `Book ${whenLabel(picked)}` : "Pick a time"}
         </button>
       )}

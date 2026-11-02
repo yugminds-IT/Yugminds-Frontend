@@ -25,7 +25,8 @@ const FAQS: { cat: Cat; q: string; a: string }[] = [
   { cat: "schools", q: "Can our school run RoboCoders?", a: "Yes. We handle setup and instructor training, then launch classes and track progress with you. A school starts with a consultation, then customization, setup and launch." },
   { cat: "schools", q: "Who teaches the classes?", a: "Trained RoboCoders instructors can teach independently or co-teach with your staff. Kits, textbooks and LMS access are included, and 24/7 tech support backs every class." },
   { cat: "schools", q: "Can schools order in bulk?", a: "Yes. Schools can contact the RoboCoders team for bulk orders, product demos and classroom packages." },
-  { cat: "kits", q: "What is in the Robotics Kit?", a: "A custom ESP32 board, sensors, motors and a chassis, with 40+ guided projects. It supports block and C coding and works with laptops, desktops and Chromebooks." },
+  { cat: "kits", q: "What is in the Robotics Kit?", a: "A custom ESP32 board, sensors, motors and a chassis, with 40+ guided projects. It supports block and C coding and works with laptops, desktops and Chromebooks. Contact us for the full kit details." },
+  { cat: "kits", q: "What is the Junior Robotics Kit?", a: "A no-code robotics kit for grades 1 to 3. Children press a button and make lights and sounds happen, which teaches how inputs and outputs work. No screen and no coding needed." },
   { cat: "kits", q: "Is there a screen-free option for young kids?", a: "Yes. The RoboCoders Play Kit teaches coding without a screen: kids lay out direction cards and the robot follows them." },
 ];
 
