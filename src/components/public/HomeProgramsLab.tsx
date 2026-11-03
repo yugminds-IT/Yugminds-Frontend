@@ -37,13 +37,14 @@ const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefe
    times round. The trail draws behind it and a counter shows the repeat. */
 const CORNERS: [number, number][] = [[60, 50], [180, 50], [180, 150], [60, 150], [60, 50]];
 const STEPS = 10; // flag, then (move, turn) x 4, then done
-export function CodingSim() {
+export function CodingSim({ running = true }: { running?: boolean }) {
   const [step, setStep] = useState(0);
   useEffect(() => {
     if (reduced()) { setStep(STEPS - 1); return; }
+    if (!running) return;
     const id = setTimeout(() => setStep((n) => (n + 1) % (STEPS + 2)), step === STEPS - 1 ? 800 : step >= STEPS ? 260 : 340);
     return () => clearTimeout(id);
-  }, [step]);
+  }, [step, running]);
   const s = Math.min(step, STEPS - 1);
   const moves = s < 1 ? 0 : Math.min(4, Math.ceil(s / 2));
   const turns = s < 1 ? 0 : Math.min(4, Math.floor(s / 2));
@@ -89,10 +90,11 @@ export function CodingSim() {
 
 /* Robotics: a robot follows a curved line, and a readout shows what its sensors and motors are doing. The robot's position
    comes from the path itself and the readout from how sharply the path is bending there. */
-export function RoboticsSim() {
+export function RoboticsSim({ running = true }: { running?: boolean }) {
   const path = useRef<SVGPathElement>(null);
   const bot = useRef<SVGGElement>(null);
   const root = useRef<HTMLDivElement>(null);
+  const dist = useRef(0);
   useEffect(() => {
     const p = path.current, b = bot.current, r = root.current;
     if (!p || !b || !r) return;
@@ -111,17 +113,27 @@ export function RoboticsSim() {
       const left = 70 + 30 * k, right = 70 - 30 * k;
       lm.style.transform = `scaleX(${left / 100})`;
       rm.style.transform = `scaleX(${right / 100})`;
-      say.textContent = k > 0.25 ? "Turning right" : k < -0.25 ? "Turning left" : "Going straight";
-      sl.dataset.on = String(k < -0.12);
-      sr.dataset.on = String(k > 0.12);
+      // text and data attributes force layout and style work, so only touch them when they change
+      const text = k > 0.25 ? "Turning right" : k < -0.25 ? "Turning left" : "Going straight";
+      if (say.textContent !== text) say.textContent = text;
+      const onL = String(k < -0.12), onR = String(k > 0.12);
+      if (sl.dataset.on !== onL) sl.dataset.on = onL;
+      if (sr.dataset.on !== onR) sr.dataset.on = onR;
     };
     if (reduced()) { place(len * 0.18); return; }
+    place(dist.current);
+    if (!running) return;
     let raf = 0;
-    const t0 = performance.now();
-    const tick = (now: number) => { place(((now - t0) / 1000) * 95); raf = requestAnimationFrame(tick); };
+    let last = performance.now();
+    const tick = (now: number) => {
+      dist.current += ((now - last) / 1000) * 95;
+      last = now;
+      place(dist.current);
+      raf = requestAnimationFrame(tick);
+    };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [running]);
   return (
     <div className="sim sim-robotics" ref={root}>
       <svg className="sim-stage" viewBox="0 0 320 200" aria-hidden="true">
@@ -163,14 +175,14 @@ function Shape({ k }: { k: number }) {
     </svg>
   );
 }
-export function AiSim() {
+export function AiSim({ running = true }: { running?: boolean }) {
   // tick counts 0.. : collect 0-3, train 4-6, predict 7-12 (a new shape every 2 ticks)
   const [tick, setTick] = useState(reduced() ? 9 : 0);
   useEffect(() => {
-    if (reduced()) return;
+    if (reduced() || !running) return;
     const id = setInterval(() => setTick((n) => (n + 1) % 13), 470);
     return () => clearInterval(id);
-  }, []);
+  }, [running]);
   const stage = tick < 4 ? 0 : tick < 7 ? 1 : 2;
   const shown = Math.min(9, tick * 3);
   const pred = Math.floor(Math.max(0, tick - 7) / 2) % 3;
@@ -287,9 +299,9 @@ export default function HomeProgramsLab() {
 
           <div className="rh-lab-panel" role="tabpanel" id="rh-lab-panel" aria-labelledby={`tab-${TRACKS[active].id}`}>
             <div className="rh-lab-screen" key={TRACKS[active].id}>
-              {active === 0 && <CodingSim />}
-              {active === 1 && <RoboticsSim />}
-              {active === 2 && <AiSim />}
+              {active === 0 && <CodingSim running={inView} />}
+              {active === 1 && <RoboticsSim running={inView} />}
+              {active === 2 && <AiSim running={inView} />}
             </div>
             <div className="rh-lab-bar">
               <p className="rh-lab-note">Simulation {active + 1} of {TRACKS.length}: {TRACKS[active].note}</p>

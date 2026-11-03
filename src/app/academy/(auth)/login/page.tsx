@@ -52,10 +52,10 @@ function LoginForm() {
       <p className="rh-lede">Sign in to continue your courses, classes and certificates.</p>
       <form onSubmit={onSubmit} className="lg-form">
         <GlassField label="Email address" htmlFor="email">
-          <input id="email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className={glassInput} />
+          <input id="email" name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" enterKeyHint="next" required placeholder="you@example.com" className={glassInput} />
         </GlassField>
         <GlassField label="Password" htmlFor="password">
-          <PasswordInput id="password" name="password" autoComplete="current-password" required placeholder="Your password" />
+          <PasswordInput id="password" name="password" autoComplete="current-password" enterKeyHint="go" required placeholder="Your password" />
         </GlassField>
         <div className="lg-row" style={{ justifyContent: "flex-end" }}>
           <Link href="/academy/forgot-password" className="rh-link">Forgot password?</Link>

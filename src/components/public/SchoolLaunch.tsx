@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, GraduationCap, Landmark } from "lucide-react";
+import { useStill } from "./useStill";
 import "./droid.css";
 
 const STEPS = [
@@ -69,17 +70,16 @@ function Scene({ i }: { i: number }) {
 
 /* How a school launches, as four steps with a scene for each: the call that captures what the school needs, the plan
    dropping into the timetable, the setup bars filling, and the first class with progress tracked. The steps take turns
-   while on screen (an amber bar shows when), pointing at one takes over and the switching resumes after a pause.
+   while on screen (an amber bar shows when), picking one takes over and the switching resumes after a pause.
    Reduced motion never advances. */
 export default function SchoolLaunch() {
   const [active, setActive] = useState(0);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.1 });
@@ -101,12 +101,12 @@ export default function SchoolLaunch() {
       <ol className="sl-steps" aria-label="How a school launches">
         {STEPS.map((s, i) => (
           <li key={s.name} data-state={i < active ? "done" : i === active ? "active" : "todo"}>
-            <button type="button" onClick={() => pick(i)} onMouseEnter={() => pick(i)} onFocus={() => pick(i)} aria-current={i === active ? "step" : undefined}>
+            <button type="button" onClick={() => pick(i)} onFocus={() => pick(i)} aria-current={i === active ? "step" : undefined}>
               <span>{i < active ? <Check size={16} aria-hidden="true" /> : i + 1}</span>
               <div>
                 <b>{s.name}</b>
                 <p>{s.text}</p>
-                <small>{s.more}</small>
+                <small><span>{s.more}</span></small>
               </div>
             </button>
             {i === active && auto && inView && (

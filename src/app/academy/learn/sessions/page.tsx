@@ -2,21 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Video } from "lucide-react";
+import { CalendarClock, Video } from "lucide-react";
 import { academy, type Booking, type Credit } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
 import { PageHeader } from "@/components/academy/AcademyShell";
 import { whenLabel } from "@/components/academy/SlotPicker";
+import { EmptyState } from "@/components/academy/ui";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const JOIN_EARLY_MS = 10 * 60_000;
-const STATUS: Record<string, string> = {
-  CONFIRMED: "bg-blue-50 text-ac-brand",
-  COMPLETED: "bg-emerald-50 text-emerald-700",
-  CANCELLED: "bg-slate-100 text-slate-500",
-  NO_SHOW: "bg-amber-50 text-amber-700",
-};
-
 export default function LearnerSessionsPage() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [credits, setCredits] = useState<Credit[]>([]);
@@ -58,58 +52,55 @@ export default function LearnerSessionsPage() {
   const past = (bookings ?? []).filter((b) => !upcoming.includes(b));
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-8">
+    <div className="ac-d-page ac-d-page--narrow">
       <PageHeader
         title="1:1 classes"
         subtitle={`${remaining} class credit${remaining === 1 ? "" : "s"} left`}
-        action={
-          <Link href={remaining ? "/academy/tutors" : "/academy/courses"} className="rounded-lg bg-ac-brand px-5 py-2.5 text-center text-sm font-semibold text-white hover:bg-ac-brand-dark">
-            {remaining ? "Book a class" : "Buy a class pack"}
-          </Link>
-        }
+        action={<Link href={remaining ? "/academy/tutors" : "/academy/courses"} className="rh-btn rh-btn--primary">{remaining ? "Book a class" : "Buy a class pack"}</Link>}
       />
-      {error && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="ac-d-note" data-tone="error" role="alert" style={{ marginBottom: "1rem" }}>{error}</p>}
 
-      <h2 className="font-bold">Upcoming</h2>
-      {bookings && upcoming.length === 0 && <p className="mt-2 text-sm text-ac-muted">No upcoming classes.</p>}
-      <ul className="mt-3 space-y-3">
-        {upcoming.map((b) => {
-          const canJoin = Boolean(b.meetingLink) && new Date(b.startsAt).getTime() - now <= JOIN_EARLY_MS;
-          return (
-            <li key={b.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center">
-              <div className="flex-1">
-                <p className="font-semibold">{whenLabel(b.startsAt)}</p>
-                <p className="text-sm text-ac-muted">with {b.tutorName}</p>
-                {!b.meetingLink && <p className="mt-1 text-xs text-amber-700">Your tutor will add the class link before it starts.</p>}
+      <h2 className="ac-d-sub" style={{ marginTop: 0 }}>Upcoming</h2>
+      {bookings === null && !error && <span className="ac-spin" role="status" aria-label="Loading your classes" />}
+      {bookings && upcoming.length === 0 && (
+        <EmptyState icon={CalendarClock} title="No upcoming classes" text={remaining ? "Pick a tutor and a time." : "Buy a class pack to book your first class."} />
+      )}
+      {upcoming.length > 0 && (
+        <div className="ac-d-rows">
+          {upcoming.map((b) => {
+            const canJoin = Boolean(b.meetingLink) && new Date(b.startsAt).getTime() - now <= JOIN_EARLY_MS;
+            return (
+              <div key={b.id} className="ac-d-row" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
+                <span>
+                  <b>{whenLabel(b.startsAt)}</b>
+                  <small>with {b.tutorName}</small>
+                  {!b.meetingLink && <small>Your tutor will add the class link before it starts.</small>}
+                </span>
+                <span className="ac-d-actions" style={{ justifyContent: "flex-end" }}>
+                  <button type="button" onClick={() => cancel(b)} className="rh-btn rh-btn--ghost">Cancel</button>
+                  {canJoin ? (
+                    <a href={b.meetingLink!} target="_blank" rel="noopener noreferrer" className="rh-btn rh-btn--primary"><Video size={16} aria-hidden="true" style={{ marginRight: "0.4rem" }} /> Join class</a>
+                  ) : (
+                    <span className="ac-d-pill">Join opens 10 min before</span>
+                  )}
+                </span>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => cancel(b)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:border-red-400 hover:text-red-600">
-                  Cancel
-                </button>
-                {canJoin ? (
-                  <a href={b.meetingLink!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-                    <Video className="h-4 w-4" /> Join class
-                  </a>
-                ) : (
-                  <span className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-500">Join opens 10 min before</span>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+            );
+          })}
+        </div>
+      )}
 
       {past.length > 0 && (
         <>
-          <h2 className="mt-10 font-bold">Past &amp; cancelled</h2>
-          <ul className="mt-3 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
+          <h2 className="ac-d-sub">Past and cancelled</h2>
+          <div className="ac-d-rows">
             {past.map((b) => (
-              <li key={b.id} className="flex items-center justify-between gap-3 p-4 text-sm">
-                <span>{whenLabel(b.startsAt)} with {b.tutorName}</span>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS[b.status]}`}>{b.status.replace("_", " ").toLowerCase()}</span>
-              </li>
+              <div key={b.id} className="ac-d-row" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
+                <span><b style={{ fontSize: "var(--rh-t-small)" }}>{whenLabel(b.startsAt)}</b><small>with {b.tutorName}</small></span>
+                <span className="ac-d-pill" data-tone={b.status === "COMPLETED" ? "good" : undefined}>{b.status.replace("_", " ").toLowerCase()}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         </>
       )}
     </div>

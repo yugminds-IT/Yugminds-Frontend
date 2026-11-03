@@ -11,7 +11,7 @@
 .sc-days { display: grid; gap: 0.4rem; }
 .sc-days > div { display: flex; gap: 0.3rem; }
 .sc-days button { width: 2.2rem; height: 2.2rem; border: 1.5px solid var(--rh-navy-line); border-radius: 0.6rem; background: transparent; color: var(--rh-paper); font: 700 var(--rh-t-small)/1 var(--rh-display); cursor: pointer; transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 160ms var(--rh-ease-out); }
-.sc-days button:hover { border-color: var(--rh-paper); }
+@media (hover: hover) and (pointer: fine) { .sc-days button:hover { border-color: var(--rh-paper); } }
 .sc-days button:active { transform: scale(0.94); }
 .sc-days button[aria-pressed="true"] { background: var(--rh-amber); border-color: var(--rh-amber); color: var(--rh-ink); }
 .sc-grid { display: grid; grid-template-columns: 1.6rem repeat(5, minmax(0, 1fr)); gap: 0.3rem; align-items: center; }
@@ -21,7 +21,7 @@
 .sc-row small { font: 600 0.7rem/1 var(--rh-body); color: var(--rh-navy-soft); opacity: 0.7; }
 .sc-cell { display: flex; align-items: center; justify-content: center; gap: 0.15rem; aspect-ratio: 5 / 3; border: 1.5px solid var(--rh-navy-line); border-radius: 0.5rem; color: var(--rh-ink); font: 800 0.7rem/1 var(--rh-display); transition: background-color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease; }
 .sc-cell[data-off="true"] { border-style: dashed; opacity: 0.35; }
-.sc-cell[data-on="true"] { background: var(--rh-amber); border-color: var(--rh-amber); animation: sc-pop 0.45s var(--rh-ease-out) calc(var(--k) * 28ms) backwards; }
+.sc-cell[data-on="true"] { background: var(--rh-amber); border-color: var(--rh-amber); animation: sc-pop 0.45s var(--rh-ease-out) calc(min(var(--k), 10) * 18ms) backwards; }
 .sc-cell[data-multi="true"] { background: var(--rh-paper); border-color: var(--rh-paper); }
 .sc-cell i { font-style: normal; }
 .sc-out { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; padding-top: 0.6rem; border-top: 1.5px solid var(--rh-navy-line); }
@@ -58,8 +58,10 @@
 .sl-steps b { font: 700 var(--rh-t-h3)/1.2 var(--rh-display); letter-spacing: var(--rh-tr-h3); color: var(--rh-navy-soft); transition: color 0.3s ease; }
 .sl-steps li[data-state="active"] b, .sl-steps li[data-state="done"] b { color: var(--rh-paper); }
 .rh-dark .sl-steps p { max-width: none; margin-top: 0.15rem; font-size: var(--rh-t-small); line-height: var(--rh-lh-small); }
-.sl-steps small { display: block; max-height: 0; overflow: hidden; opacity: 0; font-size: var(--rh-t-small); line-height: var(--rh-lh-small); color: var(--rh-navy-soft); transition: max-height 0.4s var(--rh-ease-out), opacity 0.3s ease, margin 0.3s ease; }
-.sl-steps li[data-state="active"] small { max-height: 6rem; opacity: 1; margin-top: 0.5rem; }
+/* the note opens by animating the grid row from 0fr to 1fr, so its speed follows its real height (no max-height guess) */
+.sl-steps small { display: grid; grid-template-rows: 0fr; opacity: 0; font-size: var(--rh-t-small); line-height: var(--rh-lh-small); color: var(--rh-navy-soft); transition: grid-template-rows 250ms var(--rh-ease-out), opacity 0.25s ease, margin 0.25s ease; }
+.sl-steps small > span { min-height: 0; overflow: hidden; }
+.sl-steps li[data-state="active"] small { grid-template-rows: 1fr; opacity: 1; margin-top: 0.5rem; }
 .sl-bar { position: absolute; left: 3.1rem; right: 0; bottom: 0.4rem; height: 3px; border-radius: 3px; background: var(--rh-amber); transform-origin: left; animation: ab-fill linear forwards; }
 .rh .sl-steps button:focus-visible { outline: 3px solid var(--rh-focus-dark); outline-offset: 2px; border-radius: 0.5rem; }
 
@@ -96,11 +98,11 @@
 .sl-bars li { display: grid; gap: 0.4rem; }
 .sl-bars span { font: 600 var(--rh-t-small)/1.2 var(--rh-body); color: var(--rh-paper); }
 .sl-bars div { height: 0.7rem; border-radius: 999px; background: var(--rh-navy-line); overflow: hidden; }
-.sl-bars i { display: block; height: 100%; border-radius: inherit; background: var(--rh-amber); }
+.sl-bars i { display: block; height: 100%; border-radius: inherit; background: var(--rh-amber); transform-origin: left; }
 .sl-b1 { animation: sl-f1 5s ease infinite; } .sl-b2 { animation: sl-f2 5s ease infinite; } .sl-b3 { animation: sl-f3 5s ease infinite; }
-@keyframes sl-f1 { 0%, 5% { width: 0; } 30%, 100% { width: 100%; } }
-@keyframes sl-f2 { 0%, 25% { width: 0; } 55%, 100% { width: 100%; } }
-@keyframes sl-f3 { 0%, 50% { width: 0; } 80%, 100% { width: 100%; } }
+@keyframes sl-f1 { 0%, 5% { transform: scaleX(0); } 30%, 100% { transform: none; } }
+@keyframes sl-f2 { 0%, 25% { transform: scaleX(0); } 55%, 100% { transform: none; } }
+@keyframes sl-f3 { 0%, 50% { transform: scaleX(0); } 80%, 100% { transform: none; } }
 
 .sl-class { display: grid; gap: 1.2rem; width: min(100%, 24rem); }
 .sl-room { position: relative; display: grid; justify-items: center; align-items: end; gap: 0.6rem; min-height: 8.5rem; padding: 1rem; border: 1.5px solid var(--rh-navy-line); border-radius: 1rem; background: var(--rh-cavity); }
@@ -122,13 +124,13 @@
 .sx { display: grid; gap: 1.5rem; }
 .sx-track { position: relative; container-type: inline-size; padding-top: 3.6rem; }
 .sx-line { position: absolute; left: calc(100% / 24); right: calc(100% / 24); top: 4.45rem; height: 4px; border-radius: 4px; background: var(--rh-line); }
-.sx-line i { position: absolute; inset: 0; border-radius: inherit; background: var(--rh-amber); transform-origin: left; transition: transform 0.7s var(--rh-ease-in-out); }
+.sx-line i { position: absolute; inset: 0; border-radius: inherit; background: var(--rh-amber); transform-origin: left; transition: transform 500ms var(--rh-ease-in-out); }
 .rh .sx-track ol { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); justify-items: center; }
 .sx-track ol button { display: grid; place-items: center; width: clamp(1.7rem, 3.4vw, 2.4rem); height: clamp(1.7rem, 3.4vw, 2.4rem); border: 2px solid var(--rh-line); border-radius: 50%; background: var(--rh-paper); color: var(--rh-ink-soft); font: 800 var(--rh-t-xs)/1 var(--rh-display); cursor: pointer; transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.4s var(--rh-ease-out); }
-.sx-track ol button:hover { border-color: var(--rh-ink); }
+@media (hover: hover) and (pointer: fine) { .sx-track ol button:hover { border-color: var(--rh-ink); } }
 .sx-track ol button[data-state="done"] { background: var(--rh-ink); border-color: var(--rh-ink); color: var(--rh-amber); }
 .sx-track ol button[data-state="active"] { background: var(--rh-amber); border-color: var(--rh-amber); color: var(--rh-ink); transform: scale(1.2); }
-.sx-droid.droid-mini { left: 0; top: 4rem; font-size: 5.5px; transition: transform 0.55s var(--rh-ease-in-out); }
+.sx-droid.droid-mini { left: 0; top: 4rem; font-size: 5.5px; transition: transform 500ms var(--rh-ease-in-out); }
 .sx-droid .droid__body { animation-duration: 0.5s; animation-play-state: paused; }
 .sx-droid[data-moving="true"] .droid__body { animation-play-state: running; }
 .rh .sx-bands { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
@@ -178,13 +180,20 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .sx-card, .sx-mods > li { animation: none; }
-  .sx-mods > li, .sx-mod-n { transition: none; }
-  .sx-line i, .sx-track ol button, .sx-droid, .sx-bands button { transition: none; }
+  /* gentler, not zero: colour, border and opacity still ease so state changes read; movement goes */
+  .sx-mods > li { transition: opacity 0.3s ease, border-color 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease; }
+  .sx-mods > li[data-state="active"] { transform: none; }
+  .sx-line i, .sx-droid { transition: none; }
+  .sx-track ol button { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
+  .sx-track ol button[data-state="active"] { transform: none; }
   .sl-screen, .sl-bar { animation: none; }
   .sl-screen *, .sl-screen *::before { animation: none !important; }
-  .sl-steps li::before, .sl-steps button > span, .sl-steps b, .sl-steps small { transition: none; }
+  .sl-steps button > span { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
+  .sl-steps li[data-state="active"] button > span { transform: none; }
+  .sl-steps small { transition: opacity 0.25s ease; }
   .sc-cell[data-on="true"] { animation: none; }
-  .sc-cell, .sc-days button, .sc-grid > b { transition: none; }
+  .sc-days button { transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease; }
+  .sc-days button:active { transform: none; }
 }
 
 /* What a school gets: a list on the left, a scene for the open item on the right */
@@ -198,7 +207,7 @@
 .sg-list li[data-state="active"] .rh-chip-ico { background: var(--rh-amber); color: var(--rh-ink); transform: scale(1.12); }
 .sg-list li[data-state="active"] button, .sg-list li[data-state="done"] button { color: var(--rh-ink); }
 .sg-list li[data-state="active"] button { font-weight: 700; }
-.sg-note { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s var(--rh-ease-out); }
+.sg-note { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 250ms var(--rh-ease-out); }
 .sg-note p { min-height: 0; overflow: hidden; padding-left: 2.9rem; max-width: none; font-size: var(--rh-t-small); line-height: var(--rh-lh-small); color: var(--rh-ink-soft); }
 .sg-list li[data-state="active"] .sg-note { grid-template-rows: 1fr; }
 .sg-list li[data-state="active"] .sg-note p { padding-bottom: 0.9rem; }
@@ -288,7 +297,9 @@
   .sg-p1, .sg-p2, .sg-p3 { background: var(--rh-amber); color: var(--rh-ink); border-color: var(--rh-amber); }
   .sg-dots i { background: var(--rh-amber); border-color: var(--rh-amber); }
   .sg-grow p { opacity: 0; } .sg-g3 { opacity: 1; }
-  .sg-list li button, .sg-list .rh-chip-ico, .sg-note, .sg-strip li { transition: none; }
+  .sg-list .rh-chip-ico { transition: background-color 0.25s ease, color 0.25s ease; }
+  .sg-list li[data-state="active"] .rh-chip-ico { transform: none; }
+  .sg-note, .sg-strip li { transition: none; }
 }
 
 /* Schools hero on phones and tablets: headline, buttons, then the timetable planner right away; the three facts follow
@@ -351,4 +362,25 @@
 @media (max-width: 560px) {
   .rh .sg-strip { padding: 0.75rem 1rem; }
   .sg-strip li { height: 2.1rem; }
+}
+
+/* Press feedback on the list controls (steps, gets, grade dots, stage bands); the dots keep their 400ms colour/scale
+   transition but the press itself is 120ms */
+.sl-steps button { transition: transform 160ms var(--rh-ease-out); }
+.sg-list li button { transition: color 0.2s ease, transform 160ms var(--rh-ease-out); }
+.sx-bands button { transition: border-color 0.3s ease, color 0.3s ease, transform 160ms var(--rh-ease-out); }
+.sl-steps button:active, .sg-list li button:active, .sx-bands button:active { transform: scale(0.98); }
+.sx-track ol button:active { transform: scale(0.92); transition-duration: 0.3s, 0.3s, 0.3s, 120ms; }
+
+/* Touch devices of any width (a portrait tablet is wider than 560px): bigger targets, no double-tap zoom */
+@media (pointer: coarse) {
+  .sc-days button { width: 2.75rem; height: 2.75rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .sl-steps button, .sg-list li button, .sx-bands button, .sx-track ol button { touch-action: manipulation; }
+  .sx-track ol button { position: relative; }
+  .sx-track ol button::after { content: ""; position: absolute; inset: -0.4rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sl-steps button, .sg-list li button, .sx-bands button { transition: none; }
+  .sl-steps button:active, .sg-list li button:active, .sx-bands button:active, .sx-track ol button:active { transform: none; }
 }

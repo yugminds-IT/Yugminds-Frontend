@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
               <p>{message} Your administrator will review it and get back to you directly.</p>
             </div>
           </div>
-          <div className="lg-actions">
+          <div className="lg-actions lg-actions--in">
             <button type="button" className="rh-btn rh-btn--ghost" onClick={() => { setSubmitted(false); setEmail(""); setMessage(""); }}>
               Submit another request
             </button>

@@ -137,7 +137,7 @@ export default function AboutWhy() {
           <div className="ab-scene" data-on={tab === 1} aria-hidden="true">
             <div className="ab-class" data-all={lit >= TOTAL}>
               {RANK.map((rank, i) => (
-                <span key={i} data-lit={rank < lit} />
+                <span key={i} data-lit={rank < lit} style={{ "--w": (i % COLS) + Math.floor(i / COLS) } as React.CSSProperties} />
               ))}
             </div>
             <p className="ab-class-cap">Every student, a confident creator.</p>

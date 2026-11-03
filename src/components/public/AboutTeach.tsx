@@ -48,7 +48,7 @@ function Open() {
           <li key={name}>
             <span>{name}</span>
             <div className="th-track">
-              <i className="th-dot" style={{ "--s": `${start}%`, "--dur": `${dur}s` } as React.CSSProperties} />
+              <i className="th-dot" style={{ "--s": start, "--dur": `${dur}s` } as React.CSSProperties} />
               <b className="th-flag" style={{ "--dur": `${dur}s` } as React.CSSProperties} />
             </div>
           </li>
@@ -150,7 +150,7 @@ export default function AboutTeach() {
         ))}
       </ul>
 
-      <div className="bs th-stage" id="th-panel" role="tabpanel" aria-labelledby={`th-tab-${tab}`}>
+      <div className="bs th-stage" id="th-panel" role="tabpanel" aria-labelledby={`th-tab-${tab}`} data-live={inView || undefined}>
         <div className="bs-bar">
           <span>Principle in action</span>
           <em>{item.title}</em>

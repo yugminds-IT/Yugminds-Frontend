@@ -4,6 +4,10 @@ import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Award, ChevronLeft, ChevronRight, Menu, X } from "lucide-react";
+import { display, body } from "../../../../robocoders/robo-fonts";
+import "../../../../../components/public/robo-home.css";
+import "../../../../../components/academy/academy.css";
+import "../../../../../components/academy/academy-dash.css";
 import { academy, type PlayerCourse, type PlayerLesson } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
 import { LessonView } from "@/components/academy/LessonView";
@@ -68,27 +72,29 @@ export default function CoursePlayerPage({ params }: { params: Promise<{ id: str
     }
   };
 
+  const fonts = `rh ${display.variable} ${body.variable}`;
   if (error && !course) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-        <p className="text-red-600">{error}</p>
-        <Link href="/academy/learn/courses" className="font-semibold text-ac-brand hover:underline">← My courses</Link>
+      <div className={fonts}>
+        <div className="ac-d-load" style={{ gap: "1rem", alignContent: "center", textAlign: "center" }}>
+          <p className="ac-d-note" data-tone="error" role="alert">{error}</p>
+          <Link href="/academy/learn/courses" className="rh-btn rh-btn--ghost">Back to my courses</Link>
+        </div>
       </div>
     );
   }
   if (!course || !current) {
-    return <div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-ac-brand" /></div>;
+    return <div className={fonts}><div className="ac-d-load"><span className="ac-spin" role="status" aria-label="Loading the course" /></div></div>;
   }
 
   const outline = (
-    <nav className="space-y-6 p-5" aria-label="Course outline">
+    <nav aria-label="Course outline">
       {course.modules.map((m, mi) => {
         const start = course.modules.slice(0, mi).reduce((n, x) => n + x.lessons.length, 1);
         return (
           <div key={m.id}>
-            <p className="mb-1 font-acdisplay text-sm font-semibold text-slate-800">Module {mi + 1}: {m.title}</p>
+            <h2>Module {mi + 1}: {m.title}</h2>
             <StepRail
-              compact
               start={start}
               steps={m.lessons.map((l) => ({
                 id: l.id,
@@ -104,58 +110,54 @@ export default function CoursePlayerPage({ params }: { params: Promise<{ id: str
     </nav>
   );
 
+  const last = index >= lessons.length - 1;
+
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <Link href="/academy/learn/courses" className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Back to my courses">
-          <ChevronLeft className="h-5 w-5" />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-acdisplay text-lg font-semibold text-ac-ink">{course.title}</p>
-          <div className="mt-1 flex items-center gap-2">
-            <div className="h-1.5 w-32 overflow-hidden rounded-full bg-slate-100 sm:w-48" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full rounded-lg bg-ac-brand" style={{ width: `${progress}%` }} />
-            </div>
-            <span className="text-xs text-ac-muted">{done} of {lessons.length} lessons</span>
+    <div className={`${fonts} ac-p`}>
+      <header className="rh-dark ac-p-head">
+        <Link href="/academy/learn/courses" className="ac-d-icon-btn" aria-label="Back to my courses"><ChevronLeft size={22} aria-hidden="true" /></Link>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <h1>{course.title}</h1>
+          <div className="ac-p-prog">
+            <div className="ac-d-bar" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label="Course progress"><i style={{ "--p": `${progress}%` } as React.CSSProperties} /></div>
+            <span>{done} of {lessons.length} lessons</span>
           </div>
         </div>
-        <button onClick={() => setMenuOpen(true)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="Course outline">
-          <Menu className="h-5 w-5" />
-        </button>
+        <button type="button" onClick={() => setMenuOpen(true)} className="ac-d-icon-btn ac-p-menu" aria-label="Course outline"><Menu size={22} aria-hidden="true" /></button>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-white lg:block">{outline}</aside>
+      <div className="ac-p-body">
+        <aside className="ac-p-rail">{outline}</aside>
         {menuOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden">
-            <button className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} aria-label="Close outline" />
-            <aside className="absolute inset-y-0 right-0 w-80 max-w-[85vw] overflow-y-auto bg-white shadow-xl">
-              <div className="flex justify-end p-2">
-                <button onClick={() => setMenuOpen(false)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Close outline"><X className="h-5 w-5" /></button>
+          <div className="ac-p-drawer">
+            <button type="button" className="ac-d-scrim" onClick={() => setMenuOpen(false)} aria-label="Close outline" />
+            <aside>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" onClick={() => setMenuOpen(false)} className="ac-d-icon-btn" style={{ color: "var(--rh-ink)" }} aria-label="Close outline"><X size={20} aria-hidden="true" /></button>
               </div>
               {outline}
             </aside>
           </div>
         )}
 
-        <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-4xl p-4 sm:p-8">
+        <main className="ac-p-main">
+          <div className="ac-p-lesson">
             {!course.enrolled && (
-              <div className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
-                You&apos;re viewing a free preview. <Link href="/academy/courses" className="font-semibold underline">Buy the course</Link> to unlock every lesson.
-              </div>
+              <p className="ac-d-note" data-tone="warn">
+                You are viewing a free preview. <Link href="/academy/courses">Buy the course</Link> to unlock every lesson.
+              </p>
             )}
             {(certificateId || course.completedAt) && (
-              <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
-                <Award className="h-5 w-5" />
-                <span className="flex-1 font-semibold">Course complete — congratulations!</span>
-                <Link href={certificateId ? `/academy/learn/certificates/${certificateId}` : "/academy/learn/certificates"} className="rounded-lg bg-emerald-600 px-4 py-1.5 font-semibold text-white hover:bg-emerald-700">
-                  View certificate
-                </Link>
+              <div className="ac-d-note" data-tone="good" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.75rem" }}>
+                <Award size={20} aria-hidden="true" style={{ color: "var(--rh-amber)" }} />
+                <b style={{ flex: 1 }}>Course complete. Well done!</b>
+                <Link href={certificateId ? `/academy/learn/certificates/${certificateId}` : "/academy/learn/certificates"} className="rh-btn rh-btn--primary">View certificate</Link>
               </div>
             )}
-            <p className="text-sm text-ac-muted">Lesson {index + 1} of {lessons.length}</p>
-            <h1 className="mb-5 mt-1 font-acdisplay text-2xl font-bold text-ac-ink sm:text-3xl">{current.title}</h1>
+            <div>
+              <p className="ac-p-count">Lesson {index + 1} of {lessons.length}</p>
+              <h1>{current.title}</h1>
+            </div>
 
             <LessonView
               key={current.id}
@@ -166,19 +168,19 @@ export default function CoursePlayerPage({ params }: { params: Promise<{ id: str
               }}
             />
 
-            {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-            <div className="mt-8 flex items-center justify-between gap-3 border-t border-slate-200 pt-5">
-              <button onClick={() => go(lessons[index - 1])} disabled={index <= 0} className="flex items-center gap-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:opacity-40">
-                <ChevronLeft className="h-4 w-4" /> Previous
+            {error && <p className="ac-d-note" data-tone="error" role="alert">{error}</p>}
+            <div className="ac-p-nav">
+              <button type="button" onClick={() => go(lessons[index - 1])} disabled={index <= 0} className="rh-btn rh-btn--ghost">
+                <ChevronLeft size={16} aria-hidden="true" /> Previous
               </button>
               {current.type === "QUIZ" ? (
-                <button onClick={() => go(lessons[index + 1])} disabled={!current.completed || index >= lessons.length - 1} className="flex items-center gap-1 rounded-lg bg-ac-brand px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">
-                  Next <ChevronRight className="h-4 w-4" />
+                <button type="button" onClick={() => go(lessons[index + 1])} disabled={!current.completed || last} className="rh-btn rh-btn--primary">
+                  Next <ChevronRight size={16} aria-hidden="true" />
                 </button>
               ) : course.enrolled ? (
-                <button onClick={completeAndNext} disabled={busy} className="flex items-center gap-1 rounded-lg bg-ac-brand px-5 py-2 text-sm font-semibold text-white hover:bg-ac-brand-dark disabled:opacity-60">
-                  {current.completed ? (index < lessons.length - 1 ? "Next" : "Done") : index < lessons.length - 1 ? "Mark complete & next" : "Mark complete"}
-                  <ChevronRight className="h-4 w-4" />
+                <button type="button" onClick={completeAndNext} disabled={busy} aria-busy={busy} className="rh-btn rh-btn--primary">
+                  {current.completed ? (last ? "Done" : "Next") : last ? "Mark complete" : "Mark complete and next"}
+                  <ChevronRight size={16} aria-hidden="true" />
                 </button>
               ) : null}
             </div>

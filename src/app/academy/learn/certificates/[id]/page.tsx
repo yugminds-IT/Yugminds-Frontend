@@ -2,11 +2,12 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { GraduationCap, Printer } from "lucide-react";
+import Image from "next/image";
+import { Printer } from "lucide-react";
 import { academy, type Certificate } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
 
-/** Printable certificate — "Print / Save as PDF" uses the browser, no PDF library. */
+/** Printable certificate. "Print or save as PDF" uses the browser, no PDF library. */
 export default function CertificatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [cert, setCert] = useState<Certificate | null>(null);
@@ -16,43 +17,31 @@ export default function CertificatePage({ params }: { params: Promise<{ id: stri
     academy.catalog.certificate(id).then(setCert).catch((e) => setError(errorText(e)));
   }, [id]);
 
-  if (error) return <p className="p-8 text-red-600">{error}</p>;
-  if (!cert) return <div className="p-8"><div className="h-8 w-8 animate-spin rounded-full border-b-2 border-ac-brand" /></div>;
+  if (error) return <div className="ac-d-page"><p className="ac-d-note" data-tone="error" role="alert">{error}</p></div>;
+  if (!cert) return <div className="ac-d-page"><span className="ac-spin" role="status" aria-label="Loading the certificate" /></div>;
 
   // Only reached client-side (after the fetch), so window is available.
   const { origin, hostname } = window.location;
   const verifyUrl = `${origin}${hostname.startsWith("academy.") ? "" : "/academy"}/verify/${cert.shortId}`;
 
   return (
-    <div className="p-4 sm:p-8">
-      <div className="mx-auto mb-4 flex max-w-4xl justify-between print:hidden">
-        <Link href="/academy/learn/certificates" className="text-sm font-semibold text-ac-brand hover:underline">← Certificates</Link>
-        <button onClick={() => window.print()} className="flex items-center gap-2 rounded-lg bg-ac-brand px-5 py-2 text-sm font-semibold text-white hover:bg-ac-brand-dark">
-          <Printer className="h-4 w-4" /> Print / Save as PDF
-        </button>
+    <div className="ac-d-page">
+      <div className="ac-d-sheet-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: "56rem", margin: "0 auto 1rem" }}>
+        <Link href="/academy/learn/certificates" className="ac-back">← Certificates</Link>
+        <button type="button" onClick={() => window.print()} className="rh-btn rh-btn--primary"><Printer size={16} aria-hidden="true" style={{ marginRight: "0.4rem" }} /> Print or save as PDF</button>
       </div>
-      <div className="mx-auto aspect-[1.414] max-w-4xl rounded-lg border-[10px] border-double border-ac-brand bg-white p-8 text-center shadow-sm sm:p-14 print:shadow-none">
-        <div className="flex h-full flex-col items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-ac-brand">
-            <GraduationCap className="h-7 w-7" /> RoboCoders Academy
-          </div>
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-ac-muted">Certificate of completion</p>
-            <p className="mt-4 text-sm text-ac-muted">This certifies that</p>
-            <p className="mt-2 text-3xl font-acdisplay font-bold text-ac-ink sm:text-4xl">{cert.learnerName}</p>
-            <p className="mt-4 text-sm text-ac-muted">has successfully completed</p>
-            <p className="mt-2 text-xl font-bold text-ac-ink sm:text-2xl">{cert.courseTitle}</p>
-          </div>
-          <div className="flex w-full flex-wrap items-end justify-between gap-4 text-left text-xs text-ac-muted">
-            <div>
-              <p className="font-semibold text-ac-ink">{new Date(cert.issuedAt).toLocaleDateString("en-IN", { dateStyle: "long" })}</p>
-              <p>Date of issue</p>
-            </div>
-            <div className="text-right">
-              <p className="font-semibold text-ac-ink">ID {cert.shortId}</p>
-              <p>Verify at {verifyUrl}</p>
-            </div>
-          </div>
+      <div className="ac-d-sheet">
+        <Image src="/robocoders-logo.png" alt="RoboCoders Academy" width={803} height={341} />
+        <div>
+          <p>Certificate of completion</p>
+          <p style={{ marginTop: "1rem" }}>This certifies that</p>
+          <p className="ac-d-sheet-name">{cert.learnerName}</p>
+          <p style={{ marginTop: "1rem" }}>has successfully completed</p>
+          <p className="ac-d-sheet-course">{cert.courseTitle}</p>
+        </div>
+        <div className="ac-d-sheet-foot">
+          <p><b>{new Date(cert.issuedAt).toLocaleDateString("en-IN", { dateStyle: "long" })}</b>Date of issue</p>
+          <p style={{ textAlign: "right" }}><b>ID {cert.shortId}</b>Verify at {verifyUrl}</p>
         </div>
       </div>
     </div>

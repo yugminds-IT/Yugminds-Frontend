@@ -101,8 +101,9 @@ function ResetPasswordForm() {
               )}
 
               {message && (
-                <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
+                <div className="relative overflow-hidden bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
                   {message}
+                  {message.includes("Redirecting") && <i className="lg-bar" style={{ "--ms": "2000ms" } as React.CSSProperties} aria-hidden="true" />}
                 </div>
               )}
 

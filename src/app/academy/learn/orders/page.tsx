@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Receipt } from "lucide-react";
 import { academy, formatINR, type Order } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
 import { PageHeader } from "@/components/academy/AcademyShell";
+import { EmptyState } from "@/components/academy/ui";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
@@ -14,26 +17,29 @@ export default function OrdersPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-8">
+    <div className="ac-d-page ac-d-page--narrow">
       <PageHeader title="Orders" subtitle="Your purchases and receipts." />
-      {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {orders?.length === 0 && <p className="text-sm text-ac-muted">No purchases yet.</p>}
-      <ul className="space-y-3">
-        {orders?.map((o) => (
-          <li key={o.id} className="flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold">{o.product.title}</p>
-              <p className="text-xs text-ac-muted">
-                Receipt {o.receiptNo}{o.paidAt ? `, paid ${new Date(o.paidAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}` : ""}
-              </p>
+      {error && <p className="ac-d-note" data-tone="error" role="alert">{error}</p>}
+      {orders === null && !error && <span className="ac-spin" role="status" aria-label="Loading your orders" />}
+      {orders?.length === 0 && (
+        <EmptyState icon={Receipt} title="No purchases yet" text="Courses and class packs you buy will show up here." action={<Link href="/academy/courses" className="rh-btn rh-btn--primary">Browse courses</Link>} />
+      )}
+      {orders && orders.length > 0 && (
+        <div className="ac-d-rows">
+          {orders.map((o) => (
+            <div key={o.id} className="ac-d-row" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
+              <span>
+                <b>{o.product.title}</b>
+                <small>Receipt {o.receiptNo}{o.paidAt ? `, paid ${new Date(o.paidAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}` : ""}</small>
+              </span>
+              <span style={{ textAlign: "right" }}>
+                <b className="tabular-nums">{formatINR(o.amountInPaise)}</b>
+                {o.status === "REFUNDED" && <small>Refunded</small>}
+              </span>
             </div>
-            <div className="text-right">
-              <p className="font-bold tabular-nums">{formatINR(o.amountInPaise)}</p>
-              {o.status === "REFUNDED" && <p className="text-xs font-semibold text-amber-700">Refunded</p>}
-            </div>
-          </li>
-        ))}
-      </ul>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

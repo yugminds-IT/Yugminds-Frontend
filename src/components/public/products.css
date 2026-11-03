@@ -14,7 +14,7 @@
 .pd-info-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
 .pd-info-tags li { padding: 0.1rem 0.7rem; border: 1.5px solid var(--rh-navy-line); border-radius: 999px; font: 600 var(--rh-t-xs)/1.5 var(--rh-body); color: var(--rh-paper); }
 .pd-info-go { flex: none; align-self: center; padding: 0.45rem 1.1rem; border-radius: 999px; background: var(--rh-amber); color: var(--rh-ink); font: 700 var(--rh-t-small)/1.2 var(--rh-body); text-decoration: none; transition: background-color 0.18s ease, transform 160ms var(--rh-ease-out); }
-.pd-info-go:hover { background: var(--rh-amber-deep); }
+@media (hover: hover) and (pointer: fine) { .pd-info-go:hover { background: var(--rh-amber-deep); } }
 .pd-info-go:active { transform: scale(0.96); }
 
 /* Software: Studio writes it, the Simulator tests it */
@@ -32,10 +32,11 @@
 
 .sw-flow { display: grid; justify-items: center; gap: 0.4rem; color: var(--rh-navy-soft); font: 700 var(--rh-t-xs)/1 var(--rh-body); }
 .sw-flow[data-on="true"] { color: var(--rh-amber); }
-.sw-flow-line { position: relative; width: 100%; height: 3px; border-radius: 3px; background: var(--rh-navy-line); }
+/* the packet travels with transform, not left/top: the line is a size container so cqw/cqh give its length */
+.sw-flow-line { position: relative; container-type: size; width: 100%; height: 3px; border-radius: 3px; background: var(--rh-navy-line); }
 .sw-flow[data-on="true"] .sw-flow-line { background: var(--rh-amber); }
 .sw-flow-line i { position: absolute; top: 50%; left: 0; width: 0.9rem; height: 0.9rem; margin-top: -0.45rem; border-radius: 0.25rem; background: var(--rh-paper); animation: sw-send 1s var(--rh-ease-in-out) forwards; }
-@keyframes sw-send { to { left: calc(100% - 0.9rem); } }
+@keyframes sw-send { to { translate: calc(100cqw - 0.9rem) 0; } }
 
 .sw-sim { position: relative; }
 .sw-sim svg { display: block; width: 100%; height: auto; }
@@ -59,7 +60,7 @@
 .sw-hint { max-width: none; font-size: var(--rh-t-xs); color: var(--rh-navy-soft); }
 .sw-ctrl { display: flex; align-items: center; gap: 0.6rem; }
 .bs-steps-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.9rem; border: 1.5px solid var(--rh-navy-line); border-radius: 999px; background: transparent; color: var(--rh-paper); font: 600 var(--rh-t-xs)/1.5 var(--rh-body); cursor: pointer; transition: border-color 0.18s ease, transform 160ms var(--rh-ease-out); }
-.bs-steps-btn:hover { border-color: var(--rh-paper); }
+@media (hover: hover) and (pointer: fine) { .bs-steps-btn:hover { border-color: var(--rh-paper); } }
 .bs-steps-btn:active { transform: scale(0.97); }
 
 .sw-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -162,7 +163,7 @@
 .pk-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
 .pk-cards button { display: grid; justify-items: center; gap: 0.3rem; padding: 0.75rem 0.25rem; border: 1.5px solid var(--rh-navy-line); border-radius: 0.9rem; background: rgb(255 255 255 / 0.05); color: var(--rh-paper); font: 700 var(--rh-t-xs)/1.2 var(--rh-body); cursor: pointer; transition: border-color 0.18s ease, background-color 0.18s ease, transform 160ms var(--rh-ease-out); }
 .pk-cards button svg { color: var(--rh-amber); }
-.pk-cards button:hover:not(:disabled) { border-color: var(--rh-amber); background: rgb(251 191 36 / 0.1); }
+@media (hover: hover) and (pointer: fine) { .pk-cards button:hover:not(:disabled) { border-color: var(--rh-amber); background: rgb(251 191 36 / 0.1); } }
 .pk-cards button:active:not(:disabled) { transform: scale(0.95); }
 .pk-cards button:disabled { opacity: 0.45; cursor: not-allowed; }
 .pk-path { display: grid; gap: 0.5rem; }
@@ -170,7 +171,7 @@
 .rh .pk-path ul { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0.4rem; min-height: 6.25rem; padding: 0.7rem; border: 1.5px dashed var(--rh-navy-line); border-radius: 0.9rem; }
 .pk-path li { display: grid; }
 .pk-path li button { display: grid; place-items: center; width: 2.3rem; height: 2.3rem; border: 1.5px solid var(--rh-navy-soft); border-radius: 0.6rem; background: transparent; color: var(--rh-paper); cursor: pointer; transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.3s var(--rh-ease-out); animation: rh-rise 250ms var(--rh-ease-out) both; }
-.pk-path li button:hover:not(:disabled) { border-color: #f87171; color: #f87171; }
+@media (hover: hover) and (pointer: fine) { .pk-path li button:hover:not(:disabled) { border-color: #f87171; color: #f87171; } }
 .pk-path li[data-active="true"] button { background: var(--rh-amber); border-color: var(--rh-amber); color: var(--rh-ink); transform: translateY(-3px); }
 .rh .pk-path .pk-empty { align-self: center; max-width: none; font-size: var(--rh-t-small); color: var(--rh-navy-soft); opacity: 0.8; }
 .pk-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
@@ -194,10 +195,14 @@
 }
 @media (max-width: 640px) {
   }
+/* gentler, not zero: fills, colours and opacity still ease so state changes read clearly; movement goes */
 @media (prefers-reduced-motion: reduce) {
-    .pk-goal, .pk-win, .pk-path li button { animation: none; }
-  .pk-steps li::before, .pk-steps li > span, .pk-steps b { transition: none; }
-  .sw-blk, .sw-flow-line i, .sw-wire, .sw-glow, .sw-led, .sw-run { transition: none; animation: none !important; }
+  .pk-goal, .pk-win, .pk-path li button { animation: none; }
+  .pk-path li button { transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
+  .pk-steps li > span { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
+  .sw-blk { transition: background-color 0.25s ease, color 0.25s ease; }
+  .sw-blk[data-state="active"] { transform: none; }
+  .sw-flow-line i, .sw-wire { animation: none !important; }
 }
 
 /* Junior Robotics Kit: an interactive board, the matching rule, the parts, projects and safety */
@@ -244,14 +249,15 @@
 .jk-say[data-state="ok"] > span { background: var(--rh-amber); color: var(--rh-ink); }
 .jk-say[data-state="bad"] > span { background: #ef4444; color: #fff; }
 .rh .jk-say p { flex: 1; max-width: none; color: var(--rh-paper); font: 600 var(--rh-t-small)/1.4 var(--rh-body); }
-.jk-say button { flex: none; padding: 0.3rem 0.9rem; border: 1.5px solid var(--rh-amber); border-radius: 999px; background: none; color: var(--rh-amber); font: 700 var(--rh-t-xs)/1.4 var(--rh-body); cursor: pointer; }
-.jk-say button:hover { background: var(--rh-amber); color: var(--rh-ink); }
+.jk-say button { flex: none; padding: 0.3rem 0.9rem; border: 1.5px solid var(--rh-amber); border-radius: 999px; background: none; color: var(--rh-amber); font: 700 var(--rh-t-xs)/1.4 var(--rh-body); cursor: pointer; transition: background-color 0.18s ease, color 0.18s ease, transform 160ms var(--rh-ease-out); }
+.jk-say button:active { transform: scale(0.96); }
+@media (hover: hover) and (pointer: fine) { .jk-say button:hover { background: var(--rh-amber); color: var(--rh-ink); } }
 .rh .jk-ctl.bs-foot { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.9rem 1.5rem; padding: 1rem 1.25rem; }
 .jk-ctl fieldset { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 0; margin: 0; padding: 0; border: 0; }
 .jk-ctl legend { width: 100%; margin-bottom: 0.3rem; padding: 0; font: 600 var(--rh-t-xs)/1 var(--rh-body); color: var(--rh-navy-soft); }
 .jk-pill { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.85rem; border: 1.5px solid var(--rh-navy-line); border-radius: 999px; background: none; color: var(--rh-paper); font: 600 var(--rh-t-small)/1.2 var(--rh-body); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 160ms var(--rh-ease-out); }
 .jk-pill[style]::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--c); }
-.jk-pill:hover { border-color: var(--rh-amber); }
+@media (hover: hover) and (pointer: fine) { .jk-pill:hover { border-color: var(--rh-amber); } }
 .jk-pill:active { transform: scale(0.96); }
 .jk-pill[aria-pressed="true"] { background: var(--rh-amber); border-color: var(--rh-amber); color: var(--rh-ink); }
 .jk-pill:focus-visible, .jk-hold:focus-visible { outline: 3px solid var(--rh-focus-dark); outline-offset: 2px; }
@@ -276,7 +282,9 @@
 @media (prefers-reduced-motion: reduce) {
   .jk-signal, .jk-wire, .jk-glow, .jk-wave, .jk-stop, .ja-flow { animation: none; }
   .ja-flow { opacity: 1; }
-  .jk-sw-knob, .jk-btn-cap, .jk-pill { transition: none; }
+  .jk-sw-knob { transition: none; }
+  .jk-btn-cap { transition: fill 0.12s ease; }
+  .jk-pill { transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
 }
 
 .rh .pd-junior-points { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem 1.5rem; margin: clamp(1.75rem, 3vw, 2.5rem) 0 clamp(1.25rem, 2.5vw, 1.75rem); }
@@ -299,7 +307,7 @@
   .sw-sim { margin-top: 0.9rem; }
   .sw-run { top: -1.5rem; }
 }
-@keyframes sw-send-v { to { top: calc(100% - 0.9rem); } }
+@keyframes sw-send-v { to { translate: 0 calc(100cqh - 0.9rem); } }
 @media (max-width: 560px) {
   .sw-body { padding: 1rem; }
   .sw-bench .bs-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }

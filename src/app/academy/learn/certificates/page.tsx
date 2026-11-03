@@ -6,6 +6,7 @@ import { Award } from "lucide-react";
 import { academy, type Certificate } from "@/lib/academy/api";
 import { errorText } from "@/lib/academy/client";
 import { PageHeader } from "@/components/academy/AcademyShell";
+import { EmptyState } from "@/components/academy/ui";
 
 export default function CertificatesPage() {
   const [certs, setCerts] = useState<Certificate[] | null>(null);
@@ -16,18 +17,21 @@ export default function CertificatesPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-8">
+    <div className="ac-d-page ac-d-page--narrow">
       <PageHeader title="Certificates" subtitle="Finish every lesson in a course to earn its certificate." />
-      {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {certs?.length === 0 && <p className="text-sm text-ac-muted">No certificates yet — keep going!</p>}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {error && <p className="ac-d-note" data-tone="error" role="alert">{error}</p>}
+      {certs === null && !error && <span className="ac-spin" role="status" aria-label="Loading your certificates" />}
+      {certs?.length === 0 && (
+        <EmptyState icon={Award} title="No certificates yet" text="Finish a course and it will appear here." action={<Link href="/academy/learn/courses" className="rh-btn rh-btn--primary">Go to my courses</Link>} />
+      )}
+      <div className="ac-d-certs">
         {certs?.map((c) => (
-          <Link key={c.shortId} href={`/academy/learn/certificates/${c.shortId}`} className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 hover:border-ac-brand">
-            <Award className="h-10 w-10 shrink-0 text-ac-accent" />
-            <div className="min-w-0">
-              <p className="truncate font-semibold">{c.courseTitle}</p>
-              <p className="text-xs text-ac-muted">Issued {new Date(c.issuedAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}, ID {c.shortId}</p>
-            </div>
+          <Link key={c.shortId} href={`/academy/learn/certificates/${c.shortId}`} className="ac-d-cert">
+            <span className="ac-d-seal"><Award size={22} aria-hidden="true" /></span>
+            <span style={{ minWidth: 0 }}>
+              <b>{c.courseTitle}</b>
+              <small>Issued {new Date(c.issuedAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}, ID {c.shortId}</small>
+            </span>
           </Link>
         ))}
       </div>

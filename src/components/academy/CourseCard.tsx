@@ -2,26 +2,32 @@ import Link from "next/link";
 import { BookOpen, CheckCircle2 } from "lucide-react";
 import type { MyCourse } from "@/lib/academy/api";
 
+/** One course the learner owns, as a row: art, title, progress and where they are. */
 export function CourseCard({ course: c }: { course: MyCourse }) {
   return (
-    <Link href={`/academy/learn/courses/${c.id}`} className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-4 hover:border-ac-brand">
-      <div className="flex h-16 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-ac-soft">
+    <Link href={`/academy/learn/courses/${c.id}`} className="ac-d-row">
+      <span className="ac-d-art">
         {c.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- course thumbnails may be any host or data URL
-          <img src={c.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+          <img src={c.thumbnailUrl} alt="" />
         ) : (
-          <BookOpen className="h-6 w-6 text-ac-brand" />
+          <BookOpen size={24} aria-hidden="true" />
         )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold">{c.title}</p>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuenow={c.progress} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-lg bg-ac-brand" style={{ width: `${c.progress}%` }} />
-        </div>
-        <p className="mt-1 flex items-center gap-1 text-xs text-ac-muted">
-          {c.completedAt ? <><CheckCircle2 className="h-3.5 w-3.5 text-ac-brand" /> Completed</> : `${c.completedLessons} of ${c.totalLessons} lessons done`}
-        </p>
-      </div>
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <b>{c.title}</b>
+        <small>
+          {c.completedAt ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}><CheckCircle2 size={14} aria-hidden="true" /> Completed</span>
+          ) : (
+            `${c.completedLessons} of ${c.totalLessons} lessons done`
+          )}
+        </small>
+        <span className="ac-d-bar" role="progressbar" aria-valuenow={c.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${c.title} progress`} style={{ display: "block" }}>
+          <i style={{ "--p": `${c.progress}%` } as React.CSSProperties} />
+        </span>
+      </span>
+      <span className="ac-d-pill" data-tone={c.completedAt ? "good" : undefined}>{c.completedAt ? "Done" : `${c.progress}%`}</span>
     </Link>
   );
 }

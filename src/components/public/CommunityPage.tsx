@@ -10,6 +10,7 @@ import type { LucideIcon } from "lucide-react";
 import type { CommunityItem, CommunityPageData } from "@/lib/community-types";
 import { SOCIAL_LINKS } from "@/lib/social-links";
 import HomeCount from "./HomeCount";
+import { useStill } from "./useStill";
 import "./droid.css";
 
 type Icon = LucideIcon;
@@ -69,11 +70,10 @@ function Reels({ items }: { items: CommunityItem[] }) {
   const [cur, setCur] = useState(0);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
   const N = items.length;
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.25 });
@@ -227,11 +227,10 @@ function Members({ items }: { items: CommunityItem[] }) {
   const [cur, setCur] = useState(0);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
   const N = ranked.length;
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.25 });
@@ -269,7 +268,7 @@ function Members({ items }: { items: CommunityItem[] }) {
           </div>
           <h3>{m.title}</h3>
           {m.subtitle && <p>{m.subtitle}</p>}
-          {hasCount && <p className="cm-spot-n"><b><HomeCount key={m.id} to={m.views} /></b> followers</p>}
+          {hasCount && <p className="cm-spot-n"><b>{m.views.toLocaleString()}</b> followers</p>}
           <div className="cm-spot-act">
             {m.cta_url && <Anchor href={m.cta_url} className="rh-btn rh-btn--primary">{m.cta_label || "Follow"}</Anchor>}
             {m.external_url && <Anchor href={m.external_url} className="rh-btn rh-btn--ghost">View profile</Anchor>}
@@ -314,11 +313,10 @@ function Challenges({ items }: { items: CommunityItem[] }) {
   const [cur, setCur] = useState(0);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
   const N = list.length;
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.25 });
@@ -391,11 +389,10 @@ function Lessons({ items }: { items: CommunityItem[] }) {
   const [cur, setCur] = useState(0);
   const [paused, setPaused] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
   const N = items.length;
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.25 });
@@ -488,11 +485,10 @@ function Articles({ items }: { items: CommunityItem[] }) {
   const [cur, setCur] = useState(0);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
   const N = list.length;
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.25 });
@@ -575,10 +571,18 @@ function PillarScene({ i }: { i: number }) {
 
 function Pillar({ p, i, seen }: { p: CommunityPageData["config"]["corner_pillars"][number]; i: number; seen: boolean }) {
   const [n, setN] = useState(0);
+  const last = useRef(0);
+  // replaying remounts the scene, so a cursor jittering on the card edge must not restart it mid-play
+  const replay = () => {
+    const now = Date.now();
+    if (now - last.current < 2000) return;
+    last.current = now;
+    setN((x) => x + 1);
+  };
   return (
     <li>
       <Anchor href={p.link_url} className="cm-pillar" >
-        <span className="cm-pillar-pic" data-play={seen} key={n} onMouseEnter={() => setN((x) => x + 1)} onFocus={() => setN((x) => x + 1)}>
+        <span className="cm-pillar-pic" data-play={seen} key={n} onMouseEnter={replay} onFocus={replay}>
           {p.image_url
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={p.image_url} alt="" />
@@ -625,11 +629,10 @@ const ROW = 4.6; // rem, row height + gap
 function Board({ events, foot }: { events: { who: string; what: string; Pic: Icon; likes?: number }[]; foot: string }) {
   const [tick, setTick] = useState(0);
   const [inView, setInView] = useState(true);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
   const N = events.length;
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.2 });

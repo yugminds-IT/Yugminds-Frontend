@@ -6,7 +6,7 @@
 .ac-page { padding-bottom: clamp(4rem, 8vw, 6.5rem); }
 .ac-sec { padding-block: clamp(3.5rem, 8vw, 6.5rem); }
 .ac-back { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 700; font-size: var(--rh-t-small); color: var(--rh-blue-deep); text-decoration: none; }
-.ac-back:hover { color: var(--rh-ink); text-decoration: underline; text-underline-offset: 0.2em; }
+@media (hover: hover) and (pointer: fine) { .ac-back:hover { color: var(--rh-ink); text-decoration: underline; text-underline-offset: 0.2em; } }
 .rh .ac-title { font-size: var(--rh-t-h2); max-width: 20ch; }
 .ac-pagehead { display: grid; gap: 1rem; padding-bottom: clamp(1.5rem, 4vw, 2.5rem); }
 
@@ -23,7 +23,7 @@
 .rh .ac-rail h2 { font-size: var(--rh-t-h4); max-width: none; letter-spacing: var(--rh-tr-h4); }
 .ac-rail-count { display: flex; justify-content: space-between; font: 700 var(--rh-t-small)/1.2 var(--rh-body); color: var(--rh-ink-soft); font-variant-numeric: tabular-nums; }
 .ac-rail-bar { height: 6px; border-radius: 6px; background: var(--rh-line); overflow: hidden; }
-.ac-rail-bar i { display: block; height: 100%; width: var(--p); border-radius: inherit; background: var(--rh-amber); transition: width 600ms var(--rh-ease-out); }
+.ac-rail-bar i { display: block; height: 100%; width: 100%; translate: calc(var(--p) - 100%) 0; border-radius: inherit; background: var(--rh-amber); transition: translate 400ms var(--rh-ease-out); }
 .ac-rail ol { display: grid; gap: 0.35rem; }
 .ac-rail li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.8rem; align-items: center; padding: 0.7rem 0.8rem; border: 1.5px solid transparent; border-radius: 1rem; transition: background-color 0.25s ease, border-color 0.25s ease; }
 .ac-rail li[data-state="active"] { background: var(--rh-wash); border-color: var(--rh-line); }
@@ -34,7 +34,7 @@
 .ac-rail b { display: block; font: 700 var(--rh-t-small)/1.25 var(--rh-display); }
 .ac-rail small { display: block; font-size: var(--rh-t-xs); line-height: 1.3; color: var(--rh-ink-soft); }
 .ac-stage { display: grid; gap: 1rem; min-width: 0; }
-.ac-done { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; padding: 1rem 1.25rem; border-radius: 1.25rem; background: var(--rh-ink); color: var(--rh-paper); animation: rh-rise 500ms var(--rh-ease-out) both; }
+.ac-done { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; padding: 1rem 1.25rem; border-radius: 1.25rem; background: var(--rh-ink); color: var(--rh-paper); animation: rh-rise 350ms var(--rh-ease-out) both; }
 .ac-done svg { color: var(--rh-amber); flex: none; }
 .rh .ac-done p { color: var(--rh-paper); max-width: none; font-weight: 700; margin-right: auto; }
 .ac-done .rh-btn { min-height: 2.6rem; padding: 0.5rem 1.25rem; font-size: var(--rh-t-small); }
@@ -60,7 +60,7 @@
 .ac-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1.1rem; align-items: center; padding: 1.1rem 0; border-top: 1.5px solid var(--rh-line); color: inherit; text-decoration: none; }
 .ac-row:focus-visible { outline-offset: -3px; border-radius: 1rem; }
 .ac-row-title { font: 700 var(--rh-t-h4)/1.25 var(--rh-display); letter-spacing: var(--rh-tr-h4); transition: color 0.18s ease; }
-.ac-row:hover .ac-row-title { color: var(--rh-blue-deep); }
+@media (hover: hover) and (pointer: fine) { .ac-row:hover .ac-row-title { color: var(--rh-blue-deep); } }
 .ac-row-meta { margin-top: 0.2rem; font-size: var(--rh-t-small); line-height: var(--rh-lh-small); color: var(--rh-ink-soft); }
 .ac-row-end { display: grid; gap: 0.2rem; justify-items: end; text-align: right; }
 .ac-price { font: 800 1.35rem/1 var(--rh-display); letter-spacing: var(--rh-tr-h4); font-variant-numeric: tabular-nums; }
@@ -75,7 +75,7 @@
 .ac-empty b { font: 700 var(--rh-t-h4)/1.25 var(--rh-display); }
 .ac-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
 .ac-filters button { padding: 0.45rem 1.1rem; border: 1.5px solid var(--rh-line); border-radius: 999px; background: var(--rh-paper); color: var(--rh-ink-soft); font: 700 var(--rh-t-small)/1.2 var(--rh-body); cursor: pointer; transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease; }
-.ac-filters button:hover { border-color: var(--rh-ink); color: var(--rh-ink); }
+@media (hover: hover) and (pointer: fine) { .ac-filters button:hover { border-color: var(--rh-ink); color: var(--rh-ink); } }
 .ac-filters button[aria-pressed="true"] { background: var(--rh-ink); border-color: var(--rh-ink); color: var(--rh-paper); }
 
 /* People */
@@ -86,13 +86,13 @@
 .rh .ac-tutors-copy h2 { color: var(--rh-paper); }
 .ac-tutor-list { display: grid; gap: 0.6rem; }
 .ac-tutor { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem; align-items: center; padding: 0.9rem 1.1rem; border: 1.5px solid var(--rh-navy-line); border-radius: 1.25rem; background: rgb(255 255 255 / 0.05); color: var(--rh-paper); text-decoration: none; transition: border-color 0.2s ease, background-color 0.2s ease; }
-.ac-tutor:hover { border-color: var(--rh-amber); background: rgb(251 191 36 / 0.08); }
+@media (hover: hover) and (pointer: fine) { .ac-tutor:hover { border-color: var(--rh-amber); background: rgb(251 191 36 / 0.08); } }
 .ac-tutor b { display: block; font: 700 var(--rh-t-body)/1.2 var(--rh-display); }
 .ac-tutor small { display: block; margin-top: 0.15rem; font-size: var(--rh-t-small); color: var(--rh-navy-soft); }
 .ac-tutor svg { color: var(--rh-amber); }
 .ac-tutor--light { border-color: var(--rh-line); background: var(--rh-paper); color: var(--rh-ink); }
 .ac-tutor--light small { color: var(--rh-ink-soft); }
-.ac-tutor--light:hover { border-color: var(--rh-ink); background: var(--rh-wash); }
+@media (hover: hover) and (pointer: fine) { .ac-tutor--light:hover { border-color: var(--rh-ink); background: var(--rh-wash); } }
 .ac-tutor--light svg { color: var(--rh-ink); }
 .ac-subjects { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
 
@@ -129,7 +129,7 @@
 .ac-mod { border-bottom: 1.5px solid var(--rh-line); }
 .ac-mod summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem; align-items: center; padding: 1.1rem 0.25rem; cursor: pointer; list-style: none; }
 .ac-mod summary::-webkit-details-marker { display: none; }
-.ac-mod summary:hover b { color: var(--rh-blue-deep); }
+@media (hover: hover) and (pointer: fine) { .ac-mod summary:hover b { color: var(--rh-blue-deep); } }
 .ac-mod-n { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border: 2px solid var(--rh-ink); border-radius: 50%; font: 800 var(--rh-t-small)/1 var(--rh-display); }
 .ac-mod b { font: 700 var(--rh-t-h4)/1.25 var(--rh-display); letter-spacing: var(--rh-tr-h4); transition: color 0.18s ease; }
 .ac-mod small { font-size: var(--rh-t-small); color: var(--rh-ink-soft); }
@@ -151,7 +151,7 @@
 .ac-days button { flex: none; padding: 0.55rem 0.9rem; }
 .ac-times { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: 0.5rem; }
 .ac-times button { padding: 0.6rem 0.3rem; }
-.ac-days button:hover, .ac-times button:hover:not(:disabled) { border-color: var(--rh-ink); }
+@media (hover: hover) and (pointer: fine) { .ac-days button:hover, .ac-times button:hover:not(:disabled) { border-color: var(--rh-ink); } }
 .ac-days button[aria-pressed="true"], .ac-times button[aria-pressed="true"] { background: var(--rh-ink); border-color: var(--rh-ink); color: var(--rh-paper); }
 .ac-times button:active:not(:disabled) { transform: scale(0.96); }
 .ac-times button:disabled { cursor: default; }
@@ -189,7 +189,7 @@
 .ac-foot h3 { margin-bottom: 0.75rem; font: 700 var(--rh-t-small)/1.2 var(--rh-display); color: var(--rh-paper); }
 .ac-foot ul { display: grid; gap: 0.5rem; }
 .ac-foot a { color: var(--rh-navy-soft); font-size: var(--rh-t-small); text-decoration: none; }
-.ac-foot a:hover { color: var(--rh-amber); text-decoration: underline; text-underline-offset: 0.2em; }
+@media (hover: hover) and (pointer: fine) { .ac-foot a:hover { color: var(--rh-amber); text-decoration: underline; text-underline-offset: 0.2em; } }
 .rh .ac-foot p { font-size: var(--rh-t-small); line-height: var(--rh-lh-small); max-width: 26rem; margin-top: 0.9rem; }
 .rh .ac-foot p.ac-foot-legal { margin-top: clamp(2rem, 4vw, 3rem); padding-top: 1.25rem; border-top: 1.5px solid var(--rh-navy-line); font-size: var(--rh-t-xs); max-width: none; }
 
@@ -221,5 +221,24 @@
 
 /* Navbar: the signed-out "Log in" link sits beside the call to action */
 .hn-login-link { padding: 0.5rem 0.8rem; border-radius: 999px; color: var(--rh-ink); font: 700 0.92rem/1.2 var(--font-rh-body), "Figtree", sans-serif; text-decoration: none; }
-.hn-login-link:hover { background: var(--rh-wash); }
+@media (hover: hover) and (pointer: fine) { .hn-login-link:hover { background: var(--rh-wash); } }
 @media (max-width: 1179px) { .hn-login-link { display: none; } }
+
+/* Press feedback on the store's pressables. It uses the separate `scale` property so it never fights a `transform` some
+   of these already animate; each rule repeats the element's existing transition and adds `scale`. */
+.ac-filters button { transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, scale 160ms var(--rh-ease-out); }
+.ac-filters button:active, .ac-days button:active { scale: 0.96; }
+.ac-days button, .ac-times button { transition: background-color 0.18s ease, border-color 0.18s ease, transform 160ms var(--rh-ease-out), scale 160ms var(--rh-ease-out); }
+.ac-tutor { transition: border-color 0.2s ease, background-color 0.2s ease, scale 160ms var(--rh-ease-out); }
+.ac-tutor:active { scale: 0.985; }
+.ac-row, .ac-mod summary { transition: scale 160ms var(--rh-ease-out); }
+.ac-row:active, .ac-mod summary:active { scale: 0.99; }
+
+/* Touch devices of any width: 44px targets, no double-tap zoom, no text selection on the buttons */
+@media (pointer: coarse) {
+  .ac-filters button, .ac-days button, .ac-times button { min-height: 2.75rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .ac-tutor, .ac-row, .ac-mod summary { touch-action: manipulation; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ac-filters button:active, .ac-days button:active, .ac-tutor:active, .ac-row:active, .ac-mod summary:active { scale: 1; }
+}

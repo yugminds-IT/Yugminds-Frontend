@@ -161,9 +161,17 @@
   bottom: 1.42em;
   width: 8.8em;
   height: 0.07em;
-  background: repeating-linear-gradient(90deg, #fff 0 0.9em, transparent 0.9em 1.8em);
+  overflow: hidden;
   opacity: 0.5;
   mask-image: linear-gradient(90deg, transparent, #000 18% 82%, transparent);
+}
+/* one dash period (1.8em) wider than the ground, slid by exactly that period so the loop is seamless */
+.droid__ground::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(100% + 1.8em);
+  background: repeating-linear-gradient(90deg, #fff 0 0.9em, transparent 0.9em 1.8em);
   animation: droid-floor 0.79s linear infinite;
 }
 
@@ -198,9 +206,11 @@
     var(--b) 0 100% / 0.55em 0.07em no-repeat, var(--b) 0 100% / 0.07em 0.55em no-repeat,
     var(--b) 100% 100% / 0.55em 0.07em no-repeat, var(--b) 100% 100% / 0.07em 0.55em no-repeat;
 }
+/* the scan box is 1.9em tall (a 1.5em head container plus its -0.3em/-0.1em inset); the line sweeps 0.1em to 1.75em */
 .droid__scan::after {
   content: "";
   position: absolute;
+  top: 0.1em;
   left: 0.1em;
   right: 0.1em;
   height: 0.05em;
@@ -262,8 +272,9 @@
   content: "";
   position: absolute;
   bottom: 0.375em;
-  left: 0;
-  width: 100%;
+  /* three head-widths of the repeating stripe, so it can slide ±1.375em without showing an edge */
+  left: -2.5em;
+  width: 7.5em;
   height: 0.188em;
   background: linear-gradient(
     to right,
@@ -283,6 +294,7 @@
     transparent 2.375em 2.438em,
     var(--accent) 2.438em
   );
+  background-size: 2.5em 100%;
   animation: droid-stripe 6s ease-in-out infinite;
 }
 
@@ -366,20 +378,21 @@
   to { transform: rotate(405deg); }
 }
 @keyframes droid-floor {
-  to { background-position-x: -1.8em; }
+  to { transform: translateX(-1.8em); }
 }
 @keyframes droid-lean {
   0%, 100% { transform: rotate(0deg); }
   30% { transform: rotate(5deg); }
   70% { transform: rotate(-4deg); }
 }
+/* ±0.65em is the old 24% to 76% sweep across the 2.5em head; translate stacks on the eye's centring transform */
 @keyframes droid-gaze {
-  0%, 100% { left: 24%; }
-  50% { left: 76%; }
+  0%, 100% { translate: -0.65em 0; }
+  50% { translate: 0.65em 0; }
 }
 @keyframes droid-stripe {
-  0%, 100% { background-position: -1.375em 0; }
-  50% { background-position: 1.375em 0; }
+  0%, 100% { translate: -1.375em 0; }
+  50% { translate: 1.375em 0; }
 }
 @keyframes droid-sway {
   0%, 100% { rotate: 0deg; }
@@ -387,8 +400,8 @@
   75% { rotate: 5deg; }
 }
 @keyframes droid-scan {
-  0%, 100% { top: 0.1em; }
-  50% { top: calc(100% - 0.15em); }
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 1.65em; }
 }
 @keyframes droid-twinkle {
   from { opacity: 0.3; }
@@ -473,7 +486,7 @@
 
 
 @media (prefers-reduced-motion: reduce) {
-  .droid__ground,
+  .droid__ground::before,
   .droid__ping,
   .droid__stars,
   .droid__orbit,

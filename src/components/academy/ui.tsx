@@ -1,20 +1,12 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { Card } from "@/components/ui/card";
 
 /**
- * Small building blocks for the Academy dashboards, styled after the LMS
- * dashboard cards (white card, slate border, coloured icon chip).
+ * Building blocks for the Academy dashboards (learner, tutor, admin), in the RoboCoders look:
+ * paper panels on a wash canvas, an ink chip with an amber icon.
  */
 
-const TONES = {
-  blue: "bg-blue-50 text-blue-600",
-  emerald: "bg-emerald-50 text-emerald-600",
-  amber: "bg-amber-50 text-amber-600",
-  sky: "bg-sky-50 text-sky-600",
-  rose: "bg-rose-50 text-rose-600",
-} as const;
-export type Tone = keyof typeof TONES;
+export type Tone = "blue" | "emerald" | "amber" | "sky" | "rose";
 
 export function StatTile({
   label,
@@ -32,21 +24,19 @@ export function StatTile({
   href?: string;
 }) {
   const body = (
-    <Card className={`h-full gap-0 p-4 shadow-none sm:p-5 ${href ? "transition-all hover:border-gray-300 hover:shadow-md" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-xs font-medium text-muted-foreground sm:text-sm">{label}</p>
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${TONES[tone]}`}>
-          <Icon className="h-4.5 w-4.5" />
-        </span>
+    <>
+      <div className="ac-d-stat-top">
+        <span>{label}</span>
+        <i className="ac-d-chip" data-tone={tone === "rose" ? "rose" : undefined}><Icon size={18} aria-hidden="true" /></i>
       </div>
-      <p className="mt-1 font-acdisplay text-3xl font-semibold tabular-nums text-gray-900">{value}</p>
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-    </Card>
+      <p className="ac-d-num">{value}</p>
+      {hint && <p className="ac-d-hint">{hint}</p>}
+    </>
   );
-  return href ? <Link href={href} className="block h-full">{body}</Link> : body;
+  return href ? <Link href={href} className="ac-d-stat">{body}</Link> : <div className="ac-d-stat">{body}</div>;
 }
 
-/** A titled white panel, like the LMS dashboard sections. */
+/** A titled paper panel. */
 export function Panel({
   title,
   action,
@@ -59,15 +49,15 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <Card className={`gap-0 p-0 shadow-none ${className}`}>
+    <section className={`ac-d-panel ${className}`}>
       {(title || action) && (
-        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-5">
-          {title && <h2 className="font-semibold text-gray-900">{title}</h2>}
+        <div className="ac-d-panel-head">
+          {title && <h2>{title}</h2>}
           {action}
         </div>
       )}
-      <div className="p-4 sm:p-5">{children}</div>
-    </Card>
+      <div className="ac-d-panel-body">{children}</div>
+    </section>
   );
 }
 
@@ -83,13 +73,11 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center rounded-xl border border-dashed border-gray-300 bg-white px-6 py-10 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-ac-soft text-ac-brand">
-        <Icon className="h-6 w-6" />
-      </span>
-      <p className="mt-3 font-semibold text-gray-900">{title}</p>
-      {text && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{text}</p>}
-      {action && <div className="mt-4">{action}</div>}
+    <div className="ac-d-empty">
+      <i className="ac-d-chip"><Icon size={22} aria-hidden="true" /></i>
+      <b>{title}</b>
+      {text && <p>{text}</p>}
+      {action && <div style={{ marginTop: "0.5rem" }}>{action}</div>}
     </div>
   );
 }
@@ -119,32 +107,32 @@ export function StatusBadge({ status, label }: { status: string; label?: string 
   );
 }
 
-/** Dashboard page frame: LMS-style padding, grey canvas and header row. */
+/** Dashboard page frame: padding, heading row and a max width. */
 export function DashboardPage({
   title,
   subtitle,
   action,
   children,
-  width = "max-w-7xl",
+  width,
 }: {
   title: string;
   subtitle?: React.ReactNode;
   action?: React.ReactNode;
   children: React.ReactNode;
+  /** Kept for callers that set a Tailwind max-width; the frame has its own. */
   width?: string;
 }) {
+  void width;
   return (
-    <div className="min-h-full bg-gray-50 p-4 md:p-6 lg:p-8">
-      <div className={`mx-auto ${width}`}>
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between md:mb-6">
-          <div className="min-w-0">
-            <h1 className="font-acdisplay text-2xl font-bold text-gray-900 md:text-3xl">{title}</h1>
-            {subtitle && <p className="mt-1 text-sm text-gray-600 md:text-base">{subtitle}</p>}
-          </div>
-          {action && <div className="flex flex-wrap gap-2">{action}</div>}
+    <div className="ac-d-page">
+      <div className="ac-d-head">
+        <div style={{ minWidth: 0 }}>
+          <h1>{title}</h1>
+          {subtitle && <p>{subtitle}</p>}
         </div>
-        {children}
+        {action && <div className="ac-d-actions">{action}</div>}
       </div>
+      {children}
     </div>
   );
 }

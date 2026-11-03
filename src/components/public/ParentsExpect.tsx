@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Award, Check, HeartHandshake, LifeBuoy, Package, Rocket, Sprout } from "lucide-react";
+import { useStill } from "./useStill";
 
 const ITEMS = [
   { Icon: Rocket, title: "Skills for tomorrow", text: "Coding, robotics and problem-solving skills that carry into school and later careers.", cap: "Skills grow module by module" },
@@ -73,17 +74,16 @@ function Scene({ i }: { i: number }) {
 }
 
 /* What a parent can expect, as a list with a scene for the open item and a strip that fills as you go. The spotlight
-   goes down the six items, pointing at one takes over, and the switching resumes after a pause. Reduced motion never
+   goes down the six items, picking one takes over, and the switching resumes after a pause. Reduced motion never
    advances and the scenes show a finished frame. */
 export default function ParentsExpect() {
   const [active, setActive] = useState(0);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.1 });
@@ -105,7 +105,7 @@ export default function ParentsExpect() {
       <ul className="sg-list">
         {ITEMS.map(({ Icon, title, text }, i) => (
           <li key={title} data-state={i === active ? "active" : i < active ? "done" : "todo"}>
-            <button type="button" onClick={() => pick(i)} onMouseEnter={() => pick(i)} onFocus={() => pick(i)} aria-expanded={i === active}>
+            <button type="button" onClick={() => pick(i)} onFocus={() => pick(i)} aria-expanded={i === active}>
               <span className="rh-chip-ico"><Icon size={16} aria-hidden="true" /></span>
               <span className="sg-name">{title}</span>
             </button>

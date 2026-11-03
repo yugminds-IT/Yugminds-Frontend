@@ -54,7 +54,7 @@ export default function ParentsPlans() {
             <h3>{p.name}</h3>
             <p className="pr-plan-price"><strong>{p.price}</strong><span>{p.per}</span></p>
             <div className="pr-cost">
-              <p><span>For {n} {n === 1 ? "course" : "courses"}</span><b key={totals[i]}>{rupees(totals[i])}</b></p>
+              <p><span>For {n} {n === 1 ? "course" : "courses"}</span><b>{rupees(totals[i])}</b></p>
               <div className="pr-cost-bar" aria-hidden="true"><i style={{ transform: `scaleX(${totals[i] / top})` }} /></div>
               <small>{best === i ? "Lowest cost for this many" : `${rupees(totals[i] - totals[best])} more`}</small>
             </div>

@@ -104,7 +104,7 @@ export function JuniorKit() {
 
           <path className="jk-wire" d={`M52 360 V374 H${X[ip]} V330`} data-flow={power && press} />
           <g className="jk-btn" data-down={press} role="button" tabIndex={0} aria-label="Push button. Press and hold." aria-pressed={press}
-             onPointerDown={() => hold(true)} onPointerUp={() => hold(false)} onPointerLeave={() => press && !demo && setPress(false)}
+             onPointerDown={() => hold(true)} onPointerUp={() => hold(false)} onPointerCancel={() => hold(false)} onPointerLeave={() => press && !demo && setPress(false)}
              onKeyDown={(e) => (e.key === " " || e.key === "Enter") && (e.preventDefault(), hold(true))} onKeyUp={() => hold(false)}>
             <rect className="jk-mod" x="12" y="280" width="80" height="80" rx="10" />
             <circle className="jk-btn-ring" cx="52" cy="318" r="22" />
@@ -149,8 +149,8 @@ export function JuniorKit() {
             {OUTS.map((o) => <button key={o.id} type="button" className="jk-pill" aria-pressed={out === o.id} onClick={() => { manual(); setOut(o.id); }}>{o.label}</button>)}
           </fieldset>
           <button type="button" className="rh-btn rh-btn--primary jk-hold" aria-pressed={press}
-            onPointerDown={() => hold(true)} onPointerUp={() => hold(false)} onPointerLeave={() => setPress(false)}
-            onKeyDown={(e) => (e.key === " " || e.key === "Enter") && hold(true)} onKeyUp={() => hold(false)}>
+            onPointerDown={() => hold(true)} onPointerUp={() => hold(false)} onPointerCancel={() => hold(false)} onPointerLeave={() => setPress(false)}
+            onKeyDown={(e) => (e.key === " " || e.key === "Enter") && hold(true)} onKeyUp={() => hold(false)} onBlur={() => setPress(false)}>
             Press and hold the button
           </button>
         </div>

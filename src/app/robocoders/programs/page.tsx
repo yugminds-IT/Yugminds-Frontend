@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { brandHref } from "@/lib/brand-host";
 import Footer from "../../../components/Footer";
-import HomeCount from "../../../components/public/HomeCount";
 import ProgramsTracks from "../../../components/public/ProgramsTracks";
 import HomeJourney from "../../../components/public/HomeJourney";
 import HomeFaq from "../../../components/public/HomeFaq";
@@ -46,7 +45,7 @@ export default function ProgramsPage() {
               </div>
               <dl className="rh-facts">
                 <div>
-                  <dt><HomeCount to={3} /></dt>
+                  <dt>3</dt>
                   <dd>tracks to choose from</dd>
                 </div>
                 <div>

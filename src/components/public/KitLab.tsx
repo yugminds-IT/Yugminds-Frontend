@@ -8,14 +8,20 @@ const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * clamp(t);
 const seg = (p: number, a: number, b: number) => clamp((p - a) / (b - a));
 
-/* A looping progress value in 0..1 for a simulation. When it is not running it rests on a finished frame. */
+/* A looping progress value in 0..1 for a simulation. When it is not running it rests on a finished frame.
+   Capped at about 30 updates a second: each one re-renders the simulation's SVG, and the eye can't tell the difference.
+   (rAF already stops in a hidden tab; the value is time-based so it catches up on return.) */
 function useLoop(period: number, run: boolean, rest: number) {
   const [p, setP] = useState(rest);
   useEffect(() => {
     if (!run) { setP(rest); return; }
     let raf = 0;
+    let last = 0;
     const t0 = performance.now();
-    const tick = (n: number) => { setP(((n - t0) / period) % 1); raf = requestAnimationFrame(tick); };
+    const tick = (n: number) => {
+      if (n - last >= 33) { last = n; setP(((n - t0) / period) % 1); }
+      raf = requestAnimationFrame(tick);
+    };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [period, run, rest]);
@@ -182,12 +188,14 @@ export default function KitLab() {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setStill(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
     const el = box.current;
-    if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.1 });
-    io.observe(el);
-    return () => io.disconnect();
+    if (el) io.observe(el);
+    return () => { mq.removeEventListener("change", sync); io.disconnect(); };
   }, []);
 
   // after a click the switching waits a while, then carries on by itself

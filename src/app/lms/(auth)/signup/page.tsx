@@ -168,10 +168,11 @@ export default function SignupPage() {
     </>
   );
 
-  const note = (tone: string, icon: React.ReactNode, text: string) => (
+  const note = (tone: string, icon: React.ReactNode, text: string, redirectMs?: number) => (
     <div className="lg-note" data-tone={tone} role={tone === "error" ? "alert" : "status"}>
       {icon}
       <div><p>{text}</p></div>
+      {redirectMs && <i className="lg-bar" style={{ "--ms": redirectMs + "ms" } as React.CSSProperties} aria-hidden="true" />}
     </div>
   );
 
@@ -183,7 +184,7 @@ export default function SignupPage() {
       </p>
 
       {error && note("error", <AlertCircle size={18} aria-hidden="true" />, error)}
-      {message && note("ok", <CheckCircle size={18} aria-hidden="true" />, message)}
+      {message && note("ok", <CheckCircle size={18} aria-hidden="true" />, message, message.includes("created successfully") ? 3000 : undefined)}
 
       {step === "code" ? (
         <div className="lg-form">

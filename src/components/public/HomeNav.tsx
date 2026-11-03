@@ -25,7 +25,7 @@ export default function HomeNav() {
   const pathname = usePathname();
   const [onHost, setOnHost] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const bar = useRef<HTMLSpanElement>(null);
   const [menu, setMenu] = useState(false);
   const [login, setLogin] = useState(false);
   const [hl, setHl] = useState<{ left: number; width: number } | null>(null);
@@ -58,16 +58,20 @@ export default function HomeNav() {
   }, [activeIdx, onHost]);
 
   // scroll: tighten and report progress; the bar stays in view
+  // progress is written straight to the bar once per frame; re-rendering the nav on every scroll event is wasted work
   useEffect(() => {
-    const on = () => {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
       const y = window.scrollY;
       const max = document.documentElement.scrollHeight - window.innerHeight;
       setScrolled(y > 24);
-      setProgress(max > 0 ? Math.min(1, y / max) : 0);
+      if (bar.current) bar.current.style.transform = `scaleX(${max > 0 ? Math.min(1, y / max) : 0})`;
     };
-    on();
+    const on = () => { if (!raf) raf = requestAnimationFrame(update); };
+    update();
     window.addEventListener("scroll", on, { passive: true });
-    return () => window.removeEventListener("scroll", on);
+    return () => { window.removeEventListener("scroll", on); cancelAnimationFrame(raf); };
   }, []);
 
   useEffect(() => {
@@ -138,7 +142,7 @@ export default function HomeNav() {
           </button>
         </div>
 
-        <span className="hn-progress" aria-hidden="true" style={{ transform: `scaleX(${progress})` }} />
+        <span ref={bar} className="hn-progress" aria-hidden="true" />
       </div>
 
       <div className="hn-sheet" id="hn-sheet" data-open={menu}>

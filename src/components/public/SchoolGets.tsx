@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, Check, Headset, Package, Rocket, Tag, User } from "lucide-react";
+import { useStill } from "./useStill";
 
 const ITEMS = [
   { Icon: BookOpen, title: "A program that fits your timetable", text: "Weekly clubs, semester modules or full STEM periods, planned around your academic calendar.", cap: "Planned around your calendar" },
@@ -73,16 +74,15 @@ function Scene({ i }: { i: number }) {
 
 /* What a school gets, as a launch checklist. A spotlight goes down the six items while a scene on the right plays the
    open one; every item you have passed is ticked in the strip underneath, so by the last one the school is "ready to
-   launch". Pointing at an item takes over, and the automatic switching resumes after a pause. */
+   launch". Picking an item takes over, and the automatic switching resumes after a pause. */
 export default function SchoolGets() {
   const [active, setActive] = useState(0);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.1 });
@@ -104,7 +104,7 @@ export default function SchoolGets() {
       <ul className="sg-list">
         {ITEMS.map(({ Icon, title, text }, i) => (
           <li key={title} data-state={i === active ? "active" : i < active ? "done" : "todo"}>
-            <button type="button" onClick={() => { setPicked(true); setActive(i); }} onMouseEnter={() => { setPicked(true); setActive(i); }} onFocus={() => { setPicked(true); setActive(i); }} aria-expanded={i === active}>
+            <button type="button" onClick={() => { setPicked(true); setActive(i); }} onFocus={() => { setPicked(true); setActive(i); }} aria-expanded={i === active}>
               <span className="rh-chip-ico"><Icon size={16} aria-hidden="true" /></span>
               <span className="sg-name">{title}</span>
             </button>

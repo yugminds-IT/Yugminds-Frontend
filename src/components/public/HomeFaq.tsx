@@ -30,9 +30,9 @@ const FAQS: { cat: Cat; q: string; a: string }[] = [
   { cat: "kits", q: "Is there a screen-free option for young kids?", a: "Yes. The RoboCoders Play Kit teaches coding without a screen: kids lay out direction cards and the robot follows them." },
 ];
 
-/* FAQ: filter by topic and one answer open at a time with a smooth slide. With a mouse, an answer opens as the pointer
-   reaches its question and everything closes when the pointer leaves the list; clicking (and touch or keyboard) still
-   toggles. The heading, topics, questions and the ask bar rise in once as the section scrolls into view. */
+/* FAQ: filter by topic and one answer open at a time with a smooth slide. Click, tap or keyboard toggles; hover never
+   does, because the rows move as answers open and a passing cursor would chain-open them. The heading, topics,
+   questions and the ask bar rise in once as the section scrolls into view. */
 export default function HomeFaq() {
   const [cat, setCat] = useState<Cat>("start");
   const [open, setOpen] = useState<number | null>(null);
@@ -69,11 +69,11 @@ export default function HomeFaq() {
           </div>
         </div>
 
-        <ul className="rh-faq2-list" key={cat} onPointerLeave={(e) => e.pointerType === "mouse" && setOpen(null)}>
+        <ul className="rh-faq2-list" key={cat}>
           {shown.map((f, k) => {
             const isOpen = open === f.i;
             return (
-              <li key={f.q} className="rh-faq2-item" data-open={isOpen} style={{ "--i": k } as React.CSSProperties} onPointerEnter={(e) => e.pointerType === "mouse" && setOpen(f.i)}>
+              <li key={f.q} className="rh-faq2-item" data-open={isOpen} style={{ "--i": k } as React.CSSProperties}>
                 <h3>
                   <button type="button" aria-expanded={isOpen} aria-controls={`faq-a-${f.i}`} id={`faq-q-${f.i}`} onClick={() => setOpen(isOpen ? null : f.i)}>
                     <span className="rh-faq2-ico"><Icon size={16} aria-hidden="true" /></span>

@@ -13,7 +13,7 @@ import { AreaChartAnalyticsCard } from "@/components/ui/area-chart-analytics-car
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const BAR = "#2563EB"; // ac.brand (site blue-600) — validated single-series fill on the light surface
+const BAR = "#0B1B3A"; // RoboCoders ink: the single-series fill on the paper surface
 const dayLabel = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
 
 export default function AcademyAdminOverview() {
@@ -87,10 +87,10 @@ export default function AcademyAdminOverview() {
           ? [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[132px] rounded-xl" />)
           : (
             <>
-              <AreaChartAnalyticsCard title="Revenue (30 days)" value={formatINR(series.revenue30)} description={`${formatINR(data.monthRevenueInPaise)} this month`} badge="Sales" icon={<IndianRupee className="h-4 w-4" />} accentColor="#2563eb" sideMetric={formatINR(data.monthRevenueInPaise)} sideLabel="this month" href="/academy/admin/orders" data={series.revenue} />
-              <AreaChartAnalyticsCard title="Paid orders (30 days)" value={series.orders30} description={`${data.paidOrders} paid orders all time`} badge="Orders" icon={<Receipt className="h-4 w-4" />} accentColor="#16a34a" sideMetric={String(data.monthOrders)} sideLabel="this month" href="/academy/admin/orders" data={series.orders} />
-              <AreaChartAnalyticsCard title="New learners (30 days)" value={series.signups30} description={`${data.learners} learners in total`} badge="Signups" icon={<UserPlus className="h-4 w-4" />} accentColor="#0891b2" sideMetric={String(data.learners)} sideLabel="total learners" href="/academy/admin/learners" data={series.signups} />
-              <AreaChartAnalyticsCard title="Revenue, all time" value={formatINR(data.revenueInPaise)} description="Cumulative paid sales" badge="Total" icon={<Users className="h-4 w-4" />} accentColor="#f97316" sideMetric={String(data.paidOrders)} sideLabel="paid orders" href="/academy/admin/orders" data={series.cumulative} />
+              <AreaChartAnalyticsCard title="Revenue (30 days)" value={formatINR(series.revenue30)} description={`${formatINR(data.monthRevenueInPaise)} this month`} badge="Sales" icon={<IndianRupee className="h-4 w-4" />} accentColor="#f59e0b" sideMetric={formatINR(data.monthRevenueInPaise)} sideLabel="this month" href="/academy/admin/orders" data={series.revenue} />
+              <AreaChartAnalyticsCard title="Paid orders (30 days)" value={series.orders30} description={`${data.paidOrders} paid orders all time`} badge="Orders" icon={<Receipt className="h-4 w-4" />} accentColor="#2563eb" sideMetric={String(data.monthOrders)} sideLabel="this month" href="/academy/admin/orders" data={series.orders} />
+              <AreaChartAnalyticsCard title="New learners (30 days)" value={series.signups30} description={`${data.learners} learners in total`} badge="Signups" icon={<UserPlus className="h-4 w-4" />} accentColor="#0b1b3a" sideMetric={String(data.learners)} sideLabel="total learners" href="/academy/admin/learners" data={series.signups} />
+              <AreaChartAnalyticsCard title="Revenue, all time" value={formatINR(data.revenueInPaise)} description="Cumulative paid sales" badge="Total" icon={<Users className="h-4 w-4" />} accentColor="#f59e0b" sideMetric={String(data.paidOrders)} sideLabel="paid orders" href="/academy/admin/orders" data={series.cumulative} />
             </>
           )}
       </div>
@@ -102,10 +102,10 @@ export default function AcademyAdminOverview() {
               <div className="h-64" role="img" aria-label={`Daily revenue bar chart, last 30 days, ${formatINR(series.revenue30)} total`}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={series.bars} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: "#64748B" }} tickLine={false} axisLine={{ stroke: "#CBD5E1" }} interval="preserveStartEnd" minTickGap={24} />
-                    <YAxis tickFormatter={(v: number) => `₹${v >= 1000 ? `${Math.round(v / 1000)}k` : v}`} tick={{ fontSize: 11, fill: "#64748B" }} tickLine={false} axisLine={false} width={44} />
-                    <Tooltip cursor={{ fill: "#EFF6FF" }} formatter={(v) => [formatINR(Number(v) * 100), "Revenue"]} labelFormatter={(l) => dayLabel(String(l))} contentStyle={{ borderRadius: 8, borderColor: "#E2E8F0", fontSize: 12 }} />
+                    <CartesianGrid vertical={false} stroke="#D3DCEF" />
+                    <XAxis dataKey="date" tickFormatter={dayLabel} tick={{ fontSize: 11, fill: "#3D4B69" }} tickLine={false} axisLine={{ stroke: "#D3DCEF" }} interval="preserveStartEnd" minTickGap={24} />
+                    <YAxis tickFormatter={(v: number) => `₹${v >= 1000 ? `${Math.round(v / 1000)}k` : v}`} tick={{ fontSize: 11, fill: "#3D4B69" }} tickLine={false} axisLine={false} width={44} />
+                    <Tooltip cursor={{ fill: "#EEF3FC" }} formatter={(v) => [formatINR(Number(v) * 100), "Revenue"]} labelFormatter={(l) => dayLabel(String(l))} contentStyle={{ borderRadius: 8, borderColor: "#D3DCEF", fontSize: 12 }} />
                     <Bar dataKey="rupees" fill={BAR} maxBarSize={24} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

@@ -72,8 +72,8 @@
 }
 .ld .droid__head::after {
   animation: none;
-  background-position: calc(var(--look, 0) * 1.375em) 0;
-  transition: background-position 180ms var(--rh-ease-out);
+  translate: calc(var(--look, 0) * 1.375em) 0;
+  transition: translate 180ms var(--rh-ease-out);
 }
 
 /* The launcher */
@@ -145,9 +145,9 @@
   70% { transform: translate(calc(-50% + 0.62em)); }
 }
 @keyframes ld-stripe {
-  0%, 100% { background-position: 0 0; }
-  30% { background-position: -1.375em 0; }
-  70% { background-position: 1.375em 0; }
+  0%, 100% { translate: 0 0; }
+  30% { translate: -1.375em 0; }
+  70% { translate: 1.375em 0; }
 }
 @keyframes ld-tilt {
   0%, 100% { rotate: 0deg; }

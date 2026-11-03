@@ -4,17 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { Plus, HelpCircle } from "lucide-react";
 
-/* Product questions. With a mouse, an answer opens as the pointer reaches its question and everything closes when the
-   pointer leaves the list; click, touch and keyboard still toggle. An answer can point to the product it is about,
+/* Product questions. Click, tap or keyboard toggles; hover never does, because rows move as answers open and a passing
+   cursor would chain-open them. An answer can point to the product it is about,
    which also fills the space beside its text. */
 export default function ProductsFaq({ faqs }: { faqs: { question: string; answer: string; href?: string; cta?: string }[] }) {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <ul className="rh-faq2-list pd-faq" onPointerLeave={(e) => e.pointerType === "mouse" && setOpen(null)}>
+    <ul className="rh-faq2-list pd-faq">
       {faqs.map((f, i) => {
         const isOpen = open === i;
         return (
-          <li key={f.question} className="rh-faq2-item" data-open={isOpen} onPointerEnter={(e) => e.pointerType === "mouse" && setOpen(i)}>
+          <li key={f.question} className="rh-faq2-item" data-open={isOpen}>
             <h3>
               <button type="button" aria-expanded={isOpen} aria-controls={`pd-a-${i}`} id={`pd-q-${i}`} onClick={() => setOpen(isOpen ? null : i)}>
                 <span className="rh-faq2-ico"><HelpCircle size={16} aria-hidden="true" /></span>

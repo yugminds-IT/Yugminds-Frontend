@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Award, Bell, Brain, Bot, Check, Code2, Pause, Play } from "lucide-react";
+import { useStill } from "./useStill";
 import "./droid.css";
 
 const MODULES = [
@@ -24,11 +25,13 @@ export default function ParentsProgress() {
   const [moving, setMoving] = useState(false);
   const [paused, setPaused] = useState(false);
   const [inView, setInView] = useState(true);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
 
+  // reduced motion shows the finished year
+  useEffect(() => { if (still) setStep(LAST); }, [still]);
+
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setStill(true); setStep(LAST); }
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.2 });
@@ -44,7 +47,7 @@ export default function ParentsProgress() {
 
   useEffect(() => {
     setMoving(true);
-    const id = setTimeout(() => setMoving(false), 650);
+    const id = setTimeout(() => setMoving(false), 500);
     return () => clearTimeout(id);
   }, [step]);
 

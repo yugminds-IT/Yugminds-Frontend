@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Bot, Brain, Code2 } from "lucide-react";
+import { useStill } from "./useStill";
 import "./droid.css";
 
 const MODULES = [
@@ -54,11 +55,10 @@ export default function ParentsLearn() {
   const [moving, setMoving] = useState(false);
   const [picked, setPicked] = useState(false);
   const [inView, setInView] = useState(false);
-  const [still, setStill] = useState(false);
+  const still = useStill();
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setStill(true);
     const el = box.current;
     if (!el) return;
     const io = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { threshold: 0.1 });

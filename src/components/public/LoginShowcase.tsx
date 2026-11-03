@@ -16,15 +16,25 @@ const MS = 4500;
 export default function LoginShowcase() {
   const [tab, setTab] = useState(0);
   const [picked, setPicked] = useState(false);
+  const [hold, setHold] = useState(false);
 
   useEffect(() => {
-    if (picked || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (picked || hold || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const id = setTimeout(() => setTab((t) => (t + 1) % TABS.length), MS);
     return () => clearTimeout(id);
-  }, [tab, picked]);
+  }, [tab, picked, hold]);
+
+  // Hold the turns while the learner is typing in the form beside the showcase.
+  useEffect(() => {
+    const typing = (e: Event) => setHold((e.target as HTMLElement).matches?.("input, textarea"));
+    const idle = () => setHold(false);
+    document.addEventListener("focusin", typing);
+    document.addEventListener("focusout", idle);
+    return () => { document.removeEventListener("focusin", typing); document.removeEventListener("focusout", idle); };
+  }, []);
 
   return (
-    <div className="lg-show" aria-label="A preview of the student portal">
+    <div className="lg-show" aria-label="A preview of the student portal" onMouseEnter={() => setHold(true)} onMouseLeave={() => setHold(false)}>
       <div className="lg-show-tabs" role="tablist">
         {TABS.map(({ name, Icon }, i) => (
           <button key={name} type="button" role="tab" id={`lg-tab-${i}`} aria-selected={tab === i} aria-controls="lg-pane" onClick={() => { setPicked(true); setTab(i); }}>

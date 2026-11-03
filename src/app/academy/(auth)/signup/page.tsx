@@ -41,21 +41,21 @@ function SignupForm() {
       <p className="rh-lede">Free to join. Start with a demo course or a free 1:1 trial class.</p>
       <form onSubmit={onSubmit} className="lg-form">
         <GlassField label="Learner's full name" htmlFor="fullName" hint="Printed on certificates.">
-          <input id="fullName" name="fullName" autoComplete="name" required minLength={2} placeholder="e.g. Aarav Sharma" className={glassInput} />
+          <input id="fullName" name="fullName" autoComplete="name" autoCapitalize="words" enterKeyHint="next" required minLength={2} placeholder="e.g. Aarav Sharma" className={glassInput} />
         </GlassField>
         <GlassField label="Parent's name (if under 18)" htmlFor="parentName">
-          <input id="parentName" name="parentName" placeholder="Optional" className={glassInput} />
+          <input id="parentName" name="parentName" autoCapitalize="words" enterKeyHint="next" placeholder="Optional" className={glassInput} />
         </GlassField>
         <div className="grid gap-4 sm:grid-cols-2">
           <GlassField label="Email address" htmlFor="email">
-            <input id="email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className={glassInput} />
+            <input id="email" name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" enterKeyHint="next" required placeholder="you@example.com" className={glassInput} />
           </GlassField>
           <GlassField label="Phone" htmlFor="phone">
-            <input id="phone" name="phone" type="tel" autoComplete="tel" required pattern="[0-9+\- ]{7,20}" placeholder="98765 43210" className={glassInput} />
+            <input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" enterKeyHint="next" required pattern="[0-9+\- ]{7,20}" placeholder="98765 43210" className={glassInput} />
           </GlassField>
         </div>
         <GlassField label="Password" htmlFor="password" hint={<PasswordRules />}>
-          <PasswordInput id="password" name="password" autoComplete="new-password" required minLength={8} placeholder="Create a password" />
+          <PasswordInput id="password" name="password" autoComplete="new-password" enterKeyHint="go" required minLength={8} placeholder="Create a password" />
         </GlassField>
         <AuthError message={error} />
         <AuthSubmit busy={busy}>{busy ? "Creating account" : "Create account"}</AuthSubmit>
