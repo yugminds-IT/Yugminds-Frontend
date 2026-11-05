@@ -120,6 +120,19 @@ export default function SubmitReportPage() {
   );
   const submitReport = useSubmitReport();
 
+  // The server's IST date is the only "today" — the device clock (or a stale
+  // autosaved draft) never decides which day a report is for.
+  const { data: serverDay } = useTeacherDayStatus();
+  const serverToday = serverDay?.date;
+  useEffect(() => {
+    if (serverToday && formData.date !== serverToday) {
+      // A stale draft's period no longer applies on a new day, but keep a
+      // period the teacher just clicked from the dashboard (?period_id=...).
+      setFormData((prev) => ({ ...prev, date: serverToday, period_id: searchParams.get('period_id') ?? '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverToday, formData.date]);
+
   const { data: dayStatus } = useTeacherDayStatus(formData.date);
   const closedDay = useMemo(() => {
     if (!selectedSchool?.id) return null;
@@ -293,6 +306,10 @@ export default function SubmitReportPage() {
       toast.warning('Please select a school first');
       return;
     }
+    if (!serverToday || formData.date !== serverToday) {
+      toast.warning("Syncing today's date with the server — please try again in a moment.");
+      return;
+    }
 
     if (closedDay) {
       toast.error(`${selectedSchool.name} is closed on this date (${closedDay.name}). Reports can't be submitted.`);
@@ -329,7 +346,7 @@ export default function SubmitReportPage() {
         period_id: formData.period_id,
         grade: finalGrade,
         section: formData.section || selectedPeriod?.section || undefined,
-        date: formData.date,
+        date: serverToday ?? formData.date,
         start_time: formData.start_time || undefined,
         end_time: formData.end_time || undefined,
         topics_taught: formData.topics_taught || undefined,
@@ -347,7 +364,7 @@ export default function SubmitReportPage() {
         period_id: '',
         grade: '', // Use grade instead of class_id
         section: '',
-        date: new Date().toLocaleDateString('en-CA'),
+        date: serverToday ?? new Date().toLocaleDateString('en-CA'),
         start_time: '',
         end_time: '',
         topics_taught: '',
@@ -568,19 +585,6 @@ export default function SubmitReportPage() {
                           {closedDay.type === 'Break' ? 'Break' : 'Holiday'}: {closedDay.name}. No classes are held, so reports can&apos;t be submitted for this date.
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor="closed-date" className="text-sm text-red-800">
-                          Report for another date:
-                        </Label>
-                        <Input
-                          id="closed-date"
-                          type="date"
-                          className="w-auto bg-white"
-                          value={formData.date}
-                          onChange={(e) => setFormData({ ...formData, date: e.target.value, period_id: '' })}
-                          max={new Date().toLocaleDateString('en-CA')}
-                        />
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -746,10 +750,10 @@ export default function SubmitReportPage() {
                     id="date"
                     type="date"
                     value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    max={new Date().toLocaleDateString('en-CA')}
+                    disabled // reports can only be submitted for today
                     required
                   />
+                  <p className="text-xs text-gray-500">Reports can only be submitted for today. Submit all of today&apos;s reports before 8:00 PM IST to be marked Present — after that the day is marked Absent.</p>
                 </div>
 
                 {/* Time Display (read-only from period) */}

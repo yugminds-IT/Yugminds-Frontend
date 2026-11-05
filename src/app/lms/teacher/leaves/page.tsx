@@ -10,8 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { EmergencyApprovalStages } from "@/components/leaves/EmergencyApprovalStages";
 import { 
   useTeacherLeaves, 
+  useTeacherDayStatus,
   useApplyLeave 
 } from "@/hooks/useTeacherData";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
@@ -83,6 +85,14 @@ export default function LeavesPage() {
   // History across all assigned schools — create always pins to the active
   // school, but older requests may have been stored under a different school.
   const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves();
+  // Server's IST date (not the device clock) is the earliest a leave can start.
+  const { data: serverDay } = useTeacherDayStatus();
+  const serverTodayStr = serverDay?.date ?? new Date().toLocaleDateString('en-CA');
+  const [isEmergency, setIsEmergency] = useState(false);
+  // Emergency leave may start up to 2 days back (server enforces it too).
+  const minLeaveDate = isEmergency
+    ? new Date(new Date(serverTodayStr + 'T00:00:00Z').getTime() - 2 * 86400000).toISOString().split('T')[0]
+    : serverTodayStr;
   const applyLeave = useApplyLeave();
 
   const schoolNameById = new Map<string, string>();
@@ -122,8 +132,11 @@ export default function LeavesPage() {
         start_date: formData.start_date,
         end_date: formData.end_date,
         reason: formData.reason,
-        substitute_required: formData.substitute_required
+        substitute_required: formData.substitute_required,
+        is_emergency: isEmergency || undefined,
       });
+      const wasEmergency = isEmergency;
+      setIsEmergency(false);
 
       // Clear saved form data after successful submission
       if (selectedSchool?.id) {
@@ -139,10 +152,15 @@ export default function LeavesPage() {
         substitute_required: false
       });
 
-      toast.success('Leave request submitted successfully! It will be reviewed by your School Admin and System Admin.');
+      toast.success(
+        wasEmergency
+          ? 'Emergency leave submitted. It needs approval from your School Admin first, then the Admin — you can track both below.'
+          : 'Leave request submitted successfully! It will be reviewed by your School Admin and System Admin.',
+      );
 
     } catch (error: unknown) {
-      toast.error('Error submitting leave request: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(serverMsg || 'Error submitting leave request: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -217,7 +235,7 @@ export default function LeavesPage() {
                       type="date"
                       value={formData.start_date}
                       onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={minLeaveDate}
                       required
                     />
                   </div>
@@ -228,7 +246,7 @@ export default function LeavesPage() {
                       type="date"
                       value={formData.end_date}
                       onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                      min={formData.start_date || new Date().toISOString().split('T')[0]}
+                      min={formData.start_date || minLeaveDate}
                       required
                     />
                   </div>
@@ -255,6 +273,27 @@ export default function LeavesPage() {
                     rows={4}
                     required
                   />
+                </div>
+
+                {!isEmergency && (
+                  <p className="text-xs text-gray-500">
+                    Regular leave must be submitted before 8:00 PM IST and can&apos;t start in the past. For an emergency, tick the box below.
+                  </p>
+                )}
+
+                {/* Emergency */}
+                <div className="flex items-start space-x-2 rounded-md border border-red-200 bg-red-50 p-3">
+                  <Checkbox
+                    id="is_emergency"
+                    checked={isEmergency}
+                    onCheckedChange={(checked) => setIsEmergency(checked === true)}
+                  />
+                  <Label htmlFor="is_emergency" className="cursor-pointer leading-snug">
+                    This is an emergency
+                    <span className="block text-xs font-normal text-red-700">
+                      Skips the 8:00 PM cutoff and can start up to 2 days back. A reason is required. It needs two approvals, in order: your School Admin first, then the Admin.
+                    </span>
+                  </Label>
                 </div>
 
                 {/* Substitute Required */}
@@ -340,6 +379,7 @@ export default function LeavesPage() {
                           {leave.reason}
                         </p>
                       )}
+                      <EmergencyApprovalStages leave={leave} showHint />
                     </div>
                     );
                   })}

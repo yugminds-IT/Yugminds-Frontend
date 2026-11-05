@@ -584,6 +584,7 @@ export function useApplyLeave() {
       end_date: string;
       reason: string;
       substitute_required?: boolean;
+      is_emergency?: boolean;
     }) => {
       const { data: { session } } = await getSession();
       if (!session) throw new Error('Not authenticated');
@@ -596,6 +597,7 @@ export function useApplyLeave() {
           end_date: leaveData.end_date,
           reason: leaveData.reason,
           substitute_required: leaveData.substitute_required,
+          is_emergency: leaveData.is_emergency,
         });
         return (data as { leave?: unknown })?.leave ?? data;
       } catch (e: unknown) {

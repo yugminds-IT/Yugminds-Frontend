@@ -28,6 +28,7 @@ export interface AdminDashboardStats {
   totalStudents: number;
   activeCourses: number;
   pendingLeaves: number;
+  pendingEmergencyLeaves?: number;
   systemHealth: number;
   avgAttendance: number;
   completionRate: number;
@@ -103,6 +104,7 @@ export function useAdminDashboardStats() {
           totalStudents: raw.totalStudents ?? 0,
           activeCourses: raw.activeCourses ?? 0,
           pendingLeaves: raw.pendingLeaves ?? 0,
+          pendingEmergencyLeaves: raw.pendingEmergencyLeaves ?? 0,
           activeUsers: (raw.totalTeachers ?? 0) + (raw.totalStudents ?? 0),
         };
       } catch (err) {
@@ -275,12 +277,13 @@ export function useAdminNeedsAttention() {
       }
 
       if (leavesRes.status === "fulfilled") {
-        const raw = (leavesRes.value.data as { stats?: { pendingLeaves?: number } })?.stats;
+        const raw = (leavesRes.value.data as { stats?: { pendingLeaves?: number; pendingEmergencyLeaves?: number } })?.stats;
         const pendingLeaves = raw?.pendingLeaves ?? 0;
+        const emergencyLeaves = raw?.pendingEmergencyLeaves ?? 0;
         if (pendingLeaves > 0) {
           items.push({
             id: "leaves",
-            label: `${pendingLeaves} pending leave request${pendingLeaves !== 1 ? "s" : ""}`,
+            label: `${pendingLeaves} pending leave request${pendingLeaves !== 1 ? "s" : ""}${emergencyLeaves ? ` (${emergencyLeaves} emergency)` : ""}`,
             count: pendingLeaves,
             // Leave review lives as a tab on Teachers Management, not its own route.
             href: "/lms/admin/teachers?tab=leaves",

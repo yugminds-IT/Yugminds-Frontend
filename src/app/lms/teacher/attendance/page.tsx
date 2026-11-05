@@ -119,7 +119,7 @@ export default function AttendancePage() {
           View your attendance records and statistics {selectedSchool ? `for ${selectedSchool.name}` : ''}
         </p>
         <p className="text-xs md:text-sm text-blue-600 mt-2 bg-blue-50 border border-blue-200 rounded-md p-2.5 md:p-3 inline-block">
-          <strong>Note:</strong> Your attendance is automatically marked as &quot;Present&quot; when you submit reports for all scheduled periods for the day.
+          <strong>Note:</strong> Your attendance is automatically marked as &quot;Present&quot; when you submit reports for all scheduled periods for the day <strong>before 8:00 PM IST</strong>. After that the day is marked Absent, even if you submit later.
         </p>
       </div>
 
@@ -228,6 +228,9 @@ export default function AttendancePage() {
               {todayStatus.attendance?.status && (
                 <div>
                   {getStatusBadge(todayStatus.attendance.status)}
+                  {(todayStatus.attendance as { late_report?: boolean }).late_report && (
+                    <span className="ml-2 text-xs text-red-700">Absent (late report) — submitted after 8:00 PM</span>
+                  )}
                 </div>
               )}
             </div>
@@ -571,7 +574,7 @@ export default function AttendancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {dailyAttendance.map((record: { id: string; date: string; status: string; recorded_at?: string }) => (
+                  {dailyAttendance.map((record: { id: string; date: string; status: string; recorded_at?: string; late_report?: boolean }) => (
                     <tr key={record.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 text-sm">
                         {new Date(record.date + 'T12:00:00').toLocaleDateString('en-US', {
@@ -583,6 +586,9 @@ export default function AttendancePage() {
                       </td>
                       <td className="p-3">
                         {getStatusBadge(record.status)}
+                        {record.late_report && (
+                          <span className="ml-2 text-xs text-red-700">late report (after 8:00 PM)</span>
+                        )}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
                         {record.recorded_at ? new Date(record.recorded_at).toLocaleString() : '-'}

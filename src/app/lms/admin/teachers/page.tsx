@@ -9,6 +9,7 @@ import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData } from "@/lib/form-persistence";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmergencyApprovalStages } from "@/components/leaves/EmergencyApprovalStages";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -177,6 +178,9 @@ interface LeaveRequest {
   approved_by?: string;
   reviewer?: { id: string; full_name: string; email: string } | null;
   substitute_required?: boolean;
+  is_emergency?: boolean;
+  school_admin_status?: 'pending' | 'approved' | 'rejected';
+  admin_status?: 'pending' | 'approved' | 'rejected';
   admin_remarks?: string;
   profiles?: {
     id: string;
@@ -222,6 +226,8 @@ interface MonthlyAttendanceData {
   absent_days: number;
   leave_days: number;
   unreported_days: number;
+  /** Absent days that still have a report (submitted after the 8pm cutoff). */
+  late_report_days?: number;
   total_working_days: number;
   /** Legacy monthly endpoint field */
   total_days?: number;
@@ -237,6 +243,7 @@ interface MonthlyAttendanceData {
     absent_days: number;
     leave_days: number;
     unreported_days: number;
+    late_report_days?: number;
     total_working_days: number;
     attendance_percentage: number;
   }>;
@@ -1386,11 +1393,13 @@ export default function TeachersManagement() {
       setSelectedLeave(null);
       setLeaveFormData({ status: '', admin_remarks: '' });
       loadAllData();
-    } catch {
+    } catch (error) {
+      // Surface the server's reason (e.g. emergency leave needs the school admin's approval first)
+      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: `Failed to ${action} leave request`
+        message: serverMsg || `Failed to ${action} leave request`
       });
     } finally {
       setActionLoading(null);
@@ -1603,7 +1612,13 @@ export default function TeachersManagement() {
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending Leaves</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">{stats.pendingLeaves}</p>
                 {stats.pendingLeaves > 0 && (
-                  <p className="text-xs text-amber-600 mt-0.5">Needs review</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    Needs review
+                    {(() => {
+                      const n = allLeaveRequests.filter((l: LeaveRequest) => l.is_emergency && l.status === 'Pending').length;
+                      return n > 0 ? <span className="ml-1 font-semibold text-red-600">· {n} emergency</span> : null;
+                    })()}
+                  </p>
                 )}
               </div>
               <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center">
@@ -1909,9 +1924,14 @@ export default function TeachersManagement() {
                 <div className="border rounded-lg overflow-hidden mt-6">
                   <div className="bg-gray-50 px-4 py-3 border-b">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        Monthly Attendance
-                      </h3>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          Monthly Attendance
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          A teacher is Present only if they submit all of the day&apos;s reports before 8:00 PM IST. A working day with no report by then counts as Absent (today shows as Unreported until 8 PM). Leave days count only once fully approved.
+                        </p>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Select
                           value={attendanceSchoolFilter}
@@ -2059,6 +2079,14 @@ export default function TeachersManagement() {
                                     <span className="text-sm font-medium text-red-600">
                                       {monthly.absent_days ?? 0}
                                     </span>
+                                    {(monthly.late_report_days ?? 0) > 0 && (
+                                      <span
+                                        className="ml-2 rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700"
+                                        title="Days marked Absent although a report was submitted — it came in after the 8:00 PM cutoff"
+                                      >
+                                        {monthly.late_report_days} late report{monthly.late_report_days === 1 ? '' : 's'}
+                                      </span>
+                                    )}
                                     {(monthly.total_working_days ?? monthly.total_days ?? 0) > 0 && (
                                       <span className="ml-2 text-xs text-gray-500">
                                         ({(((monthly.absent_days ?? 0) / (monthly.total_working_days ?? monthly.total_days ?? 1)) * 100).toFixed(1)}%)
@@ -2125,6 +2153,11 @@ export default function TeachersManagement() {
                                   </td>
                                   <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-red-600">
                                     {sb.absent_days}
+                                    {(sb.late_report_days ?? 0) > 0 && (
+                                      <span className="ml-1 text-red-700" title="Absent days with a report submitted after the 8 PM cutoff">
+                                        ({sb.late_report_days} late)
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-blue-600">
                                     {sb.leave_days}
@@ -2297,6 +2330,7 @@ export default function TeachersManagement() {
                       <div className="text-sm text-muted-foreground">
                         {request.start_date} to {request.end_date} ({request.total_days} days)
                       </div>
+                      <EmergencyApprovalStages leave={request} />
                       <div className="text-sm">
                         <span className="font-medium">Type:</span> {request.leave_type}
                       </div>
@@ -2340,7 +2374,15 @@ export default function TeachersManagement() {
                               setLeaveFormData({ status: 'Approved', admin_remarks: '' });
                               setShowLeaveDialog(true);
                             }}
-                            disabled={actionLoading === request.id}
+                            disabled={
+                              actionLoading === request.id ||
+                              (request.is_emergency && request.school_admin_status !== 'approved')
+                            }
+                            title={
+                              request.is_emergency && request.school_admin_status !== 'approved'
+                                ? 'Emergency leave: the school admin must approve first'
+                                : undefined
+                            }
                           >
                           <CheckCircle className="h-4 w-4 mr-1" />
                           Approve

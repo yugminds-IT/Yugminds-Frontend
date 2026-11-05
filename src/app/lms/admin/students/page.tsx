@@ -71,6 +71,7 @@ import {
   ChevronDown,
   ChevronRight
 } from "lucide-react";
+import { uniqueStudentEmail } from "@/lib/student-email";
 import { exportClassOptions, matchingEnrollment, type ExportClassOption } from "@/lib/student-export";
 
 interface StudentSchool {
@@ -1229,6 +1230,7 @@ export default function StudentsManagement() {
     );
     const nextFreeEmail = (email: string) => {
       const [local, domain] = email.trim().toLowerCase().split('@');
+      if (!domain) return email;
       const base = local.replace(/\d+$/, '');
       let n = 2;
       while (takenEmails.has(`${base}${n}@${domain}`)) n++;
@@ -1989,28 +1991,25 @@ export default function StudentsManagement() {
    */
   const autoFillEmails = (schoolId: string) => {
     if (bulkEmailDomainInvalid) return;
-    const schoolName = schools.find((s: School) => s.id === schoolId)?.name?.toLowerCase().replace(/\s+/g, '') || 'school';
+    const schoolName = schools.find((s: School) => s.id === schoolId)?.name?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'school';
     const domain = `@${normalizedBulkEmailDomain || `${schoolName}.edu`}`;
 
     setBulkData(prev => {
       const isManual = (item: BulkImportData) => !!item.email && !item.emailAuto;
-      const taken = new Set(
-        prev.filter(isManual).map((item) => item.email!.trim().toLowerCase())
-      );
+      const taken = new Set([
+        ...students.map((st) => st.email?.trim().toLowerCase()).filter((e): e is string => !!e),
+        ...prev.filter(isManual).map((item) => item.email!.trim().toLowerCase()),
+      ]);
 
       return prev.map((item) => {
         if (isManual(item)) return item;
-        const nameParts = item.student_name.trim().toLowerCase().split(/\s+/);
-        const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : nameParts[0];
-
-        let email = `${lastName}${domain}`;
-        let suffix = 2;
-        while (taken.has(email)) {
-          email = `${lastName}${suffix}${domain}`;
-          suffix++;
-        }
-        taken.add(email);
-
+        // Keep an already-assigned auto local part (incl. any number added on a
+        // clash) so changing the domain never reshuffles who gets which email.
+        const keptLocal = item.emailAuto ? item.email?.split('@')[0] : undefined;
+        const kept = keptLocal ? `${keptLocal}${domain}` : '';
+        const email = kept && !taken.has(kept)
+          ? (taken.add(kept), kept)
+          : uniqueStudentEmail(item.student_name, domain.slice(1), taken);
         return { ...item, email, emailAuto: true };
       });
     });

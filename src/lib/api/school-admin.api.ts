@@ -138,6 +138,9 @@ export const schoolAdminApi = {
     get: (id: string) => apiClient.get(`${SCHOOL_ADMIN}/leaves/${id}`),
     update: (id: string, data: Record<string, unknown>) =>
       apiClient.patch(`${SCHOOL_ADMIN}/leaves/${id}`, data),
+    /** Emergency leave filed on behalf of a teacher (created already approved). */
+    createEmergency: (data: { teacher_id: number | string; start_date: string; end_date: string; reason: string }) =>
+      apiClient.post(`${SCHOOL_ADMIN}/leaves`, data),
   },
 
   /** Password reset requests */

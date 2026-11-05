@@ -6,6 +6,7 @@ import { toast } from "@/components/ui/toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmergencyApprovalStages } from "@/components/leaves/EmergencyApprovalStages";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -108,6 +109,9 @@ interface LeaveRequest {
   status: string;
   total_days?: number;
   substitute_required?: boolean;
+  is_emergency?: boolean;
+  school_admin_status?: 'pending' | 'approved' | 'rejected';
+  admin_status?: 'pending' | 'approved' | 'rejected';
   created_at: string;
   approved_by?: string;
   approved_at?: string;
@@ -144,6 +148,12 @@ function TeachersContent() {
   // Controlled tab so ?tab=leaves (linked from the dashboard) actually lands on
   // the Leaves tab — the previous uncontrolled Tabs ignored the query param.
   const [activeTab, setActiveTab] = useState<"teachers" | "leaves">("teachers");
+  // Emergency leave filed on behalf of a teacher (no cutoff; max 2 days back — server enforces)
+  const [emTeacherId, setEmTeacherId] = useState("");
+  const [emStart, setEmStart] = useState("");
+  const [emEnd, setEmEnd] = useState("");
+  const [emReason, setEmReason] = useState("");
+  const [emSaving, setEmSaving] = useState(false);
 
   useEffect(() => {
     // Read on mount rather than in a lazy initializer — `window` isn't available
@@ -376,6 +386,33 @@ function TeachersContent() {
     console.log(`✅ Exported ${filteredTeachers.length} teacher(s) to CSV`);
   };
 
+  const submitEmergencyLeave = async () => {
+    if (!emTeacherId || !emStart || !emEnd || !emReason.trim()) {
+      toast.warning('Select a teacher, both dates and enter a reason.');
+      return;
+    }
+    setEmSaving(true);
+    try {
+      await schoolAdminApi.leaves.createEmergency({
+        teacher_id: emTeacherId,
+        start_date: emStart,
+        end_date: emEnd,
+        reason: emReason.trim(),
+      });
+      toast.success('Emergency leave recorded (your approval done). It now needs the Admin\'s approval before attendance changes.');
+      setEmTeacherId('');
+      setEmStart('');
+      setEmEnd('');
+      setEmReason('');
+      await loadTeachers();
+    } catch (error) {
+      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(serverMsg || 'Could not record the emergency leave.');
+    } finally {
+      setEmSaving(false);
+    }
+  };
+
   const handleLeaveRequest = async (leaveId: string, action: 'approve' | 'reject') => {
     try {
       await schoolAdminApi.leaves.update(leaveId, { action });
@@ -386,13 +423,16 @@ function TeachersContent() {
       // Reload leave requests and teachers to refresh state
       await loadTeachers();
       toast.success(
-        `Leave request ${
-          action === 'approve' ? 'approved' : 'rejected'
-        } successfully! Attendance has been updated automatically.`,
+        leaveRequests.find((l) => l.id === leaveId)?.is_emergency && action === 'approve'
+          ? 'Emergency leave approved by you. It now needs the Admin\'s approval before attendance changes.'
+          : `Leave request ${
+              action === 'approve' ? 'approved' : 'rejected'
+            } successfully! Attendance has been updated automatically.`,
       );
     } catch (error) {
       console.error('Error updating leave request:', error);
-      toast.error(`Error ${action === 'approve' ? 'approving' : 'rejecting'} leave request. Please try again.`);
+      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(serverMsg || `Error ${action === 'approve' ? 'approving' : 'rejecting'} leave request. Please try again.`);
     }
   };
 
@@ -543,6 +583,32 @@ function TeachersContent() {
 
         {/* Leave Requests Tab */}
         <TabsContent value="leaves" className="space-y-6">
+          <Card className="border-red-200">
+            <CardHeader>
+              <CardTitle>Record emergency leave for a teacher</CardTitle>
+              <CardDescription>
+                No time cutoff. Can start today or up to 2 days back. It counts as your approval; the Admin must approve it too before the days are marked Leave-Approved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-5">
+                <Select value={emTeacherId} onValueChange={setEmTeacherId}>
+                  <SelectTrigger><SelectValue placeholder="Teacher" /></SelectTrigger>
+                  <SelectContent>
+                    {teachers.map((t: Teacher) => (
+                      <SelectItem key={t.id ?? t.teacher_id} value={String(t.id ?? "")}>{t.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input type="date" value={emStart} onChange={(e) => setEmStart(e.target.value)} aria-label="Start date" />
+                <Input type="date" value={emEnd} min={emStart || undefined} onChange={(e) => setEmEnd(e.target.value)} aria-label="End date" />
+                <Input placeholder="Reason (required)" value={emReason} onChange={(e) => setEmReason(e.target.value)} />
+                <Button onClick={submitEmergencyLeave} disabled={emSaving}>
+                  {emSaving ? 'Saving...' : 'Record leave'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -604,6 +670,7 @@ function TeachersContent() {
                           {leave.substitute_required && (
                             <Badge variant="outline" className="mt-1 text-xs">Substitute Required</Badge>
                           )}
+                          <EmergencyApprovalStages leave={leave} />
                           {(leave.status === 'Approved' || leave.status === 'Rejected') && (
                             <div className="text-sm text-gray-600 mt-1">
                               <span className="font-medium">
@@ -632,7 +699,10 @@ function TeachersContent() {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        {leave.status === 'Pending' && (
+                        {leave.is_emergency && leave.status === 'Pending' && leave.school_admin_status === 'approved' && (
+                          <span className="text-sm text-muted-foreground">Waiting for Admin approval</span>
+                        )}
+                        {leave.status === 'Pending' && !(leave.is_emergency && leave.school_admin_status === 'approved') && (
                           <>
                             <Button
                               size="sm"

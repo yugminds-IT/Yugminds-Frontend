@@ -33,6 +33,7 @@ interface DashboardStats {
   activeCourses: number;
   pendingReports: number;
   pendingLeaves: number;
+  pendingEmergencyLeaves?: number;
   averageAttendance: number;
 }
 
@@ -85,6 +86,7 @@ const DEFAULT_STATS: DashboardStats = {
   activeCourses: 0,
   pendingReports: 0,
   pendingLeaves: 0,
+  pendingEmergencyLeaves: 0,
   averageAttendance: 0,
 };
 
@@ -140,6 +142,7 @@ export default function SchoolAdminDashboard() {
         activeCourses: Number(raw.activeCourses ?? 0),
         pendingReports: Number(raw.pendingReports ?? 0),
         pendingLeaves: Number(raw.pendingLeaves ?? 0),
+        pendingEmergencyLeaves: Number(raw.pendingEmergencyLeaves ?? 0),
         averageAttendance: Number(raw.averageAttendance ?? 0),
       };
     },
@@ -318,14 +321,14 @@ export default function SchoolAdminDashboard() {
     if (stats.pendingLeaves > 0) {
       items.push({
         id: "pending-leaves",
-        label: `${stats.pendingLeaves} leave request${stats.pendingLeaves !== 1 ? "s" : ""} awaiting review`,
+        label: `${stats.pendingLeaves} leave request${stats.pendingLeaves !== 1 ? "s" : ""} awaiting review${stats.pendingEmergencyLeaves ? ` (${stats.pendingEmergencyLeaves} emergency)` : ""}`,
         count: stats.pendingLeaves,
         href: "/lms/school-admin/teachers?tab=leaves",
         tone: "red",
       });
     }
     return items;
-  }, [stats.pendingReports, stats.pendingLeaves]);
+  }, [stats.pendingReports, stats.pendingLeaves, stats.pendingEmergencyLeaves]);
 
   const isRefreshing =
     statsQuery.isFetching ||
@@ -386,6 +389,7 @@ export default function SchoolAdminDashboard() {
         activeCourses: Number(payload.activeCourses ?? current.activeCourses),
         pendingReports: Number(payload.pendingReports ?? current.pendingReports),
         pendingLeaves: Number(payload.pendingLeaves ?? current.pendingLeaves),
+        pendingEmergencyLeaves: Number(payload.pendingEmergencyLeaves ?? current.pendingEmergencyLeaves ?? 0),
         averageAttendance: Number(payload.averageAttendance ?? current.averageAttendance),
       } as DashboardStats);
     },
@@ -587,7 +591,12 @@ export default function SchoolAdminDashboard() {
                 onClick={() => router.push("/lms/school-admin/teachers?tab=leaves")}
                 className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
               >
-                <span className="text-sm font-medium">Pending Leave Requests</span>
+                <span className="text-sm font-medium">
+                  Pending Leave Requests
+                  {!!stats.pendingEmergencyLeaves && (
+                    <span className="ml-2 text-xs font-semibold text-red-600">{stats.pendingEmergencyLeaves} emergency</span>
+                  )}
+                </span>
                 <Badge variant={stats.pendingLeaves > 0 ? "destructive" : "secondary"}>
                   {stats.pendingLeaves}
                 </Badge>

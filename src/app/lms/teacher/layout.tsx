@@ -17,6 +17,7 @@ import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import ResponsiveTables from "@/components/ResponsiveTables";
 import TeacherHolidayBanner from "@/components/teacher/TeacherHolidayBanner";
+import PendingReportsPopup from "@/components/teacher/PendingReportsPopup";
 
 /** Sentinel stored/selected in place of a real school id to mean "combine data across every assigned school" — every teacher hook already treats an omitted school id as "aggregate across all schools." */
 const ALL_SCHOOLS_VALUE = "__all__";
@@ -540,6 +541,7 @@ export default function TeacherLayout({
         <TeacherSchoolContext.Provider value={{ selectedSchool, schools, onSchoolChange: handleSchoolChange }}>
           <div className="p-4 md:p-6 lg:p-8">
             <TeacherHolidayBanner selectedSchoolId={selectedSchool?.id ?? null} schools={schools} />
+            <PendingReportsPopup />
             {children}
           </div>
         </TeacherSchoolContext.Provider>

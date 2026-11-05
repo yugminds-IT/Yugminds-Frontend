@@ -33,6 +33,7 @@ interface DashboardStats {
   totalStudents: number;
   activeCourses: number;
   pendingLeaves: number;
+  pendingEmergencyLeaves?: number;
   systemHealth: number;
   avgAttendance: number;
   completionRate: number;
@@ -202,7 +203,12 @@ export default function AdminOverviewTab({
                   onClick={() => router.push("/lms/admin/schools")}
                   className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
                 >
-                  <span className="text-sm font-medium text-slate-700">Pending Leave Requests</span>
+                  <span className="text-sm font-medium text-slate-700">
+                    Pending Leave Requests
+                    {!!stats.pendingEmergencyLeaves && (
+                      <span className="ml-2 text-xs font-semibold text-red-600">{stats.pendingEmergencyLeaves} emergency</span>
+                    )}
+                  </span>
                   <div className="flex items-center gap-2">
                     <Badge variant={safeInt(stats.pendingLeaves) > 0 ? "destructive" : "secondary"}>
                       {safeInt(stats.pendingLeaves)}
