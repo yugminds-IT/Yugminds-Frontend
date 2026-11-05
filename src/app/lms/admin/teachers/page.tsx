@@ -171,7 +171,7 @@ interface LeaveRequest {
   end_date: string;
   total_days: number;
   reason: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
   applied_at?: string;
   approved_at?: string;
   rejected_at?: string;
@@ -429,6 +429,13 @@ function renderTeacherSchoolsCell(teacher: TeacherTableRow) {
 export default function TeachersManagement() {
   // State management
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  // Emergency leave filed on behalf of a teacher (admin = stage 2; school admin must still approve)
+  const [emTeacherId, setEmTeacherId] = useState('');
+  const [emSchoolId, setEmSchoolId] = useState('');
+  const [emStart, setEmStart] = useState('');
+  const [emEnd, setEmEnd] = useState('');
+  const [emReason, setEmReason] = useState('');
+  const [emSaving, setEmSaving] = useState(false);
   const { schools, refetch: refetchSchools } = useAdminSchools();
   const [configuringGradesForSchoolId, setConfiguringGradesForSchoolId] = useState<string | null>(null);
   // Collapsed by default — the grades/sections checklist can be long, and
@@ -1367,6 +1374,42 @@ export default function TeachersManagement() {
     }
   };
 
+  const emTeacher = teachers.find((t: Teacher) => String(t.id) === emTeacherId);
+  const emSchoolOptions = (emTeacher?.teacher_schools ?? []).map((ts: TeacherSchool) => ({
+    id: ts.school_id ?? ts.schoolId ?? '',
+    name: ts.schools?.name ?? ts.schoolName ?? ts.school_id ?? '',
+  })).filter((o) => o.id);
+
+  const submitEmergencyLeave = async () => {
+    const schoolId = emSchoolId || (emSchoolOptions.length === 1 ? emSchoolOptions[0].id : '');
+    if (!emTeacherId || !schoolId || !emStart || !emEnd || !emReason.trim()) {
+      toast.warning('Select a teacher (and school), both dates and enter a reason.');
+      return;
+    }
+    setEmSaving(true);
+    try {
+      await adminApi.leaves.createEmergency({
+        teacher_id: emTeacherId,
+        school_id: schoolId,
+        start_date: emStart,
+        end_date: emEnd,
+        reason: emReason.trim(),
+      });
+      toast.success("Emergency leave recorded (your approval done). It now needs the School Admin's approval before attendance changes.");
+      setEmTeacherId('');
+      setEmSchoolId('');
+      setEmStart('');
+      setEmEnd('');
+      setEmReason('');
+      await loadLeaveRequests();
+    } catch (error) {
+      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(serverMsg || 'Could not record the emergency leave.');
+    } finally {
+      setEmSaving(false);
+    }
+  };
+
   // Handle leave request action
   const handleLeaveAction = async (leaveId: string, action: 'approve' | 'reject') => {
     try {
@@ -2254,6 +2297,40 @@ export default function TeachersManagement() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Emergency leave on behalf of a teacher */}
+            <div className="mb-6 rounded-lg border border-red-200 bg-red-50/40 p-4">
+              <p className="text-sm font-semibold">Record emergency leave for a teacher</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                No time cutoff; can start today or up to 2 days back. Your approval counts as the Admin approval — the School Admin must approve it too before attendance changes.
+              </p>
+              <div className="grid gap-3 md:grid-cols-6">
+                <Select value={emTeacherId} onValueChange={(v) => { setEmTeacherId(v); setEmSchoolId(''); }}>
+                  <SelectTrigger><SelectValue placeholder="Teacher" /></SelectTrigger>
+                  <SelectContent>
+                    {teachers.map((t: Teacher) => (
+                      <SelectItem key={String(t.id)} value={String(t.id)}>{t.full_name || t.name || t.email}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={emSchoolId || (emSchoolOptions.length === 1 ? emSchoolOptions[0].id : '')}
+                  onValueChange={setEmSchoolId}
+                  disabled={!emTeacherId}
+                >
+                  <SelectTrigger><SelectValue placeholder="School" /></SelectTrigger>
+                  <SelectContent>
+                    {emSchoolOptions.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input type="date" value={emStart} onChange={(e) => setEmStart(e.target.value)} aria-label="Start date" />
+                <Input type="date" value={emEnd} min={emStart || undefined} onChange={(e) => setEmEnd(e.target.value)} aria-label="End date" />
+                <Input placeholder="Reason (required)" value={emReason} onChange={(e) => setEmReason(e.target.value)} />
+                <Button onClick={submitEmergencyLeave} disabled={emSaving}>{emSaving ? 'Saving...' : 'Record leave'}</Button>
+              </div>
+            </div>
+
             {/* Status Count Badges */}
             <div className="flex gap-4 mb-6">
               <div className="flex items-center gap-2">
@@ -2364,7 +2441,9 @@ export default function TeachersManagement() {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      {request.status === 'Pending' ? (
+                      {request.status === 'Pending' && request.is_emergency && request.admin_status === 'approved' ? (
+                        <div className="text-sm text-muted-foreground">Waiting for School Admin approval</div>
+                      ) : request.status === 'Pending' ? (
                         <>
                           <Button 
                             size="sm" 
@@ -2403,7 +2482,7 @@ export default function TeachersManagement() {
                           </>
                         ) : (
                           <div className="text-sm text-muted-foreground">
-                            {request.status === 'Approved' ? '✓ Approved' : '✗ Rejected'}
+                            {request.status === 'Approved' ? '✓ Approved' : request.status === 'Cancelled' ? 'Cancelled by teacher' : '✗ Rejected'}
                           </div>
                         )}
                     </div>

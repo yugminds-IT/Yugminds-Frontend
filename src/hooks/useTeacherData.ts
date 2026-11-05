@@ -574,6 +574,24 @@ export function useSubmitReport() {
  * Apply for leave
  * Uses API route to bypass RLS securely
  */
+/** Teacher cancels their own leave request. */
+export function useCancelLeave() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (leaveId: string) => {
+      const { data: { session } } = await getSession();
+      if (!session) throw new Error('Not authenticated');
+      setAuthToken(session.access_token || null);
+      const { data } = await teacherApi.leaves.cancel(leaveId);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['teacher', 'attendance'] });
+    },
+  });
+}
+
 export function useApplyLeave() {
   const queryClient = useQueryClient();
 

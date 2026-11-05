@@ -51,6 +51,8 @@ export const teacherApi = {
       apiClient.get(withParams(`${TEACHER}/leaves`, { school_id: schoolId })),
     create: (data: Record<string, unknown>) =>
       apiClient.post(`${TEACHER}/leaves`, data),
+    /** Cancel own pending (or not-yet-started approved) leave. */
+    cancel: (id: string) => apiClient.patch(`${TEACHER}/leaves/${id}/cancel`),
   },
 
   /** Calendar — read-only holidays/breaks/comp-work for the teacher's own assigned schools */

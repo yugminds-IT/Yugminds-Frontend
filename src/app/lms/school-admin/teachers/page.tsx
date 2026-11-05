@@ -424,7 +424,9 @@ function TeachersContent() {
       await loadTeachers();
       toast.success(
         leaveRequests.find((l) => l.id === leaveId)?.is_emergency && action === 'approve'
-          ? 'Emergency leave approved by you. It now needs the Admin\'s approval before attendance changes.'
+          ? (leaveRequests.find((l) => l.id === leaveId)?.admin_status === 'approved'
+              ? 'Emergency leave approved — both approvals are done and attendance has been updated.'
+              : 'Emergency leave approved by you. It now needs the Admin\'s approval before attendance changes.')
           : `Leave request ${
               action === 'approve' ? 'approved' : 'rejected'
             } successfully! Attendance has been updated automatically.`,

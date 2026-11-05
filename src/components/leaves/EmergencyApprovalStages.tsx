@@ -29,16 +29,20 @@ export function EmergencyApprovalStages({
   showHint?: boolean;
 }) {
   if (!leave.is_emergency) return null;
-  const overallRejected = (leave.status ?? "").toLowerCase() === "rejected";
+  const overallStatus = (leave.status ?? "").toLowerCase();
+  const overallRejected = overallStatus === "rejected";
+  const cancelled = overallStatus === "cancelled";
   const school = leave.school_admin_status ?? "pending";
   // If the leave was rejected at stage 1, stage 2 never got a decision.
   const admin = leave.admin_status ?? "pending";
   const hint =
-    overallRejected || (school === "approved" && admin === "approved")
+    overallRejected || cancelled || (school === "approved" && admin === "approved")
       ? null
-      : school !== "approved"
-        ? "Waiting for your School Admin. Please contact them to request approval."
-        : "Approved by your School Admin. Waiting for the Admin — please contact them to request approval.";
+      : school !== "approved" && admin === "approved"
+        ? "Approved by the Admin. Waiting for your School Admin — please contact them to request approval."
+        : school !== "approved"
+          ? "Waiting for your School Admin. Please contact them to request approval."
+          : "Approved by your School Admin. Waiting for the Admin — please contact them to request approval.";
   return (
     <div className="mt-2 space-y-1 rounded-md border border-red-100 bg-red-50/60 p-2 text-xs">
       <div className="flex items-center gap-2">

@@ -346,6 +346,9 @@ export const adminApi = {
     list: (params?: { school_id?: string }) =>
       apiClient.get(withParams(`${ADMIN}/leaves`, params)),
     update: (data: Record<string, unknown>) => apiClient.put(`${ADMIN}/leaves`, data),
+    /** Emergency leave filed on behalf of a teacher (admin = approval stage 2). */
+    createEmergency: (data: { teacher_id: number | string; school_id: string; start_date: string; end_date: string; reason: string }) =>
+      apiClient.post(`${ADMIN}/leaves`, data),
   },
 
   /** Upload */

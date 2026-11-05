@@ -14,13 +14,15 @@ import { EmergencyApprovalStages } from "@/components/leaves/EmergencyApprovalSt
 import { 
   useTeacherLeaves, 
   useTeacherDayStatus,
-  useApplyLeave 
+  useApplyLeave,
+  useCancelLeave,
 } from "@/hooks/useTeacherData";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import { Calendar, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 /**
  * Leave Application Page
@@ -94,6 +96,29 @@ export default function LeavesPage() {
     ? new Date(new Date(serverTodayStr + 'T00:00:00Z').getTime() - 2 * 86400000).toISOString().split('T')[0]
     : serverTodayStr;
   const applyLeave = useApplyLeave();
+  const cancelLeave = useCancelLeave();
+
+  // Cancellable: pending any time, or approved but not started yet (server enforces the same).
+  const canCancel = (l: { status: string; start_date: string }) =>
+    l.status === 'Pending' || (l.status === 'Approved' && l.start_date > serverTodayStr);
+
+  const handleCancelRequest = async (leaveId: string) => {
+    const ok = await confirmDialog({
+      title: 'Cancel this leave request?',
+      description: 'The request will be withdrawn and your School Admin and Admin will be notified.',
+      confirmText: 'Cancel request',
+      cancelText: 'Keep it',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await cancelLeave.mutateAsync(leaveId);
+      toast.success('Leave request cancelled.');
+    } catch (error: unknown) {
+      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(serverMsg || 'Could not cancel the leave request.');
+    }
+  };
 
   const schoolNameById = new Map<string, string>();
   for (const s of schools) {
@@ -172,6 +197,8 @@ export default function LeavesPage() {
         return <Badge className="bg-red-100 text-red-800"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
       case 'Pending':
         return <Badge className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+      case 'Cancelled':
+        return <Badge className="bg-gray-100 text-gray-600"><XCircle className="h-3 w-3 mr-1" />Cancelled</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -380,6 +407,20 @@ export default function LeavesPage() {
                         </p>
                       )}
                       <EmergencyApprovalStages leave={leave} showHint />
+                      {canCancel(leave) && (
+                        <div className="mt-2 text-right">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            disabled={cancelLeave.isPending}
+                            onClick={() => handleCancelRequest(leave.id)}
+                          >
+                            Cancel request
+                          </Button>
+                        </div>
+                      )}
                     </div>
                     );
                   })}
