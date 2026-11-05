@@ -5,8 +5,8 @@
 .es.rh-dark { background-color: var(--rh-navy); }
 .es.rh-dark::before { display: none; }
 .es-card { position: relative; display: grid; justify-items: center; gap: 1rem; width: 100%; max-width: 34rem; text-align: center; animation: rh-rise 500ms var(--rh-ease-out) both; }
-.rh .es-card h1 { font-size: clamp(2rem, 5vw, 3.25rem); max-width: 16ch; }
-.es-dark h1, .rh-dark .es-card h1 { color: var(--rh-paper); }
+.rh .es-card h1, .rh .es-title { margin: 0; font-family: var(--rh-display); font-weight: 800; letter-spacing: var(--rh-tr-display); line-height: var(--rh-lh-display); text-wrap: balance; font-size: clamp(2rem, 5vw, 3.25rem); max-width: 16ch; }
+.es-dark h1, .rh-dark .es-card h1, .rh-dark .es-title { color: var(--rh-paper); }
 .rh .es-text { max-width: 28rem; font-size: var(--rh-t-lede); line-height: var(--rh-lh-lede); color: var(--rh-ink-soft); }
 .rh-dark .es-text { color: var(--rh-navy-soft); }
 .es-actions { justify-content: center; margin-top: 0.5rem; }
@@ -25,10 +25,15 @@
 .es-details code { display: block; margin-top: 0.6rem; padding: 0.8rem 1rem; border: 1.5px solid var(--rh-line); border-radius: 0.8rem; background: var(--rh-paper); color: var(--rh-ink-soft); font: 500 0.8rem/1.5 ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; }
 .rh-dark .es-details code { background: var(--rh-cavity); border-color: var(--rh-navy-line); color: var(--rh-navy-soft); }
 
+/* Loading only: stay invisible for 350ms so fast navigations never flash the screen. */
+.es--loading { animation: es-reveal 250ms var(--rh-ease-out) 350ms both; }
+.es--loading .es-card { animation: none; }
+@keyframes es-reveal { from { opacity: 0; } }
+
 /* scenes */
 .es-scene { position: relative; display: grid; place-items: center; width: 16rem; height: 10rem; margin-bottom: 0.5rem; }
 .es-droid.droid-mini { position: relative; transform: none; font-size: 8px; transition: none; }
-.es-droid .droid__body { animation-play-state: paused; }
+.es-scene--load .es-droid .droid__body { animation-play-state: paused; }
 
 .es-hurt { position: relative; animation: es-wobble 1.6s ease-in-out infinite; transform-origin: 50% 100%; }
 .es-warn { position: absolute; top: -2.4rem; left: 50%; display: grid; place-items: center; width: 2rem; height: 2rem; margin-left: -1rem; border-radius: 50%; background: var(--rh-amber); color: var(--rh-ink); font: 800 1.1rem/1 var(--rh-display); animation: es-pulse 1.2s ease-in-out infinite; }
@@ -55,23 +60,17 @@
 
 .es-scene--load { width: min(22rem, 100%); height: 7rem; }
 .es-rail { position: relative; width: 100%; height: 0.8rem; margin-top: 3rem; border-radius: 999px; background: var(--rh-line); }
-.es-rail i { position: absolute; inset: 0; border-radius: inherit; background: var(--rh-amber); transform-origin: left; animation: es-fill 2.2s var(--rh-ease-in-out) infinite; }
-.es-roll { position: absolute; left: 0; bottom: 0.1rem; animation: es-go 2.2s var(--rh-ease-in-out) infinite; }
+.es-rail i, .es-roll { position: absolute; left: 0; width: 30%; animation: es-shuttle 1.8s var(--rh-ease-in-out) infinite alternate; will-change: transform; }
+.es-rail i { inset-block: 0; border-radius: 999px; background: var(--rh-amber); }
+.es-roll { bottom: 0.1rem; display: flex; justify-content: center; }
+.es-scene--load .es-droid.droid-mini { font-size: 6px; }
 .es-roll .droid__body { animation-play-state: running; animation-duration: 0.6s; }
-.es-droid.droid-mini { font-size: 6px; }
-.es-scene--error .es-droid.droid-mini, .es-scene--lost .es-droid.droid-mini { font-size: 8px; }
-@keyframes es-fill { from { transform: scaleX(0); } 80%, 100% { transform: scaleX(1); } }
-@keyframes es-go { from { left: 0; transform: translateX(0); } 80%, 100% { left: 100%; transform: translateX(-100%); } }
-.es-dots { display: inline-flex; gap: 0.35rem; }
-.es-dots i { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--rh-ink); animation: es-dot 1s ease-in-out infinite; }
-.es-dots i:nth-child(2) { animation-delay: 0.15s; } .es-dots i:nth-child(3) { animation-delay: 0.3s; }
-@keyframes es-dot { 0%, 60%, 100% { opacity: 0.25; transform: none; } 30% { opacity: 1; transform: translateY(-0.25rem); } }
+@keyframes es-shuttle { to { transform: translateX(233.33%); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .es-card, .es-hurt, .es-warn, .es-shadow, .es-spark, .es-walk, .es-q, .es-rail i, .es-roll, .es-dots i { animation: none !important; }
+  .es--loading { animation-duration: 1ms; }
+  .es-card, .es-hurt, .es-warn, .es-shadow, .es-spark, .es-walk, .es-q, .es-rail i, .es-roll { animation: none !important; }
   .es-walk { transform: translateX(0); }
   .es-spark { opacity: 0.8; }
-  .es-rail i { transform: scaleX(0.6); }
-  .es-roll { left: 60%; }
-  .es-dots i { opacity: 0.6; }
+  .es-rail i, .es-roll { transform: translateX(116.67%); }
 }

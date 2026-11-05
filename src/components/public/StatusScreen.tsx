@@ -70,9 +70,8 @@ export default function StatusScreen({
     <div className={`rh es es--${variant} ${dark ? "rh-dark" : ""} ${display.variable} ${body.variable}`} role={variant === "loading" ? "status" : undefined} aria-live={variant === "loading" ? "polite" : undefined}>
       <div className="es-card">
         <Scene variant={variant} />
-        <h1>{title}</h1>
+        {variant === "loading" ? <p className="es-title">{title}</p> : <h1>{title}</h1>}
         {text && <p className="es-text">{text}</p>}
-        {variant === "loading" && <span className="es-dots" aria-hidden="true"><i /><i /><i /></span>}
 
         {tips && tips.length > 0 && (
           <ul className="es-tips">{tips.map((t) => <li key={t}>{t}</li>)}</ul>
