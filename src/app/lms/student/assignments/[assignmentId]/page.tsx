@@ -3,11 +3,12 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, CheckCircle, Clock, AlertCircle, Globe, Loader2, RotateCcw, FileText } from "lucide-react";
+import { ArrowLeft, CheckCircle, Clock, AlertCircle, Loader2, RotateCcw, FileText, Play } from "lucide-react";
 import Link from "next/link";
+import { LessonStage } from "@/components/student/course-player/LessonStage";
+import ScoreRing, { scoreWords } from "@/components/portal/ScoreRing";
+import AttemptHistory from "@/components/student/assignments/AttemptHistory";
 import { useStudentAssignment, useSubmitAssignment, useRequestRetake } from "@/hooks/useStudentData";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
@@ -49,7 +50,7 @@ type PageProps = {
 
 function formatDue(date: Date | null): string {
   if (!date) return "No due date";
-  return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  return date.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
 export default function AssignmentDetailPage(props: PageProps) {
@@ -311,23 +312,13 @@ export default function AssignmentDetailPage(props: PageProps) {
     const qt = (q.question_type?.toLowerCase() ?? "").replace("fillblank", "fill_blank");
     const ans = answers[q.id];
 
-    const wrapper = (content: React.ReactNode) => (
-      <div key={q.id} id={`question-${idx}`}>
-        <div className="flex items-start justify-between gap-4 mb-3 sm:mb-5">
-          <span className={disabled ? "text-[15px] font-semibold text-gray-700" : "sr-only"}>{idx + 1}.</span>
-          <span className="ml-auto text-sm text-gray-400 whitespace-nowrap flex-shrink-0">
-            {q.marks ?? 1} point{(q.marks ?? 1) !== 1 ? "s" : ""}
-          </span>
-        </div>
-        {content}
-      </div>
-    );
+    const wrapper = (content: React.ReactNode) => <div key={q.id} id={`question-${idx}`}>{content}</div>;
 
     if (qt === "mcq") return wrapper(
       <MCQQuestion
         question={{ id: q.id, question: q.question || q.question_text || "", options: q.options || [],
           correct_answer: Array.isArray(q.correct_answer) ? q.correct_answer[0] : q.correct_answer, marks: q.marks }}
-        index={idx} totalQuestions={questions.length}
+        index={idx} totalQuestions={questions.length} number={idx + 1}
         selectedAnswer={ans?.type === "mcq" ? (typeof ans.value === "number" ? ans.value : parseInt(String(ans.value))) : undefined}
         onAnswerChange={v => setAnswers(p => ({ ...p, [q.id]: { type: "mcq", value: v } }))}
         showCorrectAnswer={showCorrect} disabled={disabled}
@@ -337,7 +328,7 @@ export default function AssignmentDetailPage(props: PageProps) {
     if (qt === "essay") return wrapper(
       <EssayQuestion
         question={{ id: q.id, question: q.question || q.question_text || "", marks: q.marks, word_limit: q.word_limit }}
-        index={idx} totalQuestions={questions.length}
+        index={idx} totalQuestions={questions.length} number={idx + 1}
         answer={ans?.type === "essay" && typeof ans.value === "string" ? ans.value : ""}
         onAnswerChange={v => setAnswers(p => ({ ...p, [q.id]: { type: "essay", value: v } }))}
         disabled={disabled}
@@ -347,7 +338,7 @@ export default function AssignmentDetailPage(props: PageProps) {
     if (qt === "fill_blank") return wrapper(
       <FillBlankQuestion
         question={{ id: q.id, question: q.question || q.question_text || "", correct_answer: q.correct_answer as string | string[], marks: q.marks, word_bank: q.word_bank }}
-        index={idx} totalQuestions={questions.length}
+        index={idx} totalQuestions={questions.length} number={idx + 1}
         answers={ans?.type === "fill_blank" && Array.isArray(ans.value) ? ans.value as string[] : []}
         onAnswerChange={(bi, v) => {
           const cur = ans?.type === "fill_blank" && Array.isArray(ans.value) ? [...(ans.value as string[])] : [];
@@ -364,21 +355,25 @@ export default function AssignmentDetailPage(props: PageProps) {
   /* ─── Loading ─── */
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      <div className="wr sd-player" aria-busy="true">
+        <div className="ls">
+          <div className="sd-skel" style={{ height: "2.5rem", width: "60%" }} />
+          <div className="sd-skel" style={{ height: "9rem" }} />
+        </div>
       </div>
     );
   }
 
   if (!assignment) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <FileText className="h-14 w-14 mx-auto mb-4 text-gray-300" />
-          <h2 className="text-lg font-semibold text-gray-700 mb-3">Assignment not found</h2>
-          <Link href="/lms/student/assignments" className="text-sm text-blue-600 hover:underline flex items-center gap-1 justify-center">
-            <ArrowLeft className="h-4 w-4" /> Back to Assignments
-          </Link>
+      <div className="wr sd-player">
+        <div className="ls">
+          <div className="ls-card">
+            <span className="ls-card-ico"><FileText aria-hidden="true" /></span>
+            <b>We could not find this assignment</b>
+            <p>It may have been removed. Go back and pick another one.</p>
+            <Link href="/lms/student/assignments" className="sd-btn sd-btn--ink"><ArrowLeft aria-hidden="true" />Back to assignments</Link>
+          </div>
         </div>
       </div>
     );
@@ -400,87 +395,50 @@ export default function AssignmentDetailPage(props: PageProps) {
   }
 
   const gradeNum = submission?.grade != null ? (typeof submission.grade === "number" ? submission.grade : parseFloat(String(submission.grade))) : null;
-  const gradeColor = gradeNum == null ? "text-gray-700" : gradeNum >= 70 ? "text-green-700" : gradeNum >= 50 ? "text-amber-700" : "text-red-700";
-  const gradeBg = gradeNum == null ? "bg-gray-500" : gradeNum >= 70 ? "bg-green-600" : gradeNum >= 50 ? "bg-amber-500" : "bg-red-600";
+  const rawType = String(effectiveType || "").toLowerCase();
+  const typeText = /mcq/.test(rawType) ? "Multiple choice"
+    : /fill/.test(rawType) ? "Fill in the blanks"
+    : /essay/.test(rawType) ? "Writing"
+    : rawType ? rawType.replace(/_/g, " ").replace(/^./, (c: string) => c.toUpperCase()) : "";
 
   /* ═══════════════════════════════════════════
      TAKING MODE
   ═══════════════════════════════════════════ */
   if (mode === "taking") {
     const fileUploadSection = (effectiveType === "project" || effectiveType === "quiz") && (
-      <div className="mt-6 p-4 sm:p-5 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-        <Label htmlFor="file-upload" className="block text-sm font-semibold text-gray-700 mb-3">
-          Upload Your Work
-        </Label>
-        <Input
+      <div className="wr-drop">
+        <label htmlFor="file-upload">Add your work</label>
+        <input
           id="file-upload"
           type="file"
           onChange={e => { if (e.target.files?.[0]) { setFileUpload(e.target.files[0]); setFileUploadName(e.target.files[0].name); } }}
           accept=".pdf,.doc,.docx,.zip,.png,.jpg,.jpeg"
-          className="bg-white text-sm mb-2"
         />
-        {fileUpload && (
-          <p className="text-xs text-green-700 flex items-center gap-1">
-            <CheckCircle className="h-3.5 w-3.5" /> {fileUpload.name} ready to upload
-          </p>
-        )}
-        <p className="text-xs text-gray-400 mt-1">PDF, Word, Images, ZIP supported</p>
+        {fileUpload && <p className="wr-ready"><CheckCircle aria-hidden="true" />{fileUpload.name} is ready to send</p>}
+        <p>PDF, Word, pictures or ZIP files all work.</p>
       </div>
     );
 
     return (
-      <ProtectedAssignmentContent className="min-h-screen bg-white">
-        {/* Minimal sticky header */}
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
-          <div className="flex items-center justify-between gap-3 px-3 sm:px-5 h-14">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <button
-                onClick={leaveTaking}
-                aria-label="Back"
-                className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-2.5 sm:px-3 py-1.5 rounded-md transition-colors flex-shrink-0"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Back</span>
-              </button>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{assignment.title}</p>
-                <p className="text-xs text-gray-500 truncate">
-                  {assignment.course_title || "Assignment"} &middot; {questions.length} question{questions.length !== 1 ? "s" : ""}
-                </p>
-              </div>
+      <ProtectedAssignmentContent className="wr sd-player">
+        <header className="wr-bar">
+          <div className="wr-bar-l">
+            <button onClick={leaveTaking} aria-label="Back" className="sd-btn sd-btn--line" style={{ minHeight: "2.4rem", padding: "0.3rem 1rem" }}>
+              <ArrowLeft aria-hidden="true" />
+              <span className="hidden sm:inline">Back</span>
+            </button>
+            <div>
+              <b>{assignment.title}</b>
+              <span>{assignment.course_title || "Assignment"}{typeText ? ` • ${typeText}` : ""}</span>
             </div>
-
-            <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
-              {/* Live auto-save status — students should always know work is safe */}
-              <span className={`flex items-center gap-1 text-xs ${isSaving ? "text-gray-400" : "text-green-600"}`}>
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : lastSaved ? (
-                  <>
-                    <CheckCircle className="h-3 w-3" />
-                    Saved
-                  </>
-                ) : (
-                  <span className="text-gray-400">Auto-save<span className="hidden sm:inline"> on</span></span>
-                )}
-              </span>
-              {/* Progress */}
-              {questions.length > 0 && (
-                <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
-                  {answeredCount}/{questions.length}<span className="hidden sm:inline"> answered</span>
-                </span>
-              )}
-              {/* Due date */}
-              {dueDate && (
-                <span className="hidden sm:flex items-center gap-1 text-xs text-gray-500">
-                  <Globe className="h-3.5 w-3.5" />
-                  Due {formatDue(dueDate)}
-                </span>
-              )}
-            </div>
+          </div>
+          <div className="wr-bar-r">
+            {/* Live auto-save status: students should always know their work is safe */}
+            <span className="wr-chip" data-t={!isSaving && lastSaved ? "saved" : undefined} role="status">
+              {isSaving ? <><Loader2 className="animate-spin" aria-hidden="true" />Saving</> : lastSaved ? <><CheckCircle aria-hidden="true" />Saved</> : "Saves as you go"}
+            </span>
+            {questions.length > 0 && <span className="wr-chip">{answeredCount} of {questions.length}</span>}
+            {dueDate && <span className="wr-chip wr-due"><Clock aria-hidden="true" />Due {formatDue(dueDate)}</span>}
           </div>
         </header>
 
@@ -491,322 +449,178 @@ export default function AssignmentDetailPage(props: PageProps) {
             renderQuestion={(i) => renderQuestion(questions[i], i)}
             onSubmit={handleSubmit}
             submitting={submitting}
-            statusBarClassName="sticky top-14"
+            statusBarClassName=""
             lastStepExtra={fileUploadSection}
           />
         ) : (
-        <div className="max-w-3xl mx-auto px-4 py-5 sm:px-6 sm:py-8">
-          {fileUploadSection}
-          <div className="mt-10 pt-8 border-t border-gray-100">
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white font-semibold px-8 py-3 rounded-lg transition-colors text-sm"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              {submitting ? "Submitting…" : "Submit Assignment"}
+          <div className="ls">
+            {fileUploadSection}
+            <button onClick={handleSubmit} disabled={submitting} className="sd-btn sd-btn--amber sd-btn--lg ls-big">
+              {submitting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <CheckCircle aria-hidden="true" />}
+              {submitting ? "Handing in" : "Hand it in"}
             </button>
           </div>
-        </div>
         )}
       </ProtectedAssignmentContent>
     );
   }
 
   /* ═══════════════════════════════════════════
-     OVERVIEW / LANDING MODE
+     OVERVIEW MODE
   ═══════════════════════════════════════════ */
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Simple header */}
-      <div className="border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
-        <Link
-          href="/lms/student/assignments"
-          className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-md transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Assignments
-        </Link>
-      </div>
+  const attemptsText = retake?.granted
+    ? `${attempts.length} used, 1 extra`
+    : !retake?.enabled
+    ? `${attempts.length} of 1`
+    : retake.max_attempts != null
+    ? `${attempts.length} of ${Number(retake.max_attempts) + 1}`
+    : attempts.length > 0
+    ? `${attempts.length} used`
+    : "Unlimited";
 
-      <div className="max-w-3xl mx-auto px-4 py-5 sm:px-6 sm:py-10 space-y-4">
-        {/* Title */}
-        <div>
-        <h1 className="text-xl sm:text-3xl font-semibold text-gray-900 mb-1 break-words">{assignment.title}</h1>
-        <p className="text-sm text-gray-500 sm:mb-4">
-          {assignment.course_title || "Assignment"}
-          {effectiveType && effectiveType !== "essay" && <> &middot; <span className="capitalize">{effectiveType.replace("_", " ")}</span></>}
-        </p>
+  return (
+    <div className="wr sd-player">
+      <div className="ls">
+        <Link href="/lms/student/assignments" className="ls-link"><ArrowLeft className="mr-1 inline h-4 w-4" />Back to assignments</Link>
+      </div>
+      <LessonStage
+        kind="assignment"
+        title={assignment.title}
+        chapterName={[assignment.course_title, typeText].filter(Boolean).join(" • ") || undefined}
+        task={isSubmitted ? null : "Do your best. Your answers save as you go."}
+      >
+        {assignment.description && <p className="ls-prose" style={{ fontSize: "1.1rem" }}>{assignment.description}</p>}
+
+        <div className="sd-ledger" data-cols="3">
+          <div>
+            <span className="sd-l">Due</span>
+            <b className="sd-n" style={{ fontSize: "1.35rem", color: isOverdue ? "var(--sd-late)" : undefined }}>{dueDate ? formatDue(dueDate) : "No due date"}</b>
+            <small>
+              {dueDate && !isOverdue && daysLeft >= 0 ? (daysLeft === 0 ? "Today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`) : isOverdue ? `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} late` : "\u00a0"}
+            </small>
+          </div>
+          <div><span className="sd-l">Tries</span><b className="sd-n" style={{ fontSize: "1.35rem" }}>{attemptsText}</b><small>&nbsp;</small></div>
+          <div><span className="sd-l">Points</span><b className="sd-n">{assignment.max_marks ?? "—"}</b><small>&nbsp;</small></div>
         </div>
 
-        {/* Assignment details card */}
-        <div className="bg-gray-50 rounded-xl p-4 sm:p-6 mb-4 border border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900 mb-5">Assignment details</h2>
+        {retake?.enabled && (
+          <p className="as-fine" style={{ margin: 0 }}>
+            {retake.scoring_rule === "highest" ? "We keep your highest score from all your tries." : "Your latest try is the one that counts."}
+          </p>
+        )}
 
-          {/* Details grid */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-6 mb-5 sm:mb-6">
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Due</p>
-              <p className={`text-sm font-semibold ${isOverdue ? "text-red-600" : "text-gray-900"}`}>
-                {dueDate ? formatDue(dueDate) : "No due date"}
-              </p>
-              {dueDate && !isOverdue && daysLeft >= 0 && (
-                <p className="text-xs text-gray-400 mt-0.5">{daysLeft === 0 ? "Today" : `${daysLeft}d left`}</p>
-              )}
-              {isOverdue && <p className="text-xs text-red-500 mt-0.5">{Math.abs(daysLeft)}d overdue</p>}
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Attempts</p>
-              <p className="text-sm font-semibold text-gray-900">
-                {retake?.granted
-                  ? `${attempts.length} used · +1 granted`
-                  : !retake?.enabled
-                  ? `${attempts.length} / 1`
-                  : retake.max_attempts != null
-                  ? `${attempts.length} / ${Number(retake.max_attempts) + 1}`
-                  : attempts.length > 0
-                  ? `${attempts.length} used (Unlimited)`
-                  : "Unlimited"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Points</p>
-              <p className="text-sm font-semibold text-gray-900">{assignment.max_marks ?? "—"}</p>
-            </div>
+        {!isSubmitted && draftAnsweredCount > 0 && (
+          <div className="ls-note" data-t="warn" role="status">
+            <b>You have a saved draft</b>
+            <p>{draftAnsweredCount} answer{draftAnsweredCount !== 1 ? "s are" : " is"} saved. Pick up where you left off.</p>
           </div>
+        )}
 
-          {/* Description / instructions */}
-          {assignment.description && (
-            <p className="text-sm text-gray-600 leading-relaxed mb-6 pb-6 border-b border-gray-200">
-              {assignment.description}
-            </p>
+        <div className="wr-acts">
+          {!isSubmitted && (
+            <button onClick={() => setMode("taking")} className="sd-btn sd-btn--amber sd-btn--lg max-sm:w-full">
+              <Play aria-hidden="true" />
+              {draftAnsweredCount > 0 ? "Keep going" : "Start the assignment"}
+            </button>
           )}
-
-          {/* Scoring rule notice */}
-          {retake?.enabled && (
-            <p className="text-xs text-gray-500 mb-4">
-              {retake.scoring_rule === "highest"
-                ? "We keep your highest score across all attempts."
-                : "Your latest attempt score will be used."}
-            </p>
+          {isSubmitted && canRetake && (
+            <button
+              onClick={() => {
+                setAnswers({});
+                setFileUpload(null);
+                setFileUploadName(null);
+                clearSavedData();
+                setMode("taking");
+              }}
+              className="sd-btn sd-btn--amber sd-btn--lg max-sm:w-full"
+            >
+              <RotateCcw aria-hidden="true" />
+              Try again
+            </button>
           )}
+          {isSubmitted && (
+            <Link href={`/lms/student/assignments/${assignmentId}/view`} className="sd-btn sd-btn--line sd-btn--lg max-sm:w-full">
+              <FileText aria-hidden="true" />See my answers
+            </Link>
+          )}
+        </div>
 
-          {/* Saved-draft notice */}
-          {!isSubmitted && draftAnsweredCount > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2.5 mb-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-              <Clock className="h-4 w-4 shrink-0" />
+        {isSubmitted && !canRetake && (
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            {retakeRequest?.status === "pending" ? (
+              <div className="ls-note" data-t="warn" role="status">
+                <b>You asked for another try</b>
+                <p>Your teacher will look at your request soon.</p>
+              </div>
+            ) : (
+              <>
+                {retakeUnavailableReason && (
+                  <div className="ls-note"><p>{retakeUnavailableReason}</p></div>
+                )}
+                {retakeRequest?.status === "rejected" && (
+                  <div className="ls-note" data-t="late" role="alert">
+                    <b>Your teacher said not this time</b>
+                    <p>{retakeRequest.teacher_remarks ? `"${retakeRequest.teacher_remarks}"` : "You can ask again if something has changed."}</p>
+                  </div>
+                )}
+                {!showRetakeRequestForm ? (
+                  <button onClick={() => setShowRetakeRequestForm(true)} className="sd-btn sd-btn--line" style={{ justifySelf: "start" }}>
+                    <RotateCcw aria-hidden="true" />
+                    {retakeRequest?.status === "rejected" ? "Ask again" : "Ask for another try"}
+                  </button>
+                ) : (
+                  <div className="wr-retake">
+                    <label htmlFor="retake-reason" style={{ fontWeight: 700 }}>Tell your teacher why (you can skip this)</label>
+                    <Textarea
+                      id="retake-reason"
+                      value={retakeReason}
+                      onChange={(e) => setRetakeReason(e.target.value)}
+                      placeholder="For example: I read a question the wrong way."
+                      rows={3}
+                    />
+                    <div className="wr-acts">
+                      <button onClick={handleRequestRetake} disabled={requestingRetake} className="sd-btn sd-btn--amber">
+                        {requestingRetake ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+                        Send request
+                      </button>
+                      <button onClick={() => { setShowRetakeRequestForm(false); setRetakeReason(""); }} disabled={requestingRetake} className="sd-btn sd-btn--line">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {isSubmitted && (
+          <div className="ls-score">
+            {hasGrade && gradeNum !== null ? <ScoreRing value={gradeNum} /> : null}
+            <div className="ls-score-text">
+              <b>{hasGrade && gradeNum !== null ? scoreWords(gradeNum) : "Waiting for a grade"}</b>
               <span>
-                You have a saved draft with {draftAnsweredCount} answer{draftAnsweredCount !== 1 ? "s" : ""} — pick up where you left off.
+                Handed in on {new Date(submission.submitted_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                {attempts.length > 1 ? `, try ${submission.attempt_number ?? attempts.length} of ${attempts.length}` : ""}
+                {hasGrade ? "" : ". Your teacher will mark it soon."}
               </span>
             </div>
-          )}
-
-          {/* Primary CTA */}
-          <div className="flex items-center gap-3 flex-wrap">
-            {!isSubmitted && (
-              <button
-                onClick={() => setMode("taking")}
-                className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-3 sm:py-2.5 rounded-lg transition-colors text-sm"
-              >
-                {draftAnsweredCount > 0 ? "Continue Assignment" : "Start Assignment"}
-              </button>
-            )}
-
-            {isSubmitted && canRetake && (
-              <button
-                onClick={() => {
-                  setAnswers({});
-                  setFileUpload(null);
-                  setFileUploadName(null);
-                  clearSavedData();
-                  setMode("taking");
-                }}
-                className="inline-flex items-center justify-center gap-2 max-sm:w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 py-3 sm:py-2.5 rounded-lg transition-colors text-sm"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Retake Assignment
-              </button>
-            )}
-
-            {isSubmitted && (
-              <Link
-                href={`/lms/student/assignments/${assignmentId}/view`}
-                className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-4 py-2.5 rounded-lg transition-colors"
-              >
-                View submission →
-              </Link>
-            )}
-          </div>
-
-          {isSubmitted && !canRetake && (
-            <div className="mt-3 space-y-2">
-              {retakeRequest?.status === "pending" ? (
-                <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-                  <Clock className="h-4 w-4 shrink-0" />
-                  <span>Retake requested — waiting for your teacher to review it.</span>
-                </div>
-              ) : (
-                <>
-                  {retakeUnavailableReason && (
-                    <div className="flex items-start gap-2 px-3 py-2.5 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-600">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
-                      <span>{retakeUnavailableReason}</span>
-                    </div>
-                  )}
-
-                  {retakeRequest?.status === "rejected" && (
-                    <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span>
-                        Your teacher declined your last request.
-                        {retakeRequest.teacher_remarks ? ` "${retakeRequest.teacher_remarks}"` : ""}
-                      </span>
-                    </div>
-                  )}
-
-                  {!showRetakeRequestForm ? (
-                    <button
-                      onClick={() => setShowRetakeRequestForm(true)}
-                      className="inline-flex items-center gap-2 bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 font-medium px-4 py-2 rounded-lg transition-colors text-sm"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                      {retakeRequest?.status === "rejected" ? "Request Again" : "Request Retake"}
-                    </button>
-                  ) : (
-                    <div className="border border-gray-200 rounded-lg p-3 space-y-2 bg-white">
-                      <Label htmlFor="retake-reason" className="text-xs text-gray-500">
-                        Let your teacher know why (optional)
-                      </Label>
-                      <Textarea
-                        id="retake-reason"
-                        value={retakeReason}
-                        onChange={(e) => setRetakeReason(e.target.value)}
-                        placeholder="e.g. I misunderstood a question, or had a technical issue while submitting."
-                        rows={2}
-                      />
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleRequestRetake}
-                          disabled={requestingRetake}
-                          className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm disabled:opacity-50"
-                        >
-                          {requestingRetake ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                          Send Request
-                        </button>
-                        <button
-                          onClick={() => { setShowRetakeRequestForm(false); setRetakeReason(""); }}
-                          disabled={requestingRetake}
-                          className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Your grade card */}
-        <div className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900 mb-3">Your grade</h2>
-
-          {!isSubmitted ? (
-            <>
-              <p className="text-sm text-gray-500 mb-4">
-                You haven&apos;t submitted this yet.{" "}
-                {retake?.scoring_rule === "highest" ? "We keep your highest score." : ""}
-              </p>
-              <p className="text-3xl font-bold text-gray-300">--</p>
-            </>
-          ) : hasGrade ? (
-            <>
-              <p className="text-sm text-gray-500 mb-3">
-                Submitted on {new Date(submission.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                {attempts.length > 1 && <> &middot; Attempt {submission.attempt_number ?? attempts.length} of {attempts.length}</>}
-              </p>
-              <div className="flex items-center gap-4 mb-4">
-                <span className={`text-4xl font-bold ${gradeColor}`}>{gradeNum}%</span>
-                <div className="flex-1 max-w-[200px]">
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div className={`h-full ${gradeBg} rounded-full transition-all`} style={{ width: `${gradeNum}%` }} />
-                  </div>
-                </div>
-              </div>
-              {submission.feedback && (
-                <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200 text-sm text-gray-700">
-                  <p className="font-medium text-gray-500 text-xs mb-1">Teacher feedback</p>
-                  {submission.feedback}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-3">
-                <Clock className="h-4 w-4 text-blue-500" />
-                <p className="text-sm text-blue-700 font-medium">Awaiting grade</p>
-              </div>
-              <p className="text-sm text-gray-500 mb-3">
-                Submitted on {new Date(submission.submitted_at).toLocaleDateString()}. Your teacher will grade this soon.
-              </p>
-              <p className="text-3xl font-bold text-gray-300">--</p>
-            </>
-          )}
-        </div>
-
-        {/* Attempt history (shown whenever there are multiple attempts) */}
-        {attempts.length > 1 && (
-          <div className="bg-gray-50 rounded-xl p-4 sm:p-6 border border-gray-100">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">Attempt history</h2>
-            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left font-medium">Attempt</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Submitted</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Score</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {attempts.map((a: any) => (
-                    <tr key={a.id} className="bg-white hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-700 font-medium">#{a.attempt_number ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {a.submitted_at ? new Date(a.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-700">
-                        {a.score != null ? `${a.score}/${a.max_score ?? "—"}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                          a.status === "graded" ? "bg-green-100 text-green-700" :
-                          a.status === "submitted" ? "bg-blue-100 text-blue-700" :
-                          "bg-gray-100 text-gray-600"
-                        }`}>
-                          {a.status ?? "—"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
 
-        {/* Overdue warning */}
+        {isSubmitted && hasGrade && submission.feedback && (
+          <div className="ls-note"><b>Teacher feedback</b><p>{submission.feedback}</p></div>
+        )}
+
+        {attempts.length > 1 && <AttemptHistory attempts={attempts} />}
+
         {isOverdue && (
-          <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
-            <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
-            <p className="text-sm text-red-700">
-              This assignment is overdue. Late submissions may not be accepted.
-            </p>
+          <div className="ls-note" data-t="late" role="alert">
+            <b><AlertCircle className="mr-1.5 inline h-4 w-4" aria-hidden="true" />This assignment is late</b>
+            <p>Late work may not be accepted. Tell your teacher if you need more time.</p>
           </div>
         )}
-      </div>
+      </LessonStage>
     </div>
   );
 }

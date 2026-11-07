@@ -55,15 +55,11 @@ export default function MCQQuestion({
     <div>
       <QuestionHeading number={number} marks={question.marks}>{text}</QuestionHeading>
 
-      {/* No answer submitted notice */}
       {showCorrectAnswer && selectedAnswer === undefined && (
-        <div className="mb-4 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-500 italic">No answer submitted for this question.</p>
-        </div>
+        <p className="qa-none">No answer was handed in for this question.</p>
       )}
 
-      {/* Options */}
-      <div className="space-y-2.5" role="radiogroup">
+      <div className="qa-list" role="radiogroup" aria-label="Answers">
         {options.map((option, i) => {
           const isSelected = selectedAnswer === i
           const isCorrectOption = showCorrectAnswer && correctIdx === i
@@ -72,17 +68,11 @@ export default function MCQQuestion({
           return (
             <label
               key={i}
-              className={`flex items-center gap-3 px-4 py-3.5 rounded-lg border-2 cursor-pointer transition-all
-                ${disabled ? 'cursor-not-allowed' : ''}
-                ${isCorrectOption
-                  ? 'border-green-500 bg-green-50'
-                  : isWrongSelection
-                  ? 'border-red-400 bg-red-50/40'
-                  : isSelected && !showCorrectAnswer
-                  ? 'border-blue-600 bg-blue-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                }
-              `}
+              className="qa-opt"
+              data-picked={isSelected && !showCorrectAnswer}
+              data-right={isCorrectOption}
+              data-wrong={isWrongSelection}
+              data-locked={disabled}
             >
               <input
                 type="radio"
@@ -91,45 +81,11 @@ export default function MCQQuestion({
                 checked={isSelected}
                 onChange={() => !disabled && onAnswerChange(i)}
                 disabled={disabled}
-                className="sr-only"
               />
-              {/* Radio circle */}
-              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center
-                ${isCorrectOption
-                  ? 'border-green-500 bg-green-500'
-                  : isWrongSelection
-                  ? 'border-red-400 bg-red-400'
-                  : isSelected && !showCorrectAnswer
-                  ? 'border-blue-600 bg-blue-600'
-                  : 'border-gray-400'
-                }
-              `}>
-                {(isSelected || isCorrectOption) && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                )}
-              </div>
-
-              {/* Letter */}
-              <span className="text-sm font-medium text-gray-500 w-5 flex-shrink-0">
-                {String.fromCharCode(65 + i)}.
-              </span>
-
-              {/* Option text */}
-              <span className={`flex-1 text-sm ${isCorrectOption ? 'text-green-800 font-medium' : isWrongSelection ? 'text-red-700' : 'text-gray-800'}`}>
-                {option}
-              </span>
-
-              {/* Labels */}
-              {showCorrectAnswer && (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {isSelected && !isCorrectOption && (
-                    <span className="text-xs text-red-600 font-medium">Your choice</span>
-                  )}
-                  {isCorrectOption && (
-                    <span className="text-xs text-green-700 font-semibold">Correct Answer</span>
-                  )}
-                </div>
-              )}
+              <span className="qa-letter" aria-hidden="true">{String.fromCharCode(65 + i)}</span>
+              <span className="qa-label">{option}</span>
+              {showCorrectAnswer && isSelected && !isCorrectOption && <span className="qa-tag qa-tag--wrong">Your choice</span>}
+              {isCorrectOption && <span className="qa-tag qa-tag--right">Right answer</span>}
             </label>
           )
         })}

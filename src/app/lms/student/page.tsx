@@ -1,29 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { frontendLogger } from "@/lib/frontend-logger";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/student/StatCard";
-import {
-  BookOpen,
-  FileText,
-  Calendar,
-  Award,
-  CheckCircle,
-  Clock,
-  Bell,
-  Play,
-  Upload,
-  Flame,
-  Trophy,
-  Target,
-  ArrowRight
-} from "lucide-react";
 import Link from "next/link";
+import { ArrowRight, Bell, Clock, Play } from "lucide-react";
+import { frontendLogger } from "@/lib/frontend-logger";
+import WeekRun, { type WeekDay } from "@/components/student/WeekRun";
 import {
   useStudentProfile,
   useStudentDashboardStats,
@@ -33,7 +15,7 @@ import {
   useStudentNotifications,
   useStudentLastViewed,
   useStudentActivity,
-  useStudentRankings
+  useStudentRankings,
 } from "@/hooks/useStudentData";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
@@ -63,9 +45,21 @@ interface Course {
   name?: string;
   grade?: string;
   subject?: string;
-  thumbnail_url?: string;
   progress_percentage?: number;
   average_grade?: number | null;
+}
+
+const WEEKLY_GOAL_DAYS = 5;
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+function dueLabel(days: number | null | undefined) {
+  if (days == null) return "No due date";
+  if (days < 0) return `${plural(Math.abs(days), "day")} overdue`;
+  if (days === 0) return "Due today";
+  return `Due in ${plural(days, "day")}`;
 }
 
 export default function StudentDashboard() {
@@ -73,32 +67,21 @@ export default function StudentDashboard() {
   const [greeting, setGreeting] = useState("Hello");
   const [isMounted, setIsMounted] = useState(false);
 
-  // OPTIMIZATION: Request deduplication - Track ongoing requests to prevent duplicates
-  const _ongoingRequests = useRef<Map<string, Promise<unknown>>>(new Map());
-
-  // OPTIMIZATION: Incremental Loading - Load critical data first, defer non-critical
-  // Critical: profile, stats (needed for header/stats cards)
   const { data: profile } = useStudentProfile();
   const { data: stats } = useStudentDashboardStats();
   const { data: courses, isLoading: coursesLoading } = useStudentCourses();
   const { data: assignments, isLoading: assignmentsLoading } = useStudentAssignments();
   const { data: dailyAssignments, isLoading: dailyLoading } = useStudentDailyAssignments();
-  const { data: lastViewed, isLoading: lastViewedLoading } = useStudentLastViewed();
+  const { data: lastViewed } = useStudentLastViewed();
 
-  // OPTIMIZATION: Defer non-critical data loading - load after initial render
+  // Non-critical data (notifications) loads after the first paint.
   const [shouldLoadNonCritical, setShouldLoadNonCritical] = useState(false);
-
   useEffect(() => {
-    // Defer non-critical data loading using requestIdleCallback
     if (isMounted && !shouldLoadNonCritical) {
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        requestIdleCallback(() => {
-          setShouldLoadNonCritical(true);
-        }, { timeout: 500 });
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        requestIdleCallback(() => setShouldLoadNonCritical(true), { timeout: 500 });
       } else {
-        setTimeout(() => {
-          setShouldLoadNonCritical(true);
-        }, 200);
+        setTimeout(() => setShouldLoadNonCritical(true), 200);
       }
     }
   }, [isMounted, shouldLoadNonCritical]);
@@ -106,57 +89,37 @@ export default function StudentDashboard() {
   const { data: notifications, isLoading: notificationsLoading } = useStudentNotifications();
   const { data: activity } = useStudentActivity();
   const { data: rankInfo } = useStudentRankings();
-  useDashboardRealtime('student', {
+  useDashboardRealtime("student", {
     enabled: true,
-    debugLabel: 'student-dashboard',
+    debugLabel: "student-dashboard",
     customEventMap: {
-      'notification:new': [queryKeys.student.notifications, queryKeys.student.dashboardStats],
-      'notification:read': [queryKeys.student.notifications, queryKeys.student.dashboardStats],
-      'dashboard:stats': [queryKeys.student.dashboardStats, queryKeys.student.courses, queryKeys.student.assignments],
+      "notification:new": [queryKeys.student.notifications, queryKeys.student.dashboardStats],
+      "notification:read": [queryKeys.student.notifications, queryKeys.student.dashboardStats],
+      "dashboard:stats": [queryKeys.student.dashboardStats, queryKeys.student.courses, queryKeys.student.assignments],
     },
   });
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
-
-    frontendLogger.debug('Student dashboard mounted', {
-      component: 'StudentDashboard',
-    });
-
-    // Set greeting based on time of day
+    frontendLogger.debug("Student dashboard mounted", { component: "StudentDashboard" });
     const hour = new Date().getHours();
     if (hour < 12) setGreeting("Good morning");
     else if (hour < 18) setGreeting("Good afternoon");
     else setGreeting("Good evening");
   }, []);
 
-  // Check for force password change using profile data from hook (no duplicate query)
   useEffect(() => {
-    interface Profile {
-      force_password_change?: boolean;
-    }
-
-    if (profile && typeof profile === 'object' && 'force_password_change' in (profile as Profile) && (profile as Profile).force_password_change) {
-      router.push('/lms/student/settings?force_change=true');
-    }
+    const p = profile as { force_password_change?: boolean } | null | undefined;
+    if (p?.force_password_change) router.push("/lms/student/settings?force_change=true");
   }, [profile, router]);
 
-  // Use smart refresh for tab switching
   useSmartRefresh({
-    queryKeys: [
-      ['studentProfile'],
-      ['studentDashboardStats'],
-      ['studentCourses'],
-      ['studentAssignments'],
-      ['studentNotifications']
-    ],
-    minRefreshInterval: 60000, // 1 minute minimum between refreshes
+    queryKeys: [["studentProfile"], ["studentDashboardStats"], ["studentCourses"], ["studentAssignments"], ["studentNotifications"]],
+    minRefreshInterval: 60000,
   });
 
-  // Combined daily + course pending assignments (not yet started), grouped by
-  // urgency: Overdue → Due today → This week → Later. Answers "what do I have
-  // to do today?" at a glance.
+  // Pending daily + course assignments, grouped by urgency: Overdue, Due today, This week, Later.
   const pendingGroups = useMemo(() => {
     const course = Array.isArray(assignments) ? (assignments as Assignment[]) : [];
     const daily = Array.isArray(dailyAssignments) ? (dailyAssignments as Assignment[]) : [];
@@ -165,7 +128,7 @@ export default function StudentDashboard() {
       .filter((a) => {
         if (!a.id || seen.has(a.id) || a.is_locked) return false;
         seen.add(a.id);
-        return a.status === 'not_started' || a.status === 'pending' || a.status == null;
+        return a.status === "not_started" || a.status === "pending" || a.status == null;
       })
       .sort((a, b) => {
         const da = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER;
@@ -174,11 +137,11 @@ export default function StudentDashboard() {
       })
       .slice(0, 6);
 
-    const groups: Array<{ key: string; label: string; labelClass: string; items: Assignment[] }> = [
-      { key: 'overdue', label: 'Overdue', labelClass: 'text-red-600', items: [] },
-      { key: 'today', label: 'Due today', labelClass: 'text-orange-600', items: [] },
-      { key: 'week', label: 'This week', labelClass: 'text-gray-500', items: [] },
-      { key: 'later', label: 'Later', labelClass: 'text-gray-400', items: [] },
+    const groups: Array<{ key: string; label: string; items: Assignment[] }> = [
+      { key: "overdue", label: "Overdue", items: [] },
+      { key: "today", label: "Due today", items: [] },
+      { key: "week", label: "This week", items: [] },
+      { key: "later", label: "Later", items: [] },
     ];
     pending.forEach((a) => {
       const d = a.days_until_due;
@@ -187,10 +150,9 @@ export default function StudentDashboard() {
       else if (d != null && d <= 7) groups[2].items.push(a);
       else groups[3].items.push(a);
     });
-    return { groups: groups.filter((g) => g.items.length > 0), total: pending.length };
+    return { groups: groups.filter((g) => g.items.length > 0), total: pending.length, overdue: groups[0].items.length, today: groups[1].items.length, first: pending[0] };
   }, [assignments, dailyAssignments]);
 
-  // Recently graded submissions — small feedback loop after work is marked.
   const recentlyGraded = useMemo(() => {
     const course = Array.isArray(assignments) ? (assignments as Assignment[]) : [];
     const daily = Array.isArray(dailyAssignments) ? (dailyAssignments as Assignment[]) : [];
@@ -209,56 +171,49 @@ export default function StudentDashboard() {
       .slice(0, 3);
   }, [assignments, dailyAssignments]);
 
-  // Recent unread notifications
   const recentNotifications = useMemo(
     () =>
       ((notifications as Array<{ id?: string; title?: string; message?: string; created_at?: string; is_read?: boolean }> | undefined) || [])
         .filter((n) => !n.is_read)
-        .slice(0, 5),
-    [notifications]
+        .slice(0, 4),
+    [notifications],
   );
 
   const courseList = useMemo(() => (courses as Course[] | undefined) || [], [courses]);
+  const activeCourses = useMemo(() => courseList.filter((c) => (c.progress_percentage || 0) < 100).slice(0, 3), [courseList]);
 
-  // Active courses = exist and not 100% complete (matches useStudentDashboardStats)
-  const activeCourses = useMemo(
-    () => courseList.filter((c) => (c.progress_percentage || 0) < 100).slice(0, 3),
-    [courseList]
-  );
-
-  // Performance: compute course-progress and average-grade once (was duplicated inline).
   const performance = useMemo(() => {
-    const avgProgress =
-      courseList.length > 0
-        ? courseList.reduce((acc, c) => acc + (c.progress_percentage || 0), 0) / courseList.length
-        : 0;
+    const avgProgress = courseList.length > 0 ? courseList.reduce((acc, c) => acc + (c.progress_percentage || 0), 0) / courseList.length : 0;
     const graded = courseList.filter((c) => c.average_grade != null);
-    const avgGrade =
-      graded.length > 0
-        ? graded.reduce((sum, c) => sum + (c.average_grade ?? 0), 0) / graded.length
-        : 0;
+    const avgGrade = graded.length > 0 ? graded.reduce((sum, c) => sum + (c.average_grade ?? 0), 0) / graded.length : 0;
     return { avgProgress, avgGrade };
   }, [courseList]);
 
-  // Weekly goal: active days since Monday, out of a 5-day target.
-  const WEEKLY_GOAL_DAYS = 5;
-  const weeklyActiveDays = useMemo(() => {
-    if (!isMounted) return 0;
-    const days = activity?.activityDays ?? [];
+  // This week, Monday to Sunday, and the last 28 days, both marked from the same activity feed.
+  const { weekDays, weekCount, month, monthCount } = useMemo(() => {
+    const none = { weekDays: [] as WeekDay[], weekCount: 0, month: [] as Array<{ on: boolean; today: boolean }>, monthCount: 0 };
+    if (!isMounted) return none;
+    const activeKeys = new Set((activity?.activityDays ?? []).filter((d) => d.hasLearning || d.hasAssignment).map((d) => d.date));
     const now = new Date();
-    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    // getDay(): Sun=0 … Sat=6 → offset back to the most recent Monday
-    monday.setDate(monday.getDate() - ((now.getDay() + 6) % 7));
-    return days.filter((d) => {
-      const t = new Date(d.date);
-      return !isNaN(t.getTime()) && t >= monday && (d.hasLearning || d.hasAssignment);
-    }).length;
+    const todayKey = dayKey(now);
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+    const weekDays = DAY_LABELS.map((label, i) => {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+      const k = dayKey(d);
+      return { label, active: activeKeys.has(k), today: k === todayKey, future: k > todayKey };
+    });
+    const month = Array.from({ length: 28 }, (_, i) => {
+      const k = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (27 - i)));
+      return { on: activeKeys.has(k), today: k === todayKey };
+    });
+    return { weekDays, weekCount: weekDays.filter((d) => d.active).length, month, monthCount: month.filter((m) => m.on).length };
   }, [activity, isMounted]);
 
   if (!isMounted) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="sd-page">
+        <div className="sd-skel" style={{ height: "18rem" }} />
+        <div className="sd-skel" style={{ height: "6rem" }} />
       </div>
     );
   }
@@ -271,532 +226,250 @@ export default function StudentDashboard() {
     unreadNotifications?: number;
   } | undefined;
 
-  const studentStatCards = [
-    {
-      title: "Active Courses",
-      value: studentStats?.activeCourses || 0,
-      description: "Courses in progress",
-      badge: "In progress",
-      icon: <BookOpen className="h-4 w-4" />,
-      accentColor: "#2563eb",
-      info: "Courses you have started and not yet completed.",
-      href: "/lms/student/my-courses",
-    },
-    {
-      title: "Pending Assignments",
-      value: studentStats?.pendingAssignments || 0,
-      description: "Due soon",
-      badge: "Pending",
-      icon: <FileText className="h-4 w-4" />,
-      accentColor: "#f97316",
-      info: "Daily homework + course assignments that still need your attention.",
-      href: "/lms/student/assignments?filter=pending",
-    },
-    {
-      title: "Courses Completed",
-      value: studentStats?.completedCourses || 0,
-      description: "Total finished",
-      badge: "Finished",
-      icon: <CheckCircle className="h-4 w-4" />,
-      accentColor: "#16a34a",
-      info: "Courses you have completed.",
-      href: "/lms/student/my-courses?tab=completed",
-    },
-    {
-      title: "Assignments Completed",
-      value: studentStats?.completedAssignments || 0,
-      description: "Assignments done",
-      badge: "Done",
-      icon: <CheckCircle className="h-4 w-4" />,
-      accentColor: "#7c3aed",
-      info: "Assignments you have completed.",
-      href: "/lms/student/assignments?filter=graded",
-    },
-    {
-      title: "Notifications",
-      value: studentStats?.unreadNotifications || 0,
-      description: "Unread",
-      badge: (studentStats?.unreadNotifications || 0) > 0 ? "Unread" : "Clear",
-      icon: <Bell className="h-4 w-4" />,
-      accentColor: "#0891b2",
-      info: "Unread notifications for your account.",
-      href: "/lms/student/notifications",
-    },
+  const ledger = [
+    { label: "Active courses", value: studentStats?.activeCourses || 0, hint: "In progress", href: "/lms/student/my-courses" },
+    { label: "Pending assignments", value: studentStats?.pendingAssignments || 0, hint: pendingGroups.overdue > 0 ? `${pendingGroups.overdue} overdue` : "To do", href: "/lms/student/assignments?filter=pending", hot: pendingGroups.overdue > 0 },
+    { label: "Courses completed", value: studentStats?.completedCourses || 0, hint: "Finished", href: "/lms/student/my-courses?tab=completed" },
+    { label: "Assignments done", value: studentStats?.completedAssignments || 0, hint: "Submitted and graded", href: "/lms/student/assignments?filter=graded" },
   ];
+
+  const info = (
+    profile as { students?: Array<{ schools?: Array<{ name?: string }>; grade?: string; section?: string }> } | null
+  )?.students?.[0];
+  const gradeSection = info?.grade ? `${info.grade}${info.section ? ` - Section ${info.section.replace(/^section\s*/i, "")}` : ""}` : "";
+  const where = [info?.schools?.[0]?.name, gradeSection].filter(Boolean).join(" • ");
+  const firstName = (profile as { full_name?: string } | null)?.full_name?.split(" ")[0] || "Student";
 
   const sectionRank = rankInfo?.rankings?.section;
   const showRank = !!sectionRank && (rankInfo?.attempted ?? 0) > 0 && sectionRank.total > 1;
   const currentStreak = activity?.currentStreak ?? 0;
+  const unread = studentStats?.unreadNotifications ?? 0;
+
+  // One sentence that answers "what should I do now?"
+  const { overdue, today, first } = pendingGroups;
+  let status: React.ReactNode;
+  if (overdue > 0 || today > 0) {
+    const parts = [
+      overdue > 0 ? <strong key="o">{overdue} overdue</strong> : null,
+      today > 0 ? <strong key="t">{today} due today</strong> : null,
+    ].filter(Boolean);
+    status = <>You have {parts[0]}{parts[1] ? <> and {parts[1]}</> : null}.</>;
+  } else if (first) {
+    status = <>Nothing is overdue. Next up is <strong>{first.title}</strong>.</>;
+  } else {
+    status = <>You are all caught up. Pick a course to keep going.</>;
+  }
+  const loadingWork = assignmentsLoading || dailyLoading;
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-3xl font-bold text-gray-900">
-            {greeting}, {(profile as { full_name?: string } | null)?.full_name?.split(' ')[0] || 'Student'}! 👋
-          </h1>
-          {(() => {
-            const studentInfo = (
-              profile as {
-                students?: Array<{
-                  schools?: Array<{ name?: string }>;
-                  grade?: string;
-                  section?: string;
-                }>;
-              } | null
-            )?.students?.[0];
-            const schoolName = studentInfo?.schools?.[0]?.name;
-            const gradeSection = studentInfo?.grade
-              ? `${studentInfo.grade}${studentInfo.section ? ` - Section ${studentInfo.section.replace(/^section\s*/i, '')}` : ''}`
-              : '';
-            const subtitle = [schoolName, gradeSection].filter(Boolean).join(' • ');
-            return subtitle ? <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">{subtitle}</p> : null;
-          })()}
+    <div className="sd-page">
+      <section className="sd-hero" aria-labelledby="sd-hello">
+        <Link href="/lms/student/notifications" className="sd-bell" aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}>
+          <Bell aria-hidden="true" />
+          {unread > 0 && <i>{unread > 99 ? "99+" : unread}</i>}
+        </Link>
+        <div className="sd-hero-copy">
+          <h1 id="sd-hello">{greeting}, {firstName}</h1>
+          {where ? <p className="sd-where">{where}</p> : null}
+          <p className="sd-status">{loadingWork ? "Checking your work…" : status}</p>
+          <div className="sd-hero-actions">
+            {lastViewed ? (
+              <Link href={`/lms/student/my-courses/${lastViewed.courseId}`} className="sd-btn sd-btn--amber">
+                <Play aria-hidden="true" />Resume {lastViewed.courseTitle}
+              </Link>
+            ) : (
+              <Link href="/lms/student/my-courses" className="sd-btn sd-btn--amber">Browse my courses</Link>
+            )}
+            <Link href="/lms/student/assignments" className="sd-btn sd-btn--ghost-dark">See assignments</Link>
+          </div>
+          {lastViewed?.chapterTitle ? (
+            <p className="sd-resume-note">Last opened: {lastViewed.chapterTitle}{lastViewed.contentTitle ? ` • ${lastViewed.contentTitle}` : ""}</p>
+          ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {(activity?.activeDaysLast28 ?? 0) > 0 && (
-            <div
-              className="flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-600 ring-1 ring-blue-100"
-              title={`Learn on ${WEEKLY_GOAL_DAYS} days each week to stay on track`}
-            >
-              <Target className="h-4 w-4" />
-              {Math.min(weeklyActiveDays, WEEKLY_GOAL_DAYS)}/{WEEKLY_GOAL_DAYS} days this week
-            </div>
-          )}
-          {currentStreak > 0 && (
-            <div className="flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1.5 text-sm font-semibold text-orange-600 ring-1 ring-orange-100">
-              <Flame className="h-4 w-4" />
-              {currentStreak}-day streak
-            </div>
-          )}
-          <Link href="/lms/student/notifications">
-            <Button variant="outline" className="relative">
-              <Bell className="h-4 w-4" />
-              {recentNotifications.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                  {recentNotifications.length}
-                </span>
-              )}
-            </Button>
+        <WeekRun days={weekDays} count={weekCount} goal={WEEKLY_GOAL_DAYS} streak={currentStreak} />
+      </section>
+
+      <nav className="sd-ledger" aria-label="Summary">
+        {ledger.map((m) => (
+          <Link key={m.label} href={m.href} data-hot={m.hot ? "true" : undefined}>
+            <span className="sd-l">{m.label}</span>
+            <b className="sd-n">{m.value.toLocaleString("en-IN")}</b>
+            <small>{m.hint}</small>
           </Link>
-        </div>
-      </div>
-
-      {/* Jump back in — resume last viewed course */}
-      {lastViewedLoading ? (
-        <Skeleton className="h-24 w-full rounded-xl" />
-      ) : lastViewed ? (
-        <Card className="overflow-hidden border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
-                <Play className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium uppercase tracking-wide text-blue-600">Jump back in</p>
-                <h3 className="truncate font-semibold text-gray-900">{lastViewed.courseTitle}</h3>
-                <p className="truncate text-sm text-gray-600">
-                  {lastViewed.chapterTitle
-                    ? `${lastViewed.chapterTitle}${lastViewed.contentTitle ? ` • ${lastViewed.contentTitle}` : ''}`
-                    : 'Continue where you left off'}
-                </p>
-              </div>
-            </div>
-            <Link
-              href={`/lms/student/my-courses/${lastViewed.courseId}`}
-              className="shrink-0"
-            >
-              <Button className="w-full sm:w-auto">
-                Resume
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-6 [&>*:last-child]:max-lg:col-span-2">
-        {studentStatCards.map((metric) => (
-          <StatCard
-            key={metric.title}
-            title={metric.title}
-            value={metric.value}
-            description={metric.description}
-            badge={metric.badge}
-            icon={metric.icon}
-            accentColor={metric.accentColor}
-            info={metric.info}
-            href={metric.href}
-          />
         ))}
-      </div>
+      </nav>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Active Courses & Assignments */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Active Courses */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Active Courses</CardTitle>
-                  <CardDescription>Continue your learning journey</CardDescription>
-                </div>
-                <Link href="/lms/student/my-courses">
-                  <Button variant="outline" size="sm">View All</Button>
-                </Link>
+      <div className="sd-cols">
+        <div className="sd-col">
+          <section className="sd-panel" aria-labelledby="sd-todo">
+            <div className="sd-panel-head">
+              <div>
+                <h2 id="sd-todo">To do</h2>
+                <p>Daily homework and course assignments, most urgent first</p>
               </div>
-            </CardHeader>
-            <CardContent>
-              {coursesLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="rounded-lg border p-4">
-                      <Skeleton className="h-5 w-1/2" />
-                      <Skeleton className="mt-2 h-4 w-1/3" />
-                      <Skeleton className="mt-4 h-2 w-full" />
-                    </div>
-                  ))}
-                </div>
-              ) : activeCourses.length > 0 ? (
-                <div className="space-y-4">
-                  {activeCourses.map((course) => (
-                    <div key={course.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900">{course.name || course.title}</h3>
-                          <p className="text-sm text-gray-600 mt-1">{course.grade}{course.subject ? ` • ${course.subject}` : ''}</p>
-                          <div className="mt-3">
-                            <div className="flex justify-between text-sm mb-1">
-                              <span className="text-gray-600">Progress</span>
-                              <span className="font-medium">{course.progress_percentage?.toFixed(0) || 0}%</span>
-                            </div>
-                            <Progress value={course.progress_percentage || 0} className="h-2" />
-                          </div>
+              <Link href="/lms/student/assignments" className="sd-link">View all</Link>
+            </div>
+            {loadingWork ? (
+              <><div className="sd-skel" /><div className="sd-skel" /></>
+            ) : pendingGroups.total > 0 ? (
+              pendingGroups.groups.map((g) => (
+                <div className="sd-group" data-k={g.key} key={g.key}>
+                  <p className="sd-group-name">{g.label} <span>({g.items.length})</span></p>
+                  <ul className="sd-rows">
+                    {g.items.map((a) => (
+                      <li className="sd-row" key={a.id}>
+                        <div className="sd-row-main">
+                          <p className="sd-row-title">
+                            {a.title}
+                            {a.assignment_type === "DAILY" && <span className="sd-tag">Daily</span>}
+                          </p>
+                          <p className="sd-row-sub">{a.course_title || a.subject}</p>
+                          <p className="sd-due">
+                            <Clock aria-hidden="true" />
+                            {dueLabel(a.days_until_due)}
+                            {a.due_date ? ` • ${new Date(String(a.due_date)).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}
+                          </p>
                         </div>
-                        <Link href={`/lms/student/my-courses/${course.id}`}>
-                          <Button size="sm" className="ml-4">
-                            <Play className="h-4 w-4 mr-2" />
-                            Continue
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
+                        <Link href={`/lms/student/assignments/${a.id}`} className="sd-btn sd-btn--ink">Start</Link>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>No active courses yet</p>
-                  <p className="mt-1 text-sm text-gray-400">
-                    Courses your school assigns will show up here.
-                  </p>
-                  <Link href="/lms/student/my-courses">
-                    <Button variant="outline" size="sm" className="mt-3">
-                      Browse my courses
-                    </Button>
-                  </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Pending Assignments */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Pending Assignments</CardTitle>
-                  <CardDescription>Daily homework &amp; course assignments due soon</CardDescription>
-                </div>
-                <Link href="/lms/student/assignments">
-                  <Button variant="outline" size="sm">View All</Button>
-                </Link>
+              ))
+            ) : (
+              <div className="sd-empty">
+                <b>Nothing to hand in</b>
+                <p>New assignments from your teachers will show up here.</p>
+                <Link href="/lms/student/assignments" className="sd-link">See past assignments</Link>
               </div>
-            </CardHeader>
-            <CardContent>
-              {assignmentsLoading || dailyLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="rounded-lg border p-4">
-                      <Skeleton className="h-5 w-2/3" />
-                      <Skeleton className="mt-2 h-4 w-1/3" />
-                      <Skeleton className="mt-3 h-4 w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : pendingGroups.total > 0 ? (
-                <div className="space-y-5">
-                  {pendingGroups.groups.map((group) => (
-                    <div key={group.key}>
-                      <p className={`mb-2 text-xs font-semibold uppercase tracking-wide ${group.labelClass}`}>
-                        {group.label}
-                        <span className="ml-1.5 font-normal normal-case text-gray-400">({group.items.length})</span>
-                      </p>
-                      <div className="space-y-3">
-                        {group.items.map((assignment: Assignment) => (
-                          <div
-                            key={assignment.id}
-                            className={`border rounded-lg p-4 ${group.key === 'overdue' ? 'border-red-200 bg-red-50/40' : group.key === 'today' ? 'border-orange-200 bg-orange-50/40' : ''}`}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <h3 className="font-semibold text-gray-900">{assignment.title}</h3>
-                                  {assignment.assignment_type === 'DAILY' && (
-                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-                                      Daily
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-sm text-gray-600 mt-1">{assignment.course_title || assignment.subject}</p>
-                                <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                                  {assignment.due_date && (
-                                    <div className="flex items-center">
-                                      <Calendar className="h-4 w-4 mr-1" />
-                                      Due: {new Date(String(assignment.due_date)).toLocaleDateString()}
-                                    </div>
-                                  )}
-                                  <div className={`flex items-center ${group.key === 'overdue' ? 'text-red-600 font-medium' : group.key === 'today' ? 'text-orange-600 font-medium' : ''}`}>
-                                    <Clock className="h-4 w-4 mr-1" />
-                                    {assignment.days_until_due == null
-                                      ? 'No due date'
-                                      : assignment.days_until_due > 0
-                                      ? `${assignment.days_until_due} days left`
-                                      : assignment.days_until_due === 0
-                                      ? 'Due today'
-                                      : 'Overdue'
-                                    }
-                                  </div>
-                                </div>
-                              </div>
-                              <Link href={`/lms/student/assignments/${assignment.id}`}>
-                                <Button size="sm" variant={assignment.days_until_due != null && assignment.days_until_due <= 2 ? "default" : "outline"}>
-                                  <Upload className="h-4 w-4 mr-2" />
-                                  Start
-                                </Button>
-                              </Link>
-                            </div>
-                          </div>
-                        ))}
+            )}
+          </section>
+
+          <section className="sd-panel" aria-labelledby="sd-courses">
+            <div className="sd-panel-head">
+              <div>
+                <h2 id="sd-courses">Keep learning</h2>
+                <p>Courses you have started</p>
+              </div>
+              <Link href="/lms/student/my-courses" className="sd-link">View all</Link>
+            </div>
+            {coursesLoading ? (
+              <><div className="sd-skel" /><div className="sd-skel" /></>
+            ) : activeCourses.length > 0 ? (
+              <div style={{ borderTop: "1.5px solid var(--sd-line)" }}>
+                {activeCourses.map((c) => {
+                  const pct = Math.round(c.progress_percentage || 0);
+                  return (
+                    <div className="sd-course" key={c.id}>
+                      <div>
+                        <h3>{c.name || c.title}</h3>
+                        {(c.grade || c.subject) && <p className="sd-row-sub">{[c.grade, c.subject].filter(Boolean).join(" • ")}</p>}
                       </div>
+                      <div className="sd-meter-row">
+                        <div className="sd-meter" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${c.name || c.title} progress`}>
+                          <i style={{ "--p": `${pct}%` } as React.CSSProperties} />
+                        </div>
+                        <b>{pct}%</b>
+                      </div>
+                      <Link href={`/lms/student/my-courses/${c.id}`} className="sd-btn sd-btn--ink">
+                        {pct > 0 ? "Continue" : "Start"} <ArrowRight aria-hidden="true" />
+                      </Link>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <CheckCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>All caught up! No pending assignments</p>
-                  <Link href="/lms/student/assignments">
-                    <Button variant="link" size="sm" className="mt-1 text-blue-600">
-                      View all assignments
-                    </Button>
-                  </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="sd-empty">
+                <b>No courses started yet</b>
+                <p>Courses your school assigns will show up here.</p>
+                <Link href="/lms/student/my-courses" className="sd-btn sd-btn--line">Open my courses</Link>
+              </div>
+            )}
+          </section>
         </div>
 
-        {/* Right Column - Ranking, Quick Actions & Notifications */}
-        <div className="space-y-6">
-          {/* Class Ranking */}
+        <div className="sd-col">
           {showRank && sectionRank && (
-            <Card className="overflow-hidden border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    <Trophy className="h-5 w-5 text-amber-500" />
-                    Your Rank
-                  </CardTitle>
-                  <Link href="/lms/student/analytics">
-                    <Button variant="ghost" size="sm">Details</Button>
-                  </Link>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-amber-600">#{sectionRank.rank}</span>
-                  <span className="text-sm text-gray-600">of {sectionRank.total} in your section</span>
-                </div>
-                <p className="mt-1 text-sm text-gray-500">
-                  Top {Math.max(1, Math.round(100 - sectionRank.percentile))}% of your class
-                </p>
-              </CardContent>
-            </Card>
+            <section className="sd-panel" aria-labelledby="sd-rank">
+              <div className="sd-panel-head">
+                <h2 id="sd-rank">Class rank</h2>
+                <Link href="/lms/student/analytics" className="sd-link">Details</Link>
+              </div>
+              <p className="sd-rank"><b>#{sectionRank.rank}</b><span>of {sectionRank.total} in your section</span></p>
+              <div className="sd-ladder" aria-hidden="true"><i style={{ "--p": `${Math.max(4, Math.min(96, sectionRank.percentile))}%` } as React.CSSProperties} /></div>
+              <p className="sd-ladder-cap"><span>Start</span><span>Top {Math.max(1, Math.round(100 - sectionRank.percentile))}% of your class</span></p>
+            </section>
           )}
 
-          {/* Recently graded — feedback loop after submitting work */}
           {recentlyGraded.length > 0 && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Recently Graded</CardTitle>
-                  <Link href="/lms/student/assignments?filter=graded">
-                    <Button variant="ghost" size="sm">View All</Button>
-                  </Link>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
+            <section className="sd-panel" aria-labelledby="sd-graded">
+              <div className="sd-panel-head">
+                <h2 id="sd-graded">Recently graded</h2>
+                <Link href="/lms/student/assignments?filter=graded" className="sd-link">View all</Link>
+              </div>
+              <div>
                 {recentlyGraded.map((a) => {
                   const grade = Number(a.submission?.grade);
-                  const gradeColor =
-                    grade >= 70 ? 'text-emerald-600' : grade >= 50 ? 'text-amber-600' : 'text-red-500';
+                  const t = grade >= 70 ? "high" : grade >= 50 ? "mid" : "low";
                   return (
-                    <Link
-                      key={a.id}
-                      href={`/lms/student/assignments/${a.id}/view`}
-                      className="flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-gray-50"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-900">{a.title}</p>
-                        <p className="truncate text-xs text-gray-500">{a.course_title || a.subject}</p>
+                    <Link key={a.id} href={`/lms/student/assignments/${a.id}/view`} className="sd-score">
+                      <div className="sd-row-main">
+                        <p className="sd-row-title">{a.title}</p>
+                        <p className="sd-row-sub">{a.course_title || a.subject}</p>
                       </div>
-                      <span className={`shrink-0 text-sm font-bold ${gradeColor}`}>
-                        {isNaN(grade) ? '—' : `${grade}%`}
-                        {grade >= 90 && ' 🎉'}
-                      </span>
+                      <div className="sd-score-n" data-t={t}>
+                        <b>{isNaN(grade) ? "—" : `${grade}%`}</b>
+                        <div className="sd-meter"><i style={{ "--p": `${isNaN(grade) ? 0 : Math.min(100, grade)}%` } as React.CSSProperties} /></div>
+                      </div>
                     </Link>
                   );
                 })}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           )}
 
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Common tasks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Link href="/lms/student/my-courses">
-                <Button variant="outline" className="w-full justify-start">
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  My Courses
-                </Button>
-              </Link>
-              <Link href="/lms/student/assignments">
-                <Button variant="outline" className="w-full justify-start">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Assignments
-                </Button>
-              </Link>
-              <Link href="/lms/student/certificates">
-                <Button variant="outline" className="w-full justify-start">
-                  <Award className="h-4 w-4 mr-2" />
-                  Certificates
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <section className="sd-panel" aria-labelledby="sd-progress">
+            <div className="sd-panel-head">
+              <h2 id="sd-progress">Your progress</h2>
+              <Link href="/lms/student/analytics" className="sd-link">Analytics</Link>
+            </div>
+            <div className="sd-stat">
+              <p className="sd-stat-top"><span>Course progress</span><b>{Math.round(performance.avgProgress)}%</b></p>
+              <div className="sd-meter"><i style={{ "--p": `${performance.avgProgress}%` } as React.CSSProperties} /></div>
+            </div>
+            <div className="sd-stat">
+              <p className="sd-stat-top"><span>Average grade</span><b>{Math.round(performance.avgGrade)}%</b></p>
+              <div className="sd-meter"><i style={{ "--p": `${performance.avgGrade}%` } as React.CSSProperties} /></div>
+            </div>
+            <div className="sd-month">
+              <p className="sd-stat-top"><span>Last 4 weeks</span><b>{plural(monthCount, "active day")}</b></p>
+              <div className="sd-month-grid" aria-hidden="true">
+                {month.map((m, i) => <i key={i} data-on={m.on} data-today={m.today} />)}
+              </div>
+            </div>
+          </section>
 
-          {/* Recent Notifications - OPTIMIZATION: Lazy load this section */}
-          {shouldLoadNonCritical ? (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Notifications</CardTitle>
-                  <Link href="/lms/student/notifications">
-                    <Button variant="ghost" size="sm">View All</Button>
-                  </Link>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {notificationsLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((i) => (
-                      <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                    ))}
+          <section className="sd-panel" aria-labelledby="sd-notes">
+            <div className="sd-panel-head">
+              <h2 id="sd-notes">Unread</h2>
+              <Link href="/lms/student/notifications" className="sd-link">View all</Link>
+            </div>
+            {!shouldLoadNonCritical || notificationsLoading ? (
+              <><div className="sd-skel" /><div className="sd-skel" /></>
+            ) : recentNotifications.length > 0 ? (
+              <div>
+                {recentNotifications.map((n, i) => (
+                  <div className="sd-note" key={n.id ?? i}>
+                    <b>{n.title}</b>
+                    <p>{n.message}</p>
+                    {n.created_at && <small>{new Date(n.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</small>}
                   </div>
-                ) : recentNotifications.length > 0 ? (
-                  <div className="space-y-3">
-                    {recentNotifications.map((notification, idx: number) => (
-                      <div key={notification.id ?? idx} className="p-3 border rounded-lg bg-blue-50">
-                        <div className="flex items-start gap-2">
-                          <Bell className="h-4 w-4 text-blue-600 mt-0.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">{notification.title}</p>
-                            <p className="text-xs text-gray-600 mt-1">{notification.message}</p>
-                            <p className="text-xs text-gray-400 mt-1">
-                              {notification.created_at ? new Date(notification.created_at).toLocaleString() : ''}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                    <p>No new notifications</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Notifications</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Performance Overview - OPTIMIZATION: Lazy load this section */}
-          {shouldLoadNonCritical ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance</CardTitle>
-                <CardDescription>Your overall stats</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-600">Course Progress</span>
-                    <span className="font-medium">{Math.round(performance.avgProgress)}%</span>
-                  </div>
-                  <Progress value={performance.avgProgress} className="h-2" />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-600">Average Grade</span>
-                    <span className="font-medium">{Math.round(performance.avgGrade)}%</span>
-                  </div>
-                  <Progress value={performance.avgGrade} className="h-2" />
-                </div>
-                {(activity?.activeDaysLast28 ?? 0) > 0 && (
-                  <div className="flex items-center justify-between border-t pt-3 text-sm">
-                    <span className="flex items-center gap-1.5 text-gray-600">
-                      <Flame className="h-4 w-4 text-orange-500" />
-                      Active days (28d)
-                    </span>
-                    <span className="font-medium">{activity?.activeDaysLast28}</span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance</CardTitle>
-                <CardDescription>Your overall stats</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </CardContent>
-            </Card>
-          )}
+                ))}
+              </div>
+            ) : (
+              <div className="sd-empty"><b>You are all caught up</b><p>New messages from your school will appear here.</p></div>
+            )}
+          </section>
         </div>
       </div>
     </div>

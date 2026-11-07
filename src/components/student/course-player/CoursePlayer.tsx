@@ -21,8 +21,6 @@ import {
   useStudentAssignments,
   useStudentDailyAssignments,
 } from '../../../hooks/useStudentData'
-import { Card } from '../../ui/card'
-import { Button } from '../../ui/button'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 import { useToast } from '../../ui/toast'
 import { makeIsCompleted, computeItemGating, firstIncompleteIndex } from '../../../lib/course-gating'
@@ -32,7 +30,6 @@ import {
   ChevronRight,
   CheckCircle,
   FileText,
-  Loader2,
   Play,
   ArrowRight,
   Lock,
@@ -40,11 +37,12 @@ import {
   AlertCircle,
   PanelLeftClose,
   PanelLeftOpen,
+  Check,
 } from 'lucide-react'
 import { getStoredUserId } from '../../../lib/session-utils'
 import { studentApi } from '../../../lib/api'
-import CircularProgress from '../CircularProgress'
 import { confirmLeaveAssignment } from '@/hooks/useAssignmentLeaveGuard'
+import Droid from '../../portal/Droid'
 
 interface CoursePlayerProps {
   courseId: string
@@ -122,6 +120,9 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
   // Up-next auto-advance (Udemy-style): countdown after a lesson is completed.
   const [upNextCountdown, setUpNextCountdown] = useState<number | null>(null)
   const upNextShownRef = useRef<Set<string>>(new Set())
+  const seenIdRef = useRef<string | undefined>(undefined)
+  // Shown when the last item of a module is finished.
+  const [cheer, setCheer] = useState<{ name: string } | null>(null)
   // Root element for the F-key fullscreen shortcut.
   const playerRootRef = useRef<HTMLDivElement>(null)
   // Latest-handler refs (assigned each render) keep the timer/key effects stable.
@@ -404,7 +405,10 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
         queryClient.invalidateQueries({ queryKey: ['studentCourses'] }),
         queryClient.invalidateQueries({ queryKey: ['chapterContents', chapterId] }),
       ])
-      toast.success(allDone ? 'Chapter completed! 🎉' : 'Progress saved!', allDone ? 3000 : 2000)
+      if (allDone) {
+        setUpNextCountdown(null)
+        setCheer({ name: currentChapter?.name || currentChapter?.title || '' })
+      }
       return true
     } catch (error) {
       const msg = error instanceof Error ? (error as { response?: { data?: { message?: string } } }).response?.data?.message || error.message : 'Unexpected error'
@@ -413,7 +417,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     } finally {
       setSavingProgress(currentContent.id, false)
     }
-  }, [currentContent, chapterId, courseId, contents, isDone, setContentCompleted, setChapterCompleted, setSavingProgress, toast, queryClient])
+  }, [currentContent, currentChapter, chapterId, courseId, contents, isDone, setContentCompleted, setChapterCompleted, setSavingProgress, toast, queryClient])
 
   // Latest-handler refs so the timer/keyboard effects stay stable across renders.
   handleNextRef.current = () => { void handleNext() }
@@ -425,11 +429,16 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
   useEffect(() => {
     if (!currentContent) return
     const id = currentContent.id
-    if (isCompleted && hasNextItem && !upNextShownRef.current.has(id)) {
+    // Reviewing an item that was already finished should not whisk the child on to the next one.
+    if (id !== seenIdRef.current) {
+      seenIdRef.current = id
+      if (isCompleted) upNextShownRef.current.add(id)
+    }
+    if (isCompleted && hasNextItem && !cheer && !upNextShownRef.current.has(id)) {
       upNextShownRef.current.add(id)
       setUpNextCountdown(5)
     }
-  }, [isCompleted, currentContent, hasNextItem])
+  }, [isCompleted, currentContent, hasNextItem, cheer])
 
   useEffect(() => {
     if (upNextCountdown === null) return
@@ -445,6 +454,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
   // Dismiss the card whenever the active item changes.
   useEffect(() => {
     setUpNextCountdown(null)
+    setCheer(null)
   }, [contentId, chapterId])
 
   // ── Keyboard shortcuts: ← prev · → next · F fullscreen ─────────────────────
@@ -473,8 +483,9 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
   const renderContentViewer = (): React.ReactNode => {
     if (contentsLoading) {
       return (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10" aria-busy="true">
+          <div className="sd-skel" style={{ height: '2.5rem', width: '60%' }} />
+          <div className="sd-skel" style={{ height: '16rem', marginTop: '1.25rem' }} />
         </div>
       )
     }
@@ -482,7 +493,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       return (
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 text-center text-gray-500">
           <FileText className="h-14 w-14 mx-auto mb-4 text-gray-300" />
-          <p className="text-red-600 mb-1">Error loading content</p>
+          <p className="text-red-600 mb-1">This item did not load</p>
           <p className="text-sm">{contentsError.message}</p>
         </div>
       )
@@ -491,7 +502,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       return (
         <div className="flex flex-col items-center justify-center py-24 text-gray-400">
           <FileText className="h-14 w-14 mb-4 opacity-30" />
-          <p className="text-sm">No content available for this chapter</p>
+          <p className="text-sm">Your teacher has not added items to this module yet.</p>
         </div>
       )
     }
@@ -499,7 +510,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
       return (
         <div className="flex flex-col items-center justify-center py-24 text-gray-400">
           <Play className="h-14 w-14 mb-4 opacity-20" />
-          <p className="text-sm">Select a lesson from the sidebar to start</p>
+          <p className="text-sm">Pick an item from the outline to start.</p>
         </div>
       )
     }
@@ -513,7 +524,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           </div>
           <p className="font-semibold text-gray-700 mb-1">This item is locked</p>
           <p className="text-sm max-w-sm">
-            Complete the previous item to unlock <span className="font-medium">{currentContent.title}</span>.
+            Finish the previous item to unlock <span className="font-medium">{currentContent.title}</span>.
           </p>
         </div>
       )
@@ -548,7 +559,7 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           />
         )
       // image/audio/link share this viewer: it already owns the explicit
-      // "Mark as Complete" path these types need. Without a case here they
+      // "Mark as complete" path these types need. Without a case here they
       // fell to the default branch, which offers no completion control — so
       // `nextDisabled = !isCompleted` never cleared and a single image lesson
       // permanently blocked every item after it.
@@ -617,48 +628,48 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     const canRetry = retryCount < 3 && errorCode !== 'NO_ACCESS' && errorCode !== 'ACCESS_DENIED'
 
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <Card className="p-8 max-w-md w-full text-center">
-          <h2 className="text-xl font-semibold text-red-600 mb-2">
-            {errorCode === 'NO_ACCESS' ? 'Access Denied' : 'Error Loading Course'}
-          </h2>
-          <p className="text-gray-700 mb-4">
-            {error instanceof Error ? error.message : 'Unknown error'}
-          </p>
-          <div className="flex gap-2 justify-center flex-wrap">
-            <Button onClick={() => router.push('/lms/student/my-courses')} variant="outline">
-              Back to Courses
-            </Button>
-            {canRetry && <Button onClick={handleRetry}>Retry</Button>}
+      <div className="pl-center">
+        <section className="sd-panel" role="alert">
+          <div className="sd-empty">
+            <AlertCircle aria-hidden="true" size={28} color="var(--sd-late)" />
+            <b>{errorCode === 'NO_ACCESS' ? 'You do not have access to this course' : 'This course did not load'}</b>
+            <p>{error instanceof Error ? error.message : 'Something went wrong while loading the course.'}</p>
+            <div className="sd-hero-actions" style={{ marginTop: '0.5rem' }}>
+              <button className="sd-btn sd-btn--line" onClick={() => router.push('/lms/student/my-courses')}>Back to my courses</button>
+              {canRetry && <button className="sd-btn sd-btn--ink" onClick={handleRetry}>Try again</button>}
+            </div>
           </div>
-        </Card>
+        </section>
       </div>
     )
   }
 
   if (courseLoading || chaptersLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      <div className="pl-center" aria-busy="true">
+        <div style={{ width: 'min(100%, 36rem)' }}>
+          <div className="sd-skel" style={{ height: '2.5rem' }} />
+          <div className="sd-skel" style={{ height: '12rem' }} />
+        </div>
       </div>
     )
   }
 
   if (!courseId) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">Course ID is missing</p>
+      <div className="pl-center">
+        <p>Course ID is missing.</p>
       </div>
     )
   }
 
-  // No chapter selected — show the course overview landing (unless resuming, in
+  // No chapter selected: show the course overview landing (unless resuming, in
   // which case the resume effect above is about to pick a chapter).
   if (!chapterId) {
     if (isResuming) {
       return (
-        <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <div className="pl-center" aria-busy="true">
+          <div className="sd-skel" style={{ height: '12rem', width: 'min(100%, 36rem)' }} />
         </div>
       )
     }
@@ -677,11 +688,12 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
     )
   }
 
-  // ── Coursera 3-column player layout ──────────────────────────────────────
+  // ── Player: outline, lesson, bottom navigation ───────────────────────────
 
   const isLastContent =
     (!contents || currentContentIndex >= (contents?.length || 0) - 1) && !nextChapterReachable
   const nextDisabled = !isCompleted
+  const trailGate = contents && Array.isArray(contents) ? computeItemGating(contents, isDone) : []
 
   // Lesson tabs (Overview/Notes/Resources) only under reading/watching content;
   // quiz & assignment viewers are self-contained interactive flows.
@@ -695,9 +707,8 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
 
   return (
     <ErrorBoundary>
-      <div ref={playerRootRef} className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-white">
+      <div ref={playerRootRef} className="pl-root sd-player">
 
-        {/* ─── Left: module sidebar ─────────────────────────────────────── */}
         <CourseSidebar
           courseId={courseId}
           courseName={courseName}
@@ -713,76 +724,58 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           onMobileOpenChange={setMobileOutlineOpen}
         />
 
-        {/* ─── Center: top-bar + scrollable content + bottom nav ────────── */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="pl-main">
 
-          {/* Top bar — outline toggle · breadcrumb · progress */}
-          <div className="flex-shrink-0 h-14 [@media(max-height:500px)]:h-11 border-b border-gray-200 bg-white px-3 sm:px-5 flex items-center gap-3">
+          <div className="pl-top">
             <button
               onClick={() => setOutlineCollapsed(c => !c)}
-              className="hidden lg:inline-flex flex-shrink-0 p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+              className="pl-ico hidden lg:inline-grid"
               title={outlineCollapsed ? 'Show course outline' : 'Hide course outline'}
               aria-label={outlineCollapsed ? 'Show course outline' : 'Hide course outline'}
             >
-              {outlineCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              {outlineCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
             </button>
-            <button
-              onClick={() => setMobileOutlineOpen(true)}
-              className="lg:hidden flex-shrink-0 inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              aria-label="Open course outline"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
+            <button onClick={() => setMobileOutlineOpen(true)} className="pl-outline-btn" aria-label="Open course outline">
+              <PanelLeftOpen />
               Outline
             </button>
 
-            {/* Breadcrumb: Course › Module › Lesson — segments truncate instead of overlapping */}
-            <nav className="flex-1 min-w-0 flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
+            <nav className="pl-crumb" aria-label="Breadcrumb">
               <button
                 onClick={() => afterLeaveConfirmed(() => { setChapterId(undefined); setContentId(undefined) })}
-                className="flex min-w-0 md:max-w-[35%] items-center gap-1 text-gray-500 hover:text-gray-900 transition-colors font-medium"
-                title={`Course overview — ${courseName}`}
+                title={`Course overview: ${courseName}`}
               >
-                <ChevronLeft className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{courseName}</span>
+                <ChevronLeft aria-hidden="true" />
+                <span>{courseName}</span>
               </button>
               {chapterDisplayName && (
                 <>
-                  <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0 hidden md:block" />
-                  <span className="min-w-0 max-w-[35%] text-gray-500 truncate hidden md:inline" title={chapterDisplayName}>
-                    {chapterDisplayName}
-                  </span>
+                  <ChevronRight className="hidden md:block" aria-hidden="true" />
+                  <span className="hidden md:inline" title={chapterDisplayName}>{chapterDisplayName}</span>
                 </>
               )}
               {currentContent?.title && (
                 <>
-                  <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0 hidden lg:block" />
-                  <span className="min-w-0 text-gray-900 font-medium truncate hidden lg:inline" title={currentContent.title}>
-                    {currentContent.title}
-                  </span>
+                  <ChevronRight className="hidden lg:block" aria-hidden="true" />
+                  <span className="pl-here hidden lg:inline" title={currentContent.title}>{currentContent.title}</span>
                 </>
               )}
             </nav>
 
-            {/* Progress */}
-            <div className="flex flex-shrink-0 items-center gap-3">
-              <div className="hidden md:block w-28 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                  style={{ width: `${overallProgressPercent}%` }}
-                />
+            <div className="pl-prog">
+              <div className="sd-meter" role="progressbar" aria-valuenow={overallProgressPercent} aria-valuemin={0} aria-valuemax={100} aria-label="Course progress">
+                <i style={{ '--p': `${overallProgressPercent}%` } as React.CSSProperties} />
               </div>
-              <span className="hidden sm:inline text-xs text-gray-500 whitespace-nowrap">
-                {completedContentItems}/{totalContentItems} items
-              </span>
-              <CircularProgress value={overallProgressPercent} size={36} stroke={4} />
+              <small>{completedContentItems} of {totalContentItems} items</small>
+              <span className="pl-pct">{Math.round(overallProgressPercent)}%</span>
             </div>
           </div>
 
-          {/* Deadline nudge — homework due today shouldn't be invisible mid-lesson */}
+          {/* Deadline nudge: homework due today shouldn't be invisible mid-lesson */}
           {!dueBannerDismissed && urgentAssignments.length > 0 && (
-            <div className="flex-shrink-0 flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-3 sm:px-5 py-2 text-sm text-amber-800 [@media(max-height:500px)]:hidden">
-              <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-500" />
-              <span className="min-w-0 truncate">
+            <div className="pl-due [@media(max-height:500px)]:hidden" role="status">
+              <AlertCircle aria-hidden="true" />
+              <span>
                 {urgentAssignments.length === 1 ? (
                   <>&ldquo;{urgentAssignments[0].title}&rdquo; is {urgentAssignments[0].is_overdue ? 'overdue' : 'due today'}</>
                 ) : (
@@ -795,26 +788,14 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
                     ? `/lms/student/assignments/${urgentAssignments[0].id}`
                     : '/lms/student/assignments?filter=pending'
                 }
-                className="ml-auto flex-shrink-0 text-xs font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-700"
               >
                 {urgentAssignments.length === 1 ? 'Start now' : 'View all'}
               </Link>
-              <button
-                onClick={dismissDueBanner}
-                aria-label="Dismiss reminder"
-                className="flex-shrink-0 text-amber-500 hover:text-amber-700 p-0.5"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <button onClick={dismissDueBanner} aria-label="Dismiss reminder"><X size={16} /></button>
             </div>
           )}
 
-          {/* Scrollable content area */}
-          <div
-            className="flex-1 overflow-y-auto bg-white"
-            onTouchStart={onTouchStart}
-            onTouchEnd={onTouchEnd}
-          >
+          <div className="pl-body" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
             {renderContentViewer()}
             {showLessonTabs && currentContent && (
               <LessonTabs
@@ -829,68 +810,85 @@ export default function CoursePlayer({ courseId: propCourseId }: CoursePlayerPro
           </div>
 
           {/* Up-next auto-advance card */}
-          {upNextCountdown !== null && nextItemLabel && (
-            <div className="flex-shrink-0 px-3 sm:px-5 pb-2">
-              <div className="flex items-center gap-3 bg-gray-900 text-white rounded-xl px-4 py-3 shadow-lg">
-                <div className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-                  <Play className="h-4 w-4 fill-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">
-                    Up next in {upNextCountdown}s
-                  </p>
-                  <p className="text-sm font-medium truncate">{nextItemLabel}</p>
-                </div>
-                <button
-                  onClick={() => setUpNextCountdown(null)}
-                  className="text-xs text-gray-300 hover:text-white px-2 py-1.5 rounded-md hover:bg-white/10 transition-colors flex items-center gap-1"
-                >
-                  <X className="h-3.5 w-3.5" /> Cancel
-                </button>
-                <button
-                  onClick={() => { setUpNextCountdown(null); handleNext() }}
-                  className="text-sm font-semibold bg-white text-gray-900 hover:bg-gray-100 px-3.5 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
-                >
-                  Next <ArrowRight className="h-3.5 w-3.5" />
+          {upNextCountdown !== null && nextItemLabel && !cheer && (
+            <div className="pl-up" role="status">
+              <div>
+                <span className="pl-up-ico"><Play aria-hidden="true" /></span>
+                <span className="pl-up-text">
+                  <small>Up next in {upNextCountdown}s</small>
+                  <b>{nextItemLabel}</b>
+                </span>
+                <button className="sd-btn sd-btn--ghost-dark" onClick={() => setUpNextCountdown(null)}>Cancel</button>
+                <button className="sd-btn sd-btn--amber" onClick={() => { setUpNextCountdown(null); handleNext() }}>
+                  Next <ArrowRight aria-hidden="true" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* Bottom navigation bar */}
-          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-3 sm:px-5 py-2.5 sm:py-3 pb-[max(0.625rem,env(safe-area-inset-bottom))] [@media(max-height:500px)]:py-1.5 flex items-center justify-between gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handlePrevious}
-              disabled={currentContentIndex === 0}
-              className="text-gray-600 hover:text-gray-900 disabled:opacity-30"
-            >
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">Previous</span>
-            </Button>
+          <div className="pl-bottom [@media(max-height:500px)]:py-1.5">
+            <button className="sd-btn sd-btn--line" onClick={handlePrevious} disabled={currentContentIndex === 0}>
+              <ChevronLeft aria-hidden="true" />
+              <span className="hidden sm:inline">Back</span>
+            </button>
 
-            <div className="flex items-center gap-3 min-w-0">
-              {nextDisabled && currentUnlocked && (
-                <span className="hidden md:inline text-xs text-gray-400 truncate">
-                  Complete this item to continue
-                </span>
-              )}
-              <Button
-                onClick={handleNext}
-                disabled={nextDisabled}
-                className="bg-blue-700 hover:bg-blue-800 text-white rounded-lg px-4 py-2 text-sm font-medium flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                title={nextDisabled ? 'Complete this item to continue' : undefined}
-              >
-                {isLastContent ? 'Finish Course' : <>Next<span className="hidden sm:inline">&nbsp;item</span></>}
-                {isLastContent ? (
-                  <CheckCircle className="h-4 w-4" />
-                ) : (
-                  <ArrowRight className="h-4 w-4" />
-                )}
-              </Button>
+            <div className="pl-mid">
+              <ol className="pl-trail" aria-label="Items in this module">
+                {((contents as Content[]) || []).map((c, i) => {
+                  const g = trailGate[i]
+                  const here = c.id === currentContent?.id
+                  return (
+                    <li key={c.id}>
+                      <button
+                        className="pl-step"
+                        data-done={!!g?.completed}
+                        data-current={here}
+                        disabled={g ? !g.unlocked : false}
+                        aria-current={here ? 'step' : undefined}
+                        aria-label={`Item ${i + 1}: ${c.title}`}
+                        title={c.title}
+                        onClick={() => { if (!here) afterLeaveConfirmed(() => setContentId(c.id)) }}
+                      >
+                        {g?.completed ? <Check aria-hidden="true" /> : i + 1}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
+              {contents && contents.length > 0 && <span className="pl-trail-of">{currentContentIndex + 1} of {contents.length}</span>}
             </div>
+
+            <button
+              className="sd-btn sd-btn--amber"
+              data-ready={!nextDisabled}
+              onClick={handleNext}
+              disabled={nextDisabled}
+              title={nextDisabled ? 'Finish this item to continue' : undefined}
+            >
+              {isLastContent ? 'Finish course' : 'Next'}
+              {isLastContent ? <CheckCircle aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}
+            </button>
           </div>
+
+          {cheer && (
+            <div className="pl-cheer" role="dialog" aria-modal="true" aria-label="Module complete">
+              <div className="pl-cheer-card">
+                <span className="ls-droid"><Droid /></span>
+                <span className="ls-burst" aria-hidden="true">
+                  {Array.from({ length: 12 }, (_, i) => <i key={i} style={{ '--a': `${i * 30}deg` } as React.CSSProperties} />)}
+                </span>
+                <h2>Module done!</h2>
+                <p>{cheer.name ? `You finished ${cheer.name}.` : 'You finished every item in this module.'}</p>
+                <div className="sd-hero-actions">
+                  <button className="sd-btn sd-btn--ghost-dark" onClick={() => setCheer(null)}>Stay here</button>
+                  <button className="sd-btn sd-btn--amber" autoFocus onClick={() => { setCheer(null); handleNext() }}>
+                    {isLastContent ? 'Finish course' : 'Keep going'}
+                    <ArrowRight aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </ErrorBoundary>

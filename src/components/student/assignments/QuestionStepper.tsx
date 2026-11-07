@@ -2,15 +2,9 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, CheckCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CheckCircle, Loader2 } from "lucide-react";
 
 type Status = "answered" | "unanswered" | "unvisited";
-
-const DOT_STYLES: Record<Status, string> = {
-  answered: "bg-green-600 text-white border-green-600",
-  unanswered: "bg-red-500 text-white border-red-500",
-  unvisited: "bg-gray-100 text-gray-500 border-gray-300",
-};
 
 const slide = {
   enter: (dir: number) => ({ x: dir > 0 ? 80 : -80, opacity: 0 }),
@@ -72,39 +66,34 @@ export default function QuestionStepper({
 
   return (
     <div ref={topRef} className="scroll-mt-16">
-      <div className={`${statusBarClassName} z-20 border-b border-gray-100 bg-white/95 backdrop-blur px-3 sm:px-5 py-2 sm:py-2.5`}>
-        <div className="flex items-center gap-1.5 overflow-x-auto px-1.5 py-1.5 [scrollbar-width:none]">
+      <div className={`${statusBarClassName} qs-bar`}>
+        <div className="qs-dots">
           {statuses.map((status, i) => (
             <button
               key={i}
               type="button"
               onClick={() => goTo(i)}
               aria-current={i === current ? "step" : undefined}
-              title={`Question ${i + 1} — ${
-                status === "answered" ? "answered" : status === "unanswered" ? "not answered" : "not visited"
+              data-s={status === "unanswered" ? "skipped" : status}
+              title={`Question ${i + 1}: ${
+                status === "answered" ? "answered" : status === "unanswered" ? "not answered yet" : "not opened yet"
               }`}
-              className={`h-8 w-8 flex-shrink-0 rounded-full border text-xs font-semibold transition-all ${DOT_STYLES[status]} ${
-                i === current ? "ring-2 ring-blue-500 ring-offset-2 scale-110" : "hover:scale-105"
-              }`}
+              className="qs-dot"
             >
-              {i + 1}
+              {status === "answered" ? <Check className="h-4 w-4" strokeWidth={3.5} aria-hidden="true" /> : i + 1}
             </button>
           ))}
         </div>
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-100">
-          <div className="h-full rounded-full bg-green-600 transition-all" style={{ width: `${(answered / count) * 100}%` }} />
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 text-[11px] text-gray-500">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-green-600" />Answered ({answered})</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-500" />Not answered ({unanswered})</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-gray-300 bg-gray-100" />Not visited ({unvisited})</span>
+        <div className="qs-prog">
+          <span className="sd-meter" role="progressbar" aria-valuenow={answered} aria-valuemin={0} aria-valuemax={count} aria-label="Questions answered">
+            <i style={{ "--p": `${(answered / count) * 100}%` } as React.CSSProperties} />
+          </span>
+          <span><b>{answered}</b> of {count} answered{unanswered > 0 ? `, ${unanswered} skipped` : ""}{unvisited > 0 && unanswered === 0 ? "" : ""}</span>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 pt-5 sm:px-6 sm:py-8">
-        <p className="mb-3 sm:mb-4 text-xs font-medium uppercase tracking-wide text-gray-400">
-          Question {current + 1} of {count}
-        </p>
+      <div className="ls" style={{ paddingTop: "1.5rem" }}>
+        <p className="qs-q">Question {current + 1} of {count}</p>
         <div className="relative overflow-hidden">
           <AnimatePresence mode="wait" custom={direction} initial={false}>
             <motion.div
@@ -123,36 +112,27 @@ export default function QuestionStepper({
 
         {isLast && lastStepExtra}
 
-        <div className="sticky bottom-0 z-10 -mx-4 mt-6 flex items-center justify-between gap-3 border-t border-gray-100 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:mt-8 sm:px-0 sm:pb-0 sm:pt-6">
+        <div className="qs-nav">
           <button
             type="button"
             onClick={() => goTo(current - 1)}
             disabled={current === 0}
             aria-label="Previous question"
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 sm:px-5 py-3 sm:py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40"
+            className="sd-btn sd-btn--line"
           >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Previous</span>
+            <ArrowLeft aria-hidden="true" />
+            <span className="hidden sm:inline">Back</span>
           </button>
 
           {isLast ? (
-            <button
-              type="button"
-              onClick={onSubmit}
-              disabled={submitting}
-              className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-lg bg-blue-700 px-6 py-3 sm:py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-60"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              {submitting ? "Submitting…" : "Submit Assignment"}
+            <button type="button" onClick={onSubmit} disabled={submitting} className="sd-btn sd-btn--amber sd-btn--lg">
+              {submitting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <CheckCircle aria-hidden="true" />}
+              {submitting ? "Handing in" : "Hand it in"}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => goTo(current + 1)}
-              className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-lg bg-blue-700 px-6 py-3 sm:py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
-            >
-              Next Question
-              <ArrowRight className="h-4 w-4" />
+            <button type="button" onClick={() => goTo(current + 1)} className="sd-btn sd-btn--amber sd-btn--lg">
+              Next question
+              <ArrowRight aria-hidden="true" />
             </button>
           )}
         </div>

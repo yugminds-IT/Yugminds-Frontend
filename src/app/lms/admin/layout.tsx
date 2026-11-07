@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sidebar } from "@/components/ui/modern-side-bar";
+import PortalShell from "@/components/portal/PortalShell";
+import PortalSidebar from "@/components/portal/PortalSidebar";
+import PasswordPrompt from "@/components/portal/PasswordPrompt";
+import { ADMIN_NAV } from "@/components/portal/navs";
+import "@/components/portal/portal.css";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
 import { waitForSession } from "@/lib/session-utils";
@@ -12,7 +16,6 @@ import { commonApi, setAuthToken } from "@/lib/api";
 import { clearStoredSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCount";
-import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import ResponsiveTables from "@/components/ResponsiveTables";
 
@@ -300,22 +303,26 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
-      <ForcePasswordChange />
-      <AnnouncementBanner />
-      <ResponsiveTables />
-      <Sidebar
-        userRole="admin"
-        userName={userProfile?.full_name || user?.email || "Admin User"}
-        userEmail={user?.email || "admin@example.com"}
-        onLogout={handleLogout}
-        notificationBadgeCount={unreadNotificationCount}
-        passwordResetBadgeCount={pendingPasswordResetCount}
-      />
-      
-      <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
+    <PortalShell
+      top={
+        <>
+          <PasswordPrompt />
+          <AnnouncementBanner />
+          <ResponsiveTables />
+        </>
+      }
+      sidebar={
+        <PortalSidebar
+          nav={ADMIN_NAV}
+          brand={{ title: "Admin portal", sub: "RoboCoders LMS" }}
+          userName={userProfile?.full_name || user?.email || "Admin User"}
+          userEmail={user?.email || "admin@example.com"}
+          onLogout={handleLogout}
+          badges={{ "/lms/admin/notifications": unreadNotificationCount, "/lms/admin/password-reset-requests": pendingPasswordResetCount }}
+        />
+      }
+    >
         {children}
-      </div>
-    </div>
+    </PortalShell>
   );
 }

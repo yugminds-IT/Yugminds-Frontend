@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sidebar } from "@/components/ui/modern-side-bar";
+import PortalShell from "@/components/portal/PortalShell";
+import PortalSidebar from "@/components/portal/PortalSidebar";
+import PasswordPrompt from "@/components/portal/PasswordPrompt";
+import { TEACHER_NAV } from "@/components/portal/navs";
+import "@/components/portal/portal.css";
 import { TeacherSchoolContext, type TeacherSchool } from "./context";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
@@ -12,7 +16,6 @@ import { useBrowserNavigation } from "@/hooks/useBrowserNavigation";
 import { commonApi, teacherApi, setAuthToken, apiClient } from "@/lib/api";
 import { getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
-import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import ResponsiveTables from "@/components/ResponsiveTables";
@@ -450,20 +453,26 @@ export default function TeacherLayout({
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
-      <ForcePasswordChange />
-      <AnnouncementBanner />
-      <ResponsiveTables />
-      <ImpersonationBanner />
-      <Sidebar 
-        userRole="teacher"
-        userName={userProfile?.full_name || user?.email || "Teacher"}
-        userEmail={user?.email || "teacher@example.com"}
-        onLogout={handleLogout}
-        notificationBadgeCount={unreadNotificationCount}
-      />
-      
-      <div className="flex-1 min-w-0 min-h-0 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
+    <PortalShell
+      top={
+        <>
+          <PasswordPrompt />
+          <AnnouncementBanner />
+          <ResponsiveTables />
+          <ImpersonationBanner />
+        </>
+      }
+      sidebar={
+        <PortalSidebar
+          nav={TEACHER_NAV}
+          brand={{ title: "Teacher portal", sub: "RoboCoders LMS" }}
+          userName={userProfile?.full_name || user?.email || "Teacher"}
+          userEmail={user?.email || "teacher@example.com"}
+          onLogout={handleLogout}
+          badges={{ "/lms/teacher/notifications": unreadNotificationCount }}
+        />
+      }
+    >
         {/* School Selector Topbar */}
         {schools.length > 1 && (
           <div className="bg-white border-b border-gray-200 px-4 py-2.5 md:px-6 md:py-3">
@@ -545,7 +554,6 @@ export default function TeacherLayout({
             {children}
           </div>
         </TeacherSchoolContext.Provider>
-      </div>
-    </div>
+    </PortalShell>
   );
 }

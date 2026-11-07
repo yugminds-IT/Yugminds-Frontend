@@ -29,9 +29,9 @@ test.describe('School Admin — Settings', () => {
     await expect(page.locator('#full_name')).toHaveValue('QA School Admin');
     // NOTE: the fixture email also appears in the sidebar footer on every
     // page (not just here), so a bare getByText() is a strict-mode multi-match
-    // — scope to the "Email Address" field specifically.
+    // — scope to the details card (a <dl> labelled "Details that are kept for you").
     await expect(
-      page.getByText('Email Address').locator('..').getByText(fixture.schoolAdmin.email),
+      page.getByLabel('Details that are kept for you').getByText(fixture.schoolAdmin.email),
     ).toBeVisible();
   });
 
@@ -54,11 +54,12 @@ test.describe('School Admin — Settings', () => {
       const updateResponse = page.waitForResponse(
         (res) => res.url().includes('/school-admin/profile') && res.request().method() === 'PATCH',
       );
-      await page.getByRole('button', { name: /Save Profile/i }).click();
+      // The save bar only appears once something has changed.
+      await page.getByRole('button', { name: /Save changes/i }).click();
       const updateRes = await updateResponse;
       expect(updateRes.ok(), await updateRes.text()).toBeTruthy();
 
-      await expect(page.getByText('Profile updated successfully!')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Your changes are saved.')).toBeVisible({ timeout: 10000 });
 
       // Reload and confirm the change actually persisted server-side, not
       // just reflected optimistically in local state. NOTE: a full reload
@@ -77,7 +78,7 @@ test.describe('School Admin — Settings', () => {
         (res) => res.url().includes('/school-admin/profile') && res.request().method() === 'PATCH',
       );
       await page.locator('#full_name').fill('QA School Admin');
-      await page.getByRole('button', { name: /Save Profile/i }).click();
+      await page.getByRole('button', { name: /Save changes/i }).click();
       const restoreRes = await restoreResponse;
       expect(restoreRes.ok(), await restoreRes.text()).toBeTruthy();
     }

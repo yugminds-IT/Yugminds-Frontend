@@ -3,11 +3,13 @@
 
 import React, { useMemo } from "react";
 import { useStudentAssignment } from "@/hooks/useStudentData";
-import { ArrowLeft, CheckCircle, Clock, Loader2, FileText, Download, MessageSquare, RotateCcw } from "lucide-react";
+import { ArrowLeft, Download, FileText, MessageSquare, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import MCQQuestion from "@/components/student/assignments/questions/MCQQuestion";
 import FillBlankQuestion from "@/components/student/assignments/questions/FillBlankQuestion";
 import ProtectedAssignmentContent from "@/components/student/assignments/ProtectedAssignmentContent";
+import AttemptHistory from "@/components/student/assignments/AttemptHistory";
+import ScoreRing, { scoreWords } from "@/components/portal/ScoreRing";
 
 interface Question {
   id: string;
@@ -72,21 +74,25 @@ export default function ViewSubmissionPage(props: PageProps) {
   // ── Loading ──
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      <div className="wr sd-player" aria-busy="true">
+        <div className="ls">
+          <div className="sd-skel" style={{ height: "2.5rem", width: "60%" }} />
+          <div className="sd-skel" style={{ height: "8rem" }} />
+        </div>
       </div>
     );
   }
 
   if (!assignment || !submission) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <FileText className="h-14 w-14 mx-auto mb-4 text-gray-300" />
-          <h2 className="text-lg font-semibold text-gray-700 mb-3">Submission not found</h2>
-          <Link href="/lms/student/assignments" className="text-sm text-blue-600 hover:underline flex items-center gap-1 justify-center">
-            <ArrowLeft className="h-4 w-4" /> Back to Assignments
-          </Link>
+      <div className="wr sd-player">
+        <div className="ls">
+          <div className="ls-card">
+            <span className="ls-card-ico"><FileText aria-hidden="true" /></span>
+            <b>Nothing handed in yet</b>
+            <p>When you hand this assignment in, your answers will show up here.</p>
+            <Link href={`/lms/student/assignments/${assignmentId}`} className="sd-btn sd-btn--ink"><ArrowLeft aria-hidden="true" />Back to the assignment</Link>
+          </div>
         </div>
       </div>
     );
@@ -94,8 +100,7 @@ export default function ViewSubmissionPage(props: PageProps) {
 
   const hasGrade = submission.grade !== null && submission.grade !== undefined;
   const gradeNum = hasGrade ? (typeof submission.grade === "number" ? submission.grade : parseFloat(String(submission.grade))) : null;
-  const gradeBg = gradeNum == null ? "bg-gray-500" : gradeNum >= 70 ? "bg-green-600" : gradeNum >= 50 ? "bg-amber-500" : "bg-red-600";
-  const submittedAt = submission.submitted_at ? new Date(submission.submitted_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  const submittedAt = submission.submitted_at ? new Date(submission.submitted_at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : null;
 
   // ── Render a single reviewed question ──
   const renderQuestion = (q: Question, idx: number) => {
@@ -103,17 +108,10 @@ export default function ViewSubmissionPage(props: PageProps) {
     const ans = studentAnswers[q.id];
 
     return (
-      <div key={q.id} className="py-8 border-b border-gray-100 last:border-0">
-        {/* Question header */}
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <span className="text-xs text-gray-400 font-medium">
-              Question {idx + 1} of {questions.length}
-            </span>
-          </div>
-          <span className="text-sm text-gray-400 flex-shrink-0">
-            {q.marks ?? 1} point{(q.marks ?? 1) !== 1 ? "s" : ""}
-          </span>
+      <div key={q.id} className="py-6" style={{ borderBottom: "1.5px solid var(--sd-line)" }}>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <span className="qs-q" style={{ margin: 0 }}>Question {idx + 1} of {questions.length}</span>
+          <span className="as-fine" style={{ margin: 0 }}>{q.marks ?? 1} point{(q.marks ?? 1) !== 1 ? "s" : ""}</span>
         </div>
 
         {qt === "mcq" && (
@@ -136,20 +134,16 @@ export default function ViewSubmissionPage(props: PageProps) {
 
         {qt === "essay" && (
           <div>
-            <p className="text-base text-gray-900 leading-relaxed mb-4">{q.question || q.question_text}</p>
+            <p className="qa-text">{q.question || q.question_text}</p>
             {ans?.type === "essay" && typeof ans.value === "string" && ans.value.trim() ? (
-              <div className="px-4 py-4 bg-gray-50 border border-gray-200 rounded-lg">
-                <p className="text-xs text-gray-400 font-medium mb-2">Your answer</p>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{ans.value}</p>
+              <div className="ls-note">
+                <b>Your answer</b>
+                <p style={{ whiteSpace: "pre-wrap" }}>{ans.value}</p>
               </div>
             ) : (
-              <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p className="text-sm text-gray-400 italic">No answer submitted for this question.</p>
-              </div>
+              <p className="qa-none">No answer was handed in for this question.</p>
             )}
-            {!hasGrade && (
-              <p className="text-xs text-gray-400 mt-2">Essay questions are graded manually by your teacher.</p>
-            )}
+            {!hasGrade && <p className="as-fine">Your teacher marks writing questions by hand.</p>}
           </div>
         )}
 
@@ -174,169 +168,70 @@ export default function ViewSubmissionPage(props: PageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
-        <Link
-          href={`/lms/student/assignments/${assignmentId}`}
-          className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 font-medium border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-md transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Assignments
-        </Link>
-      </div>
+    <div className="wr sd-player">
+      <div className="ls">
+        <Link href={`/lms/student/assignments/${assignmentId}`} className="ls-link"><ArrowLeft className="mr-1 inline h-4 w-4" />Back to the assignment</Link>
+        <h1 className="ls-title">{assignment.title}</h1>
+        <p className="ls-task">{assignment.course_title || "Assignment"}</p>
 
-      <div className="max-w-3xl mx-auto px-4 py-5 sm:px-6 sm:py-10">
-        {/* Title */}
-        <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-1 break-words">{assignment.title}</h1>
-        <p className="text-sm text-gray-500 mb-7">{assignment.course_title || "Assignment"}</p>
-
-        {/* Grade / status banner */}
-        <div className={`flex items-center justify-between px-5 py-4 rounded-xl mb-6 border ${
-          hasGrade ? "bg-green-50 border-green-200" : "bg-blue-50 border-blue-200"
-        }`}>
-          <div className="flex items-center gap-3">
-            {hasGrade
-              ? <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
-              : <Clock className="h-5 w-5 text-blue-600 flex-shrink-0" />
-            }
-            <div>
-              <p className={`text-sm font-semibold ${hasGrade ? "text-green-800" : "text-blue-800"}`}>
-                {hasGrade ? "Assignment Graded" : "Awaiting Grade"}
-              </p>
-              {submittedAt && (
-                <p className={`text-xs ${hasGrade ? "text-green-600" : "text-blue-600"}`}>
-                  Submitted on {submittedAt}
-                </p>
-              )}
-            </div>
+        <div className="ls-score">
+          {gradeNum !== null && <ScoreRing value={gradeNum} />}
+          <div className="ls-score-text">
+            <b>{hasGrade && gradeNum !== null ? scoreWords(gradeNum) : "Waiting for a grade"}</b>
+            <span>{submittedAt ? `Handed in on ${submittedAt}` : "Your teacher will mark it soon."}</span>
           </div>
-
-          {gradeNum !== null && (
-            <div className={`w-14 h-14 rounded-full ${gradeBg} flex items-center justify-center flex-shrink-0`}>
-              <span className="text-white font-bold text-sm">{gradeNum}%</span>
-            </div>
-          )}
         </div>
 
-        {/* Teacher feedback */}
         {submission.feedback && (
-          <div className="mb-6 px-5 py-4 bg-gray-50 border border-gray-200 rounded-xl">
-            <div className="flex items-center gap-2 mb-2">
-              <MessageSquare className="h-4 w-4 text-gray-500" />
-              <p className="text-sm font-semibold text-gray-700">Teacher Feedback</p>
-            </div>
-            <p className="text-sm text-gray-700 leading-relaxed">{submission.feedback}</p>
+          <div className="ls-note">
+            <b><MessageSquare className="mr-1.5 inline h-4 w-4" aria-hidden="true" />Teacher feedback</b>
+            <p>{submission.feedback}</p>
           </div>
         )}
 
-        {/* File submission download */}
         {submission.file_url && (
-          <div className="mb-6">
-            <a href={submission.file_url} target="_blank" rel="noopener noreferrer">
-              <button className="inline-flex items-center gap-2 text-sm text-blue-700 border border-blue-200 hover:border-blue-400 px-4 py-2 rounded-lg transition-colors">
-                <Download className="h-4 w-4" />
-                Download Submitted File
-              </button>
-            </a>
-          </div>
+          <a href={submission.file_url} target="_blank" rel="noopener noreferrer" className="sd-btn sd-btn--line" style={{ justifySelf: "start" }}>
+            <Download aria-hidden="true" />Download your file
+          </a>
         )}
 
-        {/* Your answers section */}
         {questions.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold text-gray-900">Your Answers</h2>
-              {hasGrade && (
-                <span className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
-                  <CheckCircle className="h-3.5 w-3.5" />
-                  Correct answers shown
-                </span>
-              )}
-            </div>
-            <ProtectedAssignmentContent className="border-t border-gray-100">
+          <section>
+            <h2 className="as-h2" style={{ fontSize: "1.5rem" }}>Your answers</h2>
+            {hasGrade && <p className="as-fine" style={{ margin: 0 }}>The right answers are shown too.</p>}
+            <ProtectedAssignmentContent>
               {questions.map((q, i) => renderQuestion(q, i))}
             </ProtectedAssignmentContent>
-          </div>
+          </section>
         )}
 
-        {/* Attempt history — show whenever there are multiple attempts OR retake is available */}
+        {/* Show the tries whenever there are several, or a retake is possible */}
         {(attempts.length > 1 || (retake?.enabled && attempts.length >= 1)) && (
-          <div className="mt-8 pt-6 border-t border-gray-100">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700">Attempt History</h3>
-              <span className="text-xs text-gray-400">
-                {retake?.enabled && retake.max_attempts != null
-                  ? `${attempts.length} of ${Number(retake.max_attempts) + 1} attempts used`
-                  : `${attempts.length} attempt${attempts.length !== 1 ? "s" : ""}${retake?.enabled ? " · Unlimited" : ""}`}
+          <AttemptHistory
+            attempts={attempts}
+            note={
+              retake?.scoring_rule
+                ? retake.scoring_rule === "highest"
+                  ? "Your highest score from all your tries is the one that counts."
+                  : "Your latest try is the one that counts."
+                : undefined
+            }
+          />
+        )}
+
+        {retake?.allowed && (
+          <div className="ls-score" style={{ justifyContent: "space-between", background: "rgb(251 191 36 / 0.12)", borderColor: "var(--sd-amber-deep)" }}>
+            <div className="ls-score-text">
+              <b>You can try again</b>
+              <span>
+                {retake.granted
+                  ? "Your teacher gave you one more try."
+                  : retake.max_attempts == null
+                  ? "You can try as many times as you like."
+                  : `You have used ${retake.current_attempts ?? attempts.length} of ${Number(retake.max_attempts) + 1} tries.`}
               </span>
             </div>
-            <div className="overflow-hidden rounded-xl border border-gray-200">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left font-medium">Attempt</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Submitted</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Score</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {attempts.map((a: any) => (
-                    <tr key={a.id} className="bg-white hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-700 font-medium">#{a.attempt_number ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-500">
-                        {a.submitted_at ? new Date(a.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-700">
-                        {a.score != null ? `${a.score}/${a.max_score ?? "—"}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                          a.status === "graded" ? "bg-green-100 text-green-700" :
-                          a.status === "submitted" ? "bg-blue-100 text-blue-700" :
-                          "bg-gray-100 text-gray-600"
-                        }`}>
-                          {a.status ?? "—"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {retake?.scoring_rule && (
-              <p className="text-xs text-gray-400 mt-2">
-                {retake.scoring_rule === "highest"
-                  ? "Your highest score across all attempts is used for grading."
-                  : "Your latest attempt score is used for grading."}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Retake CTA */}
-        {retake?.allowed && (
-          <div className="mt-6 flex items-center justify-between px-5 py-4 bg-amber-50 border border-amber-200 rounded-xl">
-            <div className="flex items-center gap-2">
-              <RotateCcw className="h-4 w-4 text-amber-600" />
-              <div>
-                <p className="text-sm font-semibold text-amber-800">Retake available</p>
-                <p className="text-xs text-amber-600">
-                  {retake.granted
-                    ? "Your teacher gave you 1 extra attempt."
-                    : retake.max_attempts == null
-                    ? "Unlimited attempts — you can retake any time."
-                    : `${retake.current_attempts ?? attempts.length} of ${Number(retake.max_attempts) + 1} attempts used.`}
-                </p>
-              </div>
-            </div>
-            <Link
-              href={`/lms/student/assignments/${assignmentId}`}
-              className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-            >
-              <RotateCcw className="h-3.5 w-3.5" /> Retake
-            </Link>
+            <Link href={`/lms/student/assignments/${assignmentId}`} className="sd-btn sd-btn--amber"><RotateCcw aria-hidden="true" />Try again</Link>
           </div>
         )}
       </div>

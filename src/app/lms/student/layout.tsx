@@ -2,14 +2,18 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Sidebar } from "@/components/ui/modern-side-bar";
+import PortalShell from "@/components/portal/PortalShell";
+import PortalSidebar from "@/components/portal/PortalSidebar";
+import PasswordPrompt from "@/components/portal/PasswordPrompt";
+import { STUDENT_NAV } from "@/components/portal/navs";
+import "@/components/portal/portal.css";
+import "@/components/student/student-ui.css";
 import { useStudentProfile, useStudentDashboardStats } from "@/hooks/useStudentData";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { getStoredUserId, waitForSession, setLogoutReason } from "@/lib/session-utils";
 import { setAuthToken } from "@/lib/api";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
-import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import ResponsiveTables from "@/components/ResponsiveTables";
@@ -37,6 +41,7 @@ export default function StudentLayoutWrapper({
   
   // Get sidebar state from store
   const sidebarCollapsed = useAppStore((state: AppState) => state.sidebarCollapsed);
+
 
   // Refs for concurrency protection and preventing loops
   const getUserInProgressRef = useRef(false);
@@ -296,25 +301,29 @@ export default function StudentLayoutWrapper({
   const pendingAssignmentsCount = dashboardStats?.pendingAssignments ?? 0;
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
-      <ForcePasswordChange allowSkip />
-      <AnnouncementBanner />
-      <ResponsiveTables />
-      <ImpersonationBanner />
-      {!isCoursePlayer && (
-        <Sidebar
-          userRole="student"
-          userName={userName}
-          userEmail={userEmail}
-          onLogout={handleLogout}
-          assignmentBadgeCount={pendingAssignmentsCount}
-          notificationBadgeCount={unreadNotificationCount}
-        />
-      )}
-
-      <div className="flex-1 min-w-0 min-h-0 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
-        {children}
-      </div>
-    </div>
+    <PortalShell
+      top={
+        <>
+          <PasswordPrompt allowSkip />
+          <AnnouncementBanner />
+          <ResponsiveTables />
+          <ImpersonationBanner />
+        </>
+      }
+      sidebar={
+        !isCoursePlayer && (
+          <PortalSidebar
+            nav={STUDENT_NAV}
+            brand={{ title: "Student portal", sub: "RoboCoders LMS" }}
+            userName={userName}
+            userEmail={userEmail}
+            onLogout={handleLogout}
+            badges={{ "/lms/student/assignments": pendingAssignmentsCount, "/lms/student/notifications": unreadNotificationCount }}
+          />
+        )
+      }
+    >
+      {children}
+    </PortalShell>
   );
 }

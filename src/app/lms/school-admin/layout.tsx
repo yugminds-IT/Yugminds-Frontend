@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Sidebar } from "@/components/ui/modern-side-bar";
+import PortalShell from "@/components/portal/PortalShell";
+import PortalSidebar from "@/components/portal/PortalSidebar";
+import PasswordPrompt from "@/components/portal/PasswordPrompt";
+import { SCHOOL_ADMIN_NAV } from "@/components/portal/navs";
+import "@/components/portal/portal.css";
 import { SchoolAdminProvider } from "@/contexts/SchoolAdminContext";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
@@ -14,7 +18,6 @@ import { setAuthToken } from "@/lib/api";
 import { clearStoredSession, getStoredUserId, setLogoutReason } from "@/lib/session-utils";
 import { useUnreadNotificationCount } from "@/hooks/useUnreadNotificationCount";
 import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCount";
-import { ForcePasswordChange } from "@/components/ForcePasswordChange";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import ResponsiveTables from "@/components/ResponsiveTables";
@@ -323,24 +326,28 @@ export default function SchoolAdminLayout({
       initialSchoolInfo={_schoolInfo}
       initialProfileFullName={userProfile?.full_name ?? null}
     >
-      <div className="flex flex-col md:flex-row h-screen bg-gray-50" style={{ backgroundColor: '#f9fafb' }}>
-        <ForcePasswordChange />
-      <AnnouncementBanner />
-      <ResponsiveTables />
-      <ImpersonationBanner />
-        <Sidebar 
-          userRole="school_admin"
-          userName={userProfile?.full_name || user?.email || "School Admin"}
-          userEmail={user?.email || "admin@school.com"}
-          onLogout={handleLogout}
-          notificationBadgeCount={unreadNotificationCount}
-          passwordResetBadgeCount={pendingPasswordResetCount}
-        />
-
-        <div className="flex-1 overflow-y-auto" data-dashboard-content style={{ backgroundColor: '#f9fafb' }}>
+      <PortalShell
+        top={
+          <>
+            <PasswordPrompt />
+            <AnnouncementBanner />
+            <ResponsiveTables />
+            <ImpersonationBanner />
+          </>
+        }
+        sidebar={
+          <PortalSidebar
+            nav={SCHOOL_ADMIN_NAV}
+            brand={{ title: "School admin", sub: "RoboCoders LMS" }}
+            userName={userProfile?.full_name || user?.email || "School Admin"}
+            userEmail={user?.email || "admin@school.com"}
+            onLogout={handleLogout}
+            badges={{ "/lms/school-admin/notifications": unreadNotificationCount, "/lms/school-admin/password-reset-requests": pendingPasswordResetCount }}
+          />
+        }
+      >
           {children}
-        </div>
-      </div>
+        </PortalShell>
     </SchoolAdminProvider>
   );
 }

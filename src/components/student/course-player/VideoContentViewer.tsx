@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Badge } from '../../ui/badge'
-import { CheckCircle, RotateCcw, Loader2, ExternalLink, AlertCircle } from 'lucide-react'
-import { Button } from '../../ui/button'
+import { RotateCcw, AlertCircle, Play } from 'lucide-react'
+import { LessonStage, DoneDock } from './LessonStage'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
 import { iframeEmbedUrl, youTubeId } from './media'
 
@@ -28,7 +27,7 @@ const UNTRACKED_UNLOCK_SECONDS = 30
 
 // Keeps the whole 16:9 frame on screen under the player's top bar + bottom nav, in both orientations.
 const FRAME =
-  'relative mx-auto aspect-video w-[min(100%,calc((100dvh_-_7.5rem)*16/9))] [@media(max-height:500px)]:w-[min(100%,calc((100dvh_-_5.5rem)*16/9))]'
+  'relative mx-auto aspect-video w-[min(100%,max(20rem,calc((100dvh_-_20rem)*16/9)))] [@media(max-height:500px)]:w-[min(100%,calc((100dvh_-_5.5rem)*16/9))]'
 
 // ── YouTube IFrame API loader (shared, loads the script once) ────────────────
 let ytApiPromise: Promise<void> | null = null
@@ -106,7 +105,7 @@ export default function VideoContentViewer({ content, onComplete }: VideoContent
   let player: React.ReactNode
   if (!url) {
     player = (
-      <div className="flex aspect-video items-center justify-center text-sm text-gray-400">Video not available</div>
+      <div className="flex aspect-video items-center justify-center text-sm text-gray-300">This video is not available yet.</div>
     )
   } else if (ytId) {
     player = <YouTubePlayer key={content.id} videoId={ytId} title={content.title} onFraction={setWatchedFraction} onUntracked={markUntracked} />
@@ -125,60 +124,27 @@ export default function VideoContentViewer({ content, onComplete }: VideoContent
     )
   }
 
-  const hint = watchedEnough
-    ? 'Ready to complete'
-    : untracked
-      ? 'Watch the video to unlock completion'
-      : `Watch ${Math.round(WATCH_THRESHOLD * 100)}% to unlock completion (${Math.round(watchedFraction * 100)}%)`
+  const hint = untracked
+    ? 'Keep watching. The button unlocks in a few seconds.'
+    : `You have watched ${Math.round(watchedFraction * 100)}%. The button unlocks near the end.`
 
   return (
-    <div>
-      <div className="bg-black">{player}</div>
-      <div className="mx-auto max-w-3xl px-4 py-4 sm:px-6 sm:py-5">
-        <div className="flex items-start justify-between gap-3">
-          <h2 className="text-lg font-semibold leading-tight text-gray-900 sm:text-2xl">{content.title}</h2>
-          {saving ? (
-            <Badge className="shrink-0 border-0 bg-blue-100 text-xs text-blue-700"><Loader2 className="mr-1 h-3 w-3 animate-spin" />Saving...</Badge>
-          ) : isCompleted ? (
-            <Badge className="shrink-0 border-0 bg-green-100 text-xs text-green-700"><CheckCircle className="mr-1 h-3 w-3" />Completed</Badge>
-          ) : null}
-        </div>
-        {url && !ytId && (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open video in new tab
-          </a>
-        )}
-        {!isCompleted && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-[160px] flex-1">
-              {!untracked && (
-                <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
-                  <div
-                    className="h-full rounded-full bg-blue-600 transition-all duration-300"
-                    style={{ width: `${Math.min(100, Math.round(watchedFraction * 100))}%` }}
-                  />
-                </div>
-              )}
-              <p className="mt-1 text-xs text-gray-400">{hint}</p>
-            </div>
-            <button
-              onClick={handleMarkComplete}
-              disabled={saving || !watchedEnough}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40 max-sm:w-full"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              Mark as Complete
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+    <LessonStage kind="video" title={content.title} wide>
+      <div className="ls-frame ls-frame--video">{player}</div>
+      {url && !ytId && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="ls-link">
+          Open the video in a new tab
+        </a>
+      )}
+      <DoneDock
+        done={isCompleted}
+        saving={saving}
+        ready={watchedEnough && !hasCompleted}
+        progress={untracked ? undefined : watchedFraction}
+        hint={hint}
+        onDone={handleMarkComplete}
+      />
+    </LessonStage>
   )
 }
 
@@ -297,7 +263,7 @@ function NativeVideoPlayer({
     return (
       <div className={`${FRAME} flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-gray-300`}>
         <AlertCircle className="h-8 w-8 text-gray-400" />
-        This video can&apos;t play here. Use &ldquo;Open video in new tab&rdquo; below.
+        This video can&apos;t play here. Use &ldquo;Open the video in a new tab&rdquo; below.
       </div>
     )
   }
@@ -319,23 +285,23 @@ function NativeVideoPlayer({
         aria-label={`Video: ${content.title}`}
       />
       {resumeAt && (
-        <div className="absolute inset-x-2 top-2 z-10 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-black/80 p-2.5 sm:inset-x-4 sm:top-4">
-          <span className="text-sm text-white">Resume from {formatTime(resumeAt)}?</span>
+        <div className="absolute inset-x-2 top-2 z-10 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#0a1f4d]/95 p-3 sm:inset-x-4 sm:top-4">
+          <span className="text-sm font-semibold text-white">Carry on from {formatTime(resumeAt)}?</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="ghost" className="text-white hover:bg-white/20" onClick={() => setResumeAt(null)}>
-              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Start over
-            </Button>
-            <Button
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700"
+            <button className="sd-btn sd-btn--ghost-dark" style={{ minHeight: '2.4rem', padding: '0.3rem 1rem', fontSize: '0.9rem' }} onClick={() => setResumeAt(null)}>
+              <RotateCcw aria-hidden="true" /> Start over
+            </button>
+            <button
+              className="sd-btn sd-btn--amber"
+              style={{ minHeight: '2.4rem', padding: '0.3rem 1rem', fontSize: '0.9rem' }}
               onClick={() => {
                 const v = videoRef.current
                 if (v) { v.currentTime = resumeAt; void v.play().catch(() => {}) }
                 setResumeAt(null)
               }}
             >
-              Resume
-            </Button>
+              <Play aria-hidden="true" /> Carry on
+            </button>
           </div>
         </div>
       )}

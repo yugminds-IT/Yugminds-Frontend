@@ -65,7 +65,7 @@ export default function ResourcesPanel({
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-lg">Downloadable Resources</h3>
+        <h3 className="font-semibold text-lg">Downloads</h3>
         {onToggle && (
           <Button variant="ghost" size="sm" onClick={onToggle}>
             ×
@@ -109,7 +109,7 @@ export default function ResourcesPanel({
       ) : (
         <div className="text-center py-8 text-gray-500">
           <File className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-          <p className="text-sm">No resources available</p>
+          <p className="text-sm">No downloads for this lesson</p>
         </div>
       )}
     </Card>

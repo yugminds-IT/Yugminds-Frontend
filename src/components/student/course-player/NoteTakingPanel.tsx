@@ -57,7 +57,7 @@ export default function NoteTakingPanel({
       setTimeout(() => setSaved(false), 2000)
     } catch (error) {
       console.error('Error saving note:', error)
-      toast.error('Failed to save note. Please try again.')
+      toast.error('Your note was not saved. Try again.')
     } finally {
       setSaving(false)
     }
@@ -68,7 +68,7 @@ export default function NoteTakingPanel({
       <Card className="p-4">
         <Button variant="outline" onClick={onToggle} className="w-full">
           <FileText className="h-4 w-4 mr-2" />
-          Take Notes
+          Take notes
         </Button>
       </Card>
     )
@@ -77,7 +77,7 @@ export default function NoteTakingPanel({
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-lg">My Notes</h3>
+        <h3 className="font-semibold text-lg">My notes</h3>
         {onToggle && (
           <Button variant="ghost" size="sm" onClick={onToggle}>
             <X className="h-4 w-4" />
@@ -88,7 +88,7 @@ export default function NoteTakingPanel({
       <Textarea
         value={noteText}
         onChange={(e) => setNoteText(e.target.value)}
-        placeholder="Write your notes here..."
+        placeholder="Write what you want to remember"
         className="min-h-[200px] mb-4"
       />
 
@@ -100,10 +100,10 @@ export default function NoteTakingPanel({
           className="flex items-center gap-2"
         >
           <Save className="h-4 w-4" />
-          {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Note'}
+          {saving ? 'Saving' : saved ? 'Saved' : 'Save note'}
         </Button>
         {saved && (
-          <span className="text-sm text-green-600">Note saved successfully</span>
+          <span className="text-sm text-gray-500">Your note is saved on this device.</span>
         )}
       </div>
     </Card>

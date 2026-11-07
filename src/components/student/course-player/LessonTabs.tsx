@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, StickyNote, FolderDown, Info } from 'lucide-react'
+import { StickyNote, FolderDown, Info } from 'lucide-react'
 import NoteTakingPanel from './NoteTakingPanel'
 import ResourcesPanel from './ResourcesPanel'
 
@@ -27,16 +27,6 @@ type Tab = 'overview' | 'notes' | 'resources'
 
 const RESOURCE_TYPES = ['pdf', 'file', 'image', 'link', 'audio', 'doc']
 
-function typeLabel(t?: string): string {
-  const x = (t || '').toLowerCase()
-  if (x === 'video' || x === 'video_link') return 'Video'
-  if (x === 'text' || x === 'html') return 'Reading'
-  if (x === 'pdf' || x === 'file') return 'File'
-  if (x === 'quiz') return 'Quiz'
-  if (x === 'assignment') return 'Assignment'
-  return 'Lesson'
-}
-
 /**
  * Udemy/Coursera-style tab strip shown beneath the content viewer.
  * Overview · Notes · Resources — reuses the existing NoteTakingPanel and
@@ -45,7 +35,6 @@ function typeLabel(t?: string): string {
 export default function LessonTabs({
   courseId,
   chapterId,
-  chapterName,
   content,
   chapterContents,
   courseDescription,
@@ -82,67 +71,44 @@ export default function LessonTabs({
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-8 sm:pb-12">
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 border-b border-gray-200 mb-5">
+      <div className="mc-tabs" role="tablist" aria-label="Lesson sections" style={{ marginBottom: '1.25rem' }}>
         {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-medium transition-colors ${
-              tab === t.id ? 'text-blue-700' : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
+          <button key={t.id} role="tab" className="mc-tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
             {t.icon}
             {t.label}
-            {typeof t.badge === 'number' && t.badge > 0 && (
-              <span className="ml-0.5 text-[10px] font-semibold bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5">
-                {t.badge}
-              </span>
-            )}
-            {tab === t.id && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t" />}
+            {typeof t.badge === 'number' && t.badge > 0 && <b>{t.badge}</b>}
           </button>
         ))}
       </div>
 
-      {/* Panels */}
       {tab === 'overview' && (
-        <div className="space-y-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <FileText className="h-4 w-4 text-gray-400" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                {typeLabel(content.content_type)}
-                {chapterName ? ` · ${chapterName}` : ''}
-              </span>
+        <div className="mc-swap" style={{ display: 'grid', gap: '1.25rem' }}>
+          {lessonDescription ? (
+            <div>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 700 }}>About this lesson</h4>
+              <p className="text-gray-600 leading-relaxed mt-1.5 whitespace-pre-wrap">{lessonDescription}</p>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">{content.title}</h3>
-            {lessonDescription ? (
-              <p className="text-sm text-gray-600 leading-relaxed mt-2 whitespace-pre-wrap">{lessonDescription}</p>
-            ) : (
-              <p className="text-sm text-gray-400 mt-2">No additional description for this lesson.</p>
-            )}
-          </div>
+          ) : null}
 
           {courseDescription?.trim() && (
-            <div className="pt-4 border-t border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-700 mb-1.5">About this course</h4>
-              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{courseDescription.trim()}</p>
+            <div style={lessonDescription ? { paddingTop: '1.25rem', borderTop: '1.5px solid var(--sd-line)' } : undefined}>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 700 }}>About this course</h4>
+              <p className="text-gray-600 leading-relaxed mt-1.5 whitespace-pre-wrap">{courseDescription.trim()}</p>
             </div>
           )}
         </div>
       )}
 
       {tab === 'notes' && (
-        <NoteTakingPanel
-          courseId={courseId}
-          chapterId={chapterId}
-          contentId={content.id}
-          isOpen
-        />
+        <div className="mc-swap">
+          <NoteTakingPanel courseId={courseId} chapterId={chapterId} contentId={content.id} isOpen />
+        </div>
       )}
 
       {tab === 'resources' && (
-        <ResourcesPanel courseId={courseId} chapterId={chapterId} materials={materials} isOpen />
+        <div className="mc-swap">
+          <ResourcesPanel courseId={courseId} chapterId={chapterId} materials={materials} isOpen />
+        </div>
       )}
     </div>
   )

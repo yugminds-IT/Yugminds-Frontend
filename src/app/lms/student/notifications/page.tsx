@@ -1,63 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2, Send } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { requestClose } from "@/hooks/useUnsavedCloseGuard";
-import {
-  Bell,
-  CheckCircle,
-  AlertCircle,
-  Check,
-  Trash2,
-  MessageSquare,
-  Send,
-  Loader2,
-  User,
-  PlusCircle,
-} from "lucide-react";
 import { useStudentNotifications, useMarkNotificationAsRead } from "@/hooks/useStudentData";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
-import { useQueryClient } from "@tanstack/react-query";
 import { commonApi, studentApi } from "@/lib/api";
+import { getStoredUserId } from "@/lib/session-utils";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { queryKeys } from "@/lib/query-keys";
-import { formatNotificationType } from "@/lib/notification-format";
-
-type NotifItem = {
-  id: string;
-  is_read?: boolean;
-  type?: string;
-  title?: string;
-  message?: string;
-  created_at?: string;
-  allow_replies?: boolean;
-};
-
-type ReplyItem = {
-  id: string;
-  notification_id: string;
-  user_id: number;
-  reply_text: string;
-  created_at: string;
-  updated_at: string;
-  profiles?: { full_name: string | null; email: string; role: string };
-};
+import Modal from "@/components/portal/Modal";
+import {
+  DAY,
+  groupOf,
+  initialsOf,
+  InboxRun,
+  NotificationRow,
+  RepliesModal,
+  type NotifItem,
+  type ReplyItem,
+} from "@/components/portal/notifications";
 
 type Recipient = { id: string; name: string | null; email: string; role: string };
+
 
 export default function NotificationsPage() {
   useDashboardRealtime('student', {
@@ -73,8 +40,15 @@ export default function NotificationsPage() {
   const markAsRead = useMarkNotificationAsRead();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [markingAll, setMarkingAll] = useState(false);
+  const [leaving, setLeaving] = useState<string | null>(null);
+  const [now, setNow] = useState(0);
   const queryClient = useQueryClient();
   const toast = useToast();
+  const myId = typeof window !== "undefined" ? getStoredUserId() : null;
+
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
 
   // Reply thread state
   const [replyDialogOpen, setReplyDialogOpen] = useState(false);
@@ -100,7 +74,7 @@ export default function NotificationsPage() {
       const { data } = await commonApi.notifications.reply({ notification_id: notificationId });
       setReplies((data as { replies?: ReplyItem[] })?.replies || []);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load replies');
+      toast.error(e instanceof Error ? e.message : 'The replies did not load. Try again.');
     } finally {
       setLoadingReplies(false);
     }
@@ -124,9 +98,9 @@ export default function NotificationsPage() {
       });
       setReplyText('');
       await loadReplies(activeNotif.id);
-      toast.success('Reply sent');
+      toast.success('Your reply was sent');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to send reply');
+      toast.error(e instanceof Error ? e.message : 'Your reply was not sent. Try again.');
     } finally {
       setSendingReply(false);
     }
@@ -169,11 +143,11 @@ export default function NotificationsPage() {
 
   const handleSend = async () => {
     if (!sendTitle.trim() || !sendMessage.trim()) {
-      toast.error('Title and message are required');
+      toast.error('Add a subject and a message first');
       return;
     }
     if (selectedRecipients.length === 0) {
-      toast.error('Select at least one recipient');
+      toast.error('Pick at least one teacher');
       return;
     }
     try {
@@ -184,10 +158,10 @@ export default function NotificationsPage() {
         recipientType: sendRecipientType,
         recipients: selectedRecipients,
       });
-      toast.success('Message sent to teacher(s)');
+      toast.success('Your message was sent');
       setSendDialogOpen(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to send message');
+      toast.error(e instanceof Error ? e.message : 'Your message was not sent. Try again.');
     } finally {
       setSending(false);
     }
@@ -241,367 +215,196 @@ export default function NotificationsPage() {
     }
   };
 
-  const filteredNotifications =
-    (notifications as NotifItem[] | undefined)?.filter((n) =>
-      filter === 'unread' ? !n.is_read : true
-    ) ?? [];
-  const unreadCount = (notifications as NotifItem[] | undefined)?.filter((n) => !n.is_read).length ?? 0;
+  const all = useMemo(
+    () => [...((notifications as NotifItem[] | undefined) ?? [])].sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()),
+    [notifications],
+  );
+  const unreadCount = all.filter((n) => !n.is_read).length;
+  const list = filter === 'unread' ? all.filter((n) => !n.is_read) : all;
 
-  const NotifCard = ({ notification }: { notification: NotifItem }) => {
-    const typeDisplay = formatNotificationType(notification.type);
-    const TypeIcon = typeDisplay.icon;
-    return (
-    <Card
-      className={`transition-all hover:shadow-md ${
-        notification.is_read ? 'bg-gray-50 border-gray-200' : typeDisplay.cardClassName
-      }`}
-    >
-      <CardContent className="p-4">
-        <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 mt-1"><TypeIcon className="h-5 w-5 text-gray-600" /></div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2 mb-1">
-              <h3 className={`min-w-0 break-words font-semibold ${!notification.is_read ? 'text-gray-900' : 'text-gray-700'}`}>
-                {notification.title}
-              </h3>
-              <div className="flex shrink-0 items-center gap-2">
-                {!notification.is_read && <div className="w-2 h-2 rounded-full bg-blue-600" />}
-                <Badge variant="outline" className={`text-xs ${typeDisplay.badgeClassName}`}>
-                  {typeDisplay.label}
-                </Badge>
-              </div>
-            </div>
-            <p className={`text-sm ${!notification.is_read ? 'text-gray-700' : 'text-gray-600'}`}>
-              {notification.message || ''}
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              {notification.created_at ? new Date(notification.created_at).toLocaleString() : ''}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2">
-            {!notification.is_read && (
-              <Button variant="ghost" size="sm" onClick={() => handleMarkAsRead(notification.id)}>
-                <Check className="h-4 w-4" />
-              </Button>
-            )}
-            <Button
-              variant="ghost" size="sm"
-              className="text-gray-500 hover:text-blue-600"
-              title="View & reply"
-              onClick={() => openReplies(notification)}
-            >
-              <MessageSquare className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost" size="sm"
-              className="text-gray-400 hover:text-red-600"
-              onClick={() => handleDelete(notification.id)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-    );
+  const startOfToday = now ? new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime() : 0;
+  const todayCount = now ? all.filter((n) => new Date(n.created_at ?? 0).getTime() >= startOfToday).length : 0;
+  const weekCount = now ? all.filter((n) => new Date(n.created_at ?? 0).getTime() >= now - 7 * DAY).length : 0;
+
+  const groups = useMemo(() => {
+    const order = ["Today", "Yesterday", "This week", "Earlier"];
+    const map = new Map<string, NotifItem[]>();
+    list.forEach((n) => {
+      const g = now ? groupOf(n.created_at, startOfToday) : "Earlier";
+      map.set(g, [...(map.get(g) ?? []), n]);
+    });
+    return order.filter((g) => map.has(g)).map((g) => ({ name: g, items: map.get(g)! }));
+  }, [list, now, startOfToday]);
+
+  const deleteWithExit = (id: string) => {
+    setLeaving(id);
+    setTimeout(() => { void handleDelete(id); setLeaving(null); }, 260);
   };
 
+  let status: React.ReactNode;
+  if (isLoading) status = "Checking your messages…";
+  else if (unreadCount > 0) status = <>You have <strong>{unreadCount} unread</strong>.</>;
+  else if (all.length > 0) status = "You are all caught up.";
+  else status = "Nothing here yet. News from your teachers and school will show up here.";
+
+  const sendFooter = (
+    <>
+      <button className="sd-btn sd-btn--line" onClick={requestCloseSendDialog}>Cancel</button>
+      <button
+        className="sd-btn sd-btn--amber"
+        onClick={handleSend}
+        disabled={sending || !sendTitle.trim() || !sendMessage.trim() || selectedRecipients.length === 0}
+      >
+        {sending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+        Send message
+      </button>
+    </>
+  );
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
-          <p className="text-gray-600 mt-2">Stay updated with your latest activity</p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="nt-title">
+        <div className="sd-hero-copy">
+          <h1 id="nt-title" className="mc-hero-title">Notifications</h1>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            {unreadCount > 0 && (
+              <button className="sd-btn sd-btn--amber" onClick={handleMarkAllAsRead} disabled={markingAll}>
+                {markingAll ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}
+                Mark all as read
+              </button>
+            )}
+            <button className="sd-btn sd-btn--ghost-dark" onClick={openSendDialog}>
+              <Send aria-hidden="true" />Message a teacher
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="text-sm">{unreadCount} Unread</Badge>
-          {unreadCount > 0 && (
-            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} disabled={markingAll}>
-              <CheckCircle className="h-4 w-4 mr-2" />
-              {markingAll ? 'Marking...' : 'Mark All as Read'}
-            </Button>
-          )}
-          <Button size="sm" onClick={openSendDialog} className="bg-blue-600 hover:bg-blue-700 text-white">
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Message Teacher
-          </Button>
+        <div className="sd-run-card">
+          <InboxRun items={all} />
+          <div className="sd-run-foot">
+            <b>{unreadCount}<small>unread</small></b>
+            <span>{all.length > 12 ? "Your 12 newest, amber means unread" : "Amber means unread"}</span>
+          </div>
         </div>
+      </section>
+
+      <div className="sd-ledger">
+        <div><span className="sd-l">Unread</span><b className="sd-n">{unreadCount}</b><small>Still to read</small></div>
+        <div><span className="sd-l">Today</span><b className="sd-n">{todayCount}</b><small>Arrived today</small></div>
+        <div><span className="sd-l">This week</span><b className="sd-n">{weekCount}</b><small>Last 7 days</small></div>
+        <div><span className="sd-l">All</span><b className="sd-n">{all.length}</b><small>In your inbox</small></div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="all" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="all" onClick={() => setFilter('all')}>
-            All ({notifications?.length || 0})
-          </TabsTrigger>
-          <TabsTrigger value="unread" onClick={() => setFilter('unread')}>
-            Unread ({unreadCount})
-          </TabsTrigger>
-        </TabsList>
+      <div className="mc-tabs" role="tablist" aria-label="Which notifications to show" style={{ justifySelf: "start" }}>
+        {([
+          { id: "all", label: "All", count: all.length },
+          { id: "unread", label: "Unread", count: unreadCount },
+        ] as const).map((t) => (
+          <button key={t.id} role="tab" className="mc-tab" aria-selected={filter === t.id} onClick={() => setFilter(t.id)}>
+            {t.label}<b>{t.count}</b>
+          </button>
+        ))}
+      </div>
 
-        <TabsContent value="all" className="space-y-4">
-          {isLoading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
+      {isLoading ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : list.length === 0 ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>{filter === 'unread' ? "You are all caught up" : "No notifications yet"}</b>
+            <p>{filter === 'unread' ? "Nothing is waiting for you." : "Messages from your teachers and school will show up here."}</p>
+            {filter === 'unread' && all.length > 0 && <button className="sd-btn sd-btn--line" onClick={() => setFilter('all')}>See everything</button>}
+          </div>
+        </section>
+      ) : (
+        <div key={filter} className="sd-panel as-list mc-swap">
+          {groups.map((g) => (
+            <div key={g.name}>
+              <p className="as-group">{g.name}<span>{g.items.length}</span></p>
+              {g.items.map((n, i) => (
+                <NotificationRow
+                  key={n.id ?? i}
+                  n={n}
+                  now={now || Date.now()}
+                  leaving={leaving === n.id}
+                  onRead={() => handleMarkAsRead(n.id)}
+                  onReplies={() => openReplies(n)}
+                  onDelete={() => deleteWithExit(n.id)}
+                />
+              ))}
             </div>
-          ) : filteredNotifications.length > 0 ? (
-            <div className="space-y-3">
-              {filteredNotifications.map((n, i) => <NotifCard key={n.id ?? i} notification={n} />)}
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="p-12 text-center text-gray-500">
-                <Bell className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">
-                  {filter === 'unread' ? 'No unread notifications' : 'No notifications'}
-                </p>
-                <p className="text-sm mt-2">
-                  {filter === 'unread'
-                    ? 'All caught up! You have no unread notifications.'
-                    : "You don't have any notifications yet."}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
+          ))}
+        </div>
+      )}
 
-        <TabsContent value="unread" className="space-y-4">
-          {filteredNotifications.length > 0 ? (
-            <div className="space-y-3">
-              {filteredNotifications.map((n, i) => <NotifCard key={n.id ?? i} notification={n} />)}
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="p-12 text-center text-gray-500">
-                <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-300" />
-                <p className="text-lg font-medium">All caught up!</p>
-                <p className="text-sm mt-2">You have no unread notifications.</p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {/* Send message dialog */}
-      <Dialog
+      <Modal
         open={sendDialogOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setSendDialogOpen(true);
-            return;
-          }
-          requestCloseSendDialog();
-        }}
+        onClose={requestCloseSendDialog}
+        title="Message your teacher"
+        subtitle="Your message goes to teachers in your school."
+        footer={sendFooter}
       >
-        <DialogContent className="max-w-lg bg-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5 text-blue-600" />
-              Message Your Teacher
-            </DialogTitle>
-            <DialogDescription>
-              Send a message to teachers in your school.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 mt-2">
-            {/* Recipient type */}
-            <div className="space-y-2">
-              <Label>Send to</Label>
-              <div className="flex gap-2">
-                <Button
-                  variant={sendRecipientType === 'role' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => { setSendRecipientType('role'); setSelectedRecipients(['role:teacher']); }}
-                >
-                  All Teachers
-                </Button>
-                <Button
-                  variant={sendRecipientType === 'individual' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => { setSendRecipientType('individual'); setSelectedRecipients([]); }}
-                >
-                  Specific Teacher
-                </Button>
-              </div>
-            </div>
-
-            {/* Individual teacher picker */}
-            {sendRecipientType === 'individual' && (
-              <div className="space-y-2">
-                <Label>Select teacher</Label>
-                {loadingRecipients ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Loading teachers…
-                  </div>
-                ) : availableRecipients.length === 0 ? (
-                  <p className="text-sm text-gray-500">No teachers found in your school.</p>
-                ) : (
-                  <div className="max-h-40 overflow-y-auto space-y-1 border rounded-md p-2">
-                    {availableRecipients.map((r) => {
-                      const selected = selectedRecipients.includes(r.id);
-                      return (
-                        <div
-                          key={r.id}
-                          className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-50 ${selected ? 'bg-blue-50' : ''}`}
-                          onClick={() =>
-                            setSelectedRecipients((prev) =>
-                              selected ? prev.filter((x) => x !== r.id) : [...prev, r.id]
-                            )
-                          }
-                        >
-                          <User className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                          <span className="text-sm">{r.name || r.email}</span>
-                          {selected && <Check className="h-4 w-4 text-blue-600 ml-auto" />}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Title */}
-            <div className="space-y-1">
-              <Label htmlFor="send-title">Subject</Label>
-              <Input
-                id="send-title"
-                placeholder="What's this about?"
-                value={sendTitle}
-                onChange={(e) => setSendTitle(e.target.value)}
-              />
-            </div>
-
-            {/* Message */}
-            <div className="space-y-1">
-              <Label htmlFor="send-message">Message</Label>
-              <Textarea
-                id="send-message"
-                placeholder="Write your message…"
-                value={sendMessage}
-                onChange={(e) => setSendMessage(e.target.value)}
-                rows={4}
-                className="resize-none text-sm"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={requestCloseSendDialog}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSend}
-                disabled={sending || !sendTitle.trim() || !sendMessage.trim() || selectedRecipients.length === 0}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-                Send
-              </Button>
-            </div>
+        <div className="sd-field-wrap">
+          <label>Who is it for?</label>
+          <div className="as-chips" role="group" aria-label="Who is it for">
+            <button className="as-chip" aria-pressed={sendRecipientType === 'role'} onClick={() => { setSendRecipientType('role'); setSelectedRecipients(['role:teacher']); }}>All teachers</button>
+            <button className="as-chip" aria-pressed={sendRecipientType === 'individual'} onClick={() => { setSendRecipientType('individual'); setSelectedRecipients([]); }}>One or more teachers</button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
 
-      {/* Reply thread dialog */}
-      <Dialog
-        open={replyDialogOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setReplyDialogOpen(true);
-            return;
-          }
-          requestCloseReplyDialog();
-        }}
-      >
-        <DialogContent className="max-w-2xl bg-white flex flex-col max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-blue-600" />
-              {activeNotif?.title || 'Notification'}
-            </DialogTitle>
-            {activeNotif?.message && (
-              <DialogDescription className="text-sm text-gray-600 mt-1 line-clamp-2">
-                {activeNotif.message}
-              </DialogDescription>
-            )}
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto space-y-3 py-2 min-h-0">
-            {loadingReplies ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-              </div>
-            ) : replies.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
-                <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No replies yet. Start the conversation below.</p>
-              </div>
+        {sendRecipientType === 'individual' && (
+          <div className="sd-field-wrap">
+            <label>Pick your teachers</label>
+            {loadingRecipients ? (
+              <p className="as-fine" style={{ margin: 0 }}><Loader2 className="mr-1 inline h-4 w-4 animate-spin" aria-hidden="true" />Finding teachers…</p>
+            ) : availableRecipients.length === 0 ? (
+              <p className="as-fine" style={{ margin: 0 }}>We could not find teachers in your school.</p>
             ) : (
-              replies.map((r) => (
-                <div key={r.id} className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <User className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold text-gray-800">
-                        {r.profiles?.full_name || r.profiles?.email || 'Unknown'}
-                      </span>
-                      {r.profiles?.role && (
-                        <Badge variant="outline" className="text-xs h-4 px-1 capitalize">
-                          {r.profiles.role}
-                        </Badge>
-                      )}
-                      <span className="text-xs text-gray-400 ml-auto">
-                        {new Date(r.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.reply_text}</p>
-                  </div>
-                </div>
-              ))
+              <div className="nt-pick">
+                {availableRecipients.map((r) => {
+                  const selected = selectedRecipients.includes(r.id);
+                  return (
+                    <button
+                      key={r.id}
+                      aria-pressed={selected}
+                      onClick={() => setSelectedRecipients((prev) => (selected ? prev.filter((x) => x !== r.id) : [...prev, r.id]))}
+                    >
+                      <span className="sd-avatar" aria-hidden="true">{initialsOf(r.name || r.email)}</span>
+                      <span>{r.name || r.email}</span>
+                      {selected && <Check className="nt-check" aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
+        )}
 
-          {activeNotif?.allow_replies === false ? (
-            <div className="border-t pt-3 flex items-center justify-between">
-              <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Replies are disabled for this notification.
-              </p>
-              <Button variant="outline" size="sm" onClick={requestCloseReplyDialog}>Close</Button>
-            </div>
-          ) : (
-            <div className="border-t pt-3 space-y-2">
-              <Textarea
-                placeholder="Write a reply…"
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                rows={2}
-                className="resize-none text-sm"
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSendReply(); }}
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Ctrl+Enter to send</span>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={requestCloseReplyDialog}>Close</Button>
-                  <Button
-                    size="sm"
-                    onClick={handleSendReply}
-                    disabled={sendingReply || !replyText.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    {sendingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
-                    Send
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+        <div className="sd-field-wrap">
+          <label htmlFor="send-title">Subject</label>
+          <input id="send-title" className="sd-field" placeholder="What is it about?" value={sendTitle} onChange={(e) => setSendTitle(e.target.value)} />
+        </div>
+        <div className="sd-field-wrap">
+          <label htmlFor="send-message">Message</label>
+          <textarea id="send-message" className="sd-field" placeholder="Write your message" rows={4} value={sendMessage} onChange={(e) => setSendMessage(e.target.value)} />
+        </div>
+      </Modal>
+
+      <RepliesModal
+        open={replyDialogOpen}
+        onClose={requestCloseReplyDialog}
+        title={activeNotif?.title}
+        subtitle={activeNotif?.message}
+        allowReplies={activeNotif?.allow_replies}
+        replies={replies}
+        loading={loadingReplies}
+        text={replyText}
+        onText={setReplyText}
+        onSend={handleSendReply}
+        sending={sendingReply}
+        myId={myId}
+        now={now || Date.now()}
+      />
     </div>
   );
 }

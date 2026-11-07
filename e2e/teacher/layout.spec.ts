@@ -1,22 +1,22 @@
 import { test, expect } from './base';
 
-// The teacher tabs as registered in src/components/ui/modern-side-bar.tsx
-// (case 'teacher' branch of getNavigationItems).
+// The teacher tabs as registered in src/components/portal/navs.ts (TEACHER_NAV). Each is a real <a href> in the sidebar.
 const NAV_ITEMS: Array<{ name: string; href: string }> = [
   { name: 'Dashboard', href: '/lms/teacher' },
-  { name: 'My Classes', href: '/lms/teacher/classes' },
-  { name: 'Submit Report', href: '/lms/teacher/reports' },
+  { name: 'My classes', href: '/lms/teacher/classes' },
+  { name: 'Submit report', href: '/lms/teacher/reports' },
   { name: 'Attendance', href: '/lms/teacher/attendance' },
-  { name: 'Leave Requests', href: '/lms/teacher/leaves' },
+  { name: 'School calendar', href: '/lms/teacher/calendar' },
+  { name: 'Leave requests', href: '/lms/teacher/leaves' },
   { name: 'Notifications', href: '/lms/teacher/notifications' },
   { name: 'Analytics', href: '/lms/teacher/analytics' },
-  { name: 'Student Progress', href: '/lms/teacher/student-progress' },
+  { name: 'Student progress', href: '/lms/teacher/student-progress' },
   { name: 'Assignments', href: '/lms/teacher/assignments' },
   { name: 'Settings', href: '/lms/teacher/settings' },
 ];
 
 test.describe('Teacher — Layout / Navigation', () => {
-  test('sidebar renders all 10 tabs with correct hrefs', async ({ page }) => {
+  test('sidebar renders all 11 tabs with correct hrefs', async ({ page }) => {
     await page.goto('/lms/teacher');
     await page.waitForSelector('nav');
 
@@ -38,7 +38,7 @@ test.describe('Teacher — Layout / Navigation', () => {
 
     const notificationsLink = page.locator('nav a[href="/lms/teacher/notifications"]');
     if (count > 0) {
-      const expectedBadgeText = count > 9 ? '9+' : String(count);
+      const expectedBadgeText = count > 99 ? '99+' : String(count);
       await expect(notificationsLink.getByText(expectedBadgeText, { exact: true })).toBeVisible();
     } else {
       // No badge element rendered at all when unread count is 0.
@@ -65,7 +65,7 @@ test.describe('Teacher — Layout / Navigation', () => {
     await page.goto('/lms/teacher');
     await page.waitForSelector('nav');
 
-    await page.getByRole('button', { name: /Logout/i }).click();
+    await page.getByRole('button', { name: /Log ?out/i }).click();
     await page.waitForURL(/\/lms\/login/, { timeout: 15000 });
 
     // Session must actually be invalidated — going back to the dashboard URL

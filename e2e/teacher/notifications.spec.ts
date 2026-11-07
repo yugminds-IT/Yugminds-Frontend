@@ -105,24 +105,23 @@ test.describe('Teacher — Notifications', () => {
       await page.goto('/lms/teacher/notifications');
       await recipientsResponse;
 
-      await page.getByRole('tab', { name: 'Send Notification' }).click();
-      await page.locator('#title').fill(uniqueTitle);
-      await page.locator('#message').fill(uniqueMessage);
+      await page.getByRole('tab', { name: /Send notification/i }).click();
+      await page.locator('#nt-f-title').fill(uniqueTitle);
+      await page.locator('#nt-f-message').fill(uniqueMessage);
 
-      const studentRoleCheckbox = page
-        .locator('label', { hasText: /All Students/i })
-        .locator('input[type="checkbox"]');
-      await studentRoleCheckbox.check();
+      await page.getByRole('button', { name: /All Students/i }).click();
 
       const createResponse = page.waitForResponse(
         (res) => res.url().endsWith('/teacher/notifications') && res.request().method() === 'POST',
       );
-      await page.getByRole('button', { name: /^Send Notification$/ }).click();
+      await page.getByRole('button', { name: /^Send notification$/i }).click();
       const createRes = await createResponse;
       expect(createRes.ok(), await createRes.text()).toBeTruthy();
 
-      // handleSendNotification switches to the "view" tab automatically.
-      await expect(page.getByRole('tab', { name: 'View Sent' })).toHaveAttribute('data-state', 'active');
+      // handleSendNotification switches to the "view" tab automatically; the
+      // list defaults to "Received", so switch to "Sent" to see what was composed.
+      await expect(page.getByRole('tab', { name: /View notifications/i })).toHaveAttribute('aria-selected', 'true');
+      await page.getByRole('button', { name: /^Sent$/ }).click();
       await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 10000 });
 
       // Cross-user delivery check: the fixture student's own feed must contain it.

@@ -2,28 +2,12 @@
 
 import { useStudentCourses } from '@/hooks/useStudentData'
 import { studentApi } from '@/lib/api/student.api'
-import { Progress } from '@/components/ui/progress'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import ActivityCalendar, { type ActivityDay } from '@/components/student/ActivityCalendar'
-import CircularProgress from '@/components/student/CircularProgress'
+import ProgressRail from '@/components/portal/ProgressRail'
+import MonthCalendar, { type ActivityDay } from '@/components/portal/MonthCalendar'
 import ErrorBoundary from '@/components/student/course-player/ErrorBoundary'
 import { useCourseProgressStore, type LastViewedEntry } from '@/store/course-progress-store'
 import { getStoredUserId } from '@/lib/session-utils'
-import {
-  BookOpen,
-  Search,
-  AlertCircle,
-  CheckCircle,
-  ChevronRight,
-  Clock,
-  PlayCircle,
-  Layers,
-  LayoutGrid,
-  List,
-  ArrowRight,
-  User,
-} from 'lucide-react'
+import { AlertCircle, ArrowRight, BookOpen, Check, Clock, LayoutGrid, Layers, List, Play, PlayCircle, Search, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useMemo, useEffect } from 'react'
 
@@ -49,38 +33,19 @@ interface CourseItem {
   status: 'active' | 'completed' | 'not_started'
 }
 
-const SUBJECT_GRADIENTS: Record<string, string> = {
-  math:    'from-blue-500 to-blue-700',
-  science: 'from-emerald-500 to-teal-600',
-  english: 'from-purple-500 to-violet-600',
-  history: 'from-amber-500 to-orange-600',
-  art:     'from-pink-500 to-rose-600',
-  default: 'from-indigo-500 to-blue-600',
-}
-
-function subjectGradient(subject: string): string {
-  const lower = (subject || '').toLowerCase()
-  if (lower.includes('math')) return SUBJECT_GRADIENTS.math
-  if (lower.includes('science') || lower.includes('bio') || lower.includes('chem') || lower.includes('phys')) return SUBJECT_GRADIENTS.science
-  if (lower.includes('english') || lower.includes('lang')) return SUBJECT_GRADIENTS.english
-  if (lower.includes('history') || lower.includes('social')) return SUBJECT_GRADIENTS.history
-  if (lower.includes('art') || lower.includes('music') || lower.includes('draw')) return SUBJECT_GRADIENTS.art
-  return SUBJECT_GRADIENTS.default
-}
-
 function formatRelative(iso: string | undefined, nowMs: number | null): string {
   if (!iso || !nowMs) return ''
   const t = new Date(iso).getTime()
   if (isNaN(t)) return ''
   const diff = nowMs - t
   const day = 86_400_000
-  if (diff < day) return 'Today'
-  if (diff < 2 * day) return 'Yesterday'
+  if (diff < day) return 'today'
+  if (diff < 2 * day) return 'yesterday'
   const days = Math.floor(diff / day)
   if (days < 7) return `${days} days ago`
   const weeks = Math.floor(days / 7)
   if (weeks < 5) return `${weeks} week${weeks > 1 ? 's' : ''} ago`
-  return new Date(iso).toLocaleDateString()
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
 function formatDuration(min?: number): string | null {
@@ -96,217 +61,73 @@ type Tab = 'in_progress' | 'completed' | 'all'
 type SortKey = 'recent' | 'progress' | 'az'
 type ViewMode = 'list' | 'grid'
 
-// ── Thumbnail (shared by row + card) ────────────────────────────────────────
-function CourseThumb({ course, size = 'sm' }: { course: CourseItem; size?: 'sm' | 'lg' }) {
-  const dim = size === 'lg' ? 'w-full h-32' : 'w-16 h-16'
-  if (course.thumbnail_url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={course.thumbnail_url} alt={course.title} className={`${dim} ${size === 'lg' ? 'rounded-t-xl' : 'rounded-xl'} object-cover shrink-0`} />
-  }
-  return (
-    <div className={`${dim} ${size === 'lg' ? 'rounded-t-xl' : 'rounded-xl'} bg-gradient-to-br ${subjectGradient(course.subject)} flex items-center justify-center shrink-0 shadow-sm`}>
-      <BookOpen className={size === 'lg' ? 'h-9 w-9 text-white/90' : 'h-7 w-7 text-white'} />
-    </div>
-  )
-}
+const isDone = (c: CourseItem) => c.progress_percentage >= 100 || c.status === 'completed'
+const isFresh = (c: CourseItem) => c.status === 'not_started' && c.progress_percentage === 0
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
-// ── Meta chips (lessons · duration · last accessed) ─────────────────────────
-function MetaChips({ course, nowMs }: { course: CourseItem; nowMs: number | null }) {
+/** Lessons, modules, duration, tutor and last visit, as plain text with a small icon. */
+function Meta({ course, nowMs }: { course: CourseItem; nowMs: number | null }) {
   const duration = formatDuration(course.estimated_minutes)
   const accessed = formatRelative(course.last_accessed, nowMs)
   return (
-    <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-gray-400">
-      {course.total_lessons > 0 && (
-        <span className="flex items-center gap-1"><PlayCircle className="h-3 w-3" />{course.total_lessons} lesson{course.total_lessons !== 1 ? 's' : ''}</span>
-      )}
-      {course.total_chapters > 0 && (
-        <span className="flex items-center gap-1"><Layers className="h-3 w-3" />{course.total_chapters} module{course.total_chapters !== 1 ? 's' : ''}</span>
-      )}
-      {duration && (
-        <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{duration}</span>
-      )}
-      {course.instructor_name && (
-        <span className="flex items-center gap-1"><User className="h-3 w-3" />{course.instructor_name}</span>
-      )}
-      {accessed && course.status !== 'not_started' && (
-        <span className="text-gray-400">Last accessed {accessed}</span>
-      )}
-    </div>
-  )
-}
-
-// ── Continue-learning hero ──────────────────────────────────────────────────
-function ContinueHero({
-  course,
-  lastViewed,
-  onResume,
-}: {
-  course: CourseItem
-  lastViewed?: LastViewedEntry | null
-  onResume: () => void
-}) {
-  const nextLesson = lastViewed?.contentTitle || lastViewed?.chapterTitle
-  return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-700 via-blue-700 to-indigo-800 text-white shadow-lg">
-      <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 90% 10%, white 0, transparent 40%)' }} />
-      <div className="relative p-5 sm:p-6 flex items-center gap-5">
-        <div className="hidden sm:block relative h-20 w-20 rounded-xl overflow-hidden ring-1 ring-white/20 bg-white/10 shrink-0">
-          {course.thumbnail_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={course.thumbnail_url} alt={course.title} className="h-full w-full object-cover" />
-          ) : (
-            <div className="h-full w-full flex items-center justify-center"><BookOpen className="h-8 w-8 text-white/70" /></div>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-200">Continue learning</p>
-          <h2 className="text-lg sm:text-xl font-bold leading-tight truncate mt-0.5">{course.title}</h2>
-          <p className="text-sm text-blue-100/90 mt-1 truncate">
-            {nextLesson ? <>Up next: <span className="font-medium text-white">{nextLesson}</span></> : 'Pick up where you left off'}
-          </p>
-          <div className="mt-3 max-w-md">
-            <div className="flex items-center justify-between text-[11px] text-blue-100 mb-1">
-              <span>{Math.round(course.progress_percentage)}% complete</span>
-              <span>{course.completed_chapters}/{course.total_chapters} modules</span>
-            </div>
-            <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-              <div className="h-full bg-white rounded-full transition-all" style={{ width: `${course.progress_percentage}%` }} />
-            </div>
-          </div>
-        </div>
-
-        <Button
-          onClick={onResume}
-          className="bg-white text-blue-700 hover:bg-blue-50 font-semibold rounded-lg px-5 py-2.5 shrink-0 hidden sm:flex items-center gap-2"
-        >
-          Resume
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      </div>
-      {/* Mobile resume button */}
-      <div className="relative px-5 pb-5 sm:hidden">
-        <Button onClick={onResume} className="w-full bg-white text-blue-700 hover:bg-blue-50 font-semibold rounded-lg flex items-center justify-center gap-2">
-          Resume <ArrowRight className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-// ── Next-lesson line (shared by row + card) ─────────────────────────────────
-function NextLesson({ lv }: { lv?: LastViewedEntry | null }) {
-  const label = lv?.contentTitle || lv?.chapterTitle
-  if (!label) return null
-  return (
-    <p className="flex items-center gap-1 text-xs text-blue-600 mt-0.5 min-w-0">
-      <PlayCircle className="h-3 w-3 shrink-0" />
-      <span className="truncate">Next: {label}</span>
+    <p className="mc-meta">
+      {course.total_lessons > 0 && <span><PlayCircle aria-hidden="true" />{plural(course.total_lessons, 'lesson')}</span>}
+      {duration && <span><Clock aria-hidden="true" />{duration}</span>}
+      {course.instructor_name && <span><User aria-hidden="true" />{course.instructor_name}</span>}
+      {accessed && course.status !== 'not_started' && <span>Opened {accessed}</span>}
     </p>
   )
 }
 
-// ── List row ────────────────────────────────────────────────────────────────
-function CourseRow({ course, nowMs, lv, onResume }: { course: CourseItem; nowMs: number | null; lv?: LastViewedEntry | null; onResume: () => void }) {
-  const isCompleted = course.progress_percentage >= 100 || course.status === 'completed'
-  const isNotStarted = course.status === 'not_started' && course.progress_percentage === 0
-
+/** One bar of chapter segments. Falls back to the percentage when the course has no chapters yet. */
+function Segments({ course }: { course: CourseItem }) {
+  const total = course.total_chapters
+  const n = Math.min(Math.max(total, 10), 12)
+  const on = total > 0
+    ? Math.round((Math.min(course.completed_chapters, total) / total) * n)
+    : Math.round((course.progress_percentage / 100) * n)
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 sm:px-5 flex flex-wrap sm:flex-nowrap gap-x-4 gap-y-3 hover:shadow-md hover:border-gray-300 transition-all group">
-      <div className="relative shrink-0">
-        <CourseThumb course={course} />
-        {!isNotStarted && (
-          <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-0.5 shadow-sm">
-            <CircularProgress value={course.progress_percentage} size={28} stroke={3} showLabel={false} />
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          {course.grade && (
-            <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{course.grade}</span>
-          )}
-          {course.subject && <span className="text-[11px] text-gray-400">{course.subject}</span>}
-        </div>
-        <h3 className="font-semibold text-gray-900 text-[15px] line-clamp-1 group-hover:text-blue-700 transition-colors">
-          {course.title}
-        </h3>
-        <p className="text-xs text-gray-500 mt-0.5 mb-1.5">
-          {Math.round(course.progress_percentage)}% complete
-          {course.total_chapters > 0 && ` · ${course.completed_chapters} of ${course.total_chapters} chapters`}
-        </p>
-        {!isCompleted && !isNotStarted && <NextLesson lv={lv} />}
-        <MetaChips course={course} nowMs={nowMs} />
-        <Progress
-          value={course.progress_percentage}
-          className={`h-1.5 mt-2 bg-gray-100 ${isCompleted ? '[&>div]:bg-green-500' : '[&>div]:bg-blue-600'}`}
-        />
-      </div>
-
-      <div className="flex items-center gap-4 shrink-0 max-sm:basis-full">
-        {isCompleted && (
-          <div className="hidden lg:flex items-center gap-1.5 text-green-600 text-xs font-medium">
-            <CheckCircle className="h-4 w-4" />
-            Completed
-          </div>
-        )}
-        <Button
-          size="sm"
-          className={`max-sm:h-10 max-sm:w-full ${isCompleted ? 'bg-gray-800 hover:bg-gray-900' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-          onClick={onResume}
-        >
-          {isCompleted ? 'Review' : isNotStarted ? 'Start' : 'Resume'}
-          <ChevronRight className="h-3.5 w-3.5 ml-1" />
-        </Button>
-      </div>
+    <div className="sd-seg" data-done={isDone(course)} role="progressbar" aria-valuenow={Math.round(course.progress_percentage)} aria-valuemin={0} aria-valuemax={100} aria-label={`${course.title} progress`}>
+      {Array.from({ length: n }, (_, i) => <i key={i} data-on={i < on} style={{ '--k': i } as React.CSSProperties} />)}
     </div>
   )
 }
 
-// ── Grid card ────────────────────────────────────────────────────────────────
-function CourseCard({ course, nowMs, lv, onResume }: { course: CourseItem; nowMs: number | null; lv?: LastViewedEntry | null; onResume: () => void }) {
-  const isCompleted = course.progress_percentage >= 100 || course.status === 'completed'
-  const isNotStarted = course.status === 'not_started' && course.progress_percentage === 0
-
+function CourseCard({ course, nowMs, lv, view, onOpen }: { course: CourseItem; nowMs: number | null; lv?: LastViewedEntry | null; view: ViewMode; onOpen: () => void }) {
+  const done = isDone(course)
+  const fresh = isFresh(course)
+  const next = !done && !fresh ? lv?.contentTitle || lv?.chapterTitle : null
+  const pct = Math.round(course.progress_percentage)
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md hover:border-gray-300 transition-all group flex flex-col">
-      <div className="relative">
-        <CourseThumb course={course} size="lg" />
-        {!isNotStarted && (
-          <div className="absolute bottom-2 right-2 bg-white/95 rounded-full p-0.5 shadow">
-            <CircularProgress value={course.progress_percentage} size={36} stroke={4} />
-          </div>
-        )}
-        {course.grade && (
-          <span className="absolute top-2 left-2 text-[11px] bg-black/45 text-white px-2 py-0.5 rounded-full font-medium backdrop-blur-sm">
-            {course.grade}
-          </span>
-        )}
+    <article className="mc-card" data-view={view}>
+      <div className="mc-cover">
+        {course.thumbnail_url
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={course.thumbnail_url} alt="" />
+          : <BookOpen aria-hidden="true" />}
+        {course.grade && <span className="sd-tag">{course.grade}</span>}
+        {done && <span className="mc-done"><Check aria-hidden="true" />Completed</span>}
       </div>
-      <div className="p-4 flex flex-col flex-1">
-        {course.subject && <p className="text-[11px] text-gray-400 mb-0.5">{course.subject}</p>}
-        <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 group-hover:text-blue-700 transition-colors min-h-[2.5rem]">
-          {course.title}
-        </h3>
-        {!isCompleted && !isNotStarted && <NextLesson lv={lv} />}
-        <div className="mt-2 mb-3"><MetaChips course={course} nowMs={nowMs} /></div>
-        <div className="mt-auto">
-          <Progress
-            value={course.progress_percentage}
-            className={`h-1.5 mb-3 bg-gray-100 ${isCompleted ? '[&>div]:bg-green-500' : '[&>div]:bg-blue-600'}`}
-          />
-          <Button
-            size="sm"
-            className={`w-full ${isCompleted ? 'bg-gray-800 hover:bg-gray-900' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-            onClick={onResume}
-          >
-            {isCompleted ? 'Review' : isNotStarted ? 'Start' : 'Resume'}
-            <ChevronRight className="h-3.5 w-3.5 ml-1" />
-          </Button>
+      <div className="mc-body">
+        <div className="mc-info">
+          {course.subject && <p className="mc-subject">{course.subject}</p>}
+          <h3 className="mc-title">{course.title}</h3>
+          {next && <p className="mc-next"><Play aria-hidden="true" /><span>Next: {next}</span></p>}
+          <Segments course={course} />
+          <p className="mc-count">
+            <span>{course.total_chapters > 0 ? <><b>{course.completed_chapters}</b> of {plural(course.total_chapters, 'chapter')}</> : fresh ? 'Not started' : 'In progress'}</span>
+            <b>{pct}%</b>
+          </p>
+          <Meta course={course} nowMs={nowMs} />
+        </div>
+        <div className="mc-cta">
+          <button className={`sd-btn ${done ? 'sd-btn--line' : 'sd-btn--ink'}`} onClick={onOpen}>
+            {done ? 'Review' : fresh ? 'Start' : 'Resume'}
+            {!done && <ArrowRight aria-hidden="true" />}
+          </button>
         </div>
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -314,9 +135,9 @@ export default function MyCoursesPage() {
   const router = useRouter()
   const { data: coursesData, isLoading, error } = useStudentCourses()
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeTab, setActiveTab] = useState<Tab>('in_progress')
+  const [activeTab, setActiveTab] = useState<Tab>('all')
   const [sortBy, setSortBy] = useState<SortKey>('recent')
-  const [view, setView] = useState<ViewMode>('list')
+  const [view, setView] = useState<ViewMode>('grid')
   const [mounted, setMounted] = useState(false)
   // "Now" captured once on mount (reading the clock during render is impure).
   const [nowMs, setNowMs] = useState<number | null>(null)
@@ -484,9 +305,9 @@ export default function MyCoursesPage() {
   }, [activityDays, courses, nowMs])
 
   const tabs = useMemo(() => [
-    { id: 'in_progress' as Tab, label: 'In Progress', count: courses.filter(c => c.status !== 'completed' && c.progress_percentage > 0 && c.progress_percentage < 100).length },
+    { id: 'all' as Tab, label: 'All courses', count: courses.length },
+    { id: 'in_progress' as Tab, label: 'In progress', count: courses.filter(c => c.status !== 'completed' && c.progress_percentage > 0 && c.progress_percentage < 100).length },
     { id: 'completed' as Tab, label: 'Completed', count: courses.filter(c => c.status === 'completed' || c.progress_percentage >= 100).length },
-    { id: 'all' as Tab, label: 'All Courses', count: courses.length },
   ], [courses])
 
   const filtered = useMemo(() => {
@@ -515,178 +336,134 @@ export default function MyCoursesPage() {
 
   if (!mounted) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      <div className="sd-page">
+        <div className="sd-skel" style={{ height: '3rem', width: '14rem' }} />
+        <div className="sd-skel" style={{ height: '14rem' }} />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center max-w-md mx-auto">
-          <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
-          <p className="font-semibold text-red-800 mb-3">
-            {error instanceof Error ? error.message : 'Failed to load courses'}
-          </p>
-          <Button onClick={() => window.location.reload()} variant="outline" size="sm">Retry</Button>
-        </div>
+      <div className="sd-page">
+        <section className="sd-panel" role="alert">
+          <div className="sd-empty">
+            <AlertCircle aria-hidden="true" size={28} color="var(--sd-late)" />
+            <b>Your courses did not load</b>
+            <p>{error instanceof Error ? error.message : 'Something went wrong while loading your courses.'}</p>
+            <button className="sd-btn sd-btn--ink" onClick={() => window.location.reload()}>Try again</button>
+          </div>
+        </section>
       </div>
     )
   }
 
+  const empty = (() => {
+    if (searchQuery) return { title: 'No courses match your search', text: 'Try a different word.' }
+    if (activeTab === 'completed') return { title: 'No finished courses yet', text: 'Finish every chapter of a course and it will show up here with its certificate.' }
+    if (activeTab === 'in_progress') return { title: 'Nothing in progress', text: 'Pick a course from All courses to start your first chapter.' }
+    return { title: 'No courses yet', text: 'Courses your school assigns will show up here.' }
+  })()
+
+  const hero = resumeTarget && !searchQuery ? resumeTarget : null
+  const heroTime = hero ? formatDuration(hero.course.estimated_minutes) : null
+  const heroNext = hero?.lv?.contentTitle || hero?.lv?.chapterTitle
+
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-        {/* Page header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 md:mb-6">
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900">My Learning</h1>
-            <p className="text-sm text-gray-500 mt-0.5">{courses.length} course{courses.length !== 1 ? 's' : ''} enrolled</p>
+      <div className="sd-page">
+        <div className="mc-head">
+          <div>
+            <h1>My courses</h1>
+            <p>{courses.length === 0 ? 'No courses yet' : `${plural(courses.length, 'course')} from your school`}</p>
           </div>
-          <div className="relative w-full sm:w-56">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search courses..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 bg-white"
-            />
-          </div>
+          <label className="sd-search">
+            <Search aria-hidden="true" />
+            <input type="search" placeholder="Search courses" aria-label="Search courses" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          </label>
         </div>
 
-        {/* Continue learning hero */}
-        {resumeTarget && !searchQuery && (
-          <div className="mb-4 md:mb-6">
-            <ContinueHero
-              course={resumeTarget.course}
-              lastViewed={resumeTarget.lv}
-              onResume={() => goToCourse(resumeTarget.course)}
-            />
-          </div>
+        {hero && (
+          <section className="sd-hero mc-band" aria-labelledby="mc-hero-t">
+            <div className="sd-hero-copy">
+              <h2 id="mc-hero-t" className="mc-hero-title">{hero.course.title}</h2>
+              <p className="sd-status">{heroNext ? <>Up next: <strong>{heroNext}</strong></> : 'Pick up where you left off.'}</p>
+              <p className="mc-facts">
+                <span><Layers aria-hidden="true" />{plural(hero.course.total_chapters, 'chapter')}</span>
+                {hero.course.total_lessons > 0 && <span><PlayCircle aria-hidden="true" />{plural(hero.course.total_lessons, 'lesson')}</span>}
+                {heroTime && <span><Clock aria-hidden="true" />{heroTime}</span>}
+              </p>
+              <div className="sd-hero-actions">
+                <button className="sd-btn sd-btn--amber" onClick={() => goToCourse(hero.course)}><Play aria-hidden="true" />Resume course</button>
+              </div>
+            </div>
+            {hero.course.total_chapters > 0 ? (
+              <div className="sd-run-card">
+                <ProgressRail total={hero.course.total_chapters} completed={hero.course.completed_chapters} />
+                <div className="sd-run-foot">
+                  <b>{hero.course.completed_chapters} of {hero.course.total_chapters}<small>chapters done</small></b>
+                  <span>{Math.round(hero.course.progress_percentage)}% complete</span>
+                </div>
+              </div>
+            ) : (
+              <div className="sd-run-card">
+                <div className="sd-meter"><i style={{ '--p': `${hero.course.progress_percentage}%` } as React.CSSProperties} /></div>
+                <div className="sd-run-foot"><b>{Math.round(hero.course.progress_percentage)}%<small>complete</small></b></div>
+              </div>
+            )}
+          </section>
         )}
 
-        {/* Two-column layout */}
-        <div className="flex flex-col-reverse gap-4 lg:flex-row lg:gap-6 lg:items-start">
-          {/* Left: course list */}
-          <div className="flex-1 min-w-0">
-            {/* Toolbar: tabs + sort + view toggle */}
-            <div className="flex flex-wrap items-center justify-between gap-x-3 border-b border-gray-200 mb-4 bg-white rounded-t-xl px-1 shadow-sm">
-              <div className="flex min-w-0 max-sm:w-full overflow-x-auto [scrollbar-width:none]">
+        <div className="mc-cols">
+          <div className="mc-main">
+            <div className="mc-bar">
+              <div className="mc-tabs" role="tablist" aria-label="Course filter">
                 {tabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-3 text-sm font-medium relative transition-colors ${
-                      activeTab === tab.id ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
+                  <button key={tab.id} role="tab" className="mc-tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
                     {tab.label}
-                    {tab.count > 0 && (
-                      <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                        activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {tab.count}
-                      </span>
-                    )}
-                    {activeTab === tab.id && (
-                      <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t" />
-                    )}
+                    {tab.count > 0 && <b>{tab.count}</b>}
                   </button>
                 ))}
               </div>
-
-              <div className="flex items-center gap-2 pr-2 max-sm:w-full max-sm:justify-end max-sm:border-t max-sm:border-gray-100 max-sm:py-2">
-                <select
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value as SortKey)}
-                  className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  aria-label="Sort courses"
-                >
-                  <option value="recent">Recently accessed</option>
-                  <option value="progress">Progress</option>
-                  <option value="az">A–Z</option>
+              <div className="mc-tools">
+                <select className="mc-select" value={sortBy} onChange={e => setSortBy(e.target.value as SortKey)} aria-label="Sort courses">
+                  <option value="recent">Recently opened</option>
+                  <option value="progress">Most progress</option>
+                  <option value="az">A to Z</option>
                 </select>
-                <div className="hidden sm:flex items-center bg-gray-50 border border-gray-200 rounded-md p-0.5">
-                  <button
-                    onClick={() => setView('list')}
-                    className={`p-1.5 rounded ${view === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-                    aria-label="List view"
-                    title="List view"
-                  >
-                    <List className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setView('grid')}
-                    className={`p-1.5 rounded ${view === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-                    aria-label="Grid view"
-                    title="Grid view"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
+                <div className="mc-view" role="group" aria-label="Layout">
+                  <button aria-pressed={view === 'grid'} onClick={() => setView('grid')} aria-label="Cards" title="Cards"><LayoutGrid /></button>
+                  <button aria-pressed={view === 'list'} onClick={() => setView('list')} aria-label="List" title="List"><List /></button>
                 </div>
               </div>
             </div>
 
-            {/* Course rows / cards */}
             {isLoading ? (
-              <div className={view === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4' : 'space-y-3'}>
-                {[1, 2, 3].map(i => (
-                  <div key={i} className={`${view === 'grid' ? 'h-64' : 'h-24'} bg-white rounded-xl animate-pulse border border-gray-100`} />
+              <div className="mc-grid"><div className="sd-skel" style={{ height: '15rem' }} /><div className="sd-skel" style={{ height: '15rem' }} /></div>
+            ) : sorted.length > 0 ? (
+              <div key={`${activeTab}-${view}`} className={`${view === 'grid' ? 'mc-grid' : 'mc-list'} mc-swap`}>
+                {sorted.map(course => (
+                  <CourseCard key={course.id} course={course} nowMs={nowMs} lv={lastViewedMap[course.id]} view={view} onOpen={() => goToCourse(course)} />
                 ))}
               </div>
-            ) : sorted.length > 0 ? (
-              view === 'grid' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {sorted.map(course => (
-                    <CourseCard key={course.id} course={course} nowMs={nowMs} lv={lastViewedMap[course.id]} onResume={() => goToCourse(course)} />
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {sorted.map(course => (
-                    <CourseRow key={course.id} course={course} nowMs={nowMs} lv={lastViewedMap[course.id]} onResume={() => goToCourse(course)} />
-                  ))}
-                </div>
-              )
             ) : (
-              <div className="bg-white rounded-xl border border-dashed border-gray-200 py-16 text-center shadow-sm">
-                <div className="mx-auto mb-4 h-14 w-14 rounded-full bg-gray-50 flex items-center justify-center">
-                  <BookOpen className="h-7 w-7 text-gray-300" />
+              <section className="sd-panel">
+                <div className="sd-empty">
+                  <b>{empty.title}</b>
+                  <p>{empty.text}</p>
+                  {searchQuery ? (
+                    <button className="sd-btn sd-btn--line" onClick={() => setSearchQuery('')}>Clear search</button>
+                  ) : activeTab !== 'all' ? (
+                    <button className="sd-btn sd-btn--line" onClick={() => setActiveTab('all')}>See all courses</button>
+                  ) : null}
                 </div>
-                <p className="font-medium text-gray-600">
-                  {searchQuery
-                    ? 'No courses match your search'
-                    : activeTab === 'completed'
-                    ? 'No completed courses yet'
-                    : activeTab === 'in_progress'
-                    ? 'No courses in progress'
-                    : 'No courses yet'}
-                </p>
-                <p className="text-sm text-gray-400 mt-1 max-w-xs mx-auto">
-                  {searchQuery
-                    ? 'Try a different search term.'
-                    : activeTab === 'completed'
-                    ? 'Complete a course to see it here.'
-                    : 'Your enrolled courses will appear here.'}
-                </p>
-                {activeTab !== 'all' && !searchQuery && (
-                  <Button variant="link" onClick={() => setActiveTab('all')} className="mt-2 text-blue-600 text-sm">
-                    View all courses
-                  </Button>
-                )}
-              </div>
+              </section>
             )}
           </div>
 
-          {/* Right: calendar sidebar */}
-          <div className="w-full lg:w-72 shrink-0 space-y-4">
-            <ActivityCalendar
-              activityDays={activityDays}
-              stats={calendarStats}
-              legendLabels={{ dot: 'Lesson completed', line: 'All lessons done' }}
-            />
-          </div>
+          <aside className="mc-aside">
+            <MonthCalendar days={activityDays} stats={calendarStats} />
+          </aside>
         </div>
       </div>
     </ErrorBoundary>

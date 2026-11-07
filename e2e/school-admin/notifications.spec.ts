@@ -35,35 +35,30 @@ test.describe('School Admin — Notifications', () => {
     await page.goto('/lms/school-admin/notifications');
     await recipientsResponse;
 
-    // Compose tab is "Send Notification"; default recipientType is 'role', which
-    // per notifications/page.tsx offers role-level checkboxes (Teachers/Students).
-    await page.getByRole('tab', { name: 'Send Notification' }).click();
-    await page.locator('#title').fill(uniqueTitle);
-    await page.locator('#message').fill(uniqueMessage);
+    // Compose tab is "Send notification"; default recipientType is 'role', which
+    // offers one pick button per role (Teachers/Students).
+    await page.getByRole('tab', { name: /Send notification/i }).click();
+    await page.locator('#nt-f-title').fill(uniqueTitle);
+    await page.locator('#nt-f-message').fill(uniqueMessage);
 
-    // Select the "Teachers" role checkbox so the fixture teacher receives it.
-    const teacherRoleCheckbox = page
-      .locator('label', { hasText: /Teacher/i })
-      .locator('input[type="checkbox"]')
-      .first();
-    await teacherRoleCheckbox.check();
+    // Pick the "Teachers" role so the fixture teacher receives it.
+    await page.getByRole('button', { name: /Teacher/i }).first().click();
 
     const createResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/notifications') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: /^Send Notification$/ }).click();
+    await page.getByRole('button', { name: /^Send notification$/i }).click();
     const createRes = await createResponse;
     expect(createRes.ok(), await createRes.text()).toBeTruthy();
 
     // handleSendNotification switches to the "view" tab automatically and the
-    // page defaults notificationMode to 'received' — switch to 'sent' to see
-    // what this school-admin composed (per the mode select in page.tsx).
-    await expect(page.getByRole('tab', { name: 'View Sent' })).toHaveAttribute('data-state', 'active');
-    await page.getByText('Received by Me').click();
+    // page defaults to "Received" — switch to "Sent" to see what this
+    // school-admin composed.
+    await expect(page.getByRole('tab', { name: /View notifications/i })).toHaveAttribute('aria-selected', 'true');
     const sentResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/notifications') && res.request().method() === 'GET',
     );
-    await page.getByRole('option', { name: 'Sent (Grouped)' }).click();
+    await page.getByRole('button', { name: /^Sent$/ }).click();
     await sentResponse;
 
     await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 10000 });

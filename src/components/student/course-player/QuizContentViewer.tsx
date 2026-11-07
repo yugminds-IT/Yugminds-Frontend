@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card } from '../../ui/card'
-import { Button } from '../../ui/button'
-import { Badge } from '../../ui/badge'
-import { CheckCircle, AlertCircle, Loader2, ClipboardList } from 'lucide-react'
+import { Play, RotateCcw, FileText } from 'lucide-react'
+import { LessonStage, DoneDock } from './LessonStage'
+import ScoreRing, { scoreWords } from '../../portal/ScoreRing'
 import { getStoredUserId } from '../../../lib/session-utils'
 import { studentApi } from '../../../lib/api'
 import { useCourseProgressStore } from '../../../store/course-progress-store'
@@ -210,157 +209,89 @@ export default function QuizContentViewer({
 
   if (loading) {
     return (
-      <Card className="p-6">
-        <div className="text-center py-8 flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-2" aria-hidden="true" />
-          <span className="text-gray-600">Loading assignment...</span>
-          <span className="text-xs text-gray-400 mt-1">This should only take a moment</span>
-        </div>
-      </Card>
+      <div className="ls" aria-busy="true">
+        <div className="sd-skel" style={{ height: '2.5rem', width: '70%' }} />
+        <div className="sd-skel" style={{ height: '8rem' }} />
+      </div>
     )
   }
 
   if (!assignment) {
     return (
-      <Card className="p-6">
-        <div className="text-center py-8">
-          <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" aria-hidden="true" />
-          <p className="text-gray-500">No quiz available for this content</p>
+      <LessonStage kind="quiz" title={content.title || 'Quiz'} task={null}>
+        <div className="ls-card">
+          <span className="ls-card-ico"><FileText aria-hidden="true" /></span>
+          <b>This quiz is not ready yet</b>
+          <p>Ask your teacher to add the questions.</p>
         </div>
-      </Card>
+      </LessonStage>
     )
   }
 
+  const displayMax = maxScore > 0 ? maxScore : assignment.max_score
+  const graded = submission?.status === 'graded' && submission.score != null && displayMax
+  const pct = graded ? Math.round(((submission?.score ?? 0) / (displayMax as number)) * 100) : null
+  const description = assignment?.description || content.content_text || ''
+  const goLabel = isSubmitted ? (isPassed ? 'See my answers' : 'Try the quiz again') : questions.length > 0 ? 'Start the quiz' : 'See the details'
+  const GoIcon = isSubmitted && !isPassed ? RotateCcw : Play
+
   return (
-    <Card className="p-6">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="h-6 w-6 text-blue-600" aria-hidden="true" />
-          <h2 className="text-2xl font-bold">{content.title || assignment?.title || 'Assignment'}</h2>
-        </div>
-        
-        {/* Status badges */}
-        <div className="flex items-center gap-2">
-          {submission && (
-            <Badge 
-              className={submission.status === 'graded' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
-              role="status"
-              aria-label={submission.status === 'graded' ? 'Assignment graded' : 'Assignment submitted'}
-            >
-              {submission.status === 'graded' ? (
-                <>
-                  <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" />
-                  Graded: {submission.score}/{assignment.max_score}
-                </>
-              ) : (
-                'Submitted'
-              )}
-            </Badge>
-          )}
-          
-          {(isCompleted || saving) && !submission && (
-            <Badge 
-              variant="secondary" 
-              className={saving ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}
-              role="status"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" aria-hidden="true" /> Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" /> Viewed
-                </>
-              )}
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      {(assignment?.description || content.content_text) && (
-        <div 
-          className="prose prose-lg max-w-none mb-6"
-          dangerouslySetInnerHTML={{ 
-            __html: sanitizeHtml(assignment?.description || content.content_text || '') 
-          }}
-          aria-label="Assignment description"
-        />
+    <LessonStage kind="quiz" title={content.title || assignment?.title || 'Quiz'}>
+      {description && (
+        <div className="ls-prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(description) }} aria-label="Quiz description" />
       )}
-      
-      <div className="space-y-4">
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg" role="region" aria-label="Assignment details">
-          {(() => {
-            const calculatedMaxScore = questions.reduce((sum, q) => sum + (q.marks || 1), 0)
-            const displayMaxScore = calculatedMaxScore > 0 ? calculatedMaxScore : assignment?.max_score
-            return displayMaxScore ? (
-              <p className="text-sm text-blue-800">
-                <strong>Maximum Score:</strong> {displayMaxScore} points
-              </p>
-            ) : null
-          })()}
-          {assignment?.auto_grading_enabled && (
-            <p className="text-sm text-blue-800 mt-1">
-              <strong>Auto-grading:</strong> Enabled
-            </p>
-          )}
-          {questions.length > 0 && (
-            <p className="text-sm text-blue-800 mt-1">
-              <strong>Questions:</strong> {questions.length}
-            </p>
-          )}
+
+      <ul className="ls-facts" aria-label="About this quiz">
+        {questions.length > 0 && <li>{questions.length} question{questions.length === 1 ? '' : 's'}</li>}
+        {displayMax ? <li>{displayMax} point{displayMax === 1 ? '' : 's'}</li> : null}
+        {autoGraded && <li>Marked for you straight away</li>}
+      </ul>
+
+      {submission && (
+        <div className="ls-score">
+          {pct != null ? <ScoreRing value={pct} /> : null}
+          <div className="ls-score-text">
+            <b>{pct != null ? scoreWords(pct) : 'Handed in'}</b>
+            <span>
+              {pct != null
+                ? `You scored ${submission.score} out of ${displayMax}.`
+                : 'Your teacher will mark it soon.'}
+            </span>
+          </div>
         </div>
+      )}
 
-        {assignment?.id && (
-          <Button 
-            className="w-full transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]" 
-            size="lg"
-            onClick={() => {
-              router.push(`/lms/student/assignments/${assignment.id}?courseId=${courseId}&chapterId=${chapterId}`)
-            }}
-            aria-label={submission ? 'View your submission' : questions.length > 0 ? 'Start this assignment' : 'View assignment details'}
-          >
-            <CheckCircle className="h-4 w-4 mr-2" aria-hidden="true" />
-            {isSubmitted ? (isPassed ? 'View Submission' : 'Retake Quiz') : questions.length > 0 ? 'Start Quiz' : 'View Assignment'}
-          </Button>
-        )}
-        
-        {questions.length > 0 && !submission && (
-          <div className="mt-6">
-            <h3 className="font-semibold mb-3">Preview Questions:</h3>
-            <div className="space-y-3" role="list" aria-label="Question preview">
-              {questions.slice(0, 3).map((q, idx: number) => (
-                <div key={q.id} className="p-3 bg-gray-50 rounded-lg" role="listitem">
-                  <p className="text-sm font-medium">
-                    {idx + 1}. {q.question_text}
-                  </p>
-                  {q.question_type === 'MCQ' && q.options && Array.isArray(q.options) ? (
-                    <div className="mt-2 text-xs text-gray-600">
-                      Options: {String((q.options as unknown[]).length)} choices
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {questions.length > 3 && (
-                <p className="text-sm text-gray-500 text-center">
-                  + {questions.length - 3} more questions
-                </p>
-              )}
-            </div>
-          </div>
-        )}
+      {assignment?.id && (
+        <button
+          className="sd-btn sd-btn--amber sd-btn--lg ls-big"
+          onClick={() => router.push(`/lms/student/assignments/${assignment.id}?courseId=${courseId}&chapterId=${chapterId}`)}
+        >
+          <GoIcon aria-hidden="true" />
+          {goLabel}
+        </button>
+      )}
 
-        {/* Gating hint */}
-        {!isPassed && (
-          <div className="mt-4 pt-4 border-t">
-            <p className="text-sm text-gray-500 text-center">
-              {isSubmitted && autoGraded
-                ? `Score at least ${Math.round(PASS_THRESHOLD * 100)}% to complete this quiz and unlock the next item.`
-                : 'Submit this assignment to mark it complete and unlock the next item.'}
-            </p>
-          </div>
-        )}
-      </div>
-    </Card>
+      {questions.length > 0 && !submission && (
+        <details className="ls-note">
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Peek at the first questions</summary>
+          <ol style={{ margin: '0.75rem 0 0', paddingLeft: '1.25rem', display: 'grid', gap: '0.5rem' }}>
+            {questions.slice(0, 3).map(q => <li key={q.id}>{q.question_text}</li>)}
+          </ol>
+          {questions.length > 3 && <p style={{ marginTop: '0.5rem' }}>and {questions.length - 3} more.</p>}
+        </details>
+      )}
+
+      <DoneDock
+        auto
+        done={isCompleted || isPassed}
+        ready={false}
+        saving={saving}
+        hint={
+          isSubmitted && autoGraded
+            ? `Score at least ${Math.round(PASS_THRESHOLD * 100)}% to unlock the next item.`
+            : 'Hand in the quiz to unlock the next item.'
+        }
+      />
+    </LessonStage>
   )
 }

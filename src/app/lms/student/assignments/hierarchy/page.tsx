@@ -3,12 +3,10 @@
 import { useMemo } from 'react'
 import Link from 'next/link'
 import { useStudentAssignments } from '@/hooks/useStudentData'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { BookOpen, ChevronRight, FileText, AlertCircle, Lock, RotateCcw } from 'lucide-react'
+import { AlertCircle, ArrowLeft } from 'lucide-react'
+import AssignmentRow, { type AssignmentRowData, type RowState } from '@/components/student/assignments/AssignmentRow'
 
-type AssignmentRow = {
+type AssignmentRowRaw = {
   id: string
   title?: string
   description?: string
@@ -19,14 +17,40 @@ type AssignmentRow = {
   unlocks_in_days?: number | null
   retake_available?: boolean
   retake_granted?: boolean
+  due_date?: string
+  days_until_due?: number | null
+  is_overdue?: boolean
+  max_marks?: number
+  submission?: { grade?: number | null; submitted_at?: string } | null
+}
+
+function rowFor(a: AssignmentRowRaw): AssignmentRowData {
+  const graded = a.status === 'graded' || (a.submission?.grade !== null && a.submission?.grade !== undefined)
+  const state: RowState = graded ? 'graded' : a.status === 'submitted' ? 'submitted' : a.is_overdue && !a.submission ? 'late' : 'todo'
+  const submitted = a.status === 'submitted' || a.status === 'graded'
+  return {
+    id: a.id,
+    title: a.title ?? 'Assignment',
+    sub: a.description || undefined,
+    href: submitted && !a.retake_available ? `/lms/student/assignments/${a.id}/view` : `/lms/student/assignments/${a.id}`,
+    state,
+    dueDate: a.due_date || undefined,
+    daysUntilDue: a.days_until_due,
+    handedIn: submitted || !!a.submission,
+    marks: a.max_marks,
+    score: a.submission?.grade ?? null,
+    locked: a.is_locked,
+    unlocksInDays: a.unlocks_in_days,
+    retake: a.retake_available ? (a.retake_granted ? 'granted' : 'available') : null,
+  }
 }
 
 export default function AssignmentHierarchyPage() {
   const { data: assignmentsData = [], isLoading, error } = useStudentAssignments()
 
   const grouped = useMemo(() => {
-    const rows = (Array.isArray(assignmentsData) ? (assignmentsData as AssignmentRow[]) : []) ?? []
-    const byCourse = new Map<string, { course_title: string; items: AssignmentRow[] }>()
+    const rows = (Array.isArray(assignmentsData) ? (assignmentsData as AssignmentRowRaw[]) : []) ?? []
+    const byCourse = new Map<string, { course_title: string; items: AssignmentRowRaw[] }>()
     for (const a of rows) {
       const courseId = a.course_id ?? 'unknown'
       const courseTitle = a.course_title ?? 'Course'
@@ -49,120 +73,66 @@ export default function AssignmentHierarchyPage() {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/3" />
-          <div className="h-24 bg-gray-200 rounded" />
-          <div className="h-24 bg-gray-200 rounded" />
-        </div>
+      <div className="sd-page" aria-busy="true">
+        <div className="sd-skel" style={{ height: '3rem', width: '16rem' }} />
+        <div className="sd-skel" style={{ height: '10rem' }} />
+        <div className="sd-skel" style={{ height: '10rem' }} />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="p-4 md:p-6">
-        <Card className="p-6">
-          <div className="text-center">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
-            <h2 className="text-xl font-semibold mb-2">Error Loading Assignments</h2>
-            <p className="text-gray-600 mb-4">
-              {error instanceof Error ? error.message : 'Failed to load assignments'}
-            </p>
-            <Button onClick={() => window.location.reload()} variant="outline">
-              Retry
-            </Button>
+      <div className="sd-page">
+        <section className="sd-panel" role="alert">
+          <div className="sd-empty">
+            <AlertCircle aria-hidden="true" size={28} color="var(--sd-late)" />
+            <b>Your assignments did not load</b>
+            <p>{error instanceof Error ? error.message : 'Something went wrong while loading them.'}</p>
+            <button className="sd-btn sd-btn--ink" onClick={() => window.location.reload()}>Try again</button>
           </div>
-        </Card>
+        </section>
       </div>
     )
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Assignments by Course</h1>
-          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">Browse assignments grouped by course.</p>
+    <div className="sd-page">
+      <div className="mc-head">
+        <div>
+          <h1>By course</h1>
+          <p>{grouped.length === 0 ? 'No assignments yet' : `${grouped.length} course${grouped.length === 1 ? '' : 's'}, with every assignment inside`}</p>
         </div>
-        <Button variant="outline" asChild className="shrink-0 max-sm:h-9 max-sm:px-3">
-          <Link href="/lms/student/assignments" aria-label="Back to Assignments">
-            <FileText className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Back to Assignments</span>
-          </Link>
-        </Button>
+        <Link href="/lms/student/assignments" className="sd-btn sd-btn--line">
+          <ArrowLeft aria-hidden="true" />All assignments
+        </Link>
       </div>
 
       {grouped.length === 0 ? (
-        <Card className="p-10 text-center">
-          <BookOpen className="h-14 w-14 mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-600">No assignments found.</p>
-        </Card>
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>No assignments yet</b>
+            <p>When your teacher sets homework for a course it will show up here.</p>
+          </div>
+        </section>
       ) : (
-        <div className="space-y-4">
-          {grouped.map((c) => (
-            <Card key={c.course_id} className="p-4 md:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">{c.course_title}</h2>
-                  <p className="text-sm text-gray-500">{c.items.length} assignment(s)</p>
+        grouped.map((c) => {
+          const done = c.items.filter((a) => a.status === 'graded' || a.status === 'submitted').length
+          const n = Math.min(Math.max(c.items.length, 6), 12)
+          const on = Math.round((done / c.items.length) * n)
+          return (
+            <section key={c.course_id} className="sd-panel as-list" aria-labelledby={`c-${c.course_id}`}>
+              <div className="as-course-head">
+                <h2 id={`c-${c.course_id}`}>{c.course_title}</h2>
+                <div className="sd-seg" role="progressbar" aria-valuenow={done} aria-valuemin={0} aria-valuemax={c.items.length} aria-label="Assignments handed in">
+                  {Array.from({ length: n }, (_, i) => <i key={i} data-on={i < on} style={{ '--k': i } as React.CSSProperties} />)}
                 </div>
+                <p><span><b>{done}</b> of {c.items.length} handed in</span></p>
               </div>
-              <div className="space-y-3">
-                {c.items.map((a) =>
-                  a.is_locked ? (
-                    <div
-                      key={a.id}
-                      className="block rounded-lg border border-gray-200 opacity-70 cursor-not-allowed"
-                      title={`Unlocks in ${a.unlocks_in_days} day${a.unlocks_in_days === 1 ? '' : 's'}`}
-                    >
-                      <div className="p-3 sm:p-4 flex items-center justify-between gap-3 sm:gap-4">
-                        <div className="min-w-0 flex items-center gap-2">
-                          <Lock className="h-4 w-4 text-gray-400 shrink-0" />
-                          <p className="font-medium text-gray-500 truncate">{a.title ?? 'Assignment'}</p>
-                        </div>
-                        <Badge variant="outline" className="text-gray-500 whitespace-nowrap">
-                          Unlocks in {a.unlocks_in_days}d
-                        </Badge>
-                      </div>
-                    </div>
-                  ) : (
-                    <Link
-                      key={a.id}
-                      href={
-                        (a.status === 'submitted' || a.status === 'graded') && !a.retake_available
-                          ? `/lms/student/assignments/${a.id}/view`
-                          : `/lms/student/assignments/${a.id}`
-                      }
-                      className="block rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="p-3 sm:p-4 flex items-center justify-between gap-3 sm:gap-4">
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 truncate">{a.title ?? 'Assignment'}</p>
-                          {a.description ? (
-                            <p className="text-sm text-gray-600 truncate">{a.description}</p>
-                          ) : null}
-                        </div>
-                        <div className="flex flex-wrap justify-end items-center gap-2 sm:gap-3 flex-shrink-0">
-                          {a.retake_available && (
-                            <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                              <RotateCcw className="h-3 w-3" />
-                              {a.retake_granted ? 'Retake granted' : 'Retake available'}
-                            </span>
-                          )}
-                          <Badge variant="outline" className="capitalize">
-                            {a.status ?? 'not_started'}
-                          </Badge>
-                          <ChevronRight className="h-4 w-4 text-gray-400" />
-                        </div>
-                      </div>
-                    </Link>
-                  ),
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
+              {c.items.map((a) => <AssignmentRow key={a.id} a={rowFor(a)} />)}
+            </section>
+          )
+        })
       )}
     </div>
   )

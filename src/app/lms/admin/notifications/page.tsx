@@ -1,33 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Check, RefreshCw, Send } from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Bell, Send, Search, CheckCircle, Clock, AlertCircle, Info,
-  RefreshCw, Reply, MessageSquare, Users, School, User,
-  Megaphone, ChevronDown, ChevronUp, Loader2, Trash2,
-} from "lucide-react";
-import {
-  Dialog, DialogContent, DialogDescription,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { adminApi } from "@/lib/api/admin.api";
 import { commonApi } from "@/lib/api/common.api";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { toast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import { getStoredUserId } from "@/lib/session-utils";
+import { ChipGroup, NotificationComposer, NotificationRow, NotificationsHero, Pager, RecipientList, RepliesModal } from "@/components/portal/notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ReplyItem {
@@ -64,35 +47,6 @@ interface RecipientOption {
   role?: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-const TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  info:    { icon: <Info className="h-4 w-4" />,         label: "Info",    color: "text-blue-500" },
-  success: { icon: <CheckCircle className="h-4 w-4" />,  label: "Success", color: "text-green-500" },
-  warning: { icon: <AlertCircle className="h-4 w-4" />,  label: "Warning", color: "text-yellow-500" },
-  error:   { icon: <AlertCircle className="h-4 w-4" />,  label: "Error",   color: "text-red-500" },
-  general: { icon: <Bell className="h-4 w-4" />,         label: "General", color: "text-gray-500" },
-};
-function getTypeConfig(type: string) {
-  return TYPE_CONFIG[type] ?? TYPE_CONFIG.general;
-}
-
 /** Unwrap `{ data: { ... } }` from gateways/proxies while keeping a flat body working */
 function unwrapApiPayload<T extends Record<string, unknown>>(body: unknown): T {
   if (body && typeof body === "object" && "data" in body && (body as { data?: unknown }).data != null) {
@@ -104,15 +58,13 @@ function unwrapApiPayload<T extends Record<string, unknown>>(body: unknown): T {
   return (body ?? {}) as T;
 }
 
-// ─── Reply Dialog ─────────────────────────────────────────────────────────────
+// ─── Reply thread ─────────────────────────────────────────────────────────────
 function ReplyDialog({
   notification,
-  open,
   onClose,
   onReplySent,
 }: {
   notification: NotificationItem | null;
-  open: boolean;
   onClose: () => void;
   onReplySent: (notifId: string, replies: ReplyItem[]) => void;
 }) {
@@ -120,26 +72,23 @@ function ReplyDialog({
   const [loading, setLoading] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(0);
+  const myId = typeof window !== "undefined" ? getStoredUserId() : null;
 
   useEffect(() => {
-    if (!open || !notification) return;
+    if (!notification) return;
     setReplies([]);
     setReplyText("");
+    setNow(Date.now());
     setLoading(true);
     commonApi.notifications.reply({ notification_id: notification.id })
       .then(({ data }) => {
         const payload = unwrapApiPayload<{ replies?: ReplyItem[] }>(data as Record<string, unknown>);
-        const r = payload?.replies ?? [];
-        setReplies(r);
+        setReplies(payload?.replies ?? []);
       })
       .catch(() => toast.error("Failed to load replies"))
       .finally(() => setLoading(false));
-  }, [open, notification]);
-
-  useEffect(() => {
-    if (replies.length) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [replies.length]);
+  }, [notification]);
 
   const handleSend = async () => {
     if (!notification || !replyText.trim()) return;
@@ -162,223 +111,22 @@ function ReplyDialog({
     }
   };
 
-  if (!notification) return null;
-
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-2xl bg-white flex flex-col max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5 text-blue-600" />
-            {notification.title}
-          </DialogTitle>
-          <DialogDescription className="text-sm text-gray-600 mt-1 line-clamp-2">
-            {notification.message}
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Replies list */}
-        <div className="flex-1 overflow-y-auto space-y-3 py-2 min-h-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-            </div>
-          ) : replies.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No replies yet</p>
-            </div>
-          ) : (
-            replies.map((r) => (
-              <div key={r.id} className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-blue-600">
-                  {(r.profiles?.full_name ?? r.profiles?.email ?? "?")[0].toUpperCase()}
-                </div>
-                <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold text-gray-800">
-                      {r.profiles?.full_name || r.profiles?.email || "Unknown"}
-                    </span>
-                    <Badge variant="outline" className="text-xs h-4 px-1">{r.profiles?.role}</Badge>
-                    <span className="text-xs text-gray-400 ml-auto">{timeAgo(r.created_at)}</span>
-                  </div>
-                  <p className="text-sm text-gray-700">{r.reply_text}</p>
-                </div>
-              </div>
-            ))
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        {/* Reply input */}
-        {notification.allow_replies === false ? (
-          <div className="border-t pt-3 flex items-center justify-between">
-            <p className="text-xs text-gray-500 flex items-center gap-1.5">
-              <AlertCircle className="h-3.5 w-3.5" />
-              Replies are disabled for this notification.
-            </p>
-            <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
-          </div>
-        ) : (
-          <div className="border-t pt-3 space-y-2">
-            <Textarea
-              placeholder="Write a reply…"
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              rows={2}
-              className="resize-none text-sm"
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend(); }}
-            />
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-400">Ctrl+Enter to send</span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
-                <Button size="sm" onClick={handleSend} disabled={sending || !replyText.trim()} className="bg-blue-600 hover:bg-blue-700 text-white">
-                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
-                  Send
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Notification Row ─────────────────────────────────────────────────────────
-function NotifRow({
-  notif,
-  mode,
-  onMarkRead,
-  onReply,
-  onDelete,
-}: {
-  notif: NotificationItem;
-  mode: "received" | "sent";
-  onMarkRead: (id: string) => void;
-  onReply: (n: NotificationItem) => void;
-  onDelete?: (id: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const cfg = getTypeConfig(notif.type);
-
-  return (
-    <>
-      <TableRow className={`${!notif.is_read && mode === "received" ? "bg-blue-50/40" : ""} hover:bg-gray-50`}>
-        {/* Type */}
-        <TableCell>
-          <span className={cfg.color} title={cfg.label}>{cfg.icon}</span>
-        </TableCell>
-
-        {/* Title + message */}
-        <TableCell className="max-w-xs">
-          <p className={`text-sm ${!notif.is_read && mode === "received" ? "font-semibold text-gray-900" : "font-medium text-gray-800"}`}>
-            {notif.title}
-          </p>
-          <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{notif.message}</p>
-          {(notif.recipient_count ?? 0) > 1 && (
-            <Badge variant="outline" className="mt-1 text-xs h-4 px-1.5">
-              <Users className="h-2.5 w-2.5 mr-1" />{notif.recipient_count} recipients
-            </Badge>
-          )}
-        </TableCell>
-
-        {/* Sender / Recipient */}
-        <TableCell>
-          {notif.profiles ? (
-            <div>
-              <p className="text-sm font-medium text-gray-800">{notif.profiles.full_name || notif.profiles.email}</p>
-              <p className="text-xs text-gray-400">{notif.profiles.email}</p>
-              <Badge variant="outline" className="mt-1 text-xs h-4 px-1.5 capitalize">{notif.profiles.role}</Badge>
-            </div>
-          ) : (
-            <span className="text-xs text-gray-400">—</span>
-          )}
-        </TableCell>
-
-        {/* Status */}
-        <TableCell>
-          {mode === "received" ? (
-            <Badge className={`text-xs ${notif.is_read ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-              {notif.is_read
-                ? <><CheckCircle className="h-3 w-3 mr-1" />Read</>
-                : <><Clock className="h-3 w-3 mr-1" />Unread</>}
-            </Badge>
-          ) : (
-            <span className="text-xs text-gray-400">—</span>
-          )}
-        </TableCell>
-
-        {/* Replies */}
-        <TableCell>
-          <button
-            onClick={() => onReply(notif)}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors"
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-            {notif.reply_count ?? 0}
-          </button>
-        </TableCell>
-
-        {/* Date */}
-        <TableCell>
-          <div>
-            <p className="text-xs text-gray-600">{formatDate(notif.created_at)}</p>
-            <p className="text-xs text-gray-400">{timeAgo(notif.created_at)}</p>
-          </div>
-        </TableCell>
-
-        {/* Actions */}
-        <TableCell>
-          <div className="flex items-center gap-1">
-            {!notif.is_read && mode === "received" && (
-              <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => onMarkRead(notif.id)}>
-                <CheckCircle className="h-3 w-3 mr-1" />Mark Read
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" title="View and send replies" onClick={() => onReply(notif)}>
-              <Reply className="h-3 w-3 mr-1" />Replies
-            </Button>
-            {onDelete && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-1.5 text-gray-400 hover:text-red-600"
-                title="Dismiss notification"
-                onClick={async () => {
-                  if (await confirmDialog({
-                    title: "Dismiss this notification?",
-                    description: "It will be removed from your inbox.",
-                    confirmText: "Dismiss",
-                  })) onDelete(notif.id);
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-1.5"
-              title={expanded ? "Hide full message" : "Show full message"}
-              onClick={() => setExpanded((p) => !p)}
-            >
-              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-        </TableCell>
-      </TableRow>
-
-      {/* Expanded message */}
-      {expanded && (
-        <TableRow>
-          <TableCell colSpan={7} className="bg-gray-50 py-3 px-6">
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{notif.message}</p>
-          </TableCell>
-        </TableRow>
-      )}
-    </>
+    <RepliesModal
+      open={!!notification}
+      onClose={() => { void requestClose(replyText.trim() !== "", () => { setReplyText(""); onClose(); }); }}
+      title={notification?.title}
+      subtitle={notification?.message}
+      allowReplies={notification?.allow_replies}
+      replies={replies}
+      loading={loading}
+      text={replyText}
+      onText={setReplyText}
+      onSend={handleSend}
+      sending={sending}
+      myId={myId}
+      now={now || Date.now()}
+    />
   );
 }
 
@@ -386,6 +134,7 @@ function NotifRow({
 const PAGE_SIZE = 20;
 
 export default function NotificationsManagement() {
+  const [now, setNow] = useState(0);
   const [activeTab, setActiveTab] = useState<"send" | "sent" | "received">("received");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -493,6 +242,7 @@ export default function NotificationsManagement() {
 
       // Attach reply counts from already-loaded data if available, else default 0
       setNotifications(result.map((n) => ({ ...n, reply_count: n.reply_count ?? 0 })));
+      setNow(Date.now());
     } catch (err) {
       toast.error(`Failed to load notifications: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
@@ -658,299 +408,166 @@ export default function NotificationsManagement() {
   );
 
   // ── Render ──────────────────────────────────────────────────────────────────
-  return (
-    <div className="p-8 bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
-          <p className="text-gray-500 mt-1 text-sm">Communicate with all users in the system</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => loadNotifications(true)} disabled={loading} className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+  const canSend =
+    !sending && !!title.trim() && !!message.trim() && (recipientType === "all" || selectedRecipients.length > 0);
+  const pickList = recipientType === "role" ? roles : recipientType === "school" ? schools : filteredUsers;
+  const picked = selectedRecipients.length;
+  const recipientSummary =
+    recipientType === "all" ? "Everyone in the system"
+    : picked === 0 ? `Nobody picked yet`
+    : recipientType === "role" ? roles.filter((r) => selectedRecipients.includes(r.id)).map((r) => `${r.name} (${r.count})`).join(", ")
+    : recipientType === "school" ? `${picked} school${picked === 1 ? "" : "s"}`
+    : `${picked} ${picked === 1 ? "person" : "people"}`;
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
+  return (
+    <div className="sd-page">
+      <NotificationsHero
+        items={notifications}
+        unread={unreadCount}
+        unreadNote="unread in your inbox"
+        status={
+          activeTab === "send" ? "Write a message for people across the system. Pick who gets it."
+          : loading ? "Checking your messages…"
+          : <><strong>{total}</strong> {activeTab === "sent" ? "sent" : "received"}{activeTab === "received" && unreadCount > 0 ? <> · <strong>{unreadCount} unread</strong></> : null}.</>
+        }
+        actions={
+          <>
+            {activeTab === "received" && unreadCount > 0 && (
+              <button className="sd-btn sd-btn--amber" onClick={handleMarkAllRead}><Check aria-hidden="true" />Mark all read</button>
+            )}
+            {activeTab !== "send" && (
+              <button className="sd-btn sd-btn--ghost-dark" onClick={() => setActiveTab("send")}><Send aria-hidden="true" />New notification</button>
+            )}
+          </>
+        }
+      />
+
+      <div className="mc-tabs" role="tablist" aria-label="Notifications" style={{ justifySelf: "start" }}>
         {([
-          { key: "send",     label: "Send Notification", icon: <Send className="h-4 w-4" /> },
-          { key: "received", label: `Received${unreadCount > 0 ? ` (${unreadCount})` : ""}`, icon: <Bell className="h-4 w-4" /> },
-          { key: "sent",     label: "Sent",              icon: <Megaphone className="h-4 w-4" /> },
-        ] as const).map(({ key, label, icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-              ${activeTab === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-          >
-            {icon}{label}
+          { key: "received", label: "Received", count: unreadCount },
+          { key: "sent", label: "Sent", count: 0 },
+          { key: "send", label: "Send notification", count: 0 },
+        ] as const).map(({ key, label, count }) => (
+          <button key={key} role="tab" className="mc-tab" aria-selected={activeTab === key} onClick={() => setActiveTab(key)}>
+            {label}{count > 0 && <b>{count}</b>}
           </button>
         ))}
       </div>
 
-      {/* ── SEND TAB ── */}
-      {activeTab === "send" && (
-        <div className="max-w-2xl space-y-5">
-          <div className="bg-white border rounded-2xl p-6 space-y-5">
-            <h2 className="text-base font-semibold text-gray-900">Compose Notification</h2>
-
-            {/* Type */}
-            <div className="space-y-1.5">
-              <Label>Type</Label>
-              <Select value={notifType} onValueChange={setNotifType}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(TYPE_CONFIG).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>
-                      <span className={`flex items-center gap-2 ${v.color}`}>{v.icon}{v.label}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Title */}
-            <div className="space-y-1.5">
-              <Label>Title <span className="text-red-500">*</span></Label>
-              <Input
-                placeholder="Notification title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                maxLength={200}
-              />
-              <p className="text-xs text-gray-400 text-right">{title.length}/200</p>
-            </div>
-
-            {/* Message */}
-            <div className="space-y-1.5">
-              <Label>Message <span className="text-red-500">*</span></Label>
-              <Textarea
-                placeholder="Write your message…"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={5}
-                maxLength={1000}
-                className="resize-none"
-              />
-              <p className="text-xs text-gray-400 text-right">{message.length}/1000</p>
-            </div>
-
-            {/* Recipients */}
-            <div className="space-y-1.5">
-              <Label>Send to</Label>
-              <Select value={recipientType} onValueChange={(v) => { setRecipientType(v as typeof recipientType); setSelectedRecipients([]); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all"><span className="flex items-center gap-2"><Users className="h-4 w-4" />All Users</span></SelectItem>
-                  <SelectItem value="role"><span className="flex items-center gap-2"><User className="h-4 w-4" />By Role</span></SelectItem>
-                  <SelectItem value="school"><span className="flex items-center gap-2"><School className="h-4 w-4" />By School</span></SelectItem>
-                  <SelectItem value="individual"><span className="flex items-center gap-2"><User className="h-4 w-4" />Individual Users</span></SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Recipient picker */}
-            {recipientType !== "all" && (
-              <div className="space-y-1.5">
-                <Label>
-                  Select {recipientType === "role" ? "Roles" : recipientType === "school" ? "Schools" : "Users"}
-                  {selectedRecipients.length > 0 && <span className="ml-2 text-blue-600 font-normal">({selectedRecipients.length} selected)</span>}
-                </Label>
-
-                {recipientType === "individual" && (
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                    <Input placeholder="Search users…" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="pl-9 h-8 text-sm" />
-                  </div>
-                )}
-
-                <div className="border rounded-xl max-h-52 overflow-y-auto divide-y">
-                  {loadingRecipients ? (
-                    <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
-                  ) : (
-                    (recipientType === "role" ? roles : recipientType === "school" ? schools : filteredUsers).map((item) => (
-                      <label key={item.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedRecipients.includes(item.id)}
-                          onChange={() => toggleRecipient(item.id)}
-                          className="rounded"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                          {item.email && <p className="text-xs text-gray-400 truncate">{item.email}</p>}
-                        </div>
-                        {item.count != null && <Badge variant="outline" className="text-xs">{item.count}</Badge>}
-                        {item.role && <Badge variant="outline" className="text-xs capitalize">{item.role}</Badge>}
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Summary */}
-            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-800">
-              <span className="font-medium">Recipients: </span>
-              {recipientType === "all" && "All users in the system"}
-              {recipientType === "role" && (selectedRecipients.length === 0 ? "No roles selected" :
-                roles.filter((r) => selectedRecipients.includes(r.id)).map((r) => `${r.name} (${r.count})`).join(", "))}
-              {recipientType === "school" && (selectedRecipients.length === 0 ? "No schools selected" :
-                `${selectedRecipients.length} school${selectedRecipients.length !== 1 ? "s" : ""}`)}
-              {recipientType === "individual" && (selectedRecipients.length === 0 ? "No users selected" :
-                `${selectedRecipients.length} user${selectedRecipients.length !== 1 ? "s" : ""}`)}
-            </div>
-
-            {/* Allow replies toggle */}
-            <div className="flex items-center justify-between rounded-xl border px-4 py-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="allow-replies" className="flex items-center gap-2">
-                  <Reply className="h-4 w-4 text-gray-500" />
-                  Allow recipients to reply
-                </Label>
-                <p className="text-xs text-gray-400">
-                  {allowReplies
-                    ? "Recipients can reply to start a conversation."
-                    : "This is a one-way announcement — replies are turned off."}
-                </p>
-              </div>
-              <Switch id="allow-replies" checked={allowReplies} onCheckedChange={setAllowReplies} />
-            </div>
-
-            <div className="flex justify-end">
-              <Button
-                onClick={handleSend}
-                disabled={
-                  sending ||
-                  !title.trim() ||
-                  !message.trim() ||
-                  (recipientType !== "all" && selectedRecipients.length === 0)
-                }
-                className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-              >
-                {sending ? <><Loader2 className="h-4 w-4 animate-spin" />Sending…</> : <><Send className="h-4 w-4" />Send Notification</>}
-              </Button>
-            </div>
+      {activeTab === "send" ? (
+        <NotificationComposer
+          description="Send to everyone, a group, a school or specific people."
+          title={title} onTitle={setTitle} titleMax={200}
+          message={message} onMessage={setMessage} messageMax={1000}
+          type={notifType} onType={setNotifType}
+          allowReplies={allowReplies} onAllowReplies={setAllowReplies}
+          canSend={canSend} sending={sending} onSend={handleSend}
+        >
+          <div className="sd-field-wrap">
+            <label>Who is it for?</label>
+            <ChipGroup
+              label="Who is it for?"
+              value={recipientType}
+              options={[["all", "Everyone"], ["role", "Whole groups"], ["school", "Schools"], ["individual", "Individual people"]] as const}
+              onChange={(v) => { setRecipientType(v); setSelectedRecipients([]); }}
+            />
           </div>
-        </div>
+          {recipientType !== "all" && (
+            <div className="sd-field-wrap">
+              <label>
+                {recipientType === "role" ? "Pick groups" : recipientType === "school" ? "Pick schools" : "Pick people"}
+                {selectedRecipients.length > 0 && ` (${selectedRecipients.length} picked)`}
+              </label>
+              {recipientType === "individual" && (
+                <input type="search" className="sd-field" placeholder="Search people" aria-label="Search people" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
+              )}
+              <RecipientList
+                items={pickList}
+                selected={selectedRecipients}
+                onToggle={toggleRecipient}
+                loading={loadingRecipients}
+                avatars={recipientType === "individual"}
+                emptyText={userSearch ? "Nobody matches that search." : "Nobody to pick yet."}
+              />
+            </div>
+          )}
+          <p className="nt-summary"><b>Goes to: </b>{recipientSummary}</p>
+        </NotificationComposer>
+      ) : (
+        <>
+          <div className="nt-bar">
+            <input
+              type="search"
+              className="sd-field"
+              placeholder="Search notifications"
+              aria-label="Search notifications"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+            <ChipGroup label="Read status" value={filterStatus} options={[["all", "Any"], ["unread", "Unread"], ["read", "Read"]] as const} onChange={setFilterStatus} />
+            <button className="pl-ico" onClick={() => loadNotifications(true)} disabled={loading} aria-label="Refresh" title="Refresh">
+              <RefreshCw className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : notifications.length === 0 ? (
+            <section className="sd-panel">
+              <div className="sd-empty">
+                <b>No notifications found</b>
+                <p>{searchQuery || filterStatus !== "all" ? "Try a different search or filter." : activeTab === "sent" ? "Notifications you send will show up here." : "Messages for you will show up here."}</p>
+              </div>
+            </section>
+          ) : (
+            <div className="sd-panel as-list mc-swap">
+              {notifications.map((n) => {
+                const person = n.profiles ? n.profiles.full_name || n.profiles.email : null;
+                const more = (n.recipient_count ?? 1) - 1;
+                return (
+                  <NotificationRow
+                    key={n.id}
+                    // read state only means something in your own inbox
+                    n={activeTab === "received" ? n : { ...n, is_read: true }}
+                    now={now || Date.now()}
+                    replyCount={n.reply_count}
+                    meta={
+                      (person || more > 0) && (
+                        <span>
+                          {activeTab === "sent" ? "To " : "From "}
+                          {person ?? "recipients"}
+                          {n.profiles?.role && ` (${n.profiles.role})`}
+                          {more > 0 && person ? ` and ${more} more` : ""}
+                        </span>
+                      )
+                    }
+                    onRead={activeTab === "received" ? () => handleMarkRead(n.id) : undefined}
+                    onReplies={() => setReplyTarget(n)}
+                    onDelete={
+                      activeTab === "received"
+                        ? async () => {
+                            if (await confirmDialog({
+                              title: "Dismiss this notification?",
+                              description: "It will be removed from your inbox.",
+                              confirmText: "Dismiss",
+                            })) void handleDelete(n.id);
+                          }
+                        : undefined
+                    }
+                  />
+                );
+              })}
+              <Pager
+                offset={pageOffset} count={notifications.length} total={total} pageSize={PAGE_SIZE} busy={loading}
+                onPrev={() => setPageOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                onNext={() => setPageOffset((o) => o + PAGE_SIZE)}
+              />
+            </div>
+          )}
+        </>
       )}
 
-      {/* ── RECEIVED / SENT TABS ── */}
-      {(activeTab === "received" || activeTab === "sent") && (
-        <div className="space-y-4">
-          {/* Filters bar */}
-          <div className="flex gap-3 items-center">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search notifications…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as typeof filterStatus)}>
-              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="unread">Unread</SelectItem>
-                <SelectItem value="read">Read</SelectItem>
-              </SelectContent>
-            </Select>
-            {activeTab === "received" && unreadCount > 0 && (
-              <Button variant="outline" size="sm" onClick={handleMarkAllRead} className="gap-1.5 text-xs">
-                <CheckCircle className="h-3.5 w-3.5" />Mark all read
-              </Button>
-            )}
-          </div>
-
-          {/* Table card */}
-          <div className="border rounded-2xl overflow-hidden bg-white">
-            <div className="flex items-center justify-between px-5 py-4 border-b">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">
-                  {activeTab === "received" ? "Received Notifications" : "Sent Notifications"}
-                </h2>
-                <p className="text-xs text-gray-400 mt-0.5">{total} notification{total !== 1 ? "s" : ""} found</p>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-              </div>
-            ) : notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                <Bell className="h-10 w-10 mb-3 opacity-30" />
-                <p className="text-sm">No notifications found</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="w-10">Type</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>{activeTab === "received" ? "From" : "Recipient"}</TableHead>
-                    <TableHead className="w-24">Status</TableHead>
-                    <TableHead className="w-16">Replies</TableHead>
-                    <TableHead className="w-36">Sent</TableHead>
-                    <TableHead className="w-40">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {notifications.map((notif) => (
-                    <NotifRow
-                      key={notif.id}
-                      notif={notif}
-                      mode={activeTab}
-                      onMarkRead={handleMarkRead}
-                      onReply={setReplyTarget}
-                      onDelete={activeTab === "received" ? handleDelete : undefined}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-
-            {/* Pagination */}
-            {total > PAGE_SIZE && (
-              <div className="flex items-center justify-between px-5 py-3 border-t text-sm text-gray-600">
-                <span>
-                  {Math.min(pageOffset + 1, total)}–{Math.min(pageOffset + PAGE_SIZE, total)} of {total}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPageOffset((o) => Math.max(0, o - PAGE_SIZE))}
-                    disabled={pageOffset === 0}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPageOffset((o) => o + PAGE_SIZE)}
-                    disabled={pageOffset + PAGE_SIZE >= total}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Reply dialog */}
-      <ReplyDialog
-        notification={replyTarget}
-        open={!!replyTarget}
-        onClose={() => setReplyTarget(null)}
-        onReplySent={handleReplySent}
-      />
+      <ReplyDialog notification={replyTarget} onClose={() => setReplyTarget(null)} onReplySent={handleReplySent} />
     </div>
   );
 }
