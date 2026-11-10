@@ -12,23 +12,25 @@ export const BUSINESS = {
   legalName: "YugMinds Private Limited",
   url: "https://yugminds.org",
   email: "info@yugminds.org",
+  // RoboCoders mail: an alias that forwards to the info mailbox. Used on the RoboCoders site, schema and llms.txt.
+  robocodersEmail: "robocoders@yugminds.org",
   phone: "+91-85003-45655",
   phoneDisplay: "+91 85003 45655",
   foundingYear: "2024",
   address: {
-    street: "", // e.g. "Plot 12, Street name"; needed for local results
+    street: "Shyamlal Building",
     locality: "Begumpet",
     city: "Hyderabad",
     region: "Telangana",
-    postalCode: "", // e.g. "500016"; needed for local results
+    postalCode: "500016",
     country: "IN",
   },
   // Map pin of the office, from Google Maps (right-click the building → copy coordinates).
-  geo: null as { latitude: number; longitude: number } | null,
+  geo: { latitude: 17.447081, longitude: 78.460012 } as { latitude: number; longitude: number } | null,
   // Customer-facing hours, schema.org format, e.g. ["Mo-Fr 09:30-18:30", "Sa 10:00-14:00"].
-  openingHours: [] as string[],
+  openingHours: ["Mo-Fr 09:00-18:00", "Sa 10:00-16:00"] as string[],
   // Official profiles of YugMinds itself: Google Business Profile, LinkedIn, Instagram…
-  sameAs: [] as string[],
+  sameAs: ["https://www.linkedin.com/company/yugminds/"] as string[],
 };
 
 export const BUSINESS_ADDRESS_DISPLAY = [

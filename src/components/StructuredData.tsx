@@ -4,6 +4,7 @@
 
 import {
   BRAND_ORIGINS,
+  canonicalUrl,
   resolveBrand,
 } from "../lib/brand-host";
 import {
@@ -11,6 +12,7 @@ import {
   readRequestHost,
 } from "../lib/brand-metadata";
 import { BUSINESS, HAS_FULL_ADDRESS } from "../lib/business-info";
+import { PAGES_UPDATED, lookupPageSeo } from "../lib/page-seo";
 
 // Built from the single business-facts source, so the site, the schema and
 // every listing say the same thing. Unknown fields are simply left out.
@@ -144,33 +146,67 @@ export async function StructuredData() {
     const url = BRAND_ORIGINS.robocoders;
     const organization = {
       "@context": "https://schema.org",
-      "@type": "Organization",
+      "@type": "EducationalOrganization",
+      "@id": `${url}/#organization`,
       name: "RoboCoders",
+      alternateName: ["Robo Coders", "RoboCoders by YugMinds", "RoboCoders Hyderabad"],
       url,
       logo: `${url}/robocoders-logo.png`,
+      knowsAbout: ["coding for kids", "robotics for kids", "artificial intelligence and machine learning", "Python", "Scratch", "Arduino", "ESP32", "STEM education"],
+      // ponytail: add "Country" India or more states here as classes launch outside Telangana.
+      areaServed: [{ "@type": "State", name: "Telangana" }],
+      ...(BUSINESS.geo ? { geo: { "@type": "GeoCoordinates", ...BUSINESS.geo } } : {}),
+      ...(BUSINESS.openingHours.length ? { openingHours: BUSINESS.openingHours } : {}),
       description:
         "RoboCoders — STEM education in AI, robotics, and programming. An EdTech initiative by YugMinds.",
       address: ADDRESS,
-      contactPoint: CONTACT_POINT,
+      email: BUSINESS.robocodersEmail,
+      contactPoint: { ...CONTACT_POINT, email: BUSINESS.robocodersEmail },
+      // Same profiles the footer links to (tracking params stripped), plus the parent's LinkedIn.
       sameAs: [
         "https://www.instagram.com/robocoders",
         "https://youtube.com/@robocoders",
+        "https://www.facebook.com/share/1V8yjknAGv/",
+        ...BUSINESS.sameAs,
       ],
       parentOrganization: {
         "@type": "Organization",
+        "@id": `${BRAND_ORIGINS.yugminds}/#organization`,
         name: "YugMinds",
+        legalName: BUSINESS.legalName,
         url: BRAND_ORIGINS.yugminds,
+        foundingDate: BUSINESS.foundingYear,
       },
     };
     const website = {
       "@context": "https://schema.org",
       "@type": "WebSite",
+      "@id": `${url}/#website`,
       name: "RoboCoders",
+      alternateName: ["Robo Coders", "RoboCoders by YugMinds"],
+      inLanguage: "en-IN",
       url,
       description:
         "Empowering the next generation with STEM education — AI, robotics, and programming.",
       publisher: organization,
     };
+    // Each indexable page states what it is and when it last changed (freshness signal for search and AI answers).
+    const seo = lookupPageSeo(pathname);
+    const pageUrl = canonicalUrl("robocoders", pathname);
+    const webpage = seo
+      ? {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "@id": `${pageUrl}#webpage`,
+          url: pageUrl,
+          name: seo.title,
+          description: seo.description,
+          inLanguage: "en-IN",
+          dateModified: PAGES_UPDATED,
+          isPartOf: { "@id": `${url}/#website` },
+          about: { "@id": `${url}/#organization` },
+        }
+      : null;
     return (
       <>
         <script
@@ -181,6 +217,12 @@ export async function StructuredData() {
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }}
         />
+        {webpage && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(webpage) }}
+          />
+        )}
       </>
     );
   }

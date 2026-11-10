@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { brandHref } from "@/lib/brand-host";
+import { TRACK_DATA } from "../../../components/public/programs-data";
+import ProgramsDetail from "../../../components/public/ProgramsDetail";
 import Footer from "../../../components/Footer";
 import ProgramsTracks from "../../../components/public/ProgramsTracks";
 import HomeJourney from "../../../components/public/HomeJourney";
@@ -17,11 +19,10 @@ import { display, body } from "../robo-fonts";
 // Enable ISR - revalidate every hour
 export const revalidate = 3600;
 
-const programs = [
-  { name: "Coding Fundamentals", description: "Learn the logic behind coding through block and text programming. Perfect for beginners to build strong computational thinking skills." },
-  { name: "Robotics & Electronics", description: "Build and program robots using Arduino, Esp32 and sensors. Learn electronics fundamentals while creating interactive projects." },
-  { name: "AI & Machine Learning", description: "Explore artificial intelligence and machine learning concepts. Build intelligent applications and understand neural networks." },
-];
+const programs = TRACK_DATA.map((t) => ({
+  name: t.heading.split(": ").pop()!,
+  description: t.answer,
+}));
 
 export default function ProgramsPage() {
   return (
@@ -63,6 +64,7 @@ export default function ProgramsPage() {
         </section>
 
         <ProgramsTracks />
+        <ProgramsDetail />
         <ProgramsBooks />
         <HomeJourney />
         <ProgramsKit />

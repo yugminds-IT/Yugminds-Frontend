@@ -131,9 +131,14 @@ const productListJsonLd = {
   itemListElement: products.map((p, i) => ({
     "@type": "ListItem",
     position: i + 1,
-    name: p.title,
-    description: p.description,
-    url: `${BRAND_ORIGINS.robocoders}/products#${p.id}`,
+    item: {
+      "@type": "Product",
+      name: p.title,
+      description: p.description,
+      url: `${BRAND_ORIGINS.robocoders}/products#${p.id}`,
+      brand: { "@type": "Brand", name: "RoboCoders" },
+      category: "Educational technology",
+    },
   })),
 };
 

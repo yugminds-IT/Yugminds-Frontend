@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { PAGES_UPDATED } from "../lib/page-seo";
 import { headers } from "next/headers";
 import {
   BRAND_ORIGINS,
@@ -26,7 +27,8 @@ async function resolveBrandAndOrigin(): Promise<{ brand: Brand; origin: string }
 }
 
 function mapRoutes(origin: string, routes: Route[]): MetadataRoute.Sitemap {
-  const lastModified = new Date();
+  // ponytail: bump when page content really changes; a request-time "now" teaches Google to ignore lastmod.
+  const lastModified = new Date(PAGES_UPDATED);
   const base = origin.replace(/\/$/, "");
   return routes.map(({ path, changeFrequency, priority }) => ({
     url: path === "/" ? base : `${base}${path}`,

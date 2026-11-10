@@ -59,6 +59,10 @@ export function courseListJsonLd(
         : {}),
       isAccessibleForFree: false,
       inLanguage: "en",
+      educationalLevel: "Beginner to advanced",
+      // Plans start at ₹999 per course (see /for-parents).
+      offers: { "@type": "Offer", category: "Paid", price: "999", priceCurrency: "INR", url: `${BRAND_ORIGINS.robocoders}/for-parents` },
+      hasCourseInstance: { "@type": "CourseInstance", courseMode: ["online", "onsite"] },
     })),
   };
 }

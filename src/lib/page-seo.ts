@@ -11,6 +11,9 @@ export type PageSeo = {
  * Per-page SEO — titles/descriptions match what each page actually is.
  * Keys = internal App Router paths.
  */
+/** Date the public pages last changed in substance. Bump only on real content edits. */
+export const PAGES_UPDATED = "2026-11-10";
+
 export const PAGE_SEO: Record<string, PageSeo> = {
   "/": {
     primaryKeyword: "YugMinds",
@@ -32,11 +35,14 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
   "/robocoders": {
     primaryKeyword: "RoboCoders",
-    title: "RoboCoders — Coding, Robotics & AI for Students",
+    title: "Coding, Robotics & AI Classes for Kids in Hyderabad | RoboCoders",
     description:
-      "RoboCoders is YugMinds’ STEM education initiative. Students learn coding, robotics, and AI through hands-on programs for schools and learners ages 6–18.",
+      "Coding, robotics and AI classes for ages 6 to 18, in Hyderabad schools and online. Hands-on projects, robotics kits and certificates. Book a free trial class.",
     keywords: [
       "RoboCoders",
+      "coding classes for kids Hyderabad",
+      "robotics classes for kids Hyderabad",
+      "AI for kids",
       "coding and robotics",
       "STEM education",
       "AI for students",
@@ -57,7 +63,7 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
   "/robocoders/programs": {
     primaryKeyword: "RoboCoders programs",
-    title: "Our Programs | Coding, Robotics & AI — RoboCoders",
+    title: "Coding, Robotics & AI Programs for Ages 6 to 18 | RoboCoders",
     description:
       "Explore RoboCoders programs: Coding Fundamentals, Robotics & Electronics, and AI & Machine Learning for ages 6–18 — with kits, textbooks, and certificates.",
     keywords: [
@@ -70,7 +76,7 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
   "/robocoders/products": {
     primaryKeyword: "RoboCoders products",
-    title: "Products | RoboCoders Studio, Robotics Kits & Play Kit",
+    title: "Robotics Kits for Kids & Coding Software | RoboCoders Products",
     description:
       "RoboCoders products by YugMinds: Studio offline coding software, the ESP32 Robotics Kit with 40+ projects, the no-code Junior Robotics Kit for grades 1 to 3, and a screen-free card-coding Play Kit for kids.",
     keywords: [
@@ -98,7 +104,7 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
   "/robocoders/for-schools": {
     primaryKeyword: "RoboCoders for schools",
-    title: "For Schools | Partner with RoboCoders",
+    title: "Coding & Robotics Lab for Schools in Telangana | RoboCoders",
     description:
       "Bring RoboCoders coding and robotics programs to your school — curriculum integration, trained instructors, flexible pricing, and ongoing tech support.",
     keywords: [
@@ -110,7 +116,7 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
   "/robocoders/for-parents": {
     primaryKeyword: "RoboCoders for parents",
-    title: "For Parents | Coding & Robotics for Your Child — RoboCoders",
+    title: "Coding & Robotics Courses for Your Child, from ₹999 | RoboCoders",
     description:
       "Give your child a head start with RoboCoders — coding, robotics, Python, Scratch, and AI. Flexible plans from ₹999 with certificates and progress reports.",
     keywords: [
@@ -122,7 +128,7 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
   "/robocoders/online-classes": {
     primaryKeyword: "online coding classes for kids",
-    title: "Online Coding & Robotics Classes for Kids | Free Demo — RoboCoders",
+    title: "Online Coding & Robotics Classes for Kids | Free Trial | RoboCoders",
     description:
       "Learn coding, robotics and AI online with RoboCoders: self-paced courses and live 1:1 classes. Start with a free demo course or a free 1:1 trial class.",
     keywords: [

@@ -57,7 +57,7 @@ export default function RootLayout({
   // reasoning — this was a second, site-wide copy of the same bug this app's jumpTo() helper
   // already works around with an explicit `behavior: "smooth"` per call.
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en-IN" suppressHydrationWarning>
       <body
         className={`${abeezee.variable} font-abeezee antialiased`}
         suppressHydrationWarning

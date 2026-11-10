@@ -4,42 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Brain, Code2, Cpu } from "lucide-react";
 import { brandHref } from "@/lib/brand-host";
+import { TRACK_DATA } from "./programs-data";
 
-const TRACKS = [
-  {
-    name: "Coding fundamentals",
-    Icon: Code2,
-    text: "Block and text programming that builds the logic behind every app and game.",
-    topics: [
-      ["Block programming in Scratch and Scratch Jr.", "A game where a sprite moves and reacts"],
-      ["Text programming in Python", "A program you type, run and fix"],
-      ["Apps and video games", "A small app or game to share"],
-      ["Computational thinking", "A big problem broken into steps"],
-    ],
-  },
-  {
-    name: "Robotics and electronics",
-    Icon: Cpu,
-    text: "Arduino, ESP32 and sensors. Students wire, program and test robots that move.",
-    topics: [
-      ["Wiring and testing circuits", "A circuit that lights an LED"],
-      ["Programming ESP32 and Arduino boards", "A program that drives the motors"],
-      ["Reading sensors", "Readings your robot can act on"],
-      ["Robots that follow lines and avoid obstacles", "A robot that finds its own way"],
-    ],
-  },
-  {
-    name: "AI and machine learning",
-    Icon: Brain,
-    text: "Machine learning and neural network basics, taught by building apps that decide.",
-    topics: [
-      ["Collecting and labelling examples", "A labelled set of examples"],
-      ["Training a model", "A model that gets more accurate"],
-      ["Predicting on new inputs", "Answers for things it hasn't seen"],
-      ["Neural network basics", "An idea of how the model decides"],
-    ],
-  },
-];
+const ICONS = [Code2, Cpu, Brain];
+const TRACKS = TRACK_DATA.map((d, i) => ({ ...d, Icon: ICONS[i] }));
 const DWELL = 4.4; // seconds each track stays open before the next one starts: every step lit by about 2s, then a beat to read
 const META = ["Ages 6 to 18", "8 to 12 weeks", "Beginner to advanced"];
 

@@ -9,10 +9,10 @@ import {
 import { PAGE_SEO, brandSiteName } from "../../lib/page-seo";
 import { BUSINESS, BUSINESS_ADDRESS_DISPLAY } from "../../lib/business-info";
 
-const CONTACT =
+const contact = (email: string) =>
   `- Company: ${BUSINESS.legalName}, founded ${BUSINESS.foundingYear}\n` +
   `- Location: ${BUSINESS_ADDRESS_DISPLAY}\n` +
-  `- Email: ${BUSINESS.email}\n` +
+  `- Email: ${email}\n` +
   `- Phone: ${BUSINESS.phoneDisplay}`;
 
 // yugminds.org is one page; these are its named sections.
@@ -44,7 +44,7 @@ export async function GET() {
     .join("\n");
 
   const sections = brand === "yugminds" ? `\n\n## Sections\n\n${YUGMINDS_SECTIONS}` : "";
-  const body = `# ${brandSiteName(brand)}\n\n> ${SUMMARY[brand]}\n\n## Pages\n\n${pages}${sections}\n\n## Contact\n\n${CONTACT}\n`;
+  const body = `# ${brandSiteName(brand)}\n\n> ${SUMMARY[brand]}\n\n## Pages\n\n${pages}${sections}\n\n## Contact\n\n${contact(brand === "robocoders" ? BUSINESS.robocodersEmail : BUSINESS.email)}\n`;
 
   return new Response(body, {
     headers: {
