@@ -24,10 +24,10 @@ export default function FooterLogo() {
       <span className="rf-mark">
         <Image {...img} alt="RoboCoders — An EdTech initiative by YugMinds" className="rf-mark-base" />
         <span className="rf-mark-head" aria-hidden="true">
-          <Image {...img} alt="" className="rf-mark-face" />
-          <Image {...img} alt="" className="rf-mark-eyes" />
+          <Image {...img} alt="RoboCoders robot face" className="rf-mark-face" />
+          <Image {...img} alt="RoboCoders robot eyes" className="rf-mark-eyes" />
         </span>
-        <Image {...img} alt="" aria-hidden="true" className="rf-mark-core" />
+        <Image {...img} alt="RoboCoders robot body" aria-hidden="true" className="rf-mark-core" />
       </span>
     </span>
   );

@@ -75,7 +75,7 @@ export default function ProgramsBooks() {
                   onMouseEnter={() => pickBook(i)}
                   onFocus={() => pickBook(i)}
                 >
-                  <Image src={b.src} alt="" fill sizes="(max-width: 960px) 40vw, 14vw" />
+                  <Image src={b.src} alt={`${b.title} textbook cover`} fill sizes="(max-width: 960px) 40vw, 14vw" />
                 </button>
               </li>
             ))}

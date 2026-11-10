@@ -46,7 +46,7 @@ function Visual({ i }: { i: number }) {
   }
   return (
     <div className="jv jv-cert" aria-hidden="true">
-      <Image src="/certificate-of-completion.png" alt="" width={2000} height={1414} sizes="260px" />
+      <Image src="/certificate-of-completion.png" alt="RoboCoders certificate of completion" width={2000} height={1414} sizes="260px" />
       <span className="jv-shine" />
     </div>
   );
