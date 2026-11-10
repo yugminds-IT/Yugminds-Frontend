@@ -3,6 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { scrubSentryRequest } from "@/lib/sentry-scrub";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -13,7 +14,13 @@ Sentry.init({
   // Enable logs to be sent to Sentry
   enableLogs: true,
 
-  // Enable sending user PII (Personally Identifiable Information)
+  // Off: this process handles the httpOnly session cookies and the IPs of students
+  // (minors); neither should be sent to a third party.
   // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
+  sendDefaultPii: false,
+
+  // Belt and braces: onRequestError attaches raw request headers (Cookie,
+  // Authorization) to events regardless, so scrub them before they are sent.
+  beforeSend: (event) => scrubSentryRequest(event),
+  beforeSendTransaction: (event) => scrubSentryRequest(event),
 });

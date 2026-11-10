@@ -1,113 +1,33 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Download, RefreshCw } from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { formatGradeSection } from "@/hooks/useTeacherData";
+import { adminApi } from '@/lib/api/admin.api';
+import { toast } from '@/components/ui/toast';
+import StatusRun from "@/components/admin/reports/StatusRun";
+import ReportsList, { type Filters } from "@/components/admin/reports/ReportsList";
+import PerformanceTab from "@/components/admin/reports/PerformanceTab";
+import TrendsTab from "@/components/admin/reports/TrendsTab";
+import ReviewModal from "@/components/admin/reports/ReviewModal";
+import {
+  plural,
+  statusOf,
+  type ReportStatus,
+  type ReportTrend,
+  type SubjectDistribution,
+  type TeacherPerformance,
+  type TeacherReport,
+} from "@/components/admin/reports/types";
+import "@/components/school-admin/overview.css"; // hero meta, so- grid
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips and forms
+import "@/components/school-admin/teachers.css"; // tm- track nodes
+import "@/components/admin/reports/reports.css";
 
 const SUBJECT_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#FF6B6B', '#4ECDC4', '#95E1D3', '#F38181', '#AA96DA'];
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { requestClose } from "@/hooks/useUnsavedCloseGuard";
-import { Select as UISelect, SelectContent as UISelectContent, SelectItem as UISelectItem, SelectTrigger as UISelectTrigger, SelectValue as UISelectValue } from "@/components/ui/select";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from "@/components/ui/tabs";
-import { 
-  Search,
-  Download,
-  Eye,
-  Users,
-  TrendingUp,
-  BarChart3,
-  FileText,
-  Clock
-} from "lucide-react";
-import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
-} from "recharts";
-import { adminApi } from '@/lib/api/admin.api';
-
-const REPORTS_PER_PAGE = 20;
-import { toast } from '@/components/ui/toast';
-
-interface TeacherReport {
-  id: string;
-  teacher_id: string;
-  school_id: string;
-  date: string;
-  grade: string;
-  section?: string | null;
-  topics_taught: string;
-  activities?: string;
-  student_count: number;
-  duration_hours: number;
-  notes: string;
-  admin_notes?: string;
-  status?: string;
-  created_at: string;
-
-  profiles?: {
-    id: string;
-    full_name?: string | null;
-    email?: string | null;
-  } | null;
-
-  schools?: {
-    id: string;
-    name?: string | null;
-    school_code?: string | null;
-  } | null;
-  teacher_name?: string;
-  teacher_email?: string;
-  school_name?: string;
-  class_name?: string;
-  teacher_deleted?: boolean;
-  school_deleted?: boolean;
-}
-
-interface TeacherPerformance {
-  teacher_id: string;
-  teacher_name: string;
-  school_name: string;
-  total_reports: number;
-  total_hours: number;
-  avg_students: number;
-  attendance_rate: number;
-  last_report_date: string;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- type reserved for future use
-interface School {
-  id: string;
-  name: string;
-}
 
 export default function TeacherReports() {
   const [reports, setReports] = useState<TeacherReport[]>([]);
@@ -121,7 +41,8 @@ export default function TeacherReports() {
   const [gradeFilter, setGradeFilter] = useState("");
   const [teacherFilter, setTeacherFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [reportPageState, setReportPageState] = useState({ key: "", page: 1 });
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [reportsFailed, setReportsFailed] = useState(false);
   // Real DB-count totals scoped to the current structural filters
   // (school/teacher/grade/date) — independent of the 500-row list cap, so
   // "Total Reports" stays accurate instead of measuring only what's loaded.
@@ -149,59 +70,32 @@ export default function TeacherReports() {
   { }
   const [loading, setLoading] = useState(false);
   const [reviewingReport, setReviewingReport] = useState<TeacherReport | null>(null);
-  const [reviewStatus, setReviewStatus] = useState("");
-  const [reviewNotes, setReviewNotes] = useState("");
-  const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [avgAttendanceRate, setAvgAttendanceRate] = useState<number | null>(null);
 
-  const isReviewDirty =
-    !!reviewingReport &&
-    (reviewNotes.trim() !== (reviewingReport.admin_notes || "").trim() ||
-      reviewStatus !== (reviewingReport.status || "submitted"));
-
-  const requestCloseReview = () => {
-    void requestClose(isReviewDirty, () => setReviewingReport(null));
-  };
-
-  const handleUpdateReportStatus = async () => {
-    if (!reviewingReport || !reviewStatus) return;
-    setIsReviewSaving(true);
+  const saveReview = async (status: ReportStatus, notes: string) => {
+    if (!reviewingReport) return false;
     try {
       await adminApi.teacherReports.update({
         id: reviewingReport.id,
-        status: reviewStatus,
-        admin_notes: reviewNotes.trim() || undefined,
+        status,
+        admin_notes: notes || undefined,
       });
       setReports((prev) =>
-        prev.map((r) =>
-          r.id === reviewingReport.id
-            ? { ...r, status: reviewStatus, admin_notes: reviewNotes.trim() || r.admin_notes }
-            : r
-        )
+        prev.map((r) => (r.id === reviewingReport.id ? { ...r, status, admin_notes: notes || r.admin_notes } : r)),
       );
-      setReviewingReport(null);
+      toast.success("Review saved.");
+      void loadData(); // the track's counts come from the server
+      return true;
     } catch (err) {
       console.error('Failed to update report status', err);
-      toast.error('Failed to update report status. Please try again.');
-    } finally {
-      setIsReviewSaving(false);
+      toast.error('Could not save the review. Try again.');
+      return false;
     }
   };
   { }
-  type ReportTrend = {
-    name: string;
-    reports: number;
-    hours: number;
-  };
   const [reportTrendsData, setReportTrendsData] = useState<ReportTrend[]>([]);
   { }
-  type SubjectDistribution = {
-    name: string;
-    value: number;
-    count: number;
-    color: string;
-  };
   const [subjectDistributionData, setSubjectDistributionData] = useState<SubjectDistribution[]>([]);
 
   // Move helper calculations above loadData to avoid temporal dead zone issues
@@ -326,6 +220,7 @@ export default function TeacherReports() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setReportsFailed(false);
     try {
       // Loaded in full (up to the backend's cap) rather than the default
       // 100 — this page already aggregates stats/performance/analytics and
@@ -339,7 +234,9 @@ export default function TeacherReports() {
       if (statusFilter) params.status = statusFilter;
 
       const { data: result } = await adminApi.teacherReports.list(params);
-      let reportsData = (result?.reports || result || []) as TeacherReport[];
+      const rawReports = result?.reports ?? result;
+      const allReports = (Array.isArray(rawReports) ? rawReports : []) as TeacherReport[];
+      let reportsData = allReports;
       if (gradeFilter) {
         reportsData = reportsData.filter(
           (r) =>
@@ -348,12 +245,13 @@ export default function TeacherReports() {
         );
       }
       setReports(reportsData);
-      const stats = (result as { stats?: { total: number; submitted: number; reviewed: number; approved: number; rejected: number } })?.stats;
-      setReportStats(stats ?? { total: 0, submitted: 0, reviewed: 0, approved: 0, rejected: 0 });
+      // Fill in any count the server leaves out, so a partial answer cannot crash the page.
+      const stats = (result as { stats?: Partial<Record<"total" | "submitted" | "reviewed" | "approved" | "rejected", number>> })?.stats;
+      setReportStats({ total: Number(stats?.total ?? 0), submitted: Number(stats?.submitted ?? 0), reviewed: Number(stats?.reviewed ?? 0), approved: Number(stats?.approved ?? 0), rejected: Number(stats?.rejected ?? 0) });
 
       // Extract unique class labels (grade-section) for filter dropdown
       const uniqueGrades = [...new Set(
-        ((result?.reports || result || []) as TeacherReport[])
+        allReports
           .map((r) => formatGradeSection(r.grade, r.section))
           .filter(Boolean),
       )].sort() as string[];
@@ -369,12 +267,11 @@ export default function TeacherReports() {
       calculateAnalyticsData(reportsData);
     } catch (error) {
       console.error('Error loading reports:', error);
-      setReports([]);
-      setPerformance([]);
-      setReportTrendsData([]);
-      setSubjectDistributionData([]);
+      // Keep what is on screen from an earlier load; the page says "did not load" only when there is nothing to show.
+      setReportsFailed(true);
     } finally {
       setLoading(false);
+      setLoadedOnce(true);
     }
   }, [calculateAnalyticsData, calculatePerformanceMetrics, dateFilter, gradeFilter, schoolFilter, searchTerm, statusFilter, teacherFilter]);
 
@@ -390,7 +287,8 @@ export default function TeacherReports() {
         full_name?: string | null;
         email?: string | null;
       };
-      const teachersData: Teacher[] = ((result?.teachers || result || []) as ApiTeacher[]).map((teacher) => ({
+      const rawTeachers = result?.teachers ?? result;
+      const teachersData: Teacher[] = ((Array.isArray(rawTeachers) ? rawTeachers : []) as ApiTeacher[]).map((teacher) => ({
         id: teacher.profile_id || teacher.id,
         full_name: teacher.full_name || 'Unknown',
         email: teacher.email || ''
@@ -457,19 +355,12 @@ export default function TeacherReports() {
   // Reports are already filtered by API, no need to filter again
   const filteredReports = reports;
 
-  // Page resets to 1 whenever a filter changes (the key no longer matches).
-  const filterKey = [searchTerm, statusFilter, dateFilter, schoolFilter, gradeFilter, teacherFilter].join("|");
-  const reportPageCount = Math.max(1, Math.ceil(filteredReports.length / REPORTS_PER_PAGE));
-  const reportPage = Math.min(reportPageState.key === filterKey ? reportPageState.page : 1, reportPageCount);
-  const setReportPage = (page: number) => setReportPageState({ key: filterKey, page });
-  const pagedReports = filteredReports.slice((reportPage - 1) * REPORTS_PER_PAGE, reportPage * REPORTS_PER_PAGE);
-
   const orphanedCount = reports.filter((r) => r.teacher_deleted || r.school_deleted).length;
 
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
   };
 
   const exportToCSV = () => {
@@ -523,642 +414,115 @@ export default function TeacherReports() {
     document.body.removeChild(link);
   };
 
+  const [tab, setTab] = useState<"reports" | "teachers" | "trends">("reports");
+  const counts: Record<ReportStatus, number> = {
+    submitted: reportStats.submitted,
+    reviewed: reportStats.reviewed,
+    approved: reportStats.approved,
+    rejected: reportStats.rejected,
+  };
+  const unresolved = reportStats.submitted + reportStats.reviewed;
+  const totalHours = Math.round(reports.reduce((t, r) => t + (r.duration_hours || 0), 0) * 10) / 10;
+  const activeStatus: ReportStatus | null = statusFilter ? statusOf({ status: statusFilter }) : null;
+  const filters: Filters = { search: searchTerm, date: dateFilter, school: schoolFilter, grade: gradeFilter, teacher: teacherFilter, hasStatus: !!statusFilter };
+  const setFilter = useCallback((key: "search" | "date" | "school" | "grade" | "teacher", value: string) => {
+    ({ search: setSearchTerm, date: setDateFilter, school: setSchoolFilter, grade: setGradeFilter, teacher: setTeacherFilter })[key](value);
+  }, []);
+  const clearFilters = () => { setSearchTerm(""); setDateFilter(""); setSchoolFilter(""); setGradeFilter(""); setTeacherFilter(""); setStatusFilter(""); };
+  const tabs = [
+    { id: "reports" as const, label: "Reports", n: reportStats.total },
+    { id: "teachers" as const, label: "Teachers", n: performance.length },
+    { id: "trends" as const, label: "Trends" },
+  ];
+
+  let statusLine: React.ReactNode;
+  if (loading && !loadedOnce) statusLine = "Loading reports…";
+  else if (reportsFailed && reports.length === 0) statusLine = "The reports did not load. Try again.";
+  else if (reportStats.total === 0 && reports.length === 0) statusLine = (searchTerm || dateFilter || schoolFilter || gradeFilter || teacherFilter || statusFilter) ? "No reports match these filters." : "No reports yet. Teachers send one after each class.";
+  else if (unresolved > 0) statusLine = <><strong>{plural(unresolved, "report")}</strong> {unresolved === 1 ? "is" : "are"} waiting for a decision.</>;
+  else statusLine = <><strong>Every report has been decided.</strong> {plural(reportStats.total, "report")} in this view.</>;
+
   return (
-    <div className="p-8">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Teacher Reports</h1>
-            <p className="text-gray-600 mt-2">Monitor teacher performance and daily reports</p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ar-title">
+        <div className="sd-hero-copy">
+          <h1 id="ar-title" className="mc-hero-title">Teacher reports</h1>
+          <p className="sd-where">What teachers taught, school by school</p>
+          <p className="sd-status">{statusLine}</p>
+          <div className="sd-hero-actions">
+            {unresolved > 0 && activeStatus !== "submitted" ? (
+              <button className="sd-btn sd-btn--amber" onClick={() => { setStatusFilter("submitted"); setTab("reports"); }}>Show pending reports</button>
+            ) : null}
+            <button className="sd-btn sd-btn--ghost-dark" onClick={exportToCSV} disabled={loading || filteredReports.length === 0}>
+              <Download aria-hidden="true" />Export {filteredReports.length > 0 ? `(${filteredReports.length})` : ""}
+            </button>
           </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Reports</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{reportStats.total}</div>
-                <p className="text-xs text-muted-foreground">
-                  Matching current filters ({reportStats.submitted + reportStats.reviewed} pending, {reports.length} loaded)
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Teachers</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{teachers.length}</div>
-                <p className="text-xs text-muted-foreground">{performance.length} submitted a report in this view</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Attendance</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {avgAttendanceRate != null ? `${avgAttendanceRate}%` : '—'}
-                </div>
-                <p className="text-xs text-muted-foreground">Today&apos;s teacher attendance</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Hours</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {Math.round(reports.reduce((total: number, report: TeacherReport) => total + (report.duration_hours || 0), 0) * 10) / 10}
-                </div>
-                <p className="text-xs text-muted-foreground">Teaching hours</p>
-              </CardContent>
-            </Card>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => { void loadData(); void loadAttendance(); }} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
           </div>
+        </div>
+        {!loadedOnce ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : (
+          <StatusRun
+            counts={counts}
+            selected={activeStatus}
+            onSelect={(st) => { setStatusFilter(st ?? ""); setTab("reports"); }}
+            caption={schoolFilter || teacherFilter || dateFilter ? "For the filters you picked" : "Across every school"}
+          />
+        )}
+      </section>
 
-          {/* Main Content */}
-          <Tabs defaultValue="reports" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="reports">Daily Reports</TabsTrigger>
-              <TabsTrigger value="performance">Performance</TabsTrigger>
-              <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            </TabsList>
+      <div className="sd-ledger" role="group" aria-label="Report numbers">
+        <div><span className="sd-l">Reports</span><b className="sd-n">{reportStats.total.toLocaleString("en-IN")}</b><small>{reportStats.total > reports.length ? `${reports.length} loaded here` : "Matching your filters"}</small></div>
+        <div><span className="sd-l">Teachers</span><b className="sd-n">{teachers.length}</b><small>{performance.length} sent a report in this view</small></div>
+        <div><span className="sd-l">Teaching hours</span><b className="sd-n">{totalHours}</b><small>In the reports loaded</small></div>
+        <div><span className="sd-l">Attendance today</span><b className="sd-n">{avgAttendanceRate != null ? `${avgAttendanceRate}%` : "–"}</b><small>Teachers marked present</small></div>
+      </div>
 
-            {/* Daily Reports Tab */}
-            <TabsContent value="reports" className="space-y-6">
-              {/* Filters */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Filter Reports</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 lg:grid-cols-7 gap-3 md:gap-4">
-                    <div className="col-span-2 space-y-2 lg:col-span-1">
-                      <Label htmlFor="search">Search</Label>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                          id="search"
-                          placeholder="Search reports..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="status">Status</Label>
-                      <select
-                        id="status"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">All Status</option>
-                        <option value="submitted">Pending</option>
-                        <option value="reviewed">Reviewed</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="date">Date</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="date"
-                          type="date"
-                          value={dateFilter}
-                          onChange={(e) => setDateFilter(e.target.value)}
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDateFilter(getTodayDate())}
-                          title="Today"
-                        >
-                          Today
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="school">School</Label>
-                      <select
-                        id="school"
-                        value={schoolFilter}
-                        onChange={(e) => setSchoolFilter(e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">All Schools</option>
-                        {schools.map((school) => (
-                          <option key={school.id} value={school.id}>
-                            {school.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="grade">Class</Label>
-                      <select
-                        id="grade"
-                        value={gradeFilter}
-                        onChange={(e) => setGradeFilter(e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">All Classes</option>
-                        {grades.length > 0 ? (
-                          grades.map((grade) => (
-                            <option key={grade} value={grade}>
-                              {grade}
-                            </option>
-                          ))
-                        ) : (
-                          // Fallback to common grades if no reports exist yet
-                          ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'].map((grade) => (
-                            <option key={grade} value={grade}>
-                              {grade}
-                          </option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher">Teacher</Label>
-                      <select
-                        id="teacher"
-                        value={teacherFilter}
-                        onChange={(e) => setTeacherFilter(e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">All Teachers</option>
-                        {teachers.map((teacher) => (
-                          <option key={teacher.id} value={teacher.id}>
-                            {teacher.full_name || teacher.email}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Actions</Label>
-                      <Button
-                        variant="outline"
-                        onClick={exportToCSV}
-                        className="w-full"
-                        disabled={loading || filteredReports.length === 0}
-                      >
-                        {loading ? (
-                          <>
-                            <Clock className="mr-2 h-4 w-4 animate-spin" />
-                            Loading...
-                          </>
-                        ) : (
-                          <>
-                            <Download className="mr-2 h-4 w-4" />
-                            Export ({filteredReports.length})
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                  {orphanedCount > 0 && (
-                    <div className="mt-4 flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                      <p className="text-sm text-amber-800">
-                        {orphanedCount} report{orphanedCount !== 1 ? 's' : ''} reference a teacher or school that no longer exists (hard-deleted).
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCleanupOrphaned}
-                        disabled={cleaningUp}
-                        className="border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
-                      >
-                        {cleaningUp ? 'Cleaning up…' : 'Clean up orphaned reports'}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+      <div className="mc-tabs" role="tablist" aria-label="Reports, teachers and trends" style={{ justifySelf: "start" }}>
+        {tabs.map((t) => (
+          <button key={t.id} role="tab" className="mc-tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
+            {t.label}{t.n != null && <b>{t.n}</b>}
+          </button>
+        ))}
+      </div>
 
-              {/* Reports Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Daily Reports ({filteredReports.length})</CardTitle>
-                  <CardDescription>View all teacher daily reports</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Teacher</TableHead>
-                        <TableHead>School</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Grade</TableHead>
-                        <TableHead>Topics</TableHead>
-                        <TableHead>Duration</TableHead>
-                        <TableHead>Students</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loading ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8">
-                            <div className="flex items-center justify-center gap-2">
-                              <Clock className="h-4 w-4 animate-spin" />
-                              Loading reports...
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : filteredReports.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                            No reports found. {reports.length === 0 ? 'No reports available.' : 'Try adjusting your filters.'}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        pagedReports.map((report) => (
-                          <TableRow key={report.id}>
-                            <TableCell className="font-medium">
-                              {report.teacher_deleted ? (
-                                <Badge variant="destructive" className="font-normal">Deleted teacher</Badge>
-                              ) : (
-                                report.profiles?.full_name || report.teacher_name || 'Unknown'
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {report.school_deleted ? (
-                                <Badge variant="destructive" className="font-normal">Deleted school</Badge>
-                              ) : (
-                                report.schools?.name || report.school_name || 'Unknown'
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {new Date(report.date).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <Badge variant="outline" className="text-sm font-medium">
-                                  {formatGradeSection(report.grade, report.section) || 'N/A'}
-                                  </Badge>
-                              </div>
-                            </TableCell>
-                            <TableCell className="max-w-xs">
-                              <div className="truncate" title={report.topics_taught}>
-                                {report.topics_taught || 'N/A'}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center">
-                                <Clock className="h-4 w-4 mr-1 text-blue-600" />
-                                {report.duration_hours || 0}h
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center">
-                                <Users className="h-4 w-4 mr-1 text-green-600" />
-                                {report.student_count || 0}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {(() => {
-                                const s = report.status || 'submitted';
-                                const cfg: Record<string, { label: string; cls: string }> = {
-                                  submitted: { label: 'Submitted', cls: 'bg-yellow-100 text-yellow-700' },
-                                  reviewed:  { label: 'Reviewed',  cls: 'bg-blue-100 text-blue-700' },
-                                  approved:  { label: 'Approved',  cls: 'bg-green-100 text-green-700' },
-                                  rejected:  { label: 'Rejected',  cls: 'bg-red-100 text-red-700' },
-                                };
-                                const { label, cls } = cfg[s] ?? cfg.submitted;
-                                return <Badge className={cls}>{label}</Badge>;
-                              })()}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setReviewingReport(report);
-                                  setReviewStatus(report.status || 'submitted');
-                                  setReviewNotes(report.admin_notes || '');
-                                }}
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                Review
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                  {reportPageCount > 1 && (
-                    <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
-                      <p className="text-sm text-muted-foreground">
-                        Showing {(reportPage - 1) * REPORTS_PER_PAGE + 1}–{Math.min(reportPage * REPORTS_PER_PAGE, filteredReports.length)} of {filteredReports.length}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" disabled={reportPage <= 1} onClick={() => setReportPage(reportPage - 1)}>
-                          Previous
-                        </Button>
-                        <span className="text-sm text-muted-foreground">
-                          Page {reportPage} of {reportPageCount}
-                        </span>
-                        <Button variant="outline" size="sm" disabled={reportPage >= reportPageCount} onClick={() => setReportPage(reportPage + 1)}>
-                          Next
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+      {reportsFailed && reports.length === 0 && !loading && (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the reports</b>
+            <p>Check your connection, then try again. Nothing was changed.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void loadData()}>Try again</button>
+          </div>
+        </section>
+      )}
+      {tab === "reports" && !(reportsFailed && reports.length === 0 && !loading) && (
+        <ReportsList
+          reports={filteredReports}
+          loading={loading || !loadedOnce}
+          totalMatching={reportStats.total}
+          filters={filters}
+          onFilter={setFilter}
+          onClear={clearFilters}
+          schools={schools}
+          grades={grades}
+          teachers={teachers}
+          orphaned={orphanedCount}
+          cleaningUp={cleaningUp}
+          onCleanup={handleCleanupOrphaned}
+          onReview={setReviewingReport}
+          todayKey={getTodayDate()}
+        />
+      )}
+      {tab === "teachers" && <PerformanceTab rows={performance} loading={loading && !loadedOnce} />}
+      {tab === "trends" && <TrendsTab trends={reportTrendsData} subjects={subjectDistributionData} performance={performance} />}
 
-            {/* Performance Tab */}
-            <TabsContent value="performance" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Teacher Performance</CardTitle>
-                  <CardDescription>Track individual teacher performance metrics</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Teacher</TableHead>
-                        <TableHead>School</TableHead>
-                        <TableHead>Reports</TableHead>
-                        <TableHead>Total Hours</TableHead>
-                        <TableHead>Avg Students</TableHead>
-                        <TableHead title="Share of the last ~20 working days with a report filed — a reporting-consistency proxy, not the real attendance record.">Reporting Rate</TableHead>
-                        <TableHead>Last Report</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {performance.map((teacher) => (
-                        <TableRow key={teacher.teacher_id}>
-                          <TableCell className="font-medium">
-                            {teacher.teacher_name}
-                          </TableCell>
-                          <TableCell>{teacher.school_name}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center">
-                              <FileText className="h-4 w-4 mr-1" />
-                              {teacher.total_reports}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center">
-                              <Clock className="h-4 w-4 mr-1" />
-                              {teacher.total_hours}h
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center">
-                              <Users className="h-4 w-4 mr-1" />
-                              {teacher.avg_students}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center">
-                              <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
-                                <div 
-                                  className="bg-green-600 h-2 rounded-full" 
-                                  style={{ width: `${teacher.attendance_rate}%` }}
-                                ></div>
-                              </div>
-                              <span className="text-sm">{Math.round(teacher.attendance_rate)}%</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {new Date(teacher.last_report_date).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={
-                                teacher.attendance_rate >= 90 ? 'default' :
-                                teacher.attendance_rate >= 70 ? 'secondary' : 'destructive'
-                              }
-                            >
-                              {teacher.attendance_rate >= 90 ? 'Excellent' :
-                               teacher.attendance_rate >= 70 ? 'Good' : 'Needs Attention'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Analytics Tab */}
-            <TabsContent value="analytics" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Report Trends */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Report Trends</CardTitle>
-                    <CardDescription>Weekly report submission trends</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {reportTrendsData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={reportTrendsData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                          <Tooltip
-                            formatter={(value: unknown, name: string): [React.ReactNode, string] => {
-                              if (name === 'reports') return [`${value} reports`, 'Reports'];
-                              if (name === 'hours') return [`${value} hours`, 'Teaching Hours'];
-                              return [String(value), name];
-                            }}
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="reports" 
-                            stroke="#8884d8" 
-                            strokeWidth={2}
-                            name="Reports"
-                            dot={{ r: 4 }}
-                            activeDot={{ r: 6 }}
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="hours" 
-                            stroke="#82ca9d" 
-                            strokeWidth={2}
-                            name="Teaching Hours"
-                            dot={{ r: 4 }}
-                            activeDot={{ r: 6 }}
-                          />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-[300px] text-gray-500">
-                        <div className="text-center">
-                          <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                          <p>No data available for the selected period</p>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Subject Distribution */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Subject Distribution</CardTitle>
-                    <CardDescription>Teaching topics distribution</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {subjectDistributionData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={subjectDistributionData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                            label={(props: { name?: string; value?: number; count?: number }) => {
-                              const name = props.name || '';
-                              const value = props.value || 0;
-                              const count = props.count || 0;
-                              return `${name}: ${value}% (${count})`;
-                            }}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {subjectDistributionData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                          <Tooltip 
-                             
-                            formatter={(value: unknown, name: string, props: { payload?: { count?: number; name?: string } }) => {
-                              return [`${value}% (${props.payload?.count ?? 0} reports)`, props.payload?.name ?? ''];
-                            }}
-                          />
-                          <Legend 
-                            formatter={(value: string, entry: unknown) => {
-                              const e = entry as { payload?: { count?: number } };
-                              return `${value} (${e?.payload?.count ?? 0})`;
-                            }}
-                          />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-[300px] text-gray-500">
-                        <div className="text-center">
-                          <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                          <p>No subject data available</p>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Performance Summary */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Performance Summary</CardTitle>
-                  <CardDescription>Overall system performance metrics</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-green-600">
-                        {performance.filter((p: TeacherPerformance) => p.attendance_rate >= 90).length}
-                      </div>
-                      <div className="text-sm text-gray-600">Excellent Teachers</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-yellow-600">
-                        {performance.filter((p: TeacherPerformance) => p.attendance_rate >= 70 && p.attendance_rate < 90).length}
-                      </div>
-                      <div className="text-sm text-gray-600">Good Teachers</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-red-600">
-                        {performance.filter((p: TeacherPerformance) => p.attendance_rate < 70).length}
-                      </div>
-                      <div className="text-sm text-gray-600">Need Attention</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-      {/* Report Review Dialog */}
-      <Dialog
-        open={!!reviewingReport}
-        onOpenChange={(o) => {
-          if (!o) requestCloseReview();
-        }}
-      >
-        <DialogContent className="max-w-md bg-white">
-          <DialogHeader>
-            <DialogTitle>Review Report</DialogTitle>
-          </DialogHeader>
-          {reviewingReport && (
-            <div className="space-y-4 py-2">
-              <div className="text-sm text-gray-600 space-y-1">
-                <p><span className="font-medium">Teacher:</span> {reviewingReport.profiles?.full_name || reviewingReport.teacher_name}</p>
-                <p><span className="font-medium">Date:</span> {new Date(reviewingReport.date).toLocaleDateString()}</p>
-                <p><span className="font-medium">Topics:</span> {reviewingReport.topics_taught}</p>
-                {reviewingReport.activities && <p><span className="font-medium">Activities:</span> {reviewingReport.activities}</p>}
-                {reviewingReport.notes && <p><span className="font-medium">Teacher Notes:</span> {reviewingReport.notes}</p>}
-                {reviewingReport.admin_notes && <p><span className="font-medium">Previous Admin Notes:</span> {reviewingReport.admin_notes}</p>}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Update Status</Label>
-                <UISelect value={reviewStatus} onValueChange={setReviewStatus}>
-                  <UISelectTrigger className="w-full">
-                    <UISelectValue placeholder="Select status" />
-                  </UISelectTrigger>
-                  <UISelectContent className="bg-white">
-                    <UISelectItem value="submitted">Submitted</UISelectItem>
-                    <UISelectItem value="reviewed">Reviewed</UISelectItem>
-                    <UISelectItem value="approved">Approved</UISelectItem>
-                    <UISelectItem value="rejected">Rejected</UISelectItem>
-                  </UISelectContent>
-                </UISelect>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Admin Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
-                <Textarea
-                  placeholder="Add notes for this report…"
-                  value={reviewNotes}
-                  onChange={(e) => setReviewNotes(e.target.value)}
-                  rows={3}
-                  className="resize-none text-sm"
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={requestCloseReview} disabled={isReviewSaving}>Cancel</Button>
-            <Button onClick={handleUpdateReportStatus} disabled={isReviewSaving || !reviewStatus} className="bg-blue-600 hover:bg-blue-700 text-white">
-              {isReviewSaving ? 'Saving…' : 'Save Review'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      {reviewingReport && (
+        <ReviewModal key={reviewingReport.id} report={reviewingReport} onClose={() => setReviewingReport(null)} onSave={saveReview} />
+      )}
     </div>
   );
 }

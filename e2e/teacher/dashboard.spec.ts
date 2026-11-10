@@ -9,25 +9,25 @@ const fixture: QaFixture = JSON.parse(
 
 
 test.describe('Teacher — Dashboard', () => {
-  test('renders real fixture context — school name, stat cards, and tabs', async ({ page }) => {
+  test('renders real fixture context — school name, the four numbers, and tabs', async ({ page }) => {
     const classesResponse = page.waitForResponse(
       (res) => res.url().includes('/teacher/classes') && res.request().method() === 'GET',
     );
     await page.goto('/lms/teacher');
     await classesResponse;
 
-    await expect(page.getByRole('heading', { name: 'Teacher Dashboard' })).toBeVisible();
-
-    // Header welcome text names the fixture school (createQaFixture names it
+    // The hero heading names the fixture school (createQaFixture names it
     // `${QA_PREFIX} School`, which embeds the run id).
-    await expect(page.getByText(new RegExp(`at .*${fixture.runId}.* School`))).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: new RegExp(`${fixture.runId}.* School`) }),
+    ).toBeVisible();
 
-    // Real stat cards — titles are a stable claim even while values load.
-    await expect(page.getByText("Today's Classes")).toBeVisible();
-    await expect(page.getByText('Pending Reports')).toBeVisible();
-    await expect(page.getByText('Total Classes')).toBeVisible();
-    await expect(page.getByText('Pending Leaves')).toBeVisible();
-    await expect(page.getByText('Monthly Attendance')).toBeVisible();
+    // The four numbers under the hero — labels are a stable claim even while values load.
+    const numbers = page.getByRole('navigation', { name: 'Your numbers' });
+    await expect(numbers.getByText('Classes today')).toBeVisible();
+    await expect(numbers.getByText('Reports in review')).toBeVisible();
+    await expect(numbers.getByText('Leave requests')).toBeVisible();
+    await expect(numbers.getByText('Attendance this month')).toBeVisible();
 
     // Main content tabs.
     await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible();
@@ -48,10 +48,10 @@ test.describe('Teacher — Dashboard', () => {
     expect(res.ok()).toBeTruthy();
   });
 
-  test('tab switch loads the Attendance tab content', async ({ page }) => {
+  test('tab switch loads the Attendance tab content (today and the last six months)', async ({ page }) => {
     await page.goto('/lms/teacher');
     await page.getByRole('tab', { name: 'Attendance' }).click();
-    await expect(page.getByRole('tab', { name: 'Attendance' })).toHaveAttribute('data-state', 'active');
-    await expect(page.getByText('Monthly Attendance Log')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('tab', { name: 'Attendance' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('heading', { name: 'Last six months' })).toBeVisible({ timeout: 10000 });
   });
 });

@@ -1,340 +1,178 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import {
-  AlertCircle,
-  RefreshCw,
-  Clock,
-  Activity,
-  TrendingUp,
-  CheckCircle,
-  ArrowRight
-} from "lucide-react";
-import { SkeletonDashboard } from "../ui/skeleton-dashboard";
+import { useState } from "react";
+import Link from "next/link";
+import { AlertCircle, CalendarOff, ChevronRight, KeyRound, MessageSquare, School, type LucideIcon } from "lucide-react";
+import Droid from "../portal/Droid";
+import { ChipGroup, ago, initialsOf } from "../portal/notifications";
+import { SegmentBar } from "../teacher/analytics/Charts";
+import type { NeedsAttentionItem } from "./NeedsAttentionPanel";
+import type { AdminDashboardStats, QuickPreviewGroup, TeacherPerformance } from "../../hooks/useAdminDashboard";
+import { GROWTH_LABEL } from "./overview/GrowthRun";
+import "../teacher/analytics/analytics.css"; // segmented bar
+import "./overview/overview.css";
 
-/** "5m ago" / "3h ago" / "2d ago" — rolls up instead of showing "4320m ago". */
-function timeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
+const TODO_ICON: Record<string, LucideIcon> = { leaves: CalendarOff, "password-resets": KeyRound, "contact-submissions": MessageSquare, "inactive-schools": School };
+const KIND_HREF = { schools: "/lms/admin/schools", teachers: "/lms/admin/teachers", students: "/lms/admin/students", courses: "/lms/admin/courses" } as const;
+type Kind = keyof typeof KIND_HREF;
+type Filter = "all" | Kind;
 
-interface DashboardStats {
-  totalSchools: number;
-  totalTeachers: number;
-  totalStudents: number;
-  activeCourses: number;
-  pendingLeaves: number;
-  pendingEmergencyLeaves?: number;
-  systemHealth: number;
-  avgAttendance: number;
-  completionRate: number;
-  activeUsers: number;
-  pendingPasswordResets: number;
-}
+const SHOWN = 8;
+const whole = (n: number) => (Number.isFinite(n) ? Math.round(n) : 0);
 
-interface QuickActionPreview {
-  id: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  data: Array<{
-    id?: string;
-    name?: string;
-    full_name?: string;
-    title?: string;
-    created_at: string;
-    status?: string;
-    email?: string;
-  }>;
-  loading: boolean;
-  lastUpdated: string;
-}
-
-interface RecentActivity {
-  id: string;
-  title: string;
-  message: string;
-  created_at: string;
-  type: 'success' | 'warning' | 'info' | 'error';
-}
-
-interface TeacherPerformance {
-  excellent: number;
-  good: number;
-  average: number;
-  needsImprovement: number;
-}
-
-interface AdminOverviewTabProps {
-  stats: DashboardStats;
-  quickActionPreviews: QuickActionPreview[];
-  recentActivity: RecentActivity[];
-  isLoading?: boolean;
-  onQuickAction?: (id: string) => void;
-  teacherPerformance?: TeacherPerformance;
-}
-
+/** Everything on the Overview tab that is not the hero: what needs the admin, how the platform is doing, what was added lately. */
 export default function AdminOverviewTab({
   stats,
-  quickActionPreviews,
-  recentActivity,
-  isLoading = false,
-  onQuickAction,
+  previews,
+  todos,
   teacherPerformance,
-}: AdminOverviewTabProps) {
-  const router = useRouter();
+  now,
+}: {
+  stats: AdminDashboardStats;
+  previews: QuickPreviewGroup[];
+  todos: NeedsAttentionItem[];
+  teacherPerformance?: TeacherPerformance;
+  now: number;
+}) {
+  const [filter, setFilter] = useState<Filter>("all");
 
-  const safeInt = (value: number): number =>
-    Number.isFinite(value) ? Math.trunc(value) : 0;
+  const added = previews
+    .flatMap((g) => g.data.filter((d) => d.created_at).map((d) => ({
+      key: `${g.id}-${d.id ?? d.name ?? d.title}-${d.created_at}`,
+      kind: g.id as Kind,
+      name: d.name || d.full_name || d.title || "Unnamed",
+      sub: d.email || (d.status ? d.status : ""),
+      at: d.created_at,
+    })))
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  const visible = (filter === "all" ? added : added.filter((a) => a.kind === filter)).slice(0, SHOWN);
 
-  const safePercent = (value: number): string =>
-    Number.isFinite(value) ? `${Math.round(value)}%` : '0%';
-
-  const healthTone =
-    safeInt(stats.systemHealth) >= 90
-      ? "text-emerald-700 bg-emerald-50 border-emerald-100"
-      : safeInt(stats.systemHealth) >= 70
-        ? "text-amber-700 bg-amber-50 border-amber-100"
-        : "text-red-700 bg-red-50 border-red-100";
-
-  if (isLoading) {
-    return <SkeletonDashboard />;
-  }
+  const health = whole(stats.systemHealth);
+  const attendance = whole(stats.avgAttendance);
+  const completion = whole(stats.completionRate);
+  const perf = teacherPerformance;
+  const perfTotal = perf ? perf.excellent + perf.good + perf.average + perf.needsImprovement : 0;
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="space-y-4 md:space-y-6">
-        {/* Quick Actions */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="border-b bg-slate-50/80">
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common administrative tasks — latest 3 of each</CardDescription>
-          </CardHeader>
-          <CardContent className="-mx-px flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:pb-0">
-            {quickActionPreviews.map((preview) => (
-              <div
-                key={preview.id}
-                className="w-[82%] shrink-0 snap-start rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm md:w-auto"
-              >
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-700">
-                      {preview.icon}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{preview.title}</p>
-                      <p className="hidden text-xs text-slate-500 md:block">
-                        Updated {new Date(preview.lastUpdated).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onQuickAction?.(preview.id)}
-                    disabled={preview.loading}
-                    title="Go to management page"
-                    className="h-8 rounded-md border-slate-200 px-2.5"
-                  >
-                    {preview.loading ? (
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ArrowRight className="h-3 w-3" />
-                    )}
-                  </Button>
-                </div>
-                <p className="mb-3 hidden text-sm leading-relaxed text-slate-600 md:block">{preview.description}</p>
-                <div className="space-y-2">
-                  {preview.data && preview.data.length > 0 ? (
-                    preview.data.slice(0, 3).map((item, index: number) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-2.5 py-2 text-xs"
-                      >
-                        <span className="truncate text-slate-600">
-                          {item.name || item.full_name || item.title || 'Unknown'}
-                        </span>
-                        <span className="shrink-0 text-slate-400">
-                          {new Date(item.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs italic text-slate-400">
-                      No recent data
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* System Status */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="border-b bg-slate-50/80">
-            <CardTitle>System Status</CardTitle>
-            <CardDescription>Current system health and metrics</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {safeInt(stats.systemHealth) > 0 && (
-                <div className={`rounded-xl border px-3 py-3 ${healthTone}`}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-sm font-semibold">System Health</span>
-                    <Badge variant="outline" className="border-current bg-transparent text-current">
-                      {safePercent(stats.systemHealth)}
-                    </Badge>
-                  </div>
-                  <p className="text-xs opacity-80">Overall platform uptime and service responsiveness</p>
-                </div>
-              )}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button
-                  onClick={() => router.push("/lms/admin/schools")}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
-                >
-                  <span className="text-sm font-medium text-slate-700">
-                    Pending Leave Requests
-                    {!!stats.pendingEmergencyLeaves && (
-                      <span className="ml-2 text-xs font-semibold text-red-600">{stats.pendingEmergencyLeaves} emergency</span>
-                    )}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={safeInt(stats.pendingLeaves) > 0 ? "destructive" : "secondary"}>
-                      {safeInt(stats.pendingLeaves)}
-                    </Badge>
-                    {stats.pendingLeaves > 0 && (
-                      <AlertCircle className="h-4 w-4 text-red-500" />
-                    )}
-                  </div>
-                </button>
-                <button
-                  onClick={() => router.push("/lms/admin/password-reset-requests")}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
-                >
-                  <span className="text-sm font-medium text-slate-700">Pending Password Resets</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={safeInt(stats.pendingPasswordResets) > 0 ? "destructive" : "secondary"}>
-                      {safeInt(stats.pendingPasswordResets)}
-                    </Badge>
-                    {stats.pendingPasswordResets > 0 && (
-                      <AlertCircle className="h-4 w-4 text-orange-500" />
-                    )}
-                  </div>
-                </button>
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                  <span className="text-sm font-medium text-slate-700">Active Users</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">
-                      {safeInt(stats.activeUsers)}
-                    </Badge>
-                    <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                  </div>
-                </div>
-                {safeInt(stats.avgAttendance) > 0 && (
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                    <span className="text-sm font-medium text-slate-700">Average Attendance</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="bg-blue-50 text-blue-800">
-                        {safePercent(stats.avgAttendance)}
-                      </Badge>
-                      <TrendingUp className="h-4 w-4 text-blue-500" />
-                    </div>
-                  </div>
-                )}
-              </div>
-              {safeInt(stats.completionRate) > 0 && (
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                  <span className="text-sm font-medium text-slate-700">Course Completion</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-purple-50 text-purple-800">
-                      {safePercent(stats.completionRate)}
-                    </Badge>
-                    <CheckCircle className="h-4 w-4 text-purple-500" />
-                  </div>
-                </div>
-              )}
-              {teacherPerformance && (teacherPerformance.excellent + teacherPerformance.good + teacherPerformance.average + teacherPerformance.needsImprovement) > 0 && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="mb-2 text-sm font-semibold text-slate-800">Teacher Performance</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center justify-between rounded-md bg-green-50 px-2 py-1.5">
-                      <span className="text-xs text-green-700">Excellent</span>
-                      <Badge variant="outline" className="bg-green-100 text-green-800 text-xs">{teacherPerformance.excellent}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between rounded-md bg-blue-50 px-2 py-1.5">
-                      <span className="text-xs text-blue-700">Good</span>
-                      <Badge variant="outline" className="bg-blue-100 text-blue-800 text-xs">{teacherPerformance.good}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between rounded-md bg-yellow-50 px-2 py-1.5">
-                      <span className="text-xs text-yellow-700">Average</span>
-                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 text-xs">{teacherPerformance.average}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between rounded-md bg-red-50 px-2 py-1.5">
-                      <span className="text-xs text-red-700">Needs Help</span>
-                      <Badge variant="outline" className="bg-red-100 text-red-800 text-xs">{teacherPerformance.needsImprovement}</Badge>
-                    </div>
-                  </div>
-                </div>
-              )}
+    <div className="so-grid">
+      <div className="so-col">
+        <section className="sd-panel" aria-labelledby="ao-todo">
+          <div className="sd-panel-head"><div><h2 id="ao-todo">Needs your attention</h2><p>Each one opens where you can deal with it.</p></div></div>
+          {todos.length === 0 ? (
+            <div className="so-clear">
+              <span className="so-clear-droid"><Droid /></span>
+              <div><b>You are all caught up</b><p>Leave requests, password resets, contact messages and system alerts show up here.</p></div>
             </div>
-          </CardContent>
-        </Card>
+          ) : (
+            <div>
+              {todos.map((t) => {
+                const Icon = TODO_ICON[t.id] ?? AlertCircle;
+                const body = (
+                  <>
+                    <span className="so-todo-ico" aria-hidden="true"><Icon /></span>
+                    <span className="so-todo-text"><b>{t.label}</b></span>
+                    <span className="so-count">{t.count}</span>
+                    {t.href ? <ChevronRight aria-hidden="true" /> : <span />}
+                  </>
+                );
+                return t.href ? (
+                  <Link key={t.id} href={t.href} className="so-todo" data-tone={t.tone === "red" ? "red" : undefined}>{body}</Link>
+                ) : (
+                  <div key={t.id} className="so-todo" data-tone={t.tone === "red" ? "red" : undefined}>{body}</div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="sd-panel" aria-labelledby="ao-status">
+          <div className="sd-panel-head"><div><h2 id="ao-status">How the platform is doing</h2><p>Right now, across every school</p></div></div>
+          <ul className="ao-stats">
+            {health > 0 && (
+              <li>
+                <span><b>Requests that worked</b><small>Share of recent requests with no server error. It starts again when the server restarts.</small></span>
+                <span className="ao-val" data-hot={health < 70}>{health}%</span>
+                <span className="sd-meter" data-t={health < 70 ? "low" : undefined}><i style={{ "--p": `${Math.min(100, health)}%` } as React.CSSProperties} /></span>
+              </li>
+            )}
+            {attendance > 0 && (
+              <li>
+                <span><b>Teacher attendance</b><small>Average over the last 30 days</small></span>
+                <span className="ao-val">{attendance}%</span>
+                <span className="sd-meter" data-t={attendance < 75 ? "low" : undefined}><i style={{ "--p": `${Math.min(100, attendance)}%` } as React.CSSProperties} /></span>
+              </li>
+            )}
+            {completion > 0 && (
+              <li>
+                <span><b>Lesson progress</b><small>Average progress across lesson activity in the last 30 days</small></span>
+                <span className="ao-val">{completion}%</span>
+                <span className="sd-meter"><i style={{ "--p": `${Math.min(100, completion)}%` } as React.CSSProperties} /></span>
+              </li>
+            )}
+            <li>
+              <span><b>People on the platform</b><small>Teachers and students with an active account</small></span>
+              <span className="ao-val">{whole(stats.activeUsers).toLocaleString("en-IN")}</span>
+            </li>
+            <li>
+              <Link href="/lms/admin/teachers?tab=leaves" className="ao-link">
+                <span><b>Leave requests waiting</b><small>{stats.pendingEmergencyLeaves ? `${stats.pendingEmergencyLeaves} marked emergency` : "From teachers across your schools"}</small></span>
+                <span className="ao-val" data-hot={whole(stats.pendingLeaves) > 0}>{whole(stats.pendingLeaves)}</span>
+              </Link>
+            </li>
+            <li>
+              <Link href="/lms/admin/password-reset-requests" className="ao-link">
+                <span><b>Password resets waiting</b><small>Someone may be locked out</small></span>
+                <span className="ao-val" data-hot={whole(stats.pendingPasswordResets) > 0}>{whole(stats.pendingPasswordResets)}</span>
+              </Link>
+            </li>
+          </ul>
+          {perf && perfTotal > 0 && (
+            <div className="ao-perf">
+              <h3>Teacher performance</h3>
+              <SegmentBar
+                parts={[
+                  { label: "Excellent", value: perf.excellent, tone: "ink" },
+                  { label: "Good", value: perf.good, tone: "blue" },
+                  { label: "Average", value: perf.average, tone: "amber" },
+                  { label: "Needs help", value: perf.needsImprovement, tone: "red" },
+                ]}
+                empty="No teacher ratings yet."
+              />
+            </div>
+          )}
+        </section>
       </div>
 
-      {/* Recent Activity — real dated events only (recent school/teacher/student/course additions) */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Latest additions across the platform</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2 md:space-y-4">
-            {recentActivity.length > 0 ? (
-              recentActivity.map((activity, index) => (
-                <div key={index} className={`${index >= 4 ? "hidden md:flex" : "flex"} items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors`}>
-                  <div className={`w-2 h-2 shrink-0 rounded-full ${
-                    activity.type === 'success' ? 'bg-green-500' :
-                    activity.type === 'warning' ? 'bg-yellow-500' :
-                    activity.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-                  }`}></div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{activity.title}</p>
-                    <p className="text-xs text-gray-500 break-words">{activity.message}</p>
-                    <p className="hidden text-xs text-gray-400 mt-1 md:block">
-                      {new Date(activity.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Clock className="h-3 w-3 text-gray-400" />
-                    <span className="text-xs text-gray-400">{timeAgo(activity.created_at)}</span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <Activity className="h-8 w-8 mx-auto mb-2" />
-                <p>No recent activity</p>
-                <p className="text-sm">System events will appear here</p>
-              </div>
-            )}
+      <div className="so-col">
+        <section className="sd-panel" aria-labelledby="ao-recent">
+          <div className="sd-panel-head">
+            <div><h2 id="ao-recent">Recently added</h2><p>The newest schools, teachers, students and courses</p></div>
+            {filter !== "all" && <Link href={KIND_HREF[filter]} className="sd-link">See all</Link>}
           </div>
-        </CardContent>
-      </Card>
+          <div className="ao-chips">
+            <ChipGroup<Filter>
+              label="Show"
+              value={filter}
+              options={[["all", "Everything"], ["schools", "Schools"], ["teachers", "Teachers"], ["students", "Students"], ["courses", "Courses"]]}
+              onChange={setFilter}
+            />
+          </div>
+          {visible.length === 0 ? (
+            <div className="sd-empty"><b>Nothing added yet</b><p>New {filter === "all" ? "schools, teachers, students and courses" : GROWTH_LABEL[filter].toLowerCase()} appear here as they join.</p></div>
+          ) : (
+            <div>
+              {visible.map((a) => (
+                <Link key={a.key} href={KIND_HREF[a.kind]} className="ao-recent" style={{ color: "inherit", textDecoration: "none" }}>
+                  <span className="sd-avatar" aria-hidden="true">{initialsOf(a.name)}</span>
+                  <span className="so-row-text"><b>{a.name}</b>{a.sub && <small>{a.sub}</small>}</span>
+                  <span className="so-chip">{a.kind.replace(/s$/, "")}</span>
+                  <time dateTime={a.at} className="so-row-time" style={{ flex: "none", fontSize: "0.85rem", color: "var(--sd-ink-soft)" }}>{ago(a.at, now)}</time>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
-
-

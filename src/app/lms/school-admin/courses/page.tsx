@@ -1,999 +1,314 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { 
-  Search,
-  BookOpen,
-  Users,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle
-} from "lucide-react";
-import { List } from "lucide-react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Users } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { getStoredUserId } from "@/lib/session-utils";
 import { toast } from "@/components/ui/toast";
-import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import { ChipGroup } from "@/components/portal/notifications";
+import StatusRun from "@/components/school-admin/courses/StatusRun";
+import CourseDetailModal from "@/components/school-admin/courses/CourseDetailModal";
+import CourseStudentsModal from "@/components/school-admin/courses/CourseStudentsModal";
+import { accessLabels, formatGrade, type Course, type CourseChapter, type CourseStatus, type CourseStudentsData } from "@/components/school-admin/courses/types";
+import "@/components/school-admin/students.css";
+import "@/components/school-admin/teachers.css";
+import "@/components/school-admin/courses/courses.css";
 
-interface Course {
+interface ApiChapter {
   id: string;
-  school_id: string;
-  grade: string;
-  grades: string[];
-  grade_access: Array<{ grade: string; sections: string[] }>;
-  course_name: string;
-  description: string;
-  num_chapters: number;
-   
-  content_summary: Record<string, unknown> | null;
-  status: 'Draft' | 'Published' | 'Archived';
-  created_at: string;
-  updated_at: string;
-  chapters: CourseChapter[];
-  student_progress: {
-    total_students: number;
-    completed_students: number;
-    average_progress: number;
+  order_number?: number;
+  order_index?: number;
+  title?: string;
+  name?: string;
+  learning_outcomes?: string[];
+  content_description?: string;
+  is_published?: boolean;
+}
+interface ApiCourse {
+  id: string;
+  grades?: string[];
+  grade?: string;
+  grade_access?: Array<{ grade: string; sections?: string[] }>;
+  title?: string;
+  course_name?: string;
+  description?: string;
+  num_chapters?: number;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+  chapters?: ApiChapter[];
+}
+interface ApiProgress {
+  course_id: string;
+  total_students?: number;
+  completed_students?: number;
+  average_progress?: number;
+}
+
+const MAX_CHIPS = 4;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+function mapCourse(c: ApiCourse): Course {
+  // The API gives `grades` as an array; a comma-separated string is still accepted.
+  const grades = Array.isArray(c.grades) ? c.grades : c.grade ? c.grade.split(",").map((g) => g.trim()) : [];
+  const grade_access = Array.isArray(c.grade_access)
+    ? c.grade_access.map((g) => ({ grade: g.grade, sections: Array.isArray(g.sections) ? g.sections : [] }))
+    : grades.map((grade) => ({ grade, sections: [] as string[] }));
+  const chapters: CourseChapter[] = (Array.isArray(c.chapters) ? c.chapters : []).map((ch) => ({
+    id: ch.id,
+    chapter_number: ch.order_number || ch.order_index || 0,
+    title: ch.title || ch.name || "Untitled chapter",
+    learning_outcomes: ch.learning_outcomes || [],
+    content_description: ch.content_description || "",
+    is_published: !!ch.is_published,
+  }));
+  return {
+    id: c.id,
+    course_name: c.title || c.course_name || "Untitled course",
+    description: c.description || "",
+    num_chapters: c.num_chapters !== undefined ? c.num_chapters : chapters.length,
+    status: (c.status || "Draft") as CourseStatus,
+    created_at: c.created_at ?? "",
+    updated_at: c.updated_at ?? "",
+    grades,
+    grade_access,
+    chapters,
+    student_progress: { total_students: 0, completed_students: 0, average_progress: 0 },
   };
-}
-
-interface CourseChapter {
-  id: string;
-  course_id: string;
-  chapter_number: number;
-  title: string;
-  learning_outcomes: string[];
-  content_type: 'video' | 'material' | 'assignment' | 'quiz';
-  content_url: string;
-  content_description: string;
-  is_published: boolean;
-  created_at: string;
-}
-
-interface CourseProgress {
-  course_id: string;
-  course_name: string;
-  grade: string;
-  total_students: number;
-  completed_students: number;
-  average_progress: number;
-  chapters_completed: number;
-  total_chapters: number;
 }
 
 export default function CoursesManagement() {
   const [courses, setCourses] = useState<Course[]>([]);
-  const [courseProgress, setCourseProgress] = useState<CourseProgress[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<CourseStatus | "all">("all");
   const [gradeFilter, setGradeFilter] = useState("all");
-  const [overallStudentCount, setOverallStudentCount] = useState<number>(0);
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [isCourseDetailsOpen, setIsCourseDetailsOpen] = useState(false);
-
+  const [schoolStudents, setSchoolStudents] = useState(0);
+  const [viewing, setViewing] = useState<Course | null>(null);
+  const [studentsFor, setStudentsFor] = useState<Course | null>(null);
+  const [studentsData, setStudentsData] = useState<CourseStudentsData | null>(null);
+  const [requesting, setRequesting] = useState<Course | null>(null);
+  const [requestBusy, setRequestBusy] = useState(false);
   const isFetchingRef = useRef(false);
-  const [_expandedCourseIds, _setExpandedCourseIds] = useState<Set<string>>(new Set());
-  const [studentsDialogOpen, setStudentsDialogOpen] = useState(false);
-   
-  interface Student {
-    id?: string;
-    completed?: boolean;
-    overall_progress?: number;
-  }
-  
-  interface Chapter {
-    id?: string;
-    title?: string;
-  }
-  
-  const [studentsDialogData, setStudentsDialogData] = useState<{ students: Student[]; chapters: Chapter[]; error?: string } | null>(null);
-  const [selectedCourseForStudents, setSelectedCourseForStudents] = useState<Course | null>(null);
 
   const loadCourses = useCallback(async (opts?: { silent?: boolean }) => {
-    if (isFetchingRef.current) return; // prevent overlapping loads
+    if (isFetchingRef.current) return; // don't overlap loads
     isFetchingRef.current = true;
-    let isActive = true;
-    const abort = new AbortController();
     try {
       if (!opts?.silent) setLoading(true);
-      
-      // School is resolved by API routes; optional fetch for display if needed
-      try {
-        await schoolAdminApi.school.get();
-      } catch (err) {
-        console.warn('Could not fetch school info:', err);
-      }
-
-      // Fetch courses, progress and students via centralized schoolAdminApi (bypasses RLS)
+      setLoadFailed(false);
       const [coursesRes, progressRes, studentsRes] = await Promise.all([
         schoolAdminApi.courses.list({ limit: 100 }),
         schoolAdminApi.courses.progress(),
-        // Only the count is needed here — ask for one row and read the real
-        // `total`. Previously this fetched an unbounded page (backend capped
-        // it at 50) and used `students.length`, so any school with 50+
-        // students reported exactly 50.
+        // Only the count is needed: ask for one row and read the real `total`.
         schoolAdminApi.students.list({ limit: 1 }),
       ]);
-
       const coursesData = coursesRes.data ?? {};
-      const apiCourses = (coursesData as { courses?: unknown[] }).courses ?? coursesData;
-
-      const progressData = (progressRes.data ?? {}) as { progress?: unknown[] };
-      const studentsData = (studentsRes.data ?? {}) as { students?: unknown[]; total?: number };
-
-      // Debug: Log raw API response
-      console.log('🔍 Raw API courses response:', {
-        coursesCount: apiCourses?.length || 0,
-        firstCourse: apiCourses?.[0] ? {
-          id: apiCourses[0].id,
-          title: apiCourses[0].title || apiCourses[0].course_name,
-          grades: apiCourses[0].grades,
-          chapters: apiCourses[0].chapters,
-          chaptersLength: Array.isArray(apiCourses[0].chapters) ? apiCourses[0].chapters.length : 'not array',
-          num_chapters: apiCourses[0].num_chapters,
-          hasChaptersField: 'chapters' in (apiCourses[0] || {})
-        } : null
-      });
-
-      // Server-side total — not the length of a truncated page.
-      if (isActive) setOverallStudentCount(Number(studentsData.total ?? 0));
-
-      // API now returns aggregated courses with all grades and chapters
-      // Map API response directly to Course interface
-      interface ApiCourse {
-        id: string;
-        school_id?: string;
-        grades?: string[];
-        grade?: string;
-        grade_access?: Array<{ grade: string; sections?: string[] }>;
-        title?: string;
-        course_name?: string;
-        description?: string;
-        num_chapters?: number;
-        status?: string;
-        created_at?: string;
-        updated_at?: string;
-        chapters?: Array<{
-          id: string;
-          order_number?: number;
-          order_index?: number;
-          title?: string;
-          name?: string;
-          learning_outcomes?: string[];
-          content_type?: string;
-          content_url?: string;
-          content_description?: string;
-          is_published?: boolean;
-          created_at?: string;
-        }>;
-      }
-      
-      const mappedCourses: Course[] = (apiCourses || []).map((c: ApiCourse) => {
-        // API provides grades as array, but we also support comma-separated string for backward compatibility
-        const grades = Array.isArray(c.grades) ? c.grades : (c.grade ? c.grade.split(',').map((g: string) => g.trim()) : []);
-        const grade_access = Array.isArray(c.grade_access)
-          ? c.grade_access.map((g) => ({
-              grade: g.grade,
-              sections: Array.isArray(g.sections) ? g.sections : [],
-            }))
-          : grades.map((grade) => ({ grade, sections: [] as string[] }));
-        
-        // Map chapters from API response
-        type ApiChapterItem = NonNullable<ApiCourse['chapters']>[number];
-        const chapters = Array.isArray(c.chapters) ? (c.chapters || []).map((ch: ApiChapterItem) => ({
-          id: ch.id,
-          course_id: c.id,
-          chapter_number: ch.order_number || ch.order_index || 0,
-          title: ch.title || ch.name || 'Untitled Chapter',
-          learning_outcomes: ch.learning_outcomes || [],
-          content_type: (ch.content_type || 'material') as 'video' | 'material' | 'assignment' | 'quiz',
-          content_url: ch.content_url || '',
-          content_description: ch.content_description || '',
-          is_published: !!ch.is_published,
-          created_at: ch.created_at
-        })) : [];
-
-        // Log if chapters are missing
-        if (!Array.isArray(c.chapters) || c.chapters.length === 0) {
-          console.warn('Course missing chapters in API response:', {
-            courseId: c.id,
-            courseName: c.title || c.course_name,
-            hasChaptersField: 'chapters' in c,
-            chaptersType: typeof c.chapters,
-            chaptersValue: c.chapters,
-            num_chapters: c.num_chapters
-          });
-        }
-
-        return {
-          id: c.id,
-          school_id: c.school_id,
-          grade: grades.join(', '), // Comma-separated string for display
-          grades, // Individual grade names, for filtering
-          grade_access,
-          course_name: c.title || c.course_name || 'Untitled Course',
-          description: c.description || '',
-          num_chapters: c.num_chapters !== undefined ? c.num_chapters : chapters.length,
-          content_summary: null,
-          status: ((c.status || 'Draft') as 'Draft' | 'Published' | 'Archived'),
-          created_at: c.created_at,
-          updated_at: c.updated_at,
-          chapters: chapters,
-          student_progress: {
-            total_students: 0,
-            completed_students: 0,
-            average_progress: 0
-          }
-        };
-      });
-      
-      console.log('📚 Mapped courses with chapters:', {
-        totalCourses: mappedCourses.length,
-        coursesWithChapters: mappedCourses.filter(c => c.chapters && c.chapters.length > 0).length,
-        sampleCourse: mappedCourses[0] ? {
-          id: mappedCourses[0].id,
-          name: mappedCourses[0].course_name,
-          chaptersCount: mappedCourses[0].chapters?.length || 0,
-          num_chapters: mappedCourses[0].num_chapters
-        } : null
-      });
-
-      // Fetch progress via API (bypasses RLS) and merge
-      const progressMap = new Map<string, { total_students: number; completed_students: number; average_progress: number; total_chapters?: number; chapters_completed?: number; grade_breakdown?: Array<{grade:string; total:number; completed:number; average_progress?:number}> }>();
-       
-      interface ProgressData {
-        course_id: string;
-        total_students?: number;
-        completed_students?: number;
-        average_progress?: number;
-        total_chapters?: number;
-        chapters_completed?: number;
-        grade_breakdown?: Array<{grade: string; total: number; completed: number; average_progress?: number}>;
-      }
-      
-      ((progressData.progress as ProgressData[] | undefined) || []).forEach((p) => {
-        progressMap.set(p.course_id, {
-          total_students: p.total_students ?? 0,
-          completed_students: p.completed_students ?? 0,
-          average_progress: p.average_progress ?? 0,
-          total_chapters: p.total_chapters ?? undefined,
-          chapters_completed: p.chapters_completed ?? undefined,
-          grade_breakdown: p.grade_breakdown,
-        });
-      });
-
-      // Helper to extract grade number for matching
-      const _getGradeNum = (g: string): string | null => {
-        const m = String(g).match(/(\d{1,2})/);
-        return m ? m[1] : null;
-      };
-
-      // Merge progress data with courses
-      const coursesWithProgress = mappedCourses.map((course) => {
-        const p = progressMap.get(course.id);
-        if (!p) return course;
-
-        // Use overall course progress (aggregated across all grades)
-        const student_progress = {
-          total_students: p.total_students || 0,
-          completed_students: p.completed_students || 0,
-          average_progress: p.average_progress || 0
-        };
-
-        return {
-          ...course,
-          student_progress
-        } as Course;
-      });
-
-      // Set aggregated courses (one row per course, not per grade)
-      if (isActive) setCourses(coursesWithProgress);
-
-      // Create progress summary - one entry per course (not per grade)
-      const progressSummary: CourseProgress[] = coursesWithProgress.map((course: Course) => {
-        const p = progressMap.get(course.id);
-        return {
-          course_id: course.id,
-          course_name: course.course_name,
-          grade: course.grade, // This now contains all grades comma-separated
-          total_students: course.student_progress.total_students,
-          completed_students: course.student_progress.completed_students,
-          average_progress: course.student_progress.average_progress,
-          chapters_completed:
-            typeof p?.chapters_completed === 'number' ? Math.round(p.chapters_completed) : 0,
-          total_chapters:
-            typeof p?.total_chapters === 'number' ? p.total_chapters : course.num_chapters,
-        };
-      });
-
-      if (isActive) setCourseProgress(progressSummary);
+      const apiCourses = ((coursesData as { courses?: ApiCourse[] }).courses ?? (Array.isArray(coursesData) ? coursesData : [])) as ApiCourse[];
+      const progress = ((progressRes.data ?? {}) as { progress?: ApiProgress[] }).progress ?? [];
+      const progressMap = new Map(progress.map((p) => [p.course_id, p]));
+      setSchoolStudents(Number(((studentsRes.data ?? {}) as { total?: number }).total ?? 0));
+      setCourses(
+        apiCourses.map(mapCourse).map((course) => {
+          const p = progressMap.get(course.id);
+          return p
+            ? { ...course, student_progress: { total_students: p.total_students ?? 0, completed_students: p.completed_students ?? 0, average_progress: p.average_progress ?? 0 } }
+            : course;
+        }),
+      );
     } catch (error) {
-      console.error('Error loading courses:', error);
+      console.error("Error loading courses:", error);
+      setLoadFailed(true);
     } finally {
-      if (isActive) setLoading(false);
+      setLoading(false);
       isFetchingRef.current = false;
     }
-    return () => { isActive = false; abort.abort(); };
   }, []);
 
-  // Helper function to format grade names
-  const formatGrade = (g: string) => {
-    if (!g) return 'N/A';
-    const m = (g || '').toString().toLowerCase().match(/(grade\s*|g\s*)?(\d{1,2})/);
-    return m ? `Grade ${m[2]}` : g.replace(/^(.)/, (s) => s.toUpperCase());
-  };
-
-  /** Expand grade_access into display labels (Grade 4 or Grade 4-A). */
-  const courseAccessLabels = (course: Course): string[] => {
-    if (course.grade_access?.length) {
-      const labels: string[] = [];
-      for (const ga of course.grade_access) {
-        const gLabel = formatGrade(ga.grade);
-        if (ga.sections?.length) {
-          for (const sec of ga.sections) {
-            labels.push(`${gLabel}-${sec}`);
-          }
-        } else {
-          labels.push(gLabel);
-        }
-      }
-      return labels;
-    }
-    return (course.grades || []).map(formatGrade);
-  };
-
-
   useEffect(() => {
-    loadCourses();
+    void loadCourses();
   }, [loadCourses]);
 
   useDashboardRealtime("school_admin", {
     enabled: true,
     debugLabel: "school-admin-courses",
-    onStats: () => {
-      void loadCourses({ silent: true });
-    },
+    onStats: () => void loadCourses({ silent: true }),
   });
 
-  const handleViewCourseDetails = (course: Course) => {
-    setSelectedCourse(course);
-    setIsCourseDetailsOpen(true);
-  };
-
-  const handleRequestCourseUpdate = async (courseId: string) => {
-    const course = courses.find((c: Course) => c.id === courseId);
-    if (!course) return;
-
-     
-    const confirmed = await confirmDialog({
-      title: 'Request course update?',
-      description: `Request an update for "${course.course_name}" (${formatGrade(course.grade)}). This will send a notification to the admin.`,
-      confirmText: 'Send Request',
-    });
-    if (!confirmed) return;
-
+  const openStudents = async (course: Course) => {
+    setViewing(null);
+    setStudentsFor(course);
+    setStudentsData(null);
     try {
-      const userId = getStoredUserId();
-      if (!userId) {
-        toast.warning('Please log in to request course updates');
-        return;
-      }
-
-      await schoolAdminApi.notifications.create({
-        title: 'Course Update Request',
-        message: `School admin has requested an update for course: ${course.course_name} (${formatGrade(course.grade)})`,
-        type: 'info',
-        recipientType: 'role',
-        recipients: ['admin'],
-      });
-      toast.success('Course update request sent to admin successfully!');
-    } catch (err) {
-      console.error('Error requesting course update:', err);
-      toast.error(`Failed to send update request: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  };
-
-  const handleOpenStudentsDialog = async (courseId: string) => {
-    try {
-      console.log('📊 Opening students dialog for course:', courseId);
-      
-      // Find course info from courses list
-      const course = courses.find((c: Course) => c.id === courseId);
-      setSelectedCourseForStudents(course || null);
-      
-      setStudentsDialogOpen(true);
-      setStudentsDialogData(null); // Clear previous data while loading
-      const res = await schoolAdminApi.courses.progressStudentDetail({ courseId });
-      const data = res.data;
-      console.log('📦 API response:', data);
-
-      // Ensure data structure is correct
-      if (data && Array.isArray(data.students)) {
-        console.log(`✅ Loaded ${data.students.length} student(s) for course ${courseId}`);
-        setStudentsDialogData(data);
-      } else {
-        console.warn('⚠️ Unexpected data format from API:', data);
-        setStudentsDialogData({ 
-          students: [], 
-          chapters: [],
-          error: 'Invalid data format received'
-        });
-      }
+      const res = await schoolAdminApi.courses.progressStudentDetail({ courseId: course.id });
+      const data = res.data as CourseStudentsData | undefined;
+      setStudentsData(data && Array.isArray(data.students) ? data : { students: [], chapters: [], error: "The server sent something we could not read." });
     } catch (e) {
-      console.error('❌ Error loading students detail:', e);
-      // Set empty data on error so dialog shows message instead of infinite loading
-      setStudentsDialogData({ 
-        students: [], 
-        chapters: [],
-        error: e instanceof Error ? e.message : 'Unknown error occurred'
-      });
+      setStudentsData({ students: [], chapters: [], error: e instanceof Error ? e.message : "Try again in a moment." });
     }
   };
 
-  const filteredCourses = courses.filter((course: Course) => {
-    const name = (course.course_name || '').toLowerCase();
-    const desc = (course.description || '').toLowerCase();
-    const matchesSearch = name.includes((searchTerm || '').toLowerCase()) || desc.includes((searchTerm || '').toLowerCase());
-    const status = (course.status || '').toLowerCase();
-    const matchesStatus = statusFilter === "all" || status === statusFilter;
-    const matchesGrade = gradeFilter === "all" || (course.grades || []).includes(gradeFilter);
+  const sendUpdateRequest = async () => {
+    if (!requesting) return;
+    const userId = getStoredUserId();
+    if (!userId) {
+      toast.warning("Log in again to send an update request.");
+      return;
+    }
+    setRequestBusy(true);
+    try {
+      const label = requesting.grades.map(formatGrade).join(", ");
+      await schoolAdminApi.notifications.create({
+        title: "Course Update Request",
+        message: `School admin has requested an update for course: ${requesting.course_name}${label ? ` (${label})` : ""}`,
+        type: "info",
+        recipientType: "role",
+        recipients: ["admin"],
+      });
+      toast.success("Update request sent to the main admin.");
+      setRequesting(null);
+    } catch (err) {
+      toast.error(`The request did not send: ${err instanceof Error ? err.message : "Try again."}`);
+    } finally {
+      setRequestBusy(false);
+    }
+  };
 
-    return matchesSearch && matchesStatus && matchesGrade;
+  /* ───────── filtering and numbers ───────── */
+  const gradeOptions = useMemo(() => [...new Set(courses.flatMap((c) => c.grades).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })), [courses]);
+  const filtered = courses.filter((c) => {
+    const q = searchTerm.toLowerCase();
+    return (
+      (c.course_name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)) &&
+      (statusFilter === "all" || c.status === statusFilter) &&
+      (gradeFilter === "all" || c.grades.includes(gradeFilter))
+    );
   });
 
-  const getGrades = () => {
-    // Individual grade names (not the comma-joined per-course display
-    // string) — a multi-grade course used to collapse into one unfilterable
-    // "Grade Grade 4, Grade 5, Grade 6" option instead of three real ones.
-    return [...new Set(courses.flatMap((c: Course) => c.grades || []).filter(Boolean))].sort();
+  const counts: Record<CourseStatus, number> = {
+    Draft: courses.filter((c) => c.status === "Draft").length,
+    Published: courses.filter((c) => c.status === "Published").length,
+    Archived: courses.filter((c) => c.status === "Archived").length,
   };
+  // courses nobody is taking would drag the average to zero, so they are left out
+  const withStudents = courses.filter((c) => c.student_progress.total_students > 0);
+  const average = withStudents.length ? Math.round(withStudents.reduce((n, c) => n + c.student_progress.average_progress, 0) / withStudents.length) : null;
+  const enrolments = courses.reduce((n, c) => n + c.student_progress.total_students, 0);
+  const finished = courses.reduce((n, c) => n + c.student_progress.completed_students, 0);
+  const hasFilters = !!searchTerm || statusFilter !== "all" || gradeFilter !== "all";
+  const clearFilters = () => { setSearchTerm(""); setStatusFilter("all"); setGradeFilter("all"); };
 
-  const getStats = () => {
-    const total = courses.length;
-    const published = courses.filter((c: Course) => c.status === 'Published').length;
-    const draft = courses.filter((c: Course) => c.status === 'Draft').length;
-    const archived = courses.filter((c: Course) => c.status === 'Archived').length;
-    const totalStudents = overallStudentCount;
-    const averageProgress = courseProgress.length > 0 
-      ? Math.round(courseProgress.reduce((sum: number, c: CourseProgress) => sum + c.average_progress, 0) / courseProgress.length)
-      : 0;
-    
-    return { total, published, draft, archived, totalStudents, averageProgress };
-  };
+  let status: React.ReactNode;
+  if (loadFailed) status = "The courses did not load. Check your connection and try again.";
+  else if (loading) status = "Loading courses…";
+  else if (courses.length === 0) status = "No courses are open to your school yet. The main admin assigns them.";
+  else if (counts.Published === 0) status = <><strong>{plural(courses.length, "course")}</strong> assigned, none published yet.</>;
+  else status = <><strong>{plural(counts.Published, "course")}</strong> {counts.Published === 1 ? "is" : "are"} live for {plural(schoolStudents, "student")}{average != null ? <>. Students are {average}% through on average.</> : "."}</>;
 
-  const stats = getStats();
-
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-        </div>
-      </div>
-    );
-  }
+  const tiles = [
+    { label: "Courses", value: String(courses.length), hint: `${counts.Published} published` },
+    { label: "Students", value: schoolStudents.toLocaleString("en-IN"), hint: "In your school" },
+    { label: "Average progress", value: average == null ? "–" : `${average}%`, hint: "Courses with students" },
+    { label: "Finished", value: String(finished), hint: `of ${plural(enrolments, "enrolment")}` },
+  ];
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Courses & Progress</h1>
-        <p className="text-gray-600 mt-2">Track course progress and student completion rates</p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="cr-title">
+        <div className="sd-hero-copy">
+          <h1 id="cr-title" className="mc-hero-title">Courses</h1>
+          <p className="sd-status">{status}</p>
+        </div>
+        <StatusRun counts={counts} selected={statusFilter} onSelect={setStatusFilter} average={average} />
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Course summary">
+        {tiles.map((m) => (
+          <div key={m.label}>
+            <span className="sd-l">{m.label}</span>
+            {loading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4rem" }} /> : <b className="sd-n">{m.value}</b>}
+            <small>{m.hint}</small>
+          </div>
+        ))}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">All courses</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Published</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.published}</div>
-            <p className="text-xs text-muted-foreground">Active courses</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalStudents}</div>
-            <p className="text-xs text-muted-foreground">Enrolled students</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Progress</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.averageProgress}%</div>
-            <p className="text-xs text-muted-foreground">Overall progress</p>
-          </CardContent>
-        </Card>
+      <div className="nt-bar">
+        <input type="search" className="sd-field" placeholder="Search courses" aria-label="Search courses" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        {gradeOptions.length > 0 && (
+          <ChipGroup label="Grade" value={gradeFilter} options={[["all", "All grades"] as const, ...gradeOptions.map((g) => [g, g] as const)]} onChange={setGradeFilter} />
+        )}
+        {hasFilters && <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>}
       </div>
 
-      <div className="space-y-6">
-          {/* Filters */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Filters</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="search">Search</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="search"
-                      placeholder="Search courses..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
+      {loading ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : loadFailed ? (
+        <section className="sd-panel">
+          <div className="sd-empty"><b>We could not load your courses</b><p>Check your connection, then try again.</p><button className="sd-btn sd-btn--amber" onClick={() => void loadCourses()}>Try again</button></div>
+        </section>
+      ) : filtered.length === 0 ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>{courses.length === 0 ? "No courses yet" : "No courses match"}</b>
+            <p>{courses.length === 0 ? "Courses the main admin opens to your classes will show up here." : "Try a different search, or clear the filters."}</p>
+            {hasFilters && <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>}
+          </div>
+        </section>
+      ) : (
+        <div className="cr-grid mc-swap">
+          {filtered.map((c) => {
+            const labels = accessLabels(c);
+            const p = c.student_progress;
+            return (
+              <article key={c.id} className="cr-card">
+                <button className="cr-card-main" onClick={() => setViewing(c)} aria-label={`Open ${c.course_name}`}>
+                  <span className="cr-title"><b>{c.course_name}</b><span className="sm-chip" data-on={c.status === "Published"} data-warn={c.status === "Archived" ? "true" : undefined}>{c.status}</span></span>
+                  {c.description && <span className="cr-desc">{c.description}</span>}
+                  <span className="tm-chips">
+                    {labels.length === 0 ? <span className="sm-chip">No class yet</span> : labels.slice(0, MAX_CHIPS).map((l) => <span key={l} className="sm-chip" data-class="true">{l}</span>)}
+                    {labels.length > MAX_CHIPS && <span className="sm-chip">+{labels.length - MAX_CHIPS} more</span>}
+                  </span>
+                  <span className="cr-meter">
+                    <span>{p.total_students === 0 ? "No students yet" : "Average progress"}<b>{p.total_students === 0 ? "–" : `${p.average_progress}%`}</b></span>
+                    <i className="tm-bar cr-bar" aria-hidden="true"><u style={{ width: `${p.average_progress}%` }} /></i>
+                  </span>
+                </button>
+                <div className="cr-foot">
+                  <button className="cr-students" onClick={() => void openStudents(c)} aria-label={`See the ${plural(p.total_students, "student")} in ${c.course_name}`}>
+                    <Users aria-hidden="true" style={{ display: "inline", width: "1rem", height: "1rem", marginRight: "0.35rem", verticalAlign: "-0.15em" }} />
+                    {plural(p.total_students, "student")}{p.completed_students > 0 ? `, ${p.completed_students} finished` : ""}
+                  </button>
+                  <span>{plural(c.num_chapters, "chapter")}</span>
                 </div>
-                
-                <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="published">Published</SelectItem>
-                      <SelectItem value="draft">Draft</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
-                <div>
-                  <Label htmlFor="grade">Grade</Label>
-                  <Select value={gradeFilter} onValueChange={setGradeFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter by grade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Grades</SelectItem>
-                      {getGrades().map((grade: string) => (
-                        <SelectItem key={grade} value={grade}>
-                          {grade}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      <CourseDetailModal
+        course={viewing}
+        onClose={() => setViewing(null)}
+        onStudents={() => viewing && void openStudents(viewing)}
+        onRequestUpdate={() => { if (viewing) { setRequesting(viewing); setViewing(null); } }}
+      />
 
-          {/* Courses Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Courses List</CardTitle>
-              <CardDescription>Manage courses and track their progress</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                  <TableHead>Course</TableHead>
-                  <TableHead>Grade</TableHead>
-                  <TableHead>Students</TableHead>
-                  <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCourses.map((course) => {
-                    const rowKey = course.id;
-                    const accessLabels = courseAccessLabels(course);
-                    return (
-                      <TableRow
-                        key={rowKey}
-                        className="cursor-pointer hover:bg-gray-50"
-                        onClick={() => handleViewCourseDetails(course)}
-                      >
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{course.course_name}</div>
-                            <div className="text-sm text-gray-500 max-w-xs truncate">
-                              {course.description}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {accessLabels.length > 0 ? (
-                              accessLabels.map((label: string, idx: number) => (
-                                <Badge key={idx} variant="outline">{label}</Badge>
-                              ))
-                            ) : (
-                              <Badge variant="outline">N/A</Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <button
-                            type="button"
-                            className="text-sm font-medium text-blue-600 hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenStudentsDialog(course.id);
-                            }}
-                          >
-                            {course.student_progress.total_students}
-                          </button>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={
-                            course.status === 'Published' ? 'default' :
-                            course.status === 'Draft' ? 'secondary' : 'destructive'
-                          }>
-                            {course.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+      <CourseStudentsModal key={studentsFor?.id ?? "none"} course={studentsFor} data={studentsData} onClose={() => setStudentsFor(null)} />
 
-              {filteredCourses.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <BookOpen className="h-12 w-12 mx-auto mb-4" />
-                  <p className="text-lg font-medium">No courses found</p>
-                  <p className="text-sm">Try adjusting your search or filters</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-      </div>
-
-      {/* Course Details Dialog */}
-      <Dialog open={isCourseDetailsOpen} onOpenChange={setIsCourseDetailsOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Course Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about the course
-            </DialogDescription>
-          </DialogHeader>
-          {selectedCourse && (
-            <div className="space-y-6 py-4">
-              {/* Basic Information */}
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold">Basic Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm text-gray-500">Course Name</Label>
-                    <p className="font-medium">{selectedCourse.course_name}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-gray-500">Class access</Label>
-                    <p className="font-medium">{courseAccessLabels(selectedCourse).join(', ') || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-gray-500">Status</Label>
-                    <Badge variant={
-                      selectedCourse.status === 'Published' ? 'default' : 
-                      selectedCourse.status === 'Draft' ? 'secondary' : 'destructive'
-                    }>
-                      {selectedCourse.status}
-                    </Badge>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-gray-500">Total Chapters</Label>
-                    <p className="font-medium">{selectedCourse.num_chapters}</p>
-                  </div>
-                </div>
-                {selectedCourse.description && (
-                  <div>
-                    <Label className="text-sm text-gray-500">Description</Label>
-                    <p className="text-sm mt-1">{selectedCourse.description}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Student Progress */}
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold">Student Progress</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-sm text-gray-500">Total Students</Label>
-                    <p className="text-2xl font-bold">{selectedCourse.student_progress.total_students}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-gray-500">Completed</Label>
-                    <p className="text-2xl font-bold text-green-600">{selectedCourse.student_progress.completed_students}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm text-gray-500">Average Progress</Label>
-                    <p className="text-2xl font-bold">{selectedCourse.student_progress.average_progress}%</p>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className="bg-blue-600 h-3 rounded-full"
-                      style={{ width: `${selectedCourse.student_progress.average_progress}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Chapters */}
-              {selectedCourse.chapters && selectedCourse.chapters.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-lg font-semibold">Chapters ({selectedCourse.chapters.length})</h3>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {selectedCourse.chapters.map((chapter, index) => (
-                      <div key={chapter.id || index} className="p-3 border rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">Chapter {chapter.chapter_number || index + 1}</span>
-                            <span className="text-sm text-gray-500">- {chapter.title}</span>
-                          </div>
-                          <Badge variant={chapter.is_published ? 'default' : 'secondary'}>
-                            {chapter.is_published ? 'Published' : 'Draft'}
-                          </Badge>
-                        </div>
-                        {chapter.content_description && (
-                          <p className="text-sm text-gray-600 mt-1">{chapter.content_description}</p>
-                        )}
-                        {chapter.learning_outcomes && chapter.learning_outcomes.length > 0 && (
-                          <div className="mt-2">
-                            <Label className="text-xs text-gray-500">Learning Outcomes:</Label>
-                            <ul className="list-disc list-inside text-xs text-gray-600 mt-1">
-                              {chapter.learning_outcomes.map((outcome: string, i: number) => (
-                                <li key={i}>{outcome}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Metadata */}
-              <div className="space-y-2 border-t pt-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <Label className="text-gray-500">Created At</Label>
-                    <p>{new Date(selectedCourse.created_at).toLocaleString()}</p>
-                  </div>
-                  {selectedCourse.updated_at && (
-                    <div>
-                      <Label className="text-gray-500">Last Updated</Label>
-                      <p>{new Date(selectedCourse.updated_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCourseDetailsOpen(false)}>
-              Close
-            </Button>
-            {selectedCourse && (
-              <Button onClick={() => {
-                handleRequestCourseUpdate(selectedCourse.id);
-                setIsCourseDetailsOpen(false);
-              }}>
-                Request Update
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Students Detail Dialog */}
-      <Dialog open={studentsDialogOpen} onOpenChange={setStudentsDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <List className="h-5 w-5" />
-              Enrolled Students - Detailed Progress
-              {selectedCourseForStudents && (
-                <span className="text-base font-normal text-gray-600">- {selectedCourseForStudents.course_name}</span>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              View all students enrolled in this course with their progress and chapter-wise completion
-            </DialogDescription>
-          </DialogHeader>
-          {!studentsDialogData ? (
-            <div className="text-center py-8 text-gray-500">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <p>Loading students...</p>
-            </div>
-          ) : studentsDialogData.error ? (
-            <div className="text-center py-8 text-red-500">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-400" />
-              <p className="text-lg font-medium mb-2">Error Loading Students</p>
-              <p className="text-sm">{studentsDialogData.error}</p>
-            </div>
-          ) : studentsDialogData.students.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-lg font-medium mb-2">No Students Found</p>
-              <p className="text-sm">No students are currently enrolled in this course or match the course grades.</p>
-              <p className="text-xs mt-2 text-gray-400">Students will appear here once they are enrolled in the course.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Summary Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Total Students</span>
-                    <span className="text-2xl font-bold">{studentsDialogData.students.length}</span>
-                  </div>
-                </Card>
-                <Card className="p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Completed</span>
-                    <span className="text-2xl font-bold text-green-600">
-                      {studentsDialogData.students.filter((s: Student) => s.completed).length}
-                    </span>
-                  </div>
-                </Card>
-                <Card className="p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Avg Progress</span>
-                    <span className="text-2xl font-bold">
-                      {studentsDialogData.students.length > 0
-                        ? Math.round(
-                            studentsDialogData.students.reduce(
-                               
-                              (sum: number, s: Student) => sum + (s.overall_progress || 0),
-                              0
-                            ) / studentsDialogData.students.length
-                          )
-                        : 0}%
-                    </span>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Students Table */}
-              <div className="border rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-                  <div className="text-sm font-medium text-gray-700">
-                    All Enrolled Students ({studentsDialogData.students.length})
-                  </div>
-                  {studentsDialogData.chapters && studentsDialogData.chapters.length > 0 && (
-                    <div className="text-xs text-gray-500">
-                      {studentsDialogData.chapters.length} chapter{studentsDialogData.chapters.length !== 1 ? 's' : ''}
-                    </div>
-                  )}
-                </div>
-                <div className="overflow-x-auto max-h-[50vh]">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-white z-10">
-                      <TableRow>
-                        <TableHead className="w-[200px]">Student Name</TableHead>
-                        <TableHead className="w-[200px]">Email</TableHead>
-                        <TableHead className="w-[100px]">Grade</TableHead>
-                        <TableHead className="w-[100px]">Section</TableHead>
-                        <TableHead className="w-[180px]">Overall Progress</TableHead>
-                        <TableHead className="w-[120px]">Status</TableHead>
-                        <TableHead className="min-w-[300px]">Chapter Progress</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {(studentsDialogData.students as unknown as any[])
-                        .sort((a: { overall_progress?: number }, b: { overall_progress?: number }) => (b.overall_progress || 0) - (a.overall_progress || 0))
-                        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                        .map((s: any, idx: number) => (
-                          <TableRow key={String(s?.id ?? idx)} className="hover:bg-gray-50">
-                            <TableCell className="font-medium">{s.full_name || 'Unknown'}</TableCell>
-                            <TableCell className="text-sm text-gray-600">{s.email || '-'}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{s.grade || 'Unknown'}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              {s.section ? (
-                                <Badge variant="outline">{s.section}</Badge>
-                              ) : (
-                                <span className="text-gray-400 italic text-sm">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 bg-gray-200 rounded-full h-2.5 min-w-[80px]">
-                                  <div 
-                                    className="bg-blue-600 h-2.5 rounded-full transition-all" 
-                                    style={{ width: `${s.overall_progress || 0}%` }} 
-                                  />
-                                </div>
-                                <span className="text-sm font-semibold min-w-[40px] text-right">
-                                  {s.overall_progress || 0}%
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge 
-                                variant={s.completed ? 'default' : 'secondary'}
-                                className={s.completed ? 'bg-green-600 text-white' : ''}
-                              >
-                                {s.completed ? 'Completed' : 'In Progress'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {s.chapters && s.chapters.length > 0 ? (
-                                <div className="space-y-1.5 max-h-32 overflow-y-auto pr-2">
-                                  {s.chapters
-                                    .sort((a: { chapter_number?: number }, b: { chapter_number?: number }) => (a.chapter_number || 0) - (b.chapter_number || 0))
-                                    .map((ch: { id: string; title?: string; chapter_number?: number; progress?: number }) => (
-                                      <div key={ch.id} className="flex items-center justify-between text-xs py-0.5">
-                                        <span className="truncate mr-2 flex-1" title={`${ch.title || 'Chapter ' + (ch.chapter_number || '')}`}>
-                                          Ch {ch.chapter_number || ''}: {ch.title || 'Untitled'}
-                                        </span>
-                                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                                          <div className="w-16 bg-gray-200 rounded-full h-1.5">
-                                            <div 
-                                              className={`h-1.5 rounded-full transition-all ${
-                                                (ch.progress ?? 0) === 100 ? 'bg-green-600' : 
-                                                (ch.progress ?? 0) >= 50 ? 'bg-blue-600' : 
-                                                (ch.progress ?? 0) > 0 ? 'bg-yellow-500' : 'bg-gray-300'
-                                              }`}
-                                              style={{ width: `${ch.progress || 0}%` }} 
-                                            />
-                                          </div>
-                                          <span className="text-xs font-medium min-w-[35px] text-right">
-                                            {ch.progress || 0}%
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-gray-400 italic">No chapter data</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setStudentsDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmModal
+        open={!!requesting}
+        onClose={() => setRequesting(null)}
+        busy={requestBusy}
+        title="Request an update?"
+        subtitle={requesting ? `This tells the main admin you would like changes to ${requesting.course_name}.` : undefined}
+        confirmLabel="Send request"
+        onConfirm={() => void sendUpdateRequest()}
+      >
+        <p>They get a notification. You will hear back through your notifications.</p>
+      </ConfirmModal>
     </div>
   );
 }

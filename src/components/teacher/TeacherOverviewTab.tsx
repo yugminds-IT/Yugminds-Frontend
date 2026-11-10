@@ -2,323 +2,198 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { 
-  BookOpen, 
-  FileText,
-  Calendar,
-  Clock,
-  AlertCircle,
-  CheckCircle,
-  Plus,
-} from "lucide-react";
-import {
-  useTeacherReports,
-  useTeacherLeaves,
-  useTodaysClasses,
-  formatGradeSection,
-  type TeacherReport,
-} from "../../hooks/useTeacherData";
-import { Skeleton } from "../ui/skeleton";
+import { CalendarOff, Check, ChevronRight, type LucideIcon } from "lucide-react";
+import Droid from "../portal/Droid";
+import { ago } from "../portal/notifications";
+import type { TeacherClassRow, TeacherLeave, TeacherReport } from "../../hooks/useTeacherData";
+import { classLabel, clock, plural, type DayRow } from "./overview/utils";
 
-interface TeacherOverviewTabProps {
-  selectedSchoolId?: string;
+export type Todo = { id: string; href: string; icon: LucideIcon; title: string; sub: string; count: number; tone?: "red" };
+
+interface Props {
+  /** today's classes, already in time order */
+  day: DayRow[];
+  dayName: string;
+  dayLoading: boolean;
+  todos: Todo[];
+  todosLoading: boolean;
+  classes: TeacherClassRow[];
+  classesLoading: boolean;
+  reports: TeacherReport[];
+  reportsLoading: boolean;
+  leaves: TeacherLeave[];
+  now: number;
 }
 
-interface RecentActivity {
-  id: string;
-  title: string;
-  message: string;
-  created_at: string;
-  type: 'success' | 'warning' | 'info' | 'error';
-}
+const SHOWN_CLASSES = 8;
 
-interface ClassItem {
-  id?: string;
-  schedule_id?: string;
-  grade?: string;
-  section?: string | null;
-  class_name?: string;
-  subject?: string;
-  start_time?: string;
-  end_time?: string;
-  hasReport?: boolean;
-}
+type Recent = { id: string; href: string; title: string; sub: string; chip: string; at: string };
 
-function formatTime(time?: string) {
-  if (!time) return '';
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  if (isNaN(hour)) return time;
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
-}
-
-function CardSkeleton({ rows = 3 }: { rows?: number }) {
-  return (
-    <div className="space-y-3">
-      {[...Array(rows)].map((_, i) => (
-        <Skeleton key={i} className="h-14 w-full rounded-lg" />
-      ))}
-    </div>
-  );
-}
-
-function TodayClassesSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {[...Array(6)].map((_, i) => (
-        <Skeleton key={i} className="h-[7.5rem] w-full rounded-lg" />
-      ))}
-    </div>
-  );
-}
-
-export default function TeacherOverviewTab({ selectedSchoolId }: TeacherOverviewTabProps) {
-  const { data: todaysClasses, isLoading: todaysClassesLoading } = useTodaysClasses(selectedSchoolId);
-  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchoolId, { limit: 5 });
-  const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchoolId);
-
-  const recentActivity = useMemo(() => {
-    const activity: RecentActivity[] = [];
-
-    // Recent reports — only entries with a real timestamp
-    const recentReports = reports?.slice(0, 3) || [];
-    recentReports.forEach((report: TeacherReport) => {
-      const classData = Array.isArray(report.classes) ? report.classes[0] : report.classes;
-      const when = report.created_at ?? report.date;
-      if (!when) return;
-      activity.push({
-        id: `report-${report.id}`,
-        title: 'Report Submitted',
-        message: `Submitted report for ${formatGradeSection(report.grade || classData?.grade, report.section ?? classData?.section) || 'grade'} on ${report.date ? new Date(report.date).toLocaleDateString() : 'unknown date'}`,
-        created_at: String(when),
-        type: report.report_status === 'Approved' ? 'success' : 'info'
+export default function TeacherOverviewTab({
+  day,
+  dayName,
+  dayLoading,
+  todos,
+  todosLoading,
+  classes,
+  classesLoading,
+  reports,
+  reportsLoading,
+  leaves,
+  now,
+}: Props) {
+  /* The newest reports, plus one line when leave requests are still waiting. Only entries with a real time. */
+  const recent = useMemo(() => {
+    const out: Recent[] = [];
+    reports.slice(0, 4).forEach((r) => {
+      const c = Array.isArray(r.classes) ? r.classes[0] : r.classes;
+      const at = r.created_at ?? r.date;
+      if (!at) return;
+      out.push({
+        id: `report-${r.id}`,
+        href: "/lms/teacher/reports",
+        title: classLabel(r.grade || c?.grade, r.section ?? c?.section) || "Report",
+        sub: r.topics_taught?.trim() || (r.date ? `For ${new Date(r.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}` : "Report submitted"),
+        chip: r.report_status || "Submitted",
+        at: String(at),
       });
     });
-
-    // Pending leaves — timestamped by the newest pending request, not "now"
-    const pendingLeavesList = (leaves ?? []).filter((l) => l.status === 'Pending');
-    if (pendingLeavesList.length > 0) {
-      const newest = pendingLeavesList
-        .map((l) => String((l as { created_at?: string }).created_at ?? ''))
-        .filter(Boolean)
-        .sort()
-        .pop();
-      activity.push({
-        id: 'pending-leaves',
-        title: 'Pending Leave Requests',
-        message: `${pendingLeavesList.length} leave request(s) awaiting approval`,
-        created_at: newest ?? pendingLeavesList[0].start_date,
-        type: 'warning'
+    const waiting = leaves.filter((l) => l.status === "Pending");
+    if (waiting.length > 0) {
+      const newest = waiting.map((l) => String((l as { created_at?: string }).created_at ?? "")).filter(Boolean).sort().pop();
+      out.push({
+        id: "leaves",
+        href: "/lms/teacher/leaves",
+        title: plural(waiting.length, "leave request") + " waiting",
+        sub: "Your admin has not answered yet",
+        chip: "Waiting",
+        at: newest ?? waiting[0].start_date,
       });
     }
+    return out.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 5);
+  }, [reports, leaves]);
 
-    // Sort by date and limit
-    activity.sort((a: RecentActivity, b: RecentActivity) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    return activity.slice(0, 5);
-  }, [selectedSchoolId, reports, leaves]);
+  const assigned = useMemo(() => {
+    const seen = new Set<string>();
+    return classes.filter((c) => {
+      const k = c.id ?? `${c.grade}-${c.section}-${c.subject}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [classes]);
+  const shownClasses = assigned.slice(0, SHOWN_CLASSES);
 
   return (
-    <div className="space-y-6">
-      {/* Today's Classes */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Today&apos;s Classes</CardTitle>
-              <CardDescription>Your scheduled classes for today</CardDescription>
-            </div>
-            <Link href="/lms/teacher/reports">
-              <Button size="sm" className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Submit Report
-              </Button>
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {todaysClassesLoading ? (
-            <TodayClassesSkeleton />
-          ) : todaysClasses && todaysClasses.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {todaysClasses.map((classItem: ClassItem) => {
-                const periodId = classItem.schedule_id || classItem.id;
-                const gradeLabel =
-                  formatGradeSection(classItem.grade, classItem.section) ||
-                  classItem.class_name ||
-                  'Class';
-                const timeLabel =
-                  classItem.start_time
-                    ? `${formatTime(classItem.start_time)}${
-                        classItem.end_time ? ` – ${formatTime(classItem.end_time)}` : ''
-                      }`
-                    : null;
-                const tile = (
-                  <div
-                    className={`h-full rounded-lg border border-l-[3px] p-3.5 transition-colors ${
-                      classItem.hasReport
-                        ? 'border-l-emerald-500 border-gray-200 bg-emerald-50/40 hover:border-emerald-300 hover:bg-emerald-50'
-                        : 'border-l-amber-500 border-gray-200 bg-white hover:border-amber-300 hover:bg-amber-50/50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
-                        {classItem.subject || 'General'}
-                      </p>
-                      <Badge
-                        variant={classItem.hasReport ? 'default' : 'outline'}
-                        className={`shrink-0 text-[10px] ${
-                          classItem.hasReport
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                            : 'bg-amber-50 text-amber-800 border-amber-200'
-                        }`}
-                      >
-                        {classItem.hasReport ? 'Reported' : 'Pending'}
-                      </Badge>
-                    </div>
-                    <p className="text-xs font-medium text-gray-600 truncate">{gradeLabel}</p>
-                    {timeLabel && (
-                      <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                        <Clock className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{timeLabel}</span>
-                      </p>
-                    )}
-                  </div>
-                );
-                return periodId ? (
-                  <Link
-                    key={periodId}
-                    href={`/lms/teacher/reports?period_id=${periodId}`}
-                    className="block h-full"
-                    title={
-                      classItem.hasReport
-                        ? 'View or update report'
-                        : 'Submit report for this class'
-                    }
-                  >
-                    {tile}
-                  </Link>
-                ) : (
-                  <div
-                    key={`${gradeLabel}-${classItem.start_time ?? ''}-${classItem.subject ?? ''}`}
-                    className="h-full"
-                  >
-                    {tile}
-                  </div>
-                );
-              })}
+    <div className="so-grid">
+      <div className="so-col">
+        <section className="sd-panel" aria-labelledby="to-todo">
+          <div className="sd-panel-head"><div><h2 id="to-todo">Needs your attention</h2><p>Each one opens where you can deal with it.</p></div></div>
+          {todosLoading ? (
+            <><div className="sd-skel" /><div className="sd-skel" /></>
+          ) : todos.length === 0 ? (
+            <div className="so-clear">
+              <span className="so-clear-droid"><Droid /></span>
+              <div><b>You are all caught up</b><p>Missing reports, flagged reports and waiting leave requests will show up here.</p></div>
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
-              <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No classes scheduled for today</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Your latest activities and updates</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {reportsLoading || leavesLoading ? (
-            <CardSkeleton rows={3} />
-          ) : recentActivity.length > 0 ? (
-            <div className="space-y-3">
-              {recentActivity.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="flex items-start gap-3 p-3 border rounded-lg"
-                >
-                  <div className={`mt-1 ${
-                    activity.type === 'success' ? 'text-green-500' :
-                    activity.type === 'warning' ? 'text-yellow-500' :
-                    activity.type === 'error' ? 'text-red-500' :
-                    'text-blue-500'
-                  }`}>
-                    {activity.type === 'success' ? (
-                      <CheckCircle className="h-5 w-5" />
-                    ) : (
-                      <AlertCircle className="h-5 w-5" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{activity.title}</p>
-                    <p className="text-xs text-gray-600 mt-1">{activity.message}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(activity.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
+            <div>
+              {todos.map((t) => (
+                <Link key={t.id} href={t.href} className="so-todo" data-tone={t.tone}>
+                  <span className="so-todo-ico" aria-hidden="true"><t.icon /></span>
+                  <span className="so-todo-text"><b>{t.title}</b><small data-hot={t.tone === "red"}>{t.sub}</small></span>
+                  <span className="so-count">{t.count}</span>
+                  <ChevronRight aria-hidden="true" />
+                </Link>
               ))}
             </div>
+          )}
+        </section>
+
+        <section className="sd-panel as-list" aria-labelledby="to-today">
+          <div className="sd-panel-head" style={{ margin: 0, padding: "1.25rem 1.25rem 0.9rem" }}>
+            <div><h2 id="to-today">Today&apos;s classes</h2><p>{dayName}, in time order. Open one to write its report.</p></div>
+            <Link href="/lms/teacher/reports" className="sd-link">All reports</Link>
+          </div>
+          {dayLoading ? (
+            <div style={{ padding: "0 1.25rem 1.25rem" }}><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : day.length === 0 ? (
+            <div className="sd-empty" style={{ padding: "0 1.25rem 1.25rem" }}>
+              <b>No classes today</b>
+              <p>Nothing is scheduled for you today, so no reports are due.</p>
+              <Link href="/lms/teacher/classes" className="sd-btn sd-btn--line">See my classes</Link>
+            </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
-              <p>No recent activity</p>
+            day.map((r) => {
+              const late = !r.reported && r.phase === "past";
+              return (
+                <Link key={r.key} href={r.href} className="so-class to-class" data-state={r.phase === "live" ? "now" : undefined} data-late={late}>
+                  <span className="so-class-time">{clock(r.from)}{Number.isFinite(r.to) && <small>to {clock(r.to)}</small>}</span>
+                  <span className="so-class-main"><b>{r.subject}</b>{r.label && <small>{r.label}</small>}</span>
+                  <span className="to-chips">
+                    {r.phase === "live" && <span className="so-chip" data-now="true">On now</span>}
+                    <span className="to-chip" data-s={r.reported ? "done" : late ? "late" : "todo"}>
+                      {r.reported && <Check aria-hidden="true" />}
+                      {r.reported ? "Reported" : late ? "Report due" : "Not reported"}
+                    </span>
+                  </span>
+                </Link>
+              );
+            })
+          )}
+        </section>
+      </div>
+
+      <div className="so-col">
+        <section className="sd-panel" aria-labelledby="to-recent">
+          <div className="sd-panel-head">
+            <div><h2 id="to-recent">Recent activity</h2><p>Your latest reports and requests</p></div>
+            <Link href="/lms/teacher/reports" className="sd-link">Reports</Link>
+          </div>
+          {reportsLoading ? (
+            <><div className="sd-skel" /><div className="sd-skel" /></>
+          ) : recent.length === 0 ? (
+            <div className="sd-empty"><b>Nothing yet</b><p>Reports you submit and leave requests you make will appear here.</p></div>
+          ) : (
+            <div>
+              {recent.map((a) => (
+                <Link key={a.id} href={a.href} className="so-row to-recent">
+                  {a.id === "leaves" && <span className="to-recent-ico" aria-hidden="true"><CalendarOff /></span>}
+                  <span className="so-row-text"><b>{a.title}</b><small>{a.sub}</small></span>
+                  <span className="to-chip" data-s={a.chip.toLowerCase()}>{a.chip}</span>
+                  <time dateTime={a.at}>{ago(a.at, now)}</time>
+                </Link>
+              ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </section>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common tasks and shortcuts</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-            <Link href="/lms/teacher/reports">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-3 sm:p-6 text-center">
-                  <FileText className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-green-600" />
-                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">Submit Report</h3>
-                  <p className="hidden sm:block text-sm text-gray-600">Daily teaching report</p>
-                </CardContent>
-              </Card>
-            </Link>
-
-            <Link href="/lms/teacher/leaves">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-3 sm:p-6 text-center">
-                  <Clock className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-orange-600" />
-                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">Apply for Leave</h3>
-                  <p className="hidden sm:block text-sm text-gray-600">Submit leave request</p>
-                </CardContent>
-              </Card>
-            </Link>
-
-            <Link href="/lms/teacher/attendance">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-3 sm:p-6 text-center">
-                  <Calendar className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-purple-600" />
-                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">View Attendance</h3>
-                  <p className="hidden sm:block text-sm text-gray-600">Monthly attendance chart</p>
-                </CardContent>
-              </Card>
-            </Link>
-
-            <Link href="/lms/teacher/classes">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-3 sm:p-6 text-center">
-                  <BookOpen className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1.5 sm:mb-2 text-blue-600" />
-                  <h3 className="text-sm sm:text-base font-semibold sm:mb-1">My Classes</h3>
-                  <p className="hidden sm:block text-sm text-gray-600">View all classes</p>
-                </CardContent>
-              </Card>
-            </Link>
+        <section className="sd-panel" aria-labelledby="to-classes">
+          <div className="sd-panel-head">
+            <div><h2 id="to-classes">My classes</h2><p>{classesLoading ? " " : `${plural(assigned.length, "class", "classes")} assigned to you`}</p></div>
+            <Link href="/lms/teacher/classes" className="sd-link">All classes</Link>
           </div>
-        </CardContent>
-      </Card>
+          {classesLoading ? (
+            <><div className="sd-skel" /><div className="sd-skel" /></>
+          ) : assigned.length === 0 ? (
+            <div className="sd-empty"><b>No classes assigned yet</b><p>Your school admin assigns classes to you. They will show up here.</p></div>
+          ) : (
+            <>
+              <ul className="to-classes">
+                {shownClasses.map((c, i) => (
+                  <li key={c.id ?? i}>
+                    <b>{classLabel(c.grade, c.section) || c.class_name || "Class"}</b>
+                    {c.subject && <small>{c.subject}</small>}
+                  </li>
+                ))}
+              </ul>
+              {assigned.length > shownClasses.length && (
+                <p className="to-more">and {assigned.length - shownClasses.length} more. <Link href="/lms/teacher/classes" className="sd-link">See all</Link></p>
+              )}
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
-
-

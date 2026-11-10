@@ -1,0 +1,80 @@
+/* Admin schools. Needs portal.css, school-admin/overview.css (hero meta) and teacher/overview/overview.css (track). */
+
+button.to-node.sc-node { border: 0; background: transparent; font: inherit; cursor: pointer; }
+.sc-step { display: grid; justify-items: center; gap: 0.5rem; width: 100%; padding: 0.15rem 0; }
+.sc-step .sd-node { width: 2rem; height: 2rem; font-size: 0.85rem; }
+.sc-run .sd-day span:last-child { font-size: 0.78rem; text-align: center; }
+
+.sc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.sc-bar .sd-field[type="search"] { flex: 1 1 16rem; width: auto; min-width: 0; max-width: 30rem; }
+.sc-bar select.sd-field { width: auto; min-width: 10rem; padding-block: 0.6rem; }
+
+/* School rows */
+.sc-list { padding: 0; overflow: hidden; }
+.sc-head, .sc-row { display: grid; grid-template-columns: 1.5rem 2.75rem minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(7rem, 0.7fr) 7rem 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.8rem 1.25rem; }
+.sc-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.sc-row { position: relative; border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
+.sc-row:last-of-type { border-bottom: 0; }
+@media (hover: hover) { .sc-row:hover { background: var(--sd-wash); } }
+.sc-row[data-picked="true"] { background: rgb(251 191 36 / 0.14); }
+.sc-row[data-off="true"] .sc-name b { color: var(--sd-ink-soft); }
+.sc-check { width: 1.15rem; height: 1.15rem; accent-color: var(--sd-ink); cursor: pointer; }
+.sc-logo { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 0.8rem; background: var(--sd-ink); color: var(--sd-amber); font: 800 0.9rem/1 var(--sd-display); overflow: hidden; }
+.sc-logo img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.sc-name { display: grid; min-width: 0; color: inherit; text-decoration: none; }
+.sc-name b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.sc-name small, .sc-admin small, .sc-people small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+a.sc-name:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; border-radius: 0.4rem; }
+@media (hover: hover) { a.sc-name:hover b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; } }
+.sc-admin { display: grid; min-width: 0; }
+.sc-admin b { font: 700 0.95rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.sc-people { display: grid; font-size: 0.93rem; }
+.sc-people b { font: 700 0.95rem/1.3 var(--sd-body); }
+.sc-chip { display: inline-flex; align-items: center; padding: 0.05rem 0.7rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.78rem/1.6 var(--sd-body); color: var(--sd-ink-soft); white-space: nowrap; justify-self: start; }
+.sc-chip[data-s="ready"] { border-color: var(--sd-ink); background: var(--sd-ink); color: var(--sd-amber); }
+.sc-chip[data-s="setup"] { border-color: var(--sd-amber-deep); background: rgb(251 191 36 / 0.22); color: var(--sd-ink); }
+.sc-chip[data-s="off"], .sc-chip[data-s="none"] { border-style: dashed; }
+.sc-chip[data-s="none"] { color: var(--sd-late); border-color: var(--sd-late); }
+.sc-need { grid-column: 3 / -2; font-size: 0.85rem; color: var(--sd-ink-soft); }
+.sc-need b { color: var(--sd-ink); }
+
+/* Selected rows */
+.sc-selbar { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; padding: 0.7rem 1rem; border: 1.5px solid var(--sd-ink); border-radius: 1.1rem; background: var(--sd-paper); box-shadow: 0 0.75rem 2rem rgb(11 27 58 / 0.18); }
+.sc-selbar b { font: 800 1.05rem/1 var(--sd-display); }
+.sc-selbar > div { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.sc-selbar .sd-btn { min-height: 2.25rem; padding-inline: 1rem; }
+.sc-list-names { max-height: 10rem; margin: 0.5rem 0 0; padding-left: 1.2rem; overflow-y: auto; font-size: 0.95rem; color: var(--sd-ink-soft); }
+
+/* School page */
+.sc-two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(1rem, 2vw, 1.5rem); align-items: start; }
+.sc-col { display: grid; gap: clamp(1rem, 2vw, 1.5rem); min-width: 0; align-content: start; }
+.sc-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem 1.5rem; margin: 0; }
+.sc-facts div { display: grid; gap: 0.15rem; min-width: 0; }
+.sc-facts dt { font-size: 0.85rem; color: var(--sd-ink-soft); }
+.sc-facts dd { margin: 0; font: 700 0.98rem/1.35 var(--sd-body); overflow-wrap: anywhere; }
+.sc-person { display: flex; align-items: center; gap: 0.8rem; padding: 0.65rem 0; border-bottom: 1.5px solid var(--sd-line); }
+.sc-person:first-child { padding-top: 0; }
+.sc-person:last-child { border-bottom: 0; padding-bottom: 0; }
+.sc-person > span:nth-child(2) { display: grid; min-width: 0; flex: 1; }
+.sc-person b { font: 700 0.98rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.sc-person small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.sc-scroll { max-height: 22rem; overflow-y: auto; }
+.sc-grade { display: grid; grid-template-columns: 7rem minmax(0, 1fr) 3rem; align-items: center; gap: 0.75rem; padding: 0.35rem 0; font-size: 0.95rem; }
+.sc-grade b { text-align: right; font: 800 1rem/1 var(--sd-display); font-variant-numeric: tabular-nums; }
+.sc-grade .sd-meter { height: 0.55rem; }
+.sc-links { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-top: 1rem; }
+
+@media (max-width: 1100px) { .sc-two { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 960px) {
+  .sc-head { display: none; }
+  .sc-row { grid-template-columns: 1.5rem 2.75rem minmax(0, 1fr) 2.25rem; grid-template-areas: "ck logo name go" ". . admin admin" ". . people people" ". . chip chip"; gap: 0.35rem 0.8rem; }
+  .sc-row > .sc-check { grid-area: ck; }
+  .sc-row > .sc-logo { grid-area: logo; }
+  .sc-row > .sc-name { grid-area: name; }
+  .sc-row > .sc-admin { grid-area: admin; }
+  .sc-row > .sc-people { grid-area: people; }
+  .sc-row > .sc-chips { grid-area: chip; }
+  .sc-row > .pl-ico, .sc-row > .sc-menu { grid-area: go; }
+  .sc-need { grid-column: 3 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { .sc-row { transition: none; } }

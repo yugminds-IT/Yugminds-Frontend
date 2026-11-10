@@ -1,20 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  CheckCircle,
-  ChevronLeft,
-  ChevronRight,
-  Lock,
-  Send,
-  X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Check, ChevronLeft, ChevronRight, Loader2, Lock, Send, X } from "lucide-react";
 import {
   AssignmentBuilder,
   type Assignment as BuilderAssignment,
@@ -246,387 +233,167 @@ export default function AssignmentFormDrawer({
     lockedSchoolId &&
     payload.schoolIds.filter((id) => id !== lockedSchoolId).length;
 
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={handleRequestClose}
-        aria-hidden
-      />
+  const nextDisabled = (step === 1 && !canNextFromDetails) || (step === 2 && !canNextFromAudience);
+  const missing = step === 1 && !canNextFromDetails ? (title ? "choose a school" : "give it a title") : step === 2 && !canNextFromAudience ? "choose who sees it" : "";
 
-      <div className="relative ml-auto w-full max-w-2xl bg-white h-full flex flex-col shadow-xl">
-        {/* Header */}
-        <div className="px-6 pt-4 pb-3 border-b border-gray-200 shrink-0 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                type="button"
-                onClick={handleRequestClose}
-                className="text-gray-400 hover:text-gray-600 shrink-0"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold text-gray-900">
-                  {mode === "edit" ? "Edit assignment" : "New assignment"}
-                </h2>
-                <p className="text-xs text-gray-500 truncate">
-                  Step {step} of 3 — {STEPS[step - 1].label}
-                </p>
-              </div>
+  return (
+    <div className="tg-drawer" role="dialog" aria-modal="true" aria-label={mode === "edit" ? "Edit assignment" : "New assignment"} onClick={handleRequestClose}>
+      <div className="tg-drawer-card" onClick={(e) => e.stopPropagation()}>
+        <div className="tg-drawer-head">
+          <div className="tg-drawer-top">
+            <div>
+              <h2>{mode === "edit" ? "Edit assignment" : "New assignment"}</h2>
+              <p>Step {step} of 3: {STEPS[step - 1].label}</p>
             </div>
-            <button
-              type="button"
-              onClick={handleRequestClose}
-              className="text-gray-400 hover:text-gray-600 shrink-0"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <button type="button" className="pl-ico" onClick={handleRequestClose} aria-label="Close"><X aria-hidden="true" /></button>
           </div>
 
-          {/* Step indicator */}
-          <nav className="flex items-center gap-1" aria-label="Wizard steps">
-            {STEPS.map((s, i) => {
-              const active = step === s.id;
+          <ol className="tg-steps" aria-label="Steps">
+            {STEPS.map((s) => {
               const done = step > s.id;
+              const reachable = s.id < step || (s.id === 2 && canNextFromDetails) || (s.id === 3 && canNextFromDetails && canNextFromAudience);
               return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => {
-                    if (s.id < step) setStep(s.id);
-                    else if (s.id === 2 && canNextFromDetails) setStep(2);
-                    else if (
-                      s.id === 3 &&
-                      canNextFromDetails &&
-                      canNextFromAudience
-                    )
-                      setStep(3);
-                  }}
-                  className={`flex-1 flex items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
-                    active
-                      ? "bg-blue-50 text-blue-800"
-                      : done
-                        ? "text-gray-700 hover:bg-gray-50"
-                        : "text-gray-400"
-                  }`}
-                >
-                  <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                      active
-                        ? "bg-blue-600 text-white"
-                        : done
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-gray-100 text-gray-400"
-                    }`}
-                  >
-                    {done ? <CheckCircle className="h-3.5 w-3.5" /> : s.id}
-                  </span>
-                  <span className="text-xs font-medium hidden sm:inline">
-                    {s.label}
-                  </span>
-                  {i < STEPS.length - 1 && (
-                    <span className="sr-only">then</span>
-                  )}
-                </button>
+                <li key={s.id}>
+                  <button type="button" className="tg-step" aria-current={step === s.id ? "step" : undefined} data-done={done} disabled={!reachable && step !== s.id} onClick={() => reachable && setStep(s.id)}>
+                    <i>{done ? <Check aria-hidden="true" /> : s.id}</i>
+                    <span>{s.label}</span>
+                  </button>
+                </li>
               );
             })}
-          </nav>
+          </ol>
         </div>
 
-        {/* Body — one step */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="tg-drawer-body">
           {step === 1 && (
-            <div className="space-y-4 max-w-lg">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-600">
-                  Title <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  placeholder="e.g. Unit 1 quiz"
-                  value={builderAssignment?.title ?? ""}
-                  onChange={(e) => syncTitle(e.target.value)}
-                  className="h-10 text-sm"
-                  autoFocus
-                />
+            <div className="tg-form">
+              <div className="sd-field-wrap">
+                <label htmlFor="as-title">Title</label>
+                <input id="as-title" className="sd-field" placeholder="For example: Unit 1 quiz" value={builderAssignment?.title ?? ""} onChange={(e) => syncTitle(e.target.value)} autoFocus aria-required="true" />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-600">
-                  Description
-                </Label>
-                <Textarea
-                  placeholder="Optional instructions for students"
-                  value={builderAssignment?.description ?? ""}
-                  onChange={(e) => syncDescription(e.target.value)}
-                  rows={3}
-                  className="text-sm resize-none"
-                />
+              <div className="sd-field-wrap">
+                <label htmlFor="as-desc">Instructions <small>(optional)</small></label>
+                <textarea id="as-desc" className="sd-field" rows={3} placeholder="Anything students should know before they start" value={builderAssignment?.description ?? ""} onChange={(e) => syncDescription(e.target.value)} />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-600">
-                  Maximum marks
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={builderAssignment?.max_score ?? 100}
-                  onChange={(e) => syncMaxScore(e.target.value)}
-                  className="h-10 text-sm"
-                />
-                <p className="text-xs text-gray-500">
-                  Question marks cannot add up to more than this.
-                </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "0.9rem" }}>
+                <div className="sd-field-wrap">
+                  <label htmlFor="as-marks">Maximum marks</label>
+                  <input id="as-marks" className="sd-field" type="number" min="1" value={builderAssignment?.max_score ?? 100} onChange={(e) => syncMaxScore(e.target.value)} />
+                </div>
+                <div className="sd-field-wrap">
+                  <label htmlFor="as-due">Due date</label>
+                  <input id="as-due" className="sd-field" type="date" value={payload.dueDate} onChange={(e) => onPayloadChange({ dueDate: e.target.value })} />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-600">
-                  Subject
-                </Label>
-                <Input
-                  placeholder="e.g. Mathematics, Science…"
-                  value={payload.subject}
-                  onChange={(e) =>
-                    onPayloadChange({ subject: e.target.value })
-                  }
-                  className="h-10 text-sm"
-                />
+              <p className="tg-fine" style={{ marginTop: "-0.5rem" }}>Question marks cannot add up to more than the maximum.</p>
+              <div className="sd-field-wrap">
+                <label htmlFor="as-subject">Subject</label>
+                <input id="as-subject" className="sd-field" placeholder="For example: Mathematics" value={payload.subject} onChange={(e) => onPayloadChange({ subject: e.target.value })} />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-600">
-                  Due date
-                </Label>
-                <Input
-                  type="date"
-                  value={payload.dueDate}
-                  onChange={(e) =>
-                    onPayloadChange({ dueDate: e.target.value })
-                  }
-                  className="h-10 text-sm"
-                />
-              </div>
+
               {showSchoolSelect && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-gray-600">
-                    School{mode === "create" || schools.length > 1 ? "s" : ""}{" "}
-                    <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
-                    {schools.map((s) => {
-                      const id = String(s.id ?? "");
+                <div className="sd-field-wrap" role="group" aria-labelledby="as-schools">
+                  <label id="as-schools">{mode === "create" || schools.length > 1 ? "Schools" : "School"}</label>
+                  <div>
+                    {schools.map((sc) => {
+                      const id = String(sc.id ?? "");
                       if (!id) return null;
-                      const checked = payload.schoolIds.includes(id);
-                      const isLocked =
-                        mode === "edit" && !!lockedSchoolId && id === lockedSchoolId;
-                      const hasCopy =
-                        mode === "edit" &&
-                        !isLocked &&
-                        schoolsWithExistingCopy.includes(id);
+                      const isLocked = mode === "edit" && !!lockedSchoolId && id === lockedSchoolId;
+                      const hasCopy = mode === "edit" && !isLocked && schoolsWithExistingCopy.includes(id);
                       return (
-                        <label
-                          key={id}
-                          className={`flex items-center gap-2.5 px-3 py-2.5 ${
-                            isLocked
-                              ? "cursor-default bg-gray-50/80"
-                              : "cursor-pointer hover:bg-gray-50"
-                          }`}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            disabled={isLocked}
-                            onCheckedChange={() => toggleSchool(id)}
-                            aria-label={`Select ${s.name ?? id}`}
-                          />
-                          <span className="text-sm text-gray-800 flex-1 min-w-0">
-                            {s.name ?? id}
-                            {isLocked && (
-                              <span className="ml-1.5 text-[11px] text-gray-400">
-                                (this assignment)
-                              </span>
-                            )}
-                            {hasCopy && (
-                              <span className="ml-1.5 text-[11px] text-amber-700">
-                                Already has a copy
-                              </span>
-                            )}
+                        <label key={id} className="tg-opt">
+                          <input type="checkbox" checked={payload.schoolIds.includes(id)} disabled={isLocked} onChange={() => toggleSchool(id)} />
+                          <span>
+                            <b>{sc.name ?? id}</b>
+                            {isLocked && <small>This assignment is here</small>}
+                            {hasCopy && <em>Already has a copy</em>}
                           </span>
                         </label>
                       );
                     })}
                   </div>
-                  {mode === "create" && (
-                    <p className="text-[11px] text-gray-500">
-                      Each school gets an independent assignment copy. Audience
-                      (grades/sections) is set per school. Changing audience
-                      never deletes past submissions.
-                    </p>
-                  )}
-                  {mode === "edit" && schools.length > 1 && (
-                    <p className="text-[11px] text-gray-500">
-                      Each school has an independent assignment copy. Adding
-                      another school creates or updates that school’s copy only.
-                      Audience changes never delete past submissions. This
-                      assignment’s school stays selected.
-                    </p>
-                  )}
-                  {!schoolsOk && (
-                    <p className="text-xs text-amber-700">
-                      Select at least one school to continue.
-                    </p>
-                  )}
+                  <p className="tg-fine">
+                    {mode === "create"
+                      ? "Each school gets its own copy. You choose the audience per school. Changing it never deletes past submissions."
+                      : schools.length > 1
+                        ? "Each school has its own copy. Adding a school creates or updates only that school's copy, and this assignment's school stays selected."
+                        : ""}
+                  </p>
+                  {!schoolsOk && <p className="tg-warn">Choose at least one school to continue.</p>}
                 </div>
               )}
-              <label className="flex items-center gap-2.5 cursor-pointer select-none pt-1">
-                <input
-                  type="checkbox"
-                  checked={payload.isPublished}
-                  onChange={(e) =>
-                    onPayloadChange({ isPublished: e.target.checked })
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
-                />
-                <span className="text-sm text-gray-700">
-                  {mode === "edit" ? "Published" : "Publish immediately"}
-                </span>
+
+              <label className="tg-opt">
+                <input type="checkbox" checked={payload.isPublished} onChange={(e) => onPayloadChange({ isPublished: e.target.checked })} />
+                <span><b>{mode === "edit" ? "Published" : "Publish right away"}</b><small>{payload.isPublished ? "Students can see it now." : "It stays a draft until you publish it."}</small></span>
               </label>
             </div>
           )}
 
           {step === 2 && (
-            <div className="space-y-3 max-w-lg">
+            <div className="tg-form">
               <div>
-                <h3 className="text-sm font-semibold text-gray-900">
-                  Who should see this?
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <h3 className="tg-h3">Who sees this?</h3>
+                <p className="tg-fine">
                   {multiSchool
-                    ? "Apply to every selected school entirely, or pick grades and sections under each school."
-                    : "Choose the whole school, or specific grades and sections you teach."}
+                    ? "Give it to every selected school, or pick grades and sections under each."
+                    : "Give it to the whole school, or to the grades and sections you teach."}
                 </p>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
-                <AssignmentAudiencePicker
-                  classes={teacherClasses}
-                  selectedSchoolIds={payload.schoolIds}
-                  schoolNames={Object.fromEntries(
-                    schools
-                      .filter((s) => s.id)
-                      .map((s) => [String(s.id), s.name ?? String(s.id)]),
-                  )}
-                  entireSchool={payload.entireSchool}
-                  onChangeEntireSchool={(value) =>
-                    onPayloadChange({
-                      entireSchool: value,
-                      gradeTargets: value ? [] : payload.gradeTargets,
-                    })
-                  }
-                  targets={payload.gradeTargets}
-                  onChangeTargets={(targets) =>
-                    onPayloadChange({
-                      gradeTargets: targets,
-                      entireSchool: false,
-                    })
-                  }
-                />
-              </div>
+              <AssignmentAudiencePicker
+                classes={teacherClasses}
+                selectedSchoolIds={payload.schoolIds}
+                schoolNames={Object.fromEntries(schools.filter((sc) => sc.id).map((sc) => [String(sc.id), sc.name ?? String(sc.id)]))}
+                entireSchool={payload.entireSchool}
+                onChangeEntireSchool={(value) => onPayloadChange({ entireSchool: value, gradeTargets: value ? [] : payload.gradeTargets })}
+                targets={payload.gradeTargets}
+                onChangeTargets={(targets) => onPayloadChange({ gradeTargets: targets, entireSchool: false })}
+              />
               {!audienceOk && (
-                <p className="text-xs text-amber-700">
-                  {multiSchool
-                    ? "Select Entire selected schools, or at least one grade / section for each school."
-                    : "Select Entire school, or at least one grade / section to continue."}
+                <p className="tg-warn">
+                  {multiSchool ? "Choose every selected school, or at least one grade or section for each school." : "Choose the whole school, or at least one grade or section, to continue."}
                 </p>
               )}
             </div>
           )}
 
           {step === 3 && (
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-                    Questions
-                    {questionsLocked && (
-                      <Lock className="h-3.5 w-3.5 text-amber-600" />
-                    )}
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Optional auto-graded questions. You can publish without any.
-                    {multiSchool && mode === "create"
-                      ? ` The same questions will be copied to all ${schoolCount} schools.`
-                      : ""}
-                  </p>
-                </div>
+            <div className="tg-form" style={{ maxWidth: "none" }}>
+              <div>
+                <h3 className="tg-h3">Questions {questionsLocked && <Lock aria-label="Locked" style={{ width: "1rem", height: "1rem", display: "inline", color: "var(--sd-amber-deep)", verticalAlign: "-0.15em" }} />}</h3>
+                <p className="tg-fine">
+                  Optional, and graded for you. You can publish without any.
+                  {multiSchool && mode === "create" ? ` The same questions are copied to all ${schoolCount} schools.` : ""}
+                </p>
               </div>
-              <AssignmentBuilder
-                chapterId={primarySchoolId || "daily-school-assignment"}
-                chapterName="Daily Assignment"
-                assignment={builderAssignment}
-                onAssignmentChange={onBuilderChange}
-                disabled={questionsLocked}
-                lockMessage={
-                  questionsLocked ? questionsLockMessage : undefined
-                }
-                variant="inline"
-              />
+              <div className="tg-builder">
+                <AssignmentBuilder
+                  chapterId={primarySchoolId || "daily-school-assignment"}
+                  chapterName="Daily Assignment"
+                  assignment={builderAssignment}
+                  onAssignmentChange={onBuilderChange}
+                  disabled={questionsLocked}
+                  lockMessage={questionsLocked ? questionsLockMessage : undefined}
+                  variant="inline"
+                />
+              </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between shrink-0 bg-white gap-3">
-          <Button variant="outline" size="sm" onClick={handleRequestClose}>
-            Cancel
-          </Button>
-          <div className="flex items-center gap-2">
-            {step > 1 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={goBack}
-                className="gap-1"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Back
-              </Button>
-            )}
+        <div className="tg-drawer-foot">
+          <button type="button" className="sd-btn sd-btn--line" onClick={handleRequestClose}>Cancel</button>
+          <div>
+            {missing && step < 3 && <span style={{ alignSelf: "center", fontSize: "0.88rem", color: "var(--sd-ink-soft)" }}>Still needed: {missing}.</span>}
+            {step > 1 && <button type="button" className="sd-btn sd-btn--line" onClick={goBack}><ChevronLeft aria-hidden="true" />Back</button>}
             {step < 3 ? (
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={
-                  (step === 1 && !canNextFromDetails) ||
-                  (step === 2 && !canNextFromAudience)
-                }
-                className="inline-flex items-center gap-1 text-sm font-medium px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
-              </button>
+              <button type="button" className="sd-btn sd-btn--amber" onClick={goNext} disabled={nextDisabled}>Next<ChevronRight aria-hidden="true" /></button>
             ) : (
-              <button
-                type="button"
-                onClick={onSubmit}
-                disabled={loading || !canSubmit}
-                className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-              >
-                {mode === "edit" ? (
-                  <>
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    {loading
-                      ? "Saving…"
-                      : extraSchoolsOnEdit
-                        ? `Save & copy to ${extraSchoolsOnEdit} school${extraSchoolsOnEdit === 1 ? "" : "s"}`
-                        : "Save changes"}
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-3.5 w-3.5" />
-                    {loading
-                      ? "Creating…"
-                      : multiSchool
-                        ? `Create ${schoolCount} assignments`
-                        : "Create assignment"}
-                  </>
-                )}
+              <button type="button" className="sd-btn sd-btn--amber" onClick={onSubmit} disabled={loading || !canSubmit}>
+                {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : mode === "edit" ? <Check aria-hidden="true" /> : <Send aria-hidden="true" />}
+                {mode === "edit"
+                  ? loading ? "Saving" : extraSchoolsOnEdit ? `Save and copy to ${extraSchoolsOnEdit} ${extraSchoolsOnEdit === 1 ? "school" : "schools"}` : "Save changes"
+                  : loading ? "Creating" : multiSchool ? `Create ${schoolCount} assignments` : "Create assignment"}
               </button>
             )}
           </div>

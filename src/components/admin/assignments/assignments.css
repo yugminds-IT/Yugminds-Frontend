@@ -1,0 +1,20 @@
+/* Admin assignment analytics. Also needs school-admin/analytics/analytics.css (aa- rows, podium, track nodes), students.css (sm- chips)
+   and teachers.css (tm-bar), plus portal.css and the school-admin/teacher overview css for the hero. */
+
+.ap-list { padding: 0; overflow: hidden; container-type: inline-size; }
+.ap-row { display: grid; grid-template-columns: 3rem minmax(0, 1.6fr) minmax(9rem, 1fr) minmax(9rem, 1fr) 5.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.ap-lbl { display: none; font-size: 0.8rem; color: var(--sd-ink-soft); }
+.ap-retake { font: 700 0.98rem/1.2 var(--sd-display); font-variant-numeric: tabular-nums; }
+.ap-retake[data-empty="true"] { color: var(--sd-ink-soft); font-weight: 500; }
+
+@container (max-width: 44rem) {
+  .ap-row.aa-head { display: none; }
+  .ap-row { grid-template-columns: 2.25rem minmax(0, 1fr); grid-template-areas: "rank who" ". avg" ". done" ". retake"; gap: 0.5rem 0.8rem; }
+  .ap-row > .aa-rank { grid-area: rank; }
+  .ap-row > .aa-who { grid-area: who; }
+  .ap-row > :nth-child(3) { grid-area: avg; }
+  .ap-row > :nth-child(4) { grid-area: done; }
+  .ap-lbl { display: block; }
+  .ap-row > .ap-retake { grid-area: retake; font: 500 0.9rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+  .ap-row > .ap-retake:not([data-empty="true"])::before { content: "Retakes: "; }
+}

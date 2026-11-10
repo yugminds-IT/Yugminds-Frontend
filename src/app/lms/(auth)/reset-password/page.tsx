@@ -11,6 +11,7 @@ import { clearStoredSession, getStoredUserId } from "@/lib/session-utils";
 import { apiClient } from "@/lib/api";
 
 function ResetPasswordForm() {
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -53,11 +54,17 @@ function ResetPasswordForm() {
     try {
       // Call backend password reset confirm endpoint (implement on backend),
       // fallback to generic change-password if user is logged in.
-      await apiClient.post(
+      const res = await apiClient.post(
         "/api/auth/reset-password",
-        { password },
+        { password, current_password: currentPassword || undefined },
         { validateStatus: (s) => s >= 200 && s < 500 }
       );
+      if (res.status >= 400) {
+        const msg = (res.data as { message?: string | string[] } | undefined)?.message;
+        setError(Array.isArray(msg) ? msg.join(", ") : msg || "Could not update password");
+        setLoading(false);
+        return;
+      }
 
       setMessage("Password updated successfully! Redirecting to login...");
       
@@ -106,6 +113,19 @@ function ResetPasswordForm() {
                   {message.includes("Redirecting") && <i className="lg-bar" style={{ "--ms": "2000ms" } as React.CSSProperties} aria-hidden="true" />}
                 </div>
               )}
+
+              <div>
+                <Label htmlFor="currentPassword">Current Password</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="mt-1"
+                  placeholder="Enter current password"
+                />
+              </div>
 
               <div>
                 <Label htmlFor="password">New Password</Label>

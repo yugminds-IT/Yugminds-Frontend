@@ -1,0 +1,140 @@
+/* School-admin assignment analytics. Needs portal.css, students.css (sm- chips) and teachers.css (tm-bar). */
+
+.aa-run .sd-droid { transition: translate 700ms var(--sd-ease); }
+.aa-run .sd-ball { transition: rotate 700ms var(--sd-ease); }
+.aa-node { display: grid; justify-items: center; gap: 0.5rem; width: 100%; padding: 0.15rem 0; border: 0; border-radius: 0.6rem; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.aa-node:focus-visible { outline: 3px solid var(--sd-amber); outline-offset: 2px; }
+.aa-node .sd-node { width: 1.85rem; height: 1.85rem; transition: transform 160ms var(--sd-ease), background-color 0.3s ease; }
+.aa-node:active .sd-node { transform: scale(0.9); }
+@media (hover: hover) { .aa-node:hover .sd-node { transform: scale(1.12); } }
+.aa-run .sd-day span:last-child { font-size: 0.76rem; text-align: center; }
+
+.aa-note { max-width: 46rem; font-size: 0.95rem; color: var(--sd-ink-soft); text-wrap: pretty; }
+.aa-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.aa-bar .sd-field[type="search"] { flex: 1 1 14rem; width: auto; min-width: 0; }
+.aa-bar select.sd-field { width: auto; min-width: 9rem; padding-block: 0.6rem; }
+
+/* Top three */
+.aa-podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(0.75rem, 1.6vw, 1.25rem); margin: 0; padding: 0; list-style: none; }
+.aa-podium li { position: relative; display: grid; justify-items: start; align-content: start; gap: 0.15rem; padding: 1.1rem 1.25rem 1.2rem; border: 1.5px solid var(--sd-line); border-radius: 1.25rem; background: var(--sd-paper); min-width: 0; }
+.aa-podium .sd-avatar { width: 2.75rem; height: 2.75rem; margin-bottom: 0.5rem; }
+.aa-podium b { font: 700 1.05rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.aa-podium small { font-size: 0.88rem; color: var(--sd-ink-soft); }
+.aa-place { position: absolute; top: 0.9rem; right: 1.1rem; font: 800 2.4rem/1 var(--sd-display); letter-spacing: -0.04em; color: var(--sd-line); font-variant-numeric: tabular-nums; }
+.aa-podium-score { margin-top: 0.6rem; font: 800 1.9rem/1 var(--sd-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.aa-podium li[data-place="1"] { border-color: var(--sd-ink); background: var(--sd-ink); color: var(--sd-paper); }
+.aa-podium li[data-place="1"] small { color: var(--sd-navy-soft); }
+.aa-podium li[data-place="1"] .aa-place { color: var(--sd-amber); }
+.aa-podium li[data-place="1"] .sd-avatar { background: var(--sd-amber); color: var(--sd-ink); }
+.aa-podium li[data-place="1"] .aa-podium-score { color: var(--sd-amber); }
+
+/* Shared row parts */
+.aa-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.aa-item { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
+.aa-item:last-of-type { border-bottom: 0; }
+@media (hover: hover) { .aa-item:hover { background: var(--sd-wash); } }
+.aa-who { display: grid; gap: 0.1rem; min-width: 0; }
+.aa-who b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.aa-who small { font-size: 0.86rem; color: var(--sd-ink-soft); }
+.aa-split { display: none; }
+.aa-row > .sm-chip, .aa-arow > .sm-chip, .aa-mrow > .sm-chip { justify-self: start; }
+.aa-part { font: 700 0.98rem/1.2 var(--sd-display); font-variant-numeric: tabular-nums; }
+.aa-part[data-empty="true"] { color: var(--sd-ink-soft); font-weight: 500; }
+.aa-score { display: grid; gap: 0.3rem; min-width: 0; }
+.aa-score b { font: 800 1.05rem/1 var(--sd-display); font-variant-numeric: tabular-nums; }
+.aa-score b small { font: 500 0.82rem/1 var(--sd-body); color: var(--sd-ink-soft); }
+.aa-score[data-band="low"] .tm-bar u { background: var(--sd-late); }
+.aa-score[data-band="high"] .tm-bar u, .aa-score[data-band="done"] .tm-bar u { background: var(--sd-ink); }
+.aa-score[data-band="none"] b { font: 600 0.92rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+
+/* Leaderboard rows */
+.aa-row { display: grid; grid-template-columns: 3rem minmax(0, 1.4fr) 8rem 4.5rem 4.5rem minmax(8rem, 1fr) 5.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.8rem 1.25rem; }
+.aa-rank { display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 50%; font: 800 0.95rem/1 var(--sd-display); font-variant-numeric: tabular-nums; color: var(--sd-ink-soft); }
+.aa-rank[data-top] { border: 1.5px solid var(--sd-ink); color: var(--sd-ink); }
+.aa-rank[data-top="1"] { border-color: var(--sd-amber); background: var(--sd-amber); }
+.aa-badge { display: inline-flex; padding: 0.05rem 0.65rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.76rem/1.6 var(--sd-body); }
+.aa-badge[data-badge="GOLD"] { border-color: var(--sd-amber); background: rgb(251 191 36 / 0.25); }
+.aa-badge[data-badge="SILVER"] { border-color: var(--sd-ink-soft); }
+.aa-badge[data-badge="BRONZE"] { border-color: var(--sd-amber-deep); color: var(--sd-amber-deep); }
+
+/* Classes */
+.aa-crow { display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(7rem, 1fr)) 9rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.aa-part-bar { display: grid; gap: 0.3rem; min-width: 0; }
+.aa-part-bar > small { display: none; font-size: 0.8rem; color: var(--sd-ink-soft); }
+
+/* Subjects */
+.aa-srow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(10rem, 1.4fr) 9.5rem; align-items: center; gap: 0.5rem 1.25rem; padding: 0.85rem 1.25rem; }
+
+/* Assignments */
+.aa-arow { display: grid; grid-template-columns: minmax(0, 1.6fr) 5.5rem minmax(8rem, 1fr) minmax(9rem, 1fr); align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+button.aa-open { width: 100%; border: 0; border-bottom: 1.5px solid var(--sd-line); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.aa-open:last-of-type { border-bottom: 0; }
+button.aa-open:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: -3px; }
+button.aa-open:active { background: var(--sd-wash); }
+.aa-avg { display: grid; gap: 0.3rem; }
+.aa-lbl { display: none; }
+.aa-avg small { font-size: 0.8rem; color: var(--sd-ink-soft); }
+
+/* Marks for one assignment */
+.aa-marks { display: grid; gap: clamp(1rem, 2vw, 1.5rem); }
+.aa-back { display: inline-flex; align-items: center; gap: 0.4rem; justify-self: start; padding: 0.35rem 0.2rem; border: 0; background: none; color: var(--sd-ink); font: 700 0.95rem/1.2 var(--sd-body); cursor: pointer; }
+.aa-back svg { width: 1.1rem; height: 1.1rem; transition: translate 160ms var(--sd-ease); }
+@media (hover: hover) { .aa-back:hover svg { translate: -3px 0; } }
+.aa-back:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 3px; border-radius: 0.5rem; }
+.aa-marks-head h2 { font: 800 clamp(1.5rem, 2.6vw, 2.1rem)/1.1 var(--sd-display); letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.aa-marks-head p { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.9rem; margin-top: 0.6rem; color: var(--sd-ink-soft); }
+.aa-mrow { display: grid; grid-template-columns: 2.5rem minmax(0, 1.4fr) 8rem 6.5rem minmax(8rem, 1fr) 8.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.8rem 1.25rem; }
+.aa-mrow .sd-avatar { width: 2.5rem; height: 2.5rem; }
+.aa-state { font-size: 0.9rem; font-weight: 600; }
+.aa-state[data-state="pending"] { color: var(--sd-ink-soft); font-weight: 500; }
+
+@media (max-width: 960px) {
+  .aa-head { display: none; }
+  .aa-podium { grid-template-columns: minmax(0, 1fr); }
+  .aa-podium li { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "av name score" "av cls score"; align-items: center; column-gap: 0.9rem; padding-block: 0.9rem; }
+  .aa-podium .sd-avatar { grid-area: av; margin: 0; }
+  .aa-podium b { grid-area: name; }
+  .aa-podium small { grid-area: cls; }
+  .aa-podium-score { grid-area: score; margin: 0; font-size: 1.5rem; }
+  .aa-place { display: none; }
+
+  .aa-row { grid-template-columns: 2.25rem minmax(0, 1fr) auto; grid-template-areas: "rank who badge" ". chip chip" ". score score"; gap: 0.4rem 0.8rem; }
+  .aa-row > .aa-rank { grid-area: rank; }
+  .aa-row > .aa-who { grid-area: who; }
+  .aa-row > .aa-badge-cell { grid-area: badge; }
+  .aa-row > .sm-chip { grid-area: chip; justify-self: start; }
+  .aa-row > .aa-score { grid-area: score; }
+  .aa-row > .aa-part { display: none; }
+  .aa-split { display: block; }
+
+  .aa-crow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name go" "course course" "daily daily" "overall overall"; }
+  .aa-crow > .aa-who { grid-area: name; }
+  .aa-crow > .sd-btn { grid-area: go; }
+  .aa-crow > .aa-part-bar:nth-of-type(2) { grid-area: course; }
+  .aa-crow > .aa-part-bar:nth-of-type(3) { grid-area: daily; }
+  .aa-crow > .aa-part-bar:nth-of-type(4) { grid-area: overall; }
+  .aa-part-bar > small { display: block; }
+  .aa-arow .aa-lbl { display: block; font-size: 0.8rem; color: var(--sd-ink-soft); }
+
+  .aa-srow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name go" "score score"; }
+  .aa-srow > .aa-who { grid-area: name; }
+  .aa-srow > .sd-btn { grid-area: go; }
+  .aa-srow > .aa-score { grid-area: score; }
+
+  .aa-arow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who chip" "handed handed" "avg avg"; }
+  .aa-arow > .aa-who { grid-area: who; }
+  .aa-arow > .sm-chip { grid-area: chip; justify-self: end; }
+  .aa-arow > .aa-score { grid-area: handed; }
+  .aa-arow > .aa-avg, .aa-arow > .sm-muted { grid-area: avg; }
+
+  .aa-mrow { grid-template-columns: 2.5rem minmax(0, 1fr) auto; grid-template-areas: "av who state" ". chip chip" ". attempts attempts" ". score score"; gap: 0.4rem 0.8rem; }
+  .aa-mrow > .sd-avatar { grid-area: av; }
+  .aa-mrow > .aa-who { grid-area: who; }
+  .aa-mrow > .aa-state { grid-area: state; text-align: right; }
+  .aa-mrow > .sm-chip { grid-area: chip; justify-self: start; }
+  .aa-mrow > .aa-part { grid-area: attempts; font: 500 0.9rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+  .aa-mrow > .aa-score { grid-area: score; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aa-run .sd-droid, .aa-run .sd-ball, .aa-node .sd-node, .aa-item, .aa-back svg { transition: none; }
+}

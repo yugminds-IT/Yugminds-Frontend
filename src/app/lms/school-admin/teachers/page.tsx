@@ -1,783 +1,493 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { CalendarOff, Check, Download, X } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { toast } from "@/components/ui/toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { EmergencyApprovalStages } from "@/components/leaves/EmergencyApprovalStages";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import { ChipGroup, Pager, initialsOf } from "@/components/portal/notifications";
+import AttendanceRun from "@/components/school-admin/AttendanceRun";
+import EmergencyLeaveModal from "@/components/school-admin/EmergencyLeaveModal";
+import LeaveStages from "@/components/school-admin/LeaveStages";
+import TeacherDetailModal from "@/components/school-admin/TeacherDetailModal";
+import { csvCell, downloadText } from "@/components/school-admin/student-utils";
 import {
-  SchoolAdminTeacherManagementTable,
-  type SchoolAdminTeacherTableRow,
-} from "@/components/ui/school-admin-teacher-management-table";
-import {
-  Search,
-  Download,
-  Users,
-  CheckCircle,
-  XCircle,
-  Clock,
-  AlertCircle,
-} from "lucide-react";
+  attendanceBand,
+  BAND_LABEL,
+  classGroups,
+  classLabel,
+  normalizeTeacher,
+  shortDate,
+  teacherSubjects,
+  type AttendanceBand,
+  type LeaveRequest,
+  type Teacher,
+} from "@/components/school-admin/teacher-utils";
+import "@/components/school-admin/students.css";
+import "@/components/school-admin/teachers.css";
 
-interface Teacher {
-  id?: string;
-  teacher_id: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  qualification: string;
-  experience_years: number;
-  specialization: string;
-  status: string;
-  created_at?: string;
-  teacher_schools: {
-    grades_assigned?: string[];
-    sections_assigned?: string[];
-    grade_sections_assigned?: string | Array<{ grade: string; sections: string[] }>;
-    subjects?: string[];
-    working_days_per_week?: number;
-    max_students_per_session?: number;
-  }[];
-  attendance_percentage?: number;
-  leaves_taken?: number;
-}
+const PAGE_SIZE = 25;
+const MAX_CHIPS = 3;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+type Tab = "teachers" | "leaves";
+type StatusFilter = "all" | "active" | "on leave" | "inactive";
+type LeaveFilter = "all" | "Pending" | "Approved" | "Rejected";
 
-function mapTeacherToTableRow(teacher: Teacher): SchoolAdminTeacherTableRow {
-  const id = String(teacher.id ?? teacher.teacher_id ?? "");
-  const nameDisplay = teacher.full_name?.trim() || "—";
-  const emailDisplay = teacher.email?.trim() || "No email";
-  const qualificationDisplay = teacher.qualification?.trim() || "—";
-  const specializationDisplay = teacher.specialization?.trim() || "";
-  const leavesCount = teacher.leaves_taken ?? 0;
-  const attendancePercentage = teacher.attendance_percentage ?? 0;
-  const statusLabel = teacher.status || "Active";
-  const school = teacher.teacher_schools?.[0];
-  const grades = school?.grades_assigned ?? [];
-  const sections = school?.sections_assigned ?? [];
-  const subjects = school?.subjects ?? [];
-  const gsa = (() => {
-    const raw = (school as { grade_sections_assigned?: Array<{ grade: string; sections?: string[] }> } | undefined)
-      ?.grade_sections_assigned;
-    return Array.isArray(raw) ? raw : [];
-  })();
-  const classesDisplay = gsa.length
-    ? gsa
-        .map((gs) =>
-          gs.sections?.length ? `${gs.grade} (${gs.sections.join(', ')})` : gs.grade,
-        )
-        .join(', ')
-    : grades.length || sections.length
-      ? `${grades.join(', ') || '—'}${sections.length ? ` (${sections.join(', ')})` : ''}`
-      : '—';
-  const subjectsDisplay = subjects.join(", ") || "—";
-  return {
-    id,
-    nameDisplay,
-    emailDisplay,
-    qualificationDisplay,
-    specializationDisplay,
-    leavesDisplay: `${leavesCount} day${leavesCount === 1 ? "" : "s"}`,
-    leavesCount,
-    // Last-30-days present/total ratio (school-admin-extra.controller.ts
-    // listTeachers) — computed correctly but previously never rendered
-    // anywhere, so this page's "track attendance" subtitle wasn't backed by
-    // any visible attendance data at all.
-    attendanceDisplay: `${attendancePercentage}%`,
-    attendancePercentage,
-    statusLabel,
-    classesDisplay,
-    subjectsDisplay,
-    searchBlob: [nameDisplay, emailDisplay, qualificationDisplay, specializationDisplay, statusLabel, classesDisplay, subjectsDisplay]
-      .join(" ")
-      .toLowerCase(),
-  };
-}
+const serverMessage = (error: unknown) => (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+const personOf = (p?: { full_name?: string; role?: string }) => (p?.full_name ? `${p.full_name}${p.role ? ` (${p.role.replace(/_/g, " ")})` : ""}` : "");
 
-interface LeaveRequest {
-  id: string;
-  teacher_id: string;
-  school_id: string;
-  start_date: string;
-  end_date: string;
-  reason: string;
-  leave_type: string;
-  status: string;
-  total_days?: number;
-  substitute_required?: boolean;
-  is_emergency?: boolean;
-  school_admin_status?: 'pending' | 'approved' | 'rejected';
-  admin_status?: 'pending' | 'approved' | 'rejected';
-  created_at: string;
-  approved_by?: string;
-  approved_at?: string;
-  reviewed_by?: string;
-  reviewed_at?: string;
-  profiles: {
-    id: string;
-    full_name: string;
-    email: string;
-  };
-  reviewer?: {
-    id: string;
-    full_name: string;
-    email: string;
-    role: string;
-  };
-  approver?: {
-    id: string;
-    full_name: string;
-    email: string;
-    role: string;
-  };
-}
-
-function TeachersContent() {
+export default function TeachersManagement() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [pendingLeavesCount, setPendingLeavesCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [leaveStatusFilter, setLeaveStatusFilter] = useState("all");
-  // Controlled tab so ?tab=leaves (linked from the dashboard) actually lands on
-  // the Leaves tab — the previous uncontrolled Tabs ignored the query param.
-  const [activeTab, setActiveTab] = useState<"teachers" | "leaves">("teachers");
-  // Emergency leave filed on behalf of a teacher (no cutoff; max 2 days back — server enforces)
-  const [emTeacherId, setEmTeacherId] = useState("");
-  const [emStart, setEmStart] = useState("");
-  const [emEnd, setEmEnd] = useState("");
-  const [emReason, setEmReason] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [band, setBand] = useState<AttendanceBand | "all">("all");
+  const [page, setPage] = useState(1);
+  const [tab, setTab] = useState<Tab>("teachers");
+  const [viewing, setViewing] = useState<Teacher | null>(null);
+
+  const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [leavesLoading, setLeavesLoading] = useState(true);
+  const [leaveFilter, setLeaveFilter] = useState<LeaveFilter>("all");
+  const [pendingCount, setPendingCount] = useState(0);
+  const [rejecting, setRejecting] = useState<LeaveRequest | null>(null);
+  const [busyLeave, setBusyLeave] = useState(false);
+
+  const [emOpen, setEmOpen] = useState(false);
+  const [emKey, setEmKey] = useState(0);
+  const [emTeacher, setEmTeacher] = useState("");
   const [emSaving, setEmSaving] = useState(false);
 
+  // ?tab=leaves is linked from the dashboard; read it on mount (window is not there during SSR)
   useEffect(() => {
-    // Read on mount rather than in a lazy initializer — `window` isn't available
-    // during SSR, and seeding from it would cause a hydration mismatch.
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (tab === "leaves") setActiveTab("leaves");
+    if (new URLSearchParams(window.location.search).get("tab") === "leaves") {
+      setTab("leaves");
+    }
   }, []);
+  const switchTab = (next: Tab) => {
+    setTab(next);
+    window.history.replaceState(null, "", next === "leaves" ? "?tab=leaves" : window.location.pathname);
+  };
 
+  /* ───────── data ───────── */
   const loadTeachers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔍 Loading teachers for school admin...');
-      
-      // Parallel API calls for better performance
-      const [teachersResponse, leavesResponse, pendingLeavesResponse] =
-        await Promise.allSettled([
-          // Explicit limit — backend defaults to 50, and this page derives its
-          // own counts/filters from the full roster.
-          schoolAdminApi.teachers.list({ limit: 500 }),
-          schoolAdminApi.leaves.list(leaveStatusFilter === "all" ? {} : { status: leaveStatusFilter }),
-          schoolAdminApi.leaves.list({ status: "Pending" }),
-        ]);
-
-      // Get school_id from school API (uses school_admins table)
-      try {
-        const schoolRes = await schoolAdminApi.school.get();
-        const schoolData = schoolRes.data ?? {};
-        const school = (schoolData as { school?: { id?: string } }).school;
-        if (!school?.id) {
-          setError('No school assigned to your account. Please contact support.');
-          setTeachers([]);
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.error('Error fetching school info:', err);
-        setError('Failed to load school information. Please try again.');
+      const [schoolRes, listRes] = await Promise.all([
+        schoolAdminApi.school.get(),
+        // the backend defaults to 50; this page filters the whole roster itself
+        schoolAdminApi.teachers.list({ limit: 500 }),
+      ]);
+      const school = ((schoolRes.data ?? {}) as { school?: { id?: string } }).school;
+      if (!school?.id) {
+        setError("No school is assigned to your account. Contact support.");
         setTeachers([]);
-        setLoading(false);
         return;
       }
-
-      // Handle teachers response
-      if (teachersResponse.status === 'fulfilled') {
-        const result = teachersResponse.value.data ?? {};
-        const teacherSchools =
-          (result as { teachers?: unknown[] }).teachers ??
-          (Array.isArray(result) ? result : []);
-        console.log('✅ Teachers loaded from API:', teacherSchools.length);
-
-        if (teacherSchools.length === 0) {
-          console.warn('⚠️ No teachers found for this school');
-          setTeachers([]);
-        } else {
-          // Transform the API response to match expected format
-           
-          // The backend returns a flat teacher object per row — id, full_name,
-          // email, qualification, etc. at the top level. A legacy shape with
-          // nested `teacher` / `profile` keys is handled as a fallback.
-          type TeacherRow = {
-            id?: string;
-            teacher_id?: string;
-            full_name?: string;
-            email?: string;
-            phone?: string;
-            qualification?: string;
-            experience_years?: number;
-            specialization?: string;
-            status?: string;
-            created_at?: string;
-            attendance_percentage?: number;
-            leaves_taken?: number;
-            teacher_schools?: { grades_assigned?: string[]; subjects?: string[]; working_days_per_week?: number; max_students_per_session?: number }[];
-            // legacy nested shape
-            teacher?: { id?: string; teacher_id?: string; full_name?: string; email?: string; phone?: string; qualification?: string; experience_years?: number; specialization?: string; status?: string; created_at?: string };
-            profile?: { id?: string; full_name?: string; email?: string; phone?: string };
-            grades_assigned?: string[];
-            subjects?: string[];
-            working_days_per_week?: number;
-            max_students_per_session?: number;
-          };
-          const teachersData = teacherSchools.map((raw: TeacherRow) => {
-            // Prefer flat shape; fall back to legacy nested shape.
-            const nested = raw.teacher ?? {};
-            const profile = raw.profile ?? {};
-            return {
-              id: raw.id ?? nested.id ?? profile.id,
-              teacher_id: raw.teacher_id ?? nested.teacher_id ?? `TCH-${(raw.id ?? nested.id ?? '').toString().slice(0, 8) || 'UNKNOWN'}`,
-              full_name: raw.full_name ?? nested.full_name ?? profile.full_name ?? '',
-              email: raw.email ?? nested.email ?? profile.email ?? '',
-              phone: raw.phone ?? nested.phone ?? profile.phone ?? '',
-              qualification: raw.qualification ?? nested.qualification ?? '',
-              experience_years: raw.experience_years ?? nested.experience_years ?? 0,
-              specialization: raw.specialization ?? nested.specialization ?? '',
-              status: raw.status ?? nested.status ?? 'Active',
-              created_at: raw.created_at ?? nested.created_at,
-              attendance_percentage: raw.attendance_percentage ?? 0,
-              leaves_taken: raw.leaves_taken ?? 0,
-              teacher_schools: raw.teacher_schools?.length
-                ? raw.teacher_schools
-                : [{
-                    grades_assigned: raw.grades_assigned ?? [],
-                    subjects: raw.subjects ?? [],
-                    working_days_per_week: raw.working_days_per_week ?? 5,
-                    max_students_per_session: raw.max_students_per_session ?? 30,
-                  }],
-            };
-          }).filter((t) => Boolean(t.id) || Boolean(t.email));
-
-          // Set teachers without mock stats - stats should come from database
-          // If stats are needed, they should be fetched from the API
-          setTeachers(teachersData as Teacher[]);
-        }
-      } else {
-        console.error('❌ Error loading teachers from API');
-        setError('Failed to load teachers');
-        setTeachers([]);
-      }
-
-      // Handle leave requests response (non-blocking)
-      if (leavesResponse.status === 'fulfilled') {
-        const leavesResult = leavesResponse.value.data ?? {};
-        const leaves =
-          (leavesResult as { leaves?: LeaveRequest[] }).leaves ??
-          ((Array.isArray(leavesResult) ? leavesResult : []) as LeaveRequest[]);
-        
-        // Debug logging to see what data we're receiving
-        leaves.forEach((leave: LeaveRequest) => {
-          if (leave.status === 'Approved') {
-            console.log('📋 Leave approval data:', {
-              leaveId: leave.id,
-              status: leave.status,
-              approved_by: leave.approved_by,
-              approver: leave.approver ? {
-                id: leave.approver.id,
-                name: leave.approver.full_name,
-                role: leave.approver.role
-              } : null,
-              reviewed_by: leave.reviewed_by,
-              reviewer: leave.reviewer ? {
-                id: leave.reviewer.id,
-                name: leave.reviewer.full_name,
-                role: leave.reviewer.role
-              } : null
-            });
-          }
-        });
-        
-        setLeaveRequests(leaves);
-      } else {
-        console.warn('⚠️ Leave requests unavailable:', leavesResponse.status === 'rejected' ? 'Network error' : 'API error');
-        setLeaveRequests([]);
-      }
-
-      // Handle pending leaves count for badge (non-blocking)
-      if (pendingLeavesResponse.status === 'fulfilled') {
-        const pendingLeavesResult = pendingLeavesResponse.value.data ?? {};
-        const pendingLeaves =
-          (pendingLeavesResult as { leaves?: LeaveRequest[] }).leaves ??
-          ((Array.isArray(pendingLeavesResult)
-            ? pendingLeavesResult
-            : []) as LeaveRequest[]);
-        setPendingLeavesCount(pendingLeaves.length || 0);
-      } else {
-        console.warn('⚠️ Pending leaves count unavailable:', pendingLeavesResponse.status === 'rejected' ? 'Network error' : 'API error');
-        setPendingLeavesCount(0);
-      }
-
-      setLoading(false);
-    } catch (error) {
-      console.error('❌ Error loading teachers:', error);
-       
-      setError(error instanceof Error ? error.message : 'Failed to load teachers. Please try again.');
+      const result = (listRes.data ?? {}) as { teachers?: Record<string, unknown>[] };
+      const rows = result.teachers ?? (Array.isArray(listRes.data) ? (listRes.data as Record<string, unknown>[]) : []);
+      setTeachers(rows.map(normalizeTeacher).filter((t) => Boolean(t.id) || Boolean(t.email)));
+    } catch (e) {
+      console.error("Error loading teachers:", e);
+      setError(e instanceof Error ? e.message : "The teachers did not load.");
       setTeachers([]);
+    } finally {
       setLoading(false);
     }
-  }, [leaveStatusFilter]);
+  }, []);
+
+  const loadLeaves = useCallback(async () => {
+    setLeavesLoading(true);
+    const [list, pending] = await Promise.allSettled([
+      schoolAdminApi.leaves.list(leaveFilter === "all" ? {} : { status: leaveFilter }),
+      schoolAdminApi.leaves.list({ status: "Pending" }),
+    ]);
+    const pick = (r: PromiseSettledResult<{ data?: unknown }>) => {
+      if (r.status !== "fulfilled") return null;
+      const d = (r.value.data ?? {}) as { leaves?: LeaveRequest[] };
+      return d.leaves ?? ((Array.isArray(r.value.data) ? r.value.data : []) as LeaveRequest[]);
+    };
+    const all = pick(list);
+    const pend = pick(pending);
+    // pending requests first, so what needs a decision is at the top
+    setLeaves(all ? [...all].sort((a, b) => Number(b.status === "Pending") - Number(a.status === "Pending")) : []);
+    setPendingCount(pend ? pend.length : 0);
+    setLeavesLoading(false);
+  }, [leaveFilter]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadTeachers();
+    void loadTeachers();
   }, [loadTeachers]);
+  useEffect(() => {
+    void loadLeaves();
+  }, [loadLeaves]);
 
-  // Note: handleAddTeacher, handleEditTeacher, and handleDeleteTeacher have been removed.
-  // School admins can only view teachers - they cannot add, edit, or delete teachers.
-  // Only main admins can manage teachers.
+  /* ───────── filtering and counts ───────── */
+  const statusOf = (t: Teacher) => (t.status || "Active").toLowerCase();
+  const counts = useMemo(
+    () => ({
+      all: teachers.length,
+      active: teachers.filter((t) => statusOf(t) === "active").length,
+      "on leave": teachers.filter((t) => statusOf(t) === "on leave").length,
+      inactive: teachers.filter((t) => statusOf(t) === "inactive").length,
+    }),
+    [teachers],
+  );
+  const bandCounts = useMemo(() => {
+    const c: Record<AttendanceBand, number> = { low: 0, watch: 0, good: 0, none: 0 };
+    teachers.forEach((t) => { c[attendanceBand(t)] += 1; });
+    return c;
+  }, [teachers]);
+  const average = useMemo(() => {
+    const withData = teachers.filter((t) => attendanceBand(t) !== "none");
+    return withData.length ? Math.round(withData.reduce((n, t) => n + (t.attendance_percentage ?? 0), 0) / withData.length) : null;
+  }, [teachers]);
 
-  const handleExportTeachers = () => {
-    if (filteredTeachers.length === 0) {
-      toast.warning('No teachers to export');
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return teachers.filter((t) => {
+      if (statusFilter !== "all" && statusOf(t) !== statusFilter) return false;
+      if (band !== "all" && attendanceBand(t) !== band) return false;
+      if (!q) return true;
+      const hay = [t.full_name, t.email, t.qualification, t.specialization, ...teacherSubjects(t), ...classGroups(t).map(classLabel)].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [teachers, search, statusFilter, band]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, band]);
+  const shown = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const hasFilters = !!search.trim() || statusFilter !== "all" || band !== "all";
+  const clearFilters = () => { setSearch(""); setStatusFilter("all"); setBand("all"); };
+
+  /* ───────── actions ───────── */
+  const handleExport = () => {
+    if (filtered.length === 0) {
+      toast.warning("There are no teachers to export.");
       return;
     }
-
-    // Prepare CSV data
-    const headers = ['Name', 'Email', 'Phone', 'Qualification', 'Specialization', 'Leaves Taken', 'Attendance (30d)', 'Status'];
-    const rows = filteredTeachers.map((teacher: Teacher) => [
-      teacher.full_name || '',
-      teacher.email || '',
-      teacher.phone || '',
-      teacher.qualification || '',
-      teacher.specialization || '',
-      teacher.leaves_taken || 0,
-      `${teacher.attendance_percentage ?? 0}%`,
-      teacher.status || 'Active'
+    const headers = ["Name", "Email", "Phone", "Qualification", "Specialization", "Classes", "Subjects", "Leave taken (days)", "Attendance (30 days)", "Status"];
+    const rows = filtered.map((t) => [
+      t.full_name || "",
+      t.email || "",
+      t.phone || "",
+      t.qualification || "",
+      t.specialization || "",
+      classGroups(t).map(classLabel).join("; "),
+      teacherSubjects(t).join("; "),
+      t.leaves_taken || 0,
+      attendanceBand(t) === "none" ? "" : `${t.attendance_percentage}%`,
+      t.status || "Active",
     ]);
-
-    // Create CSV content
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row: (string | number)[]) => row.map((cell: string | number) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    
-    // Generate filename with timestamp
-    const timestamp = new Date().toISOString().split('T')[0];
-    link.setAttribute('download', `teachers_export_${timestamp}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    console.log(`✅ Exported ${filteredTeachers.length} teacher(s) to CSV`);
+    downloadText(`teachers_export_${new Date().toISOString().split("T")[0]}.csv`, [headers.join(","), ...rows.map((r) => r.map(csvCell).join(","))].join("\n"));
+    toast.success(`Exported ${plural(filtered.length, "teacher")} to CSV.`);
   };
 
-  const submitEmergencyLeave = async () => {
-    if (!emTeacherId || !emStart || !emEnd || !emReason.trim()) {
-      toast.warning('Select a teacher, both dates and enter a reason.');
-      return;
-    }
+  const openEmergency = (teacherId = "") => {
+    setViewing(null);
+    setEmTeacher(teacherId);
+    setEmKey((k) => k + 1);
+    setEmOpen(true);
+  };
+
+  const submitEmergency = async (v: { teacher_id: string; start_date: string; end_date: string; reason: string }) => {
     setEmSaving(true);
     try {
-      await schoolAdminApi.leaves.createEmergency({
-        teacher_id: emTeacherId,
-        start_date: emStart,
-        end_date: emEnd,
-        reason: emReason.trim(),
-      });
-      toast.success('Emergency leave recorded (your approval done). It now needs the Admin\'s approval before attendance changes.');
-      setEmTeacherId('');
-      setEmStart('');
-      setEmEnd('');
-      setEmReason('');
-      await loadTeachers();
-    } catch (error) {
-      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(serverMsg || 'Could not record the emergency leave.');
+      await schoolAdminApi.leaves.createEmergency(v);
+      toast.success("Emergency leave recorded and approved by you. It needs the main admin's approval before attendance changes.");
+      setEmOpen(false);
+      await Promise.all([loadLeaves(), loadTeachers()]);
+    } catch (e) {
+      toast.error(serverMessage(e) || "Could not record the emergency leave. Check the dates and try again.");
     } finally {
       setEmSaving(false);
     }
   };
 
-  const handleLeaveRequest = async (leaveId: string, action: 'approve' | 'reject') => {
+  const decide = async (leave: LeaveRequest, action: "approve" | "reject") => {
+    setBusyLeave(true);
     try {
-      await schoolAdminApi.leaves.update(leaveId, { action });
-
-      // Immediately update pending count (optimistic update)
-      setPendingLeavesCount((prev) => Math.max(0, prev - 1));
-
-      // Reload leave requests and teachers to refresh state
-      await loadTeachers();
-      toast.success(
-        leaveRequests.find((l) => l.id === leaveId)?.is_emergency && action === 'approve'
-          ? (leaveRequests.find((l) => l.id === leaveId)?.admin_status === 'approved'
-              ? 'Emergency leave approved — both approvals are done and attendance has been updated.'
-              : 'Emergency leave approved by you. It now needs the Admin\'s approval before attendance changes.')
-          : `Leave request ${
-              action === 'approve' ? 'approved' : 'rejected'
-            } successfully! Attendance has been updated automatically.`,
-      );
-    } catch (error) {
-      console.error('Error updating leave request:', error);
-      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(serverMsg || `Error ${action === 'approve' ? 'approving' : 'rejecting'} leave request. Please try again.`);
+      await schoolAdminApi.leaves.update(leave.id, { action });
+      setPendingCount((n) => Math.max(0, n - 1));
+      await Promise.all([loadLeaves(), loadTeachers()]);
+      if (action === "reject") toast.success("Leave request rejected.");
+      else if (leave.is_emergency) {
+        toast.success(
+          leave.admin_status === "approved"
+            ? "Emergency leave approved. Both approvals are done and attendance is updated."
+            : "Emergency leave approved by you. It needs the main admin's approval before attendance changes.",
+        );
+      } else toast.success("Leave request approved. Attendance is updated.");
+      setRejecting(null);
+    } catch (e) {
+      toast.error(serverMessage(e) || `Could not ${action} the leave request. Try again.`);
+    } finally {
+      setBusyLeave(false);
     }
   };
 
-  const filteredTeachers = teachers.filter((teacher: Teacher) => {
-    const matchesSearch = teacher.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         teacher.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || teacher.status.toLowerCase() === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  /* ───────── copy ───────── */
+  let status: React.ReactNode;
+  if (error) status = "The teachers did not load. Try again.";
+  else if (loading) status = "Loading teachers…";
+  else if (tab === "leaves") {
+    status = pendingCount > 0
+      ? <><strong>{plural(pendingCount, "leave request")}</strong> {pendingCount === 1 ? "is" : "are"} waiting for you.</>
+      : "No leave requests are waiting for you.";
+  } else if (hasFilters) {
+    status = <><strong>{filtered.length} of {plural(teachers.length, "teacher")}</strong> match your filters.</>;
+  } else {
+    status = <><strong>{plural(teachers.length, "teacher")}</strong> in your school{counts["on leave"] > 0 ? `, ${counts["on leave"]} on leave` : ""}.</>;
+  }
 
-  const teacherTableRows = useMemo(
-    () => filteredTeachers.map(mapTeacherToTableRow),
-    [filteredTeachers],
-  );
+  const statusButtons: { id: StatusFilter; label: string; hint: string }[] = [
+    { id: "all", label: "All teachers", hint: "Everyone assigned to your school" },
+    { id: "active", label: "Active", hint: "Teaching now" },
+    { id: "on leave", label: "On leave", hint: "Away right now" },
+    { id: "inactive", label: "Inactive", hint: "Not teaching" },
+  ];
+  const leaveDates = (l: LeaveRequest) => `${shortDate(l.start_date)}${l.end_date && l.end_date !== l.start_date ? ` to ${shortDate(l.end_date)}` : ""}`;
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Teachers Management</h1>
-        <p className="text-gray-600 mt-2">Manage teachers and track attendance</p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="tm-title">
+        <div className="sd-hero-copy">
+          <h1 id="tm-title" className="mc-hero-title">Teachers</h1>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            {pendingCount > 0 && tab === "teachers" ? (
+              <button className="sd-btn sd-btn--amber" onClick={() => switchTab("leaves")}><CalendarOff aria-hidden="true" />Review {plural(pendingCount, "leave request")}</button>
+            ) : (
+              <button className="sd-btn sd-btn--amber" onClick={() => openEmergency()}><CalendarOff aria-hidden="true" />Record emergency leave</button>
+            )}
+            {pendingCount > 0 && tab === "teachers" && (
+              <button className="sd-btn sd-btn--ghost-dark" onClick={() => openEmergency()}>Record emergency leave</button>
+            )}
+            <button className="sd-btn sd-btn--ghost-dark" onClick={handleExport}><Download aria-hidden="true" />Export</button>
+          </div>
+        </div>
+        <AttendanceRun
+          counts={bandCounts}
+          selected={band}
+          average={average}
+          onSelect={(b) => { setBand(b); if (b !== "all") switchTab("teachers"); }}
+        />
+      </section>
+
+      <div className="mc-tabs" role="tablist" aria-label="Teachers and leave" style={{ justifySelf: "start" }}>
+        <button role="tab" className="mc-tab" aria-selected={tab === "teachers"} onClick={() => switchTab("teachers")}>Teachers<b>{teachers.length}</b></button>
+        <button role="tab" className="mc-tab" aria-selected={tab === "leaves"} onClick={() => switchTab("leaves")}>Leave requests{pendingCount > 0 && <b>{pendingCount}</b>}</button>
       </div>
 
-      {/* Error Display */}
-      {error && (
-        <Card className="mb-6 border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600" />
-              <div>
-                <p className="font-medium text-red-900">Error loading teachers</p>
-                <p className="text-sm text-red-700 mt-1">{error}</p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={() => {
-                  setError(null);
-                  loadTeachers();
-                }}
-              >
-                Retry
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Tabs
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as "teachers" | "leaves")}
-        className="space-y-6"
-      >
-        <TabsList>
-          <TabsTrigger value="teachers">Teachers</TabsTrigger>
-          <TabsTrigger value="leaves">
-            Leave Requests
-            {pendingLeavesCount > 0 && (
-              <Badge variant="destructive" className="ml-2">
-                {pendingLeavesCount}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Teachers Tab */}
-        <TabsContent value="teachers" className="space-y-6">
-          {/* Filters and Actions */}
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search teachers..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="on leave">On Leave</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-gray-600">
-                Showing {filteredTeachers.length} of {teachers.length} teachers
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={handleExportTeachers}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Export
-                </Button>
-              </div>
-            </div>
+      {tab === "teachers" ? (
+        <>
+          <div className="sd-ledger" role="group" aria-label="Show teachers by status">
+            {statusButtons.map((b) => (
+              <button key={b.id} type="button" aria-pressed={statusFilter === b.id} onClick={() => setStatusFilter(b.id)}>
+                <span className="sd-l">{b.label}</span>
+                {loading ? <span className="sd-skel" style={{ height: "2.2rem", width: "3.5rem" }} /> : <b className="sd-n">{counts[b.id]}</b>}
+                <small>{b.hint}</small>
+              </button>
+            ))}
           </div>
 
-          {/* Teachers Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Teachers List</CardTitle>
-              <CardDescription>
-                Manage teacher information and track performance — use column filters to narrow the list.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SchoolAdminTeacherManagementTable
-                rows={teacherTableRows}
-                loading={loading}
-                emptyMessage={
-                  teachers.length === 0
-                    ? "No teachers assigned to this school."
-                    : "No teachers match your search or filters."
-                }
-                className="shadow-sm"
-              />
-              {!loading && filteredTeachers.length === 0 && teachers.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                  <p className="text-lg font-medium">No teachers assigned to this school</p>
-                  <p className="text-sm mt-2">
-                    Teachers need to be created and assigned to your school by the main administrator.
-                  </p>
-                  <p className="text-xs mt-1 text-gray-400">
-                    If you believe this is an error, please contact support.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <div className="nt-bar">
+            <input
+              type="search"
+              className="sd-field"
+              placeholder="Search by name, email, subject or class"
+              aria-label="Search teachers"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {band !== "all" && <span className="sm-chip" data-class="true">Attendance: {BAND_LABEL[band]}</span>}
+            {hasFilters && <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>}
+          </div>
 
-        {/* Leave Requests Tab */}
-        <TabsContent value="leaves" className="space-y-6">
-          <Card className="border-red-200">
-            <CardHeader>
-              <CardTitle>Record emergency leave for a teacher</CardTitle>
-              <CardDescription>
-                No time cutoff. Can start today or up to 2 days back. It counts as your approval; the Admin must approve it too before the days are marked Leave-Approved.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-5">
-                <Select value={emTeacherId} onValueChange={setEmTeacherId}>
-                  <SelectTrigger><SelectValue placeholder="Teacher" /></SelectTrigger>
-                  <SelectContent>
-                    {teachers.map((t: Teacher) => (
-                      <SelectItem key={t.id ?? t.teacher_id} value={String(t.id ?? "")}>{t.full_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input type="date" value={emStart} onChange={(e) => setEmStart(e.target.value)} aria-label="Start date" />
-                <Input type="date" value={emEnd} min={emStart || undefined} onChange={(e) => setEmEnd(e.target.value)} aria-label="End date" />
-                <Input placeholder="Reason (required)" value={emReason} onChange={(e) => setEmReason(e.target.value)} />
-                <Button onClick={submitEmergencyLeave} disabled={emSaving}>
-                  {emSaving ? 'Saving...' : 'Record leave'}
-                </Button>
+          {loading ? (
+            <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : error ? (
+            <section className="sd-panel">
+              <div className="sd-empty">
+                <b>We could not load your teachers</b>
+                <p>{error}</p>
+                <button className="sd-btn sd-btn--amber" onClick={() => void loadTeachers()}>Try again</button>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Leave Requests</CardTitle>
-                  <CardDescription>Review and approve teacher leave applications</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant={leaveStatusFilter === 'all' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setLeaveStatusFilter('all')}
-                  >
-                    All
-                  </Button>
-                  <Button
-                    variant={leaveStatusFilter === 'Pending' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setLeaveStatusFilter('Pending')}
-                  >
-                    Pending
-                  </Button>
-                  <Button
-                    variant={leaveStatusFilter === 'Approved' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setLeaveStatusFilter('Approved')}
-                  >
-                    Approved
-                  </Button>
-                  <Button
-                    variant={leaveStatusFilter === 'Rejected' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setLeaveStatusFilter('Rejected')}
-                  >
-                    Rejected
-                  </Button>
-                </div>
+            </section>
+          ) : filtered.length === 0 ? (
+            <section className="sd-panel">
+              <div className="sd-empty">
+                <b>{teachers.length === 0 ? "No teachers yet" : "No teachers match"}</b>
+                <p>{teachers.length === 0 ? "The main admin adds teachers and assigns them to your school. They will show up here once that is done." : "Try a different search, or clear the filters."}</p>
+                {hasFilters && <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>}
               </div>
-            </CardHeader>
-            <CardContent>
-              {leaveRequests.length > 0 ? (
-                <div className="space-y-4">
-                  {leaveRequests.map((leave) => (
-                    <div key={leave.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                          <Clock className="h-5 w-5 text-orange-600" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-medium">{leave.profiles?.full_name || 'Unknown Teacher'}</div>
-                          <div className="text-sm text-gray-500">{leave.profiles?.email || ''}</div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            <span className="font-medium">Type:</span> {leave.leave_type || 'Personal'} • {' '}
-                            <span className="font-medium">Dates:</span> {new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()} ({leave.total_days || 0} days)
-                          </div>
-                          <div className="text-sm text-gray-500 mt-1">
-                            <span className="font-medium">Reason:</span> {leave.reason}
-                          </div>
-                          {leave.substitute_required && (
-                            <Badge variant="outline" className="mt-1 text-xs">Substitute Required</Badge>
-                          )}
-                          <EmergencyApprovalStages leave={leave} />
-                          {(leave.status === 'Approved' || leave.status === 'Rejected') && (
-                            <div className="text-sm text-gray-600 mt-1">
-                              <span className="font-medium">
-                                {leave.status === 'Approved' ? 'Approved by:' : 'Reviewed by:'}
-                              </span>{' '}
-                              <span className="text-gray-700">
-                                {(() => {
-                                  // For approved leaves, prioritize approver, fallback to reviewer
-                                  if (leave.status === 'Approved') {
-                                    if (leave.approver?.full_name) {
-                                      return `${leave.approver.full_name}${leave.approver.role ? ` (${leave.approver.role})` : ''}`;
-                                    } else if (leave.reviewer?.full_name) {
-                                      return `${leave.reviewer.full_name}${leave.reviewer.role ? ` (${leave.reviewer.role})` : ''}`;
-                                    }
-                                  } else {
-                                    // For rejected leaves, show reviewer
-                                    if (leave.reviewer?.full_name) {
-                                      return `${leave.reviewer.full_name}${leave.reviewer.role ? ` (${leave.reviewer.role})` : ''}`;
-                                    }
-                                  }
-                                  return 'N/A';
-                                })()}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {leave.is_emergency && leave.status === 'Pending' && leave.school_admin_status === 'approved' && (
-                          <span className="text-sm text-muted-foreground">Waiting for Admin approval</span>
-                        )}
-                        {leave.status === 'Pending' && !(leave.is_emergency && leave.school_admin_status === 'approved') && (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={() => handleLeaveRequest(leave.id, 'approve')}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleLeaveRequest(leave.id, 'reject')}
-                            >
-                              <XCircle className="h-4 w-4 mr-1" />
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                        {leave.status === 'Approved' && (
-                          <Badge className="bg-green-100 text-green-800">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Approved
-                          </Badge>
-                        )}
-                        {leave.status === 'Rejected' && (
-                          <Badge className="bg-red-100 text-red-800">
-                            <XCircle className="h-3 w-3 mr-1" />
-                            Rejected
-                          </Badge>
-                        )}
-                        {leave.reviewed_at && (
-                          <div className="text-xs text-gray-500 ml-2">
-                            {new Date(leave.reviewed_at).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
+            </section>
+          ) : (
+            <section className="sd-panel as-list mc-swap" aria-label="Teachers">
+              <div className="tm-head">
+                <span />
+                <span>Teacher</span>
+                <span>Qualification</span>
+                <span>Classes</span>
+                <span>Attendance</span>
+                <span>Status</span>
+              </div>
+              {shown.map((t) => {
+                const groups = classGroups(t);
+                const subjects = teacherSubjects(t);
+                const b = attendanceBand(t);
+                const leaveDays = t.leaves_taken ?? 0;
+                return (
+                  <article key={t.id ?? t.teacher_id} className="tm-row">
+                    <span className="sd-avatar" aria-hidden="true">{initialsOf(t.full_name || t.email)}</span>
+                    <button className="sm-who" onClick={() => setViewing(t)}>
+                      <b>{t.full_name || "Unnamed teacher"}</b>
+                      <small>{t.email || "No email"}</small>
+                    </button>
+                    <div className="tm-qual">
+                      {t.qualification || t.specialization ? (
+                        <>
+                          <span>{t.qualification || t.specialization}</span>
+                          {t.qualification && t.specialization && <small>{t.specialization}</small>}
+                        </>
+                      ) : <span className="sm-muted">Not provided</span>}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <CheckCircle className="h-12 w-12 mx-auto mb-4" />
-                  <p className="text-lg font-medium">
-                    {leaveStatusFilter === 'all'
-                      ? 'No leave requests yet'
-                      : leaveStatusFilter === 'Pending'
-                        ? 'No pending leave requests'
-                        : leaveStatusFilter === 'Approved'
-                          ? 'No approved leave requests'
-                          : 'No rejected leave requests'}
-                  </p>
-                  <p className="text-sm">
-                    {leaveStatusFilter === 'Pending'
-                      ? 'All leave requests have been processed'
-                      : 'Teacher leave applications will appear here'}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                    <div className="tm-classes">
+                      {groups.length > 0 ? (
+                        <div className="tm-chips">
+                          {groups.slice(0, MAX_CHIPS).map((g) => <span key={g.grade} className="sm-chip" data-class="true">{classLabel(g)}</span>)}
+                          {groups.length > MAX_CHIPS && (
+                            <button className="sm-chip" onClick={() => setViewing(t)} title={groups.slice(MAX_CHIPS).map(classLabel).join(", ")} style={{ cursor: "pointer" }}>
+                              +{groups.length - MAX_CHIPS} more
+                            </button>
+                          )}
+                        </div>
+                      ) : <span className="sm-muted">No classes yet</span>}
+                      {subjects.length > 0 && <small>{subjects.join(", ")}</small>}
+                    </div>
+                    <div className="tm-att" data-band={b}>
+                      {b === "none" ? <span className="sm-muted">No data</span> : (
+                        <>
+                          <b>{t.attendance_percentage}%</b>
+                          <i className="tm-bar" aria-hidden="true"><u style={{ width: `${Math.min(100, t.attendance_percentage ?? 0)}%` }} /></i>
+                        </>
+                      )}
+                      <small>{leaveDays} {leaveDays === 1 ? "day" : "days"} leave</small>
+                    </div>
+                    <span className="tm-status"><span className="sm-chip" data-on={statusOf(t) === "active"}>{t.status || "Active"}</span></span>
+                  </article>
+                );
+              })}
+              <Pager
+                offset={(page - 1) * PAGE_SIZE}
+                count={shown.length}
+                total={filtered.length}
+                pageSize={PAGE_SIZE}
+                onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                onNext={() => setPage((p) => p + 1)}
+              />
+            </section>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="nt-bar">
+            <ChipGroup
+              label="Show leave requests"
+              value={leaveFilter}
+              options={[["all", "All"], ["Pending", pendingCount > 0 ? `Pending (${pendingCount})` : "Pending"], ["Approved", "Approved"], ["Rejected", "Rejected"]] as const}
+              onChange={setLeaveFilter}
+            />
+          </div>
 
-      {/* Edit Teacher Dialog removed - school admins cannot edit teachers */}
+          {leavesLoading ? (
+            <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : leaves.length === 0 ? (
+            <section className="sd-panel">
+              <div className="sd-empty">
+                <b>{leaveFilter === "all" ? "No leave requests yet" : `No ${leaveFilter.toLowerCase()} leave requests`}</b>
+                <p>{leaveFilter === "Pending" ? "Every request has been decided." : "Leave requests from your teachers will show up here."}</p>
+                {leaveFilter !== "all" && <button className="sd-btn sd-btn--line" onClick={() => setLeaveFilter("all")}>See all requests</button>}
+              </div>
+            </section>
+          ) : (
+            <section className="sd-panel as-list mc-swap" aria-label="Leave requests">
+              {leaves.map((l) => {
+                const name = l.profiles?.full_name || "Unknown teacher";
+                const pending = l.status === "Pending";
+                const waitingOnMain = l.is_emergency && pending && l.school_admin_status === "approved";
+                const reviewer = l.status === "Approved" ? personOf(l.approver) || personOf(l.reviewer) : personOf(l.reviewer);
+                return (
+                  <article key={l.id} className="tm-leave" data-pending={pending} data-emergency={!!l.is_emergency}>
+                    <span className="sd-avatar" aria-hidden="true">{initialsOf(name)}</span>
+                    <div className="tm-leave-main">
+                      <div className="tm-leave-who"><b>{name}</b><small>{l.profiles?.email || ""}</small></div>
+                      <div className="tm-leave-dates">
+                        <b>{leaveDates(l)}</b>
+                        <span className="sm-muted">{plural(l.total_days || 0, "day")}</span>
+                        <span className="sm-chip">{l.leave_type || "Personal"}</span>
+                        {l.is_emergency && <span className="sm-chip" data-tone="red">Emergency</span>}
+                        {l.substitute_required && <span className="sm-chip">Needs a substitute</span>}
+                      </div>
+                      {l.reason && <p className="tm-leave-reason">{l.reason}</p>}
+                      <LeaveStages leave={l} />
+                      {(l.status === "Approved" || l.status === "Rejected") && (
+                        <p className="tm-leave-by">
+                          {l.status === "Approved" ? "Approved by" : "Reviewed by"} {reviewer || "an admin"}
+                          {l.reviewed_at ? ` on ${shortDate(l.reviewed_at)}` : ""}
+                        </p>
+                      )}
+                    </div>
+                    <div className="tm-leave-act">
+                      {waitingOnMain && <span className="tm-wait">Waiting for the main admin</span>}
+                      {pending && !waitingOnMain && (
+                        <>
+                          <button className="sd-btn sd-btn--line tm-reject" onClick={() => setRejecting(l)} disabled={busyLeave}><X aria-hidden="true" />Reject</button>
+                          <button className="sd-btn sd-btn--amber" onClick={() => void decide(l, "approve")} disabled={busyLeave}><Check aria-hidden="true" />Approve</button>
+                        </>
+                      )}
+                      {l.status === "Approved" && <span className="sm-chip" data-tone="done">Approved</span>}
+                      {l.status === "Rejected" && <span className="sm-chip" data-tone="red">Rejected</span>}
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          )}
+        </>
+      )}
+
+      <TeacherDetailModal
+        teacher={viewing}
+        onClose={() => setViewing(null)}
+        onRecordLeave={() => openEmergency(String(viewing?.id ?? ""))}
+      />
+
+      <EmergencyLeaveModal
+        key={emKey}
+        open={emOpen}
+        teachers={teachers}
+        initialTeacherId={emTeacher}
+        busy={emSaving}
+        onClose={() => setEmOpen(false)}
+        onSubmit={(v) => void submitEmergency(v)}
+      />
+
+      <ConfirmModal
+        open={!!rejecting}
+        onClose={() => setRejecting(null)}
+        busy={busyLeave}
+        danger
+        title="Reject this leave request?"
+        subtitle={rejecting ? `${rejecting.profiles?.full_name || "The teacher"}'s leave on ${leaveDates(rejecting)} will be rejected.` : undefined}
+        confirmLabel="Reject leave"
+        onConfirm={() => rejecting && void decide(rejecting, "reject")}
+      >
+        <p>They will see that it was rejected.</p>
+      </ConfirmModal>
     </div>
-  );
-}
-
-export default function TeachersManagement() {
-  return (
-    <Suspense fallback={<div className="p-8 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
-      <TeachersContent />
-    </Suspense>
   );
 }

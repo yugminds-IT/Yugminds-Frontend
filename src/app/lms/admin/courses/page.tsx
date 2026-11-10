@@ -6,34 +6,13 @@ import { useState, useEffect, useRef } from "react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { requestClose } from "@/hooks/useUnsavedCloseGuard";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { 
   Dialog, 
   DialogContent, 
   DialogDescription, 
-  DialogFooter, 
   DialogHeader, 
   DialogTitle
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
 import { adminApi } from '@/lib/api/admin.api';
 import { toast } from '@/components/ui/toast';
 import {
@@ -46,27 +25,17 @@ import { CourseEditor, type Chapter as EditorChapter, type AssignmentFromAPI as 
 import { clearCourseEditorDraft, peekCourseEditorDraft } from '@/lib/course-editor-draft';
 import { CoursePublishDialog } from '@/components/admin/CoursePublishDialog';
 import { CourseVersionHistory } from '@/components/admin/CourseVersionHistory';
-import NextImage from "next/image";
-import { 
-  Plus,
-  Edit,
-  Trash2,
-  Eye,
-  Search,
-  School,
-  Play,
-  Pause,
-  FileText,
-  Video,
-  CheckSquare,
-  Loader2,
-  History,
-  LayoutList,
-  LayoutGrid,
-  BookOpen,
-  Copy,
-  AlertTriangle,
-} from "lucide-react";
+import Modal from "@/components/portal/Modal";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import StageRun from "@/components/admin/courses/StageRun";
+import CoursesTab from "@/components/admin/courses/CoursesTab";
+import { chaptersOf, classesOf, day, plural, schoolsOf, stageOf, titleOf, type Stage } from "@/components/admin/courses/utils";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips
+import "@/components/school-admin/teachers.css"; // tm- track nodes
+import "@/components/admin/courses/courses.css";
+import { Plus, Edit, School, RefreshCw } from "lucide-react";
 
 interface Course {
   id: string;
@@ -97,19 +66,6 @@ interface Course {
   chapters?: Chapter[];
 }
 
-function formatCourseDate(value?: string): string {
-  if (!value) return 'N/A';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return 'N/A';
-  return d.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 interface CourseAccess {
   id: string;
   course_id: string;
@@ -132,22 +88,6 @@ interface Chapter {
   release_date?: string;
   created_at?: string;
  
-}
-
-interface Video {
-  id?: string;
-  chapter_id: string;
-  title: string;
-  video_url: string;
-  duration?: string;
-  uploaded_by?: string;
-   
-  created_at?: string;
-  storage_path?: string;
-  content_id?: string;
-  content_order?: number;
-   
-  content_metadata?: Record<string, unknown>;
 }
 
  
@@ -228,11 +168,6 @@ interface School {
   grades_offered?: string[];
 }
 
-interface GradeOption {
-  value: string;
-  label: string;
-}
-
 export default function CoursesManagement() {
 
   const [courses, setCourses] = useState<Course[]>([]);
@@ -240,10 +175,9 @@ export default function CoursesManagement() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const schools = (rawSchools ?? []) as School[];
   const [loadingCourses, setLoadingCourses] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [stageFilter, setStageFilter] = useState<Stage | null>(null);
    
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Published'>('All');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [wizardDraftSummary, setWizardDraftSummary] = useState<ReturnType<
     typeof getWizardDraftSummary
@@ -254,7 +188,6 @@ export default function CoursesManagement() {
    
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
@@ -303,23 +236,6 @@ export default function CoursesManagement() {
       refreshWizardDraftSummary();
     }
   }, [isCreateDialogOpen]);
-
-  // State for editing content
-  const gradeOptions = [
-    { value: "grade1", label: "Grade 1" },
-    { value: "grade2", label: "Grade 2" },
-    { value: "grade3", label: "Grade 3" },
-    { value: "grade4", label: "Grade 4" },
-    { value: "grade5", label: "Grade 5" },
-    { value: "grade6", label: "Grade 6" },
-    { value: "grade7", label: "Grade 7" },
-    { value: "grade8", label: "Grade 8" },
-    { value: "grade9", label: "Grade 9" },
-    { value: "grade10", label: "Grade 10" },
-    { value: "grade11", label: "Grade 11" },
-    { value: "grade12", label: "Grade 12" }
-  ];
-
 
   // Helper function to normalize grade format (e.g., "Grade 4" -> "grade4")
   const normalizeGradeToValue = (grade: string): string | null => {
@@ -394,6 +310,7 @@ export default function CoursesManagement() {
 
   const loadData = async () => {
     setLoadingCourses(true);
+    setLoadFailed(false);
     try {
       const { data: responseData } = await adminApi.courses.list();
       const root = responseData as Record<string, unknown> | undefined;
@@ -417,7 +334,8 @@ export default function CoursesManagement() {
       if (status === 401 || status === 403) {
         toast.error('Authentication required. Please log in again.');
       }
-      setCourses([]);
+      // Keep what is already on screen; only say "failed" when there is nothing to show.
+      setLoadFailed(true);
     } finally {
       setLoadingCourses(false);
     }
@@ -481,7 +399,6 @@ export default function CoursesManagement() {
 
   const handleDeleteCourse = (course: Course) => {
     setDeletingCourse(course);
-    setIsDeleteDialogOpen(true);
   };
 
   const confirmDeleteCourse = async () => {
@@ -489,10 +406,9 @@ export default function CoursesManagement() {
 
     try {
       await adminApi.courses.delete(deletingCourse.id);
-      setIsDeleteDialogOpen(false);
       setDeletingCourse(null);
       loadData();
-      toast.success('Course deleted successfully.');
+      toast.success(`${titleOf(deletingCourse)} was moved to Trash.`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Failed to delete course. Please try again.';
       toast.error(msg);
@@ -550,23 +466,6 @@ export default function CoursesManagement() {
     }
   };
 
-  const toggleSelectAll = () => {
-    if (selectedCourseIds.size === filteredCourses.length) {
-      setSelectedCourseIds(new Set());
-    } else {
-      setSelectedCourseIds(new Set(filteredCourses.map((c) => c.id)));
-    }
-  };
-
-  const toggleSelectCourse = (id: string) => {
-    setSelectedCourseIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   // NOTE: Auto-save useEffect removed - CourseCreationWizard manages its own auto-save functionality
 
   // Warn before leaving page with unsaved data
@@ -610,720 +509,197 @@ export default function CoursesManagement() {
   // Chapter management is now handled by CourseEditor component
 
 
-  const filteredCourses = courses.filter((course: Course) => {
-    // Status filter
-    if (statusFilter !== 'All' && course.status !== statusFilter) {
-      return false;
-    }
-    
-    // Search filter
-    if (!searchTerm.trim()) return true; // Show all courses if no search term
-    
-    const courseName = course.name || course.course_name || '';
-    const courseDescription = course.description || '';
-    const matches = (
-      courseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      courseDescription.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.course_access?.some((access: CourseAccess) => 
-        access.schools?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        access.grade?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        access.sections?.some((sec) =>
-          sec.toLowerCase().includes(searchTerm.toLowerCase()),
-        )
-      )
-    );
-    return matches;
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Published': return 'bg-green-100 text-green-800';
-      case 'Draft': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-
   // NOTE: renderStepContent() function removed - replaced by CourseCreationWizard component
   // The old 6-step form implementation is no longer used.
   // All the old form code (cases 1-6) has been removed since we now use CourseCreationWizard.
 
+  const findCourse = (id: string) => courses.find((c) => c.id === id);
+  const counts: Record<Stage, number> = { empty: 0, ready: 0, live: 0 };
+  courses.forEach((c) => { counts[stageOf(c)] += 1; });
+  const chapterTotal = courses.reduce((n, c) => n + chaptersOf(c), 0);
+  const assignmentTotal = courses.reduce((n, c) => n + (c.total_assignments || 0), 0);
+  const openCreate = () => {
+    resetForm();
+    setEditingCourse(null);
+    setIsCreateDialogOpen(true);
+  };
+
+  let statusLine: React.ReactNode;
+  if (loadingCourses && courses.length === 0) statusLine = 'Loading courses…';
+  else if (loadFailed && courses.length === 0) statusLine = 'The courses did not load. Try again.';
+  else if (courses.length === 0) statusLine = 'No courses yet. Create the first one to get started.';
+  else statusLine = <><strong>{counts.live} of {plural(courses.length, 'course')}</strong> {counts.live === 1 ? 'is' : 'are'} live for students{counts.empty > 0 ? `. ${counts.empty} still ${counts.empty === 1 ? 'needs' : 'need'} content.` : counts.ready > 0 ? `. ${counts.ready} ${counts.ready === 1 ? 'is' : 'are'} ready to publish.` : '.'}</>;
+  const runCaption = counts.empty + counts.ready > 0 ? `${plural(counts.empty + counts.ready, 'course')} not live yet` : courses.length ? 'Every course is live' : 'Nothing to show yet';
+
   return (
-    <div className="p-8 bg-white">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Course Management</h1>
-        <p className="text-gray-600 mt-2">Create and manage courses with comprehensive content</p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="co-title">
+        <div className="sd-hero-copy">
+          <h1 id="co-title" className="mc-hero-title">Courses</h1>
+          <p className="sd-where">Everything students learn</p>
+          <p className="sd-status">{statusLine}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--amber" onClick={openCreate}><Plus aria-hidden="true" />Create course</button>
+            {counts.ready > 0 && stageFilter !== 'ready' && (
+              <button className="sd-btn sd-btn--ghost-dark" onClick={() => setStageFilter('ready')}>Show {counts.ready} ready to publish</button>
+            )}
+          </div>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void loadData()} disabled={loadingCourses} aria-label={loadingCourses ? 'Refreshing' : 'Refresh'} title="Refresh">
+              <RefreshCw className={loadingCourses ? 'animate-spin' : ''} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        {loadingCourses && courses.length === 0 ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: '9rem' }} /></div>
+        ) : (
+          <StageRun counts={counts} selected={stageFilter} onSelect={setStageFilter} caption={runCaption} />
+        )}
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Course numbers">
+        <button type="button" aria-pressed={stageFilter === null} onClick={() => setStageFilter(null)}>
+          <span className="sd-l">Courses</span><b className="sd-n">{courses.length}</b><small>{counts.live} live, {courses.length - counts.live} not live</small>
+        </button>
+        <button type="button" aria-pressed={stageFilter === 'live'} onClick={() => setStageFilter(stageFilter === 'live' ? null : 'live')}>
+          <span className="sd-l">Live for students</span><b className="sd-n">{counts.live}</b><small>Tap to see which</small>
+        </button>
+        <div><span className="sd-l">Chapters</span><b className="sd-n">{chapterTotal}</b><small>Across all courses</small></div>
+        <div><span className="sd-l">Assignments</span><b className="sd-n">{assignmentTotal}</b><small>Across all courses</small></div>
       </div>
 
       {wizardDraftSummary && !isCreateDialogOpen && (
-        <div className="mb-6 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-amber-900">
-              Unfinished course draft: {wizardDraftSummary.name}
-            </p>
-            <p className="mt-0.5 text-sm text-amber-800">
-              Saved locally (step {wizardDraftSummary.currentStep} of 3). Resume after logout or
-              refresh — this is not in the course list until you finish creating it.
-            </p>
+        <div className="co-draft" role="status">
+          <div>
+            <b>Unfinished course: {wizardDraftSummary.name}</b>
+            <p>Saved on this device at step {wizardDraftSummary.currentStep} of 3. It is not in the list until you finish creating it.</p>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
-              onClick={() => {
-                clearWizardDraftFromStorage();
-                setWizardDraftSummary(null);
-              }}
-            >
-              Discard
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="bg-amber-700 hover:bg-amber-800"
-              onClick={() => {
-                setEditingCourse(null);
-                setIsCreateDialogOpen(true);
-              }}
-            >
-              Resume draft
-            </Button>
-          </div>
+          <span>
+            <button className="sd-btn sd-btn--line" onClick={() => { clearWizardDraftFromStorage(); setWizardDraftSummary(null); }}>Discard</button>
+            <button className="sd-btn sd-btn--amber" onClick={() => { setEditingCourse(null); setIsCreateDialogOpen(true); }}>Resume draft</button>
+          </span>
         </div>
       )}
 
-      {/* Search and Filters */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <Input
-            placeholder="Search courses..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={statusFilter} onValueChange={(value: 'All' | 'Draft' | 'Published') => setStatusFilter(value)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Courses</SelectItem>
-            <SelectItem value="Published">Published</SelectItem>
-            <SelectItem value="Draft">Draft</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button 
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => {
-            resetForm();
-            setEditingCourse(null);
-            setIsCreateDialogOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Create Course
-        </Button>
-      </div>
-
-      {/* Courses Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>All Courses</CardTitle>
-              <CardDescription>
-                Manage your courses and their content
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-1 border rounded-lg p-1">
-              <Button
-                type="button"
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('list')}
-                title="List view"
-                className={viewMode === 'list' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-              >
-                <LayoutList className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                title="Grid view"
-                className={viewMode === 'grid' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-            </div>
+      {loadFailed && courses.length === 0 && !loadingCourses ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the courses</b>
+            <p>Check your connection, then try again. Nothing was changed.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void loadData()}>Try again</button>
           </div>
-        </CardHeader>
-        <CardContent>
-          {/* Bulk action toolbar */}
-          {selectedCourseIds.size > 0 && (
-            <div className="mb-3 flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <span className="text-sm font-medium text-blue-800">
-                {selectedCourseIds.size} selected
-              </span>
-              <Button size="sm" variant="outline" onClick={handleBulkDeleteRequest} className="text-red-600 border-red-300 hover:bg-red-50">
-                <Trash2 className="h-3 w-3 mr-1" /> Delete
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleBulkPublish(true)} className="text-green-600 border-green-300 hover:bg-green-50">
-                <Play className="h-3 w-3 mr-1" /> Publish
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleBulkPublish(false)} className="text-yellow-600 border-yellow-300 hover:bg-yellow-50">
-                <Pause className="h-3 w-3 mr-1" /> Unpublish
-              </Button>
-              <button className="ml-auto text-blue-600 text-sm hover:underline" onClick={() => setSelectedCourseIds(new Set())}>
-                Clear
-              </button>
-            </div>
-          )}
+        </section>
+      ) : (
+      <CoursesTab
+        courses={courses}
+        loading={loadingCourses}
+        stage={stageFilter}
+        onClearStage={() => setStageFilter(null)}
+        selected={selectedCourseIds}
+        onSelectedChange={setSelectedCourseIds}
+        cloningId={isCloningCourse}
+        onCreate={openCreate}
+        onView={(id) => { const c = findCourse(id); if (c) handleViewCourse(c); }}
+        onEdit={(id) => { const c = findCourse(id); if (c) void handleEditCourse(c); }}
+        onPublish={(id) => { const c = findCourse(id); if (c) { setPublishCourse(c); setIsPublishDialogOpen(true); } }}
+        onHistory={(id) => { const c = findCourse(id); if (c) { setVersionHistoryCourse(c); setIsVersionHistoryOpen(true); } }}
+        onClone={(id) => void handleCloneCourse(id)}
+        onDelete={(id) => { const c = findCourse(id); if (c) handleDeleteCourse(c); }}
+        onBulkPublish={(publish) => void handleBulkPublish(publish)}
+        onBulkDelete={handleBulkDeleteRequest}
+      />
+      )}
 
-          {loadingCourses ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-blue-600 mr-2" />
-              <span className="text-gray-600">Loading courses...</span>
+      <Modal
+        open={isViewDialogOpen && !!viewingCourse}
+        onClose={() => setIsViewDialogOpen(false)}
+        wide
+        title={viewingCourse ? titleOf(viewingCourse) : 'Course'}
+        subtitle={viewingCourse ? (stageOf(viewingCourse) === 'live' ? 'Live for students' : stageOf(viewingCourse) === 'ready' ? 'Ready to publish' : 'Needs content') : undefined}
+        footer={
+          <>
+            <button className="sd-btn sd-btn--line" onClick={() => setIsViewDialogOpen(false)}>Close</button>
+            {viewingCourse && (
+              <button className="sd-btn sd-btn--amber" onClick={() => { setIsViewDialogOpen(false); void handleEditCourse(viewingCourse); }}>
+                <Edit aria-hidden="true" />Edit course
+              </button>
+            )}
+          </>
+        }
+      >
+        {viewingCourse && (
+          <div className="co-view">
+            <p className="co-view-desc">{viewingCourse.description || 'No description yet.'}</p>
+            <div className="co-view-stats">
+              <div><b>{chaptersOf(viewingCourse)}</b><span>Chapters</span></div>
+              <div><b>{viewingCourse.total_videos || 0}</b><span>Videos</span></div>
+              <div><b>{viewingCourse.total_materials || 0}</b><span>Files</span></div>
+              <div><b>{viewingCourse.total_assignments || 0}</b><span>Assignments</span></div>
             </div>
-          ) : viewMode === 'list' ? (
-            <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <input
-                    type="checkbox"
-                    checked={filteredCourses.length > 0 && selectedCourseIds.size === filteredCourses.length}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                </TableHead>
-                <TableHead>Course Name</TableHead>
-                <TableHead>School</TableHead>
-                <TableHead>Grades</TableHead>
-                <TableHead>Chapters</TableHead>
-                <TableHead>Content</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredCourses.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                    {courses.length === 0 ? (
-                      <>No courses found. Click &quot;Create Course&quot; to add your first course.</>
-                    ) : (
-                      <>No courses match your search. Try a different search term.</>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredCourses.map((course) => {
-                  // Get school names from course_access
-                  const schoolNames = course.course_access
-                    ?.map((access: CourseAccess) => access.schools?.name)
-                    .filter(Boolean) || [];
-                  const uniqueSchoolNames = [...new Set(schoolNames)];
-                  
-                  // Get unique grade/section labels from course_access
-                  const gradeLabels = (course.course_access || []).flatMap((access: CourseAccess) => {
-                    const gradeLabel =
-                      gradeOptions.find((go: GradeOption) => go.value === access.grade)?.label ||
-                      access.grade;
-                    if (access.sections?.length) {
-                      return access.sections.map((sec) => `${gradeLabel}-${sec}`);
-                    }
-                    return gradeLabel ? [gradeLabel] : [];
-                  });
-                  const uniqueGrades = [...new Set(gradeLabels)];
-                  // Unpublishing keeps targeting so re-publishing is one click; show it as inactive.
-                  const isLive = course.status === 'Published';
-                  const savedTargetHint = 'Saved targeting — not visible to students until the course is published';
-                  
+            <section aria-labelledby="co-view-where">
+              <h3 id="co-view-where">Schools and classes</h3>
+              {viewingCourse.course_access && viewingCourse.course_access.length > 0 ? (
+                viewingCourse.course_access.map((access, idx) => {
+                  const labels = classesOf({ ...viewingCourse, course_access: [access] });
                   return (
-                  <TableRow key={course.id} className={selectedCourseIds.has(course.id) ? 'bg-blue-50' : ''}>
-                    <TableCell className="w-10">
-                      <input
-                        type="checkbox"
-                        checked={selectedCourseIds.has(course.id)}
-                        onChange={() => toggleSelectCourse(course.id)}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {course.name || course.course_name || 'Unnamed Course'}
-                    </TableCell>
-                    <TableCell className="p-4 align-middle [&:has([role=checkbox])]:pr-0">
-                      {uniqueSchoolNames.length > 0 ? (
-                        isLive ? (
-                          uniqueSchoolNames.join(', ')
-                        ) : (
-                          <span className="text-gray-400" title={savedTargetHint}>
-                            {uniqueSchoolNames.join(', ')}
-                            <span className="block text-[11px] italic">Not live</span>
-                          </span>
-                        )
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {uniqueGrades.length > 0 ? (
-                        <div
-                          className={`flex flex-wrap gap-1 ${isLive ? '' : 'opacity-50'}`}
-                          title={isLive ? undefined : savedTargetHint}
-                        >
-                          {uniqueGrades.map((grade: string, idx: number) => (
-                            <Badge key={`${course.id}-${grade}-${idx}`} variant="secondary" className="text-xs">
-                              {grade}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 text-sm">—</span>
-                      )}
-                    </TableCell>
-                  <TableCell>{course.total_chapters ?? course.num_chapters ?? 0}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-4 text-sm">
-                      <span className="flex items-center">
-                        <Video className="h-4 w-4 mr-1 text-blue-500" />
-                        {course.total_videos || 0}
-                      </span>
-                      <span className="flex items-center">
-                        <FileText className="h-4 w-4 mr-1 text-green-500" />
-                        {course.total_materials || 0}
-                      </span>
-                      <span className="flex items-center">
-                        <CheckSquare className="h-4 w-4 mr-1 text-purple-500" />
-                        {course.total_assignments || 0}
-                      </span>
+                    <div key={idx} className="co-view-row">
+                      <b>{access.schools?.name || 'Unknown school'}</b>
+                      {labels.map((l) => <span key={l} className="sm-chip">{l}</span>)}
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={getStatusColor(course.status || 'Draft')}>
-                      {course.status || 'Draft'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-0.5">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewCourse(course)}
-                        title="View course details"
-                        className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          void handleEditCourse(course);
-                        }}
-                        title="Edit course"
-                        className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteCourse(course)}
-                        title="Delete course"
-                        className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setPublishCourse(course);
-                          setIsPublishDialogOpen(true);
-                        }}
-                        title={course.status === 'Published' ? 'Manage publishing (schools / grades / sections)' : 'Publish to schools, grades & sections'}
-                        className={course.status === 'Published'
-                          ? "h-8 w-8 p-0 text-amber-500 hover:bg-amber-50 hover:text-amber-600"
-                          : "h-8 w-8 p-0 text-green-500 hover:bg-green-50 hover:text-green-600"
-                        }
-                      >
-                        {course.status === 'Published' ? (
-                          <Pause className="h-4 w-4" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setVersionHistoryCourse(course);
-                          setIsVersionHistoryOpen(true);
-                        }}
-                        title="View version history (snapshots from saves and publishes)"
-                        className="h-8 w-8 p-0 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleCloneCourse(course.id)}
-                        disabled={isCloningCourse === course.id}
-                        title="Clone course"
-                        className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                      >
-                        {isCloningCourse === course.id
-                          ? <Loader2 className="h-4 w-4 animate-spin" />
-                          : <Copy className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
                   );
                 })
+              ) : (
+                <p className="co-view-none">Not shared with any school yet. Publish it to choose schools and classes.</p>
               )}
-            </TableBody>
-          </Table>
-          ) : (
-            /* Grid View */
-            filteredCourses.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                {courses.length === 0 ? (
-                  <>No courses found. Click &quot;Create Course&quot; to add your first course.</>
-                ) : (
-                  <>No courses match your search. Try a different search term.</>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredCourses.map((course) => {
-                  const schoolNames = course.course_access
-                    ?.map((access: CourseAccess) => access.schools?.name)
-                    .filter(Boolean) || [];
-                  const uniqueSchoolNames = [...new Set(schoolNames)];
-                  const grades = course.course_access
-                    ?.flatMap((access: CourseAccess) => {
-                      const gradeLabel =
-                        gradeOptions.find((go: GradeOption) => go.value === access.grade)?.label ||
-                        access.grade;
-                      if (access.sections?.length) {
-                        return access.sections.map((sec) => `${gradeLabel}-${sec}`);
-                      }
-                      return gradeLabel ? [gradeLabel] : [];
-                    })
-                    .filter(Boolean) || [];
-                  const uniqueGrades = [...new Set(grades)];
+              {schoolsOf(viewingCourse).length > 0 && viewingCourse.status !== 'Published' && <p className="co-view-meta">This is saved targeting. Students see the course once it is published.</p>}
+            </section>
+            {viewingCourse.chapter_unlock_interval_days ? (
+              <p className="co-view-meta">Chapters unlock every {plural(viewingCourse.chapter_unlock_interval_days, 'day')} after a student enrolls.</p>
+            ) : null}
+            <p className="co-view-meta">Created {day(viewingCourse.created_at)}. Last changed {day(viewingCourse.updated_at)}.</p>
+          </div>
+        )}
+      </Modal>
 
-                  return (
-                    <div key={course.id} className="border rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col">
-                      {/* Thumbnail */}
-                      <div className="relative w-full pt-[56.25%] bg-gray-100">
-                        {course.thumbnail_url ? (
-                          <NextImage
-                            src={course.thumbnail_url}
-                            alt={course.name || 'Course thumbnail'}
-                            fill
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-                            <BookOpen className="h-10 w-10 text-blue-300" />
-                          </div>
-                        )}
-                        <div className="absolute top-2 right-2">
-                          <Badge className={getStatusColor(course.status || 'Draft')}>
-                            {course.status || 'Draft'}
-                          </Badge>
-                        </div>
-                      </div>
+      <ConfirmModal
+        open={deletingCourse !== null}
+        onClose={() => setDeletingCourse(null)}
+        title="Move this course to Trash?"
+        subtitle={deletingCourse ? titleOf(deletingCourse) : undefined}
+        confirmLabel="Move to Trash"
+        danger
+        onConfirm={() => void confirmDeleteCourse()}
+      >
+        <p>Students lose access straight away. You can restore the course from Trash later.</p>
+      </ConfirmModal>
 
-                      {/* Card Body */}
-                      <div className="p-4 flex flex-col flex-1 gap-2">
-                        <p className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2">
-                          {course.name || course.course_name || 'Unnamed Course'}
-                        </p>
+      <ConfirmModal
+        open={isBulkDeleteDialogOpen}
+        onClose={() => setIsBulkDeleteDialogOpen(false)}
+        title={`Move ${plural(selectedCourseIds.size, 'course')} to Trash?`}
+        confirmLabel="Move to Trash"
+        danger
+        onConfirm={() => void confirmBulkDelete()}
+      >
+        <p>Students lose access straight away. You can restore them from Trash later.</p>
+      </ConfirmModal>
 
-                        {uniqueSchoolNames.length > 0 && (
-                          <p
-                            className={`text-xs truncate ${course.status === 'Published' ? 'text-gray-500' : 'text-gray-400 italic'}`}
-                            title={course.status === 'Published' ? undefined : 'Saved targeting — not visible to students until the course is published'}
-                          >
-                            {uniqueSchoolNames.join(', ')}
-                            {course.status !== 'Published' && ' · not live'}
-                          </p>
-                        )}
-
-                        {uniqueGrades.length > 0 && (
-                          <div className={`flex flex-wrap gap-1 ${course.status === 'Published' ? '' : 'opacity-50'}`}>
-                            {uniqueGrades.map((grade: string, idx: number) => (
-                              <Badge key={`${course.id}-${grade}-${idx}`} variant="secondary" className="text-xs">
-                                {grade}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-3 text-xs text-gray-500 mt-auto pt-2 border-t">
-                          <span className="flex items-center gap-1">
-                            <Video className="h-3 w-3 text-blue-500" />
-                            {course.total_videos || 0}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <FileText className="h-3 w-3 text-green-500" />
-                            {course.total_materials || 0}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <CheckSquare className="h-3 w-3 text-purple-500" />
-                            {course.total_assignments || 0}
-                          </span>
-                          <span className="ml-auto text-gray-400">
-                            {course.total_chapters ?? course.num_chapters ?? 0} ch.
-                          </span>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center justify-end gap-0.5 pt-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleViewCourse(course)}
-                            title="View"
-                            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            title="Edit"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              void handleEditCourse(course);
-                            }}
-                            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteCourse(course)}
-                            title="Delete"
-                            className="h-8 w-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => { setPublishCourse(course); setIsPublishDialogOpen(true); }}
-                            title={course.status === 'Published' ? 'Manage publishing (schools / grades / sections)' : 'Publish to schools, grades & sections'}
-                            className={course.status === 'Published'
-                              ? "h-8 w-8 p-0 text-amber-500 hover:bg-amber-50 hover:text-amber-600"
-                              : "h-8 w-8 p-0 text-green-500 hover:bg-green-50 hover:text-green-600"}
-                          >
-                            {course.status === 'Published' ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setVersionHistoryCourse(course);
-                              setIsVersionHistoryOpen(true);
-                            }}
-                            title="Version history (snapshots from saves and publishes)"
-                            className="h-8 w-8 p-0 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
-                          >
-                            <History className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCloneCourse(course.id)}
-                            disabled={isCloningCourse === course.id}
-                            title="Clone course"
-                            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700"
-                          >
-                            {isCloningCourse === course.id
-                              ? <Loader2 className="h-4 w-4 animate-spin" />
-                              : <Copy className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          )}
-        </CardContent>
-      </Card>
-
-      {/* View Course Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="grid max-h-[85vh] w-[calc(100vw-2rem)] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-2xl">
-          <DialogHeader className="border-b px-6 pt-6 pb-4">
-            <DialogTitle>Course Details</DialogTitle>
-            <DialogDescription>View complete course information</DialogDescription>
-          </DialogHeader>
-          {viewingCourse && (
-            <div className="min-h-0 space-y-5 overflow-y-auto px-6 py-5">
-              <div>
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-lg font-semibold text-gray-900">
-                    {viewingCourse.name || viewingCourse.course_name || 'Unnamed Course'}
-                  </p>
-                  <Badge className={`flex-shrink-0 ${getStatusColor(viewingCourse.status || 'Draft')}`}>
-                    {viewingCourse.status || 'Draft'}
-                  </Badge>
-                </div>
-                <p className="mt-1.5 text-sm text-gray-600">
-                  {viewingCourse.description || 'No description provided'}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {[
-                  { label: 'Chapters', value: viewingCourse.total_chapters || 0, color: 'text-blue-600' },
-                  { label: 'Videos', value: viewingCourse.total_videos || 0, color: 'text-purple-600' },
-                  { label: 'Materials', value: viewingCourse.total_materials || 0, color: 'text-green-600' },
-                  { label: 'Assignments', value: viewingCourse.total_assignments || 0, color: 'text-orange-600' },
-                ].map((stat) => (
-                  <div key={stat.label} className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 text-center">
-                    <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-500">Schools &amp; classes</Label>
-                {viewingCourse.course_access && viewingCourse.course_access.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {viewingCourse.course_access.map((access, idx) => {
-                      const gradeLabel =
-                        gradeOptions.find((go: GradeOption) => go.value === access.grade)?.label ||
-                        access.grade;
-                      const classLabel = access.sections?.length
-                        ? access.sections.map((s) => `${gradeLabel}-${s}`).join(', ')
-                        : gradeLabel;
-                      return (
-                      <div key={idx} className="flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs">
-                        <span className="font-medium text-gray-700">{access.schools?.name || 'Unknown School'}</span>
-                        <span className="text-gray-300">·</span>
-                        <span className="text-gray-500">{classLabel}</span>
-                      </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">Not yet published to any school</p>
-                )}
-              </div>
-
-              <p className="text-xs text-gray-400">
-                Created {formatCourseDate(viewingCourse.created_at)}
-              </p>
-            </div>
-          )}
-          <DialogFooter className="border-t px-6 py-4">
-            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="w-[calc(100vw-2rem)] bg-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete course</DialogTitle>
-            <DialogDescription>
-              This moves the course to Trash — students immediately lose access, and it
-              can be restored from Trash later if needed.
-            </DialogDescription>
-          </DialogHeader>
-          {deletingCourse && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
-              <p className="text-sm text-gray-700">
-                <span className="text-gray-500">Course: </span>
-                <span className="font-medium text-gray-900">
-                  {deletingCourse.name || deletingCourse.course_name || 'Unnamed Course'}
-                </span>
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setIsDeleteDialogOpen(false);
-              setDeletingCourse(null);
-            }}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDeleteCourse}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Move to Trash
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk delete confirmation */}
-      <Dialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
-        <DialogContent className="w-[calc(100vw-2rem)] bg-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete selected courses</DialogTitle>
-            <DialogDescription>
-              This moves {selectedCourseIds.size} course{selectedCourseIds.size !== 1 ? 's' : ''} to Trash —
-              students immediately lose access, and they can be restored from Trash later if needed.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsBulkDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="bg-red-600 hover:bg-red-700"
-              onClick={() => void confirmBulkDelete()}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Move {selectedCourseIds.size} course(s) to Trash
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmModal
+        open={!!concurrentEditWarning?.show}
+        onClose={() => setConcurrentEditWarning(null)}
+        title="Someone else changed this course"
+        confirmLabel="Save anyway"
+        danger
+        onConfirm={async () => {
+          if (concurrentEditWarning?.proceed) {
+            const proceed = concurrentEditWarning.proceed;
+            setConcurrentEditWarning(null);
+            await proceed();
+          }
+        }}
+      >
+        <p>It was updated after you started editing. Saving now overwrites those changes.</p>
+      </ConfirmModal>
 
       {/* Course Creation Wizard */}
       {isCreateDialogOpen && !editingCourse && (
@@ -1336,7 +712,7 @@ export default function CoursesManagement() {
               });
               setIsCreateDialogOpen(false);
               setWizardDraftSummary(null);
-              setStatusFilter('Draft'); // Show Draft courses to see the new one
+              setStageFilter(null);
               loadData();
               toast.success('Course created successfully.');
             } catch (error: unknown) {
@@ -1449,37 +825,6 @@ export default function CoursesManagement() {
           }}
         />
       )}
-
-      {/* Concurrent Edit Warning */}
-      <Dialog open={!!concurrentEditWarning?.show} onOpenChange={(open) => { if (!open) setConcurrentEditWarning(null); }}>
-        <DialogContent className="w-[calc(100vw-2rem)] bg-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-500" />
-              Course Modified by Another User
-            </DialogTitle>
-            <DialogDescription>
-              This course was updated since you started editing. Saving now will overwrite those changes.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConcurrentEditWarning(null)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-yellow-600 hover:bg-yellow-700 text-white"
-              onClick={async () => {
-                if (concurrentEditWarning?.proceed) {
-                  setConcurrentEditWarning(null);
-                  await concurrentEditWarning.proceed();
-                }
-              }}
-            >
-              Save Anyway
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Version History Dialog */}
       {versionHistoryCourse && (

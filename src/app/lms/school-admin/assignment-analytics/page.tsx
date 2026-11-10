@@ -1,729 +1,243 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
-import { RankingTable, type RankingRow } from "@/components/ui/ranking-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Trophy,
-  Users,
-  BookOpen,
-  BarChart2,
-  TrendingUp,
-  ClipboardList,
-  Search,
-  Medal,
-  Star,
-  ArrowUp,
-  ArrowDown,
-  ChevronRight,
-} from "lucide-react";
 import { AssignmentMarksPanel } from "@/components/school-admin/AssignmentMarksPanel";
+import Leaderboard from "@/components/school-admin/analytics/Leaderboard";
+import ScoreRun from "@/components/school-admin/analytics/ScoreRun";
+import { bandOf, pct, studentBand, type AssignmentRow, type Band, type LeaderboardData } from "@/components/school-admin/analytics/types";
+import { ChipGroup, Pager } from "@/components/portal/notifications";
+import { formatGradeBadge, formatSectionLabel } from "@/components/school-admin/student-utils";
+import "@/components/school-admin/students.css";
+import "@/components/school-admin/teachers.css";
+import "@/components/school-admin/analytics/analytics.css";
 
-type LeaderboardStudent = {
-  rank: number;
-  school_rank?: number;
-  grade_rank?: number;
-  section_rank?: number;
-  student_id: number;
-  student_name: string;
-  grade: string;
-  section: string;
-  course_assignment_score: number;
-  daily_assignment_score: number;
-  overall_score: number;
-  assignments_attempted: number;
-  graded_assignments_count: number;
-  badge: "GOLD" | "SILVER" | "BRONZE" | "NONE";
+type Tab = "leaderboard" | "classes" | "subjects" | "assignments";
+type AType = "all" | "DAILY" | "COURSE";
+type ASort = "default" | "low" | "high" | "least";
+const PAGE_SIZE = 25;
+const ASORTS: Record<ASort, string> = {
+  default: "Order published",
+  low: "Lowest average first",
+  high: "Highest average first",
+  least: "Least handed in first",
 };
 
-type GradeBreakdown = {
-  grade: string;
-  avg_course_score: number;
-  avg_daily_score: number;
-  avg_overall: number;
-};
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-type SectionBreakdown = GradeBreakdown & { section: string | null };
-
-type SubjectBreakdown = {
-  subject: string;
-  avg_score: number;
-};
-
-type AssignmentRow = {
-  assignment_id: string;
-  title: string;
-  assignment_type: string;
-  subject: string;
-  total_marks: number | null;
-  total_submissions: number;
-  targeted_students: number;
-  graded_count: number;
-  avg_score: number;
-  avg_marks: number | null;
-  highest_score: number;
-  lowest_score: number;
-  completion_rate: number;
-};
-
-type LeaderboardSummary = {
-  school_name: string;
-  total_students: number;
-  total_assignments_published: number;
-  course_assignments_published: number;
-  daily_assignments_published: number;
-  overall_avg_score: number;
-};
-
-type LeaderboardData = {
-  summary: LeaderboardSummary;
-  leaderboard: LeaderboardStudent[];
-  grade_breakdown: GradeBreakdown[];
-  section_breakdown: SectionBreakdown[];
-  subject_breakdown: SubjectBreakdown[];
-  assignment_table: AssignmentRow[];
-};
-
-type SortKey = "rank" | "course" | "daily" | "overall";
-
-function ScoreBar({ value, color = "bg-blue-500" }: { value: number; color?: string }) {
+function Meter({ value }: { value: number }) {
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${color}`}
-          style={{ width: `${Math.min(100, value)}%` }}
-        />
-      </div>
-      <span className="text-xs font-medium text-gray-700 w-12 text-right shrink-0">
-        {value.toFixed(1)}%
-      </span>
-    </div>
+    <span className="aa-score" data-band={bandOf(value)}>
+      <b>{pct(value)}</b>
+      <i className="tm-bar" aria-hidden="true"><u style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></i>
+    </span>
   );
 }
 
-function BadgeChip({ badge }: { badge: "GOLD" | "SILVER" | "BRONZE" | "NONE" }) {
-  if (badge === "NONE") return <span className="text-xs text-gray-300">—</span>;
-  const config = {
-    GOLD: { label: "Gold", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-    SILVER: { cls: "bg-gray-100 text-gray-600 border-gray-200", label: "Silver" },
-    BRONZE: { cls: "bg-amber-100 text-amber-700 border-amber-200", label: "Bronze" },
-  }[badge];
-  return (
-    <Badge className={`text-xs border px-1.5 py-0 ${config.cls}`}>
-      <Medal className="h-3 w-3 mr-0.5" />
-      {config.label}
-    </Badge>
-  );
-}
+export default function SchoolAdminAssignmentAnalyticsPage() {
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ["school-admin", "leaderboard"],
+    queryFn: async () => (await schoolAdminApi.stats.leaderboard()).data as LeaderboardData,
+  });
 
-function RankCell({ rank }: { rank: number }) {
-  if (rank === 1)
-    return (
-      <div className="flex items-center gap-1">
-        <span className="text-xl leading-none">🥇</span>
-        <span className="text-xs font-bold text-yellow-600">1st</span>
-      </div>
-    );
-  if (rank === 2)
-    return (
-      <div className="flex items-center gap-1">
-        <span className="text-xl leading-none">🥈</span>
-        <span className="text-xs font-bold text-gray-500">2nd</span>
-      </div>
-    );
-  if (rank === 3)
-    return (
-      <div className="flex items-center gap-1">
-        <span className="text-xl leading-none">🥉</span>
-        <span className="text-xs font-bold text-amber-700">3rd</span>
-      </div>
-    );
-  return (
-    <span className="text-xs font-semibold text-gray-400 pl-1">#{rank}</span>
-  );
-}
-
-type Tab = "leaderboard" | "grade" | "subject" | "assignments";
-
-export default function SchoolAdminLeaderboardPage() {
-  const [data, setData] = useState<LeaderboardData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("leaderboard");
-  const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("rank");
-  const [sortAsc, setSortAsc] = useState(true);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  const [assignmentSearch, setAssignmentSearch] = useState("");
-  const [assignmentType, setAssignmentType] = useState<"all" | "DAILY" | "COURSE">("all");
+  const [band, setBand] = useState<Band | "all">("all");
+  const [grade, setGrade] = useState("all");
+  const [section, setSection] = useState("all");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [aSearch, setASearch] = useState("");
+  const [aType, setAType] = useState<AType>("all");
+  const [aSort, setASort] = useState<ASort>("default");
+  const [pageState, setPageState] = useState({ key: "", page: 1 });
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const { data: res } = await schoolAdminApi.stats.leaderboard();
-        setData(res as LeaderboardData);
-      } catch {
-        setData(null);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const summary = data?.summary;
+  const students = useMemo(() => data?.leaderboard ?? [], [data]);
+  const assignments = useMemo(() => data?.assignment_table ?? [], [data]);
 
-  const summary = data?.summary ?? {
-    school_name: "School",
-    total_students: 0,
-    total_assignments_published: 0,
-    course_assignments_published: 0,
-    daily_assignments_published: 0,
-    overall_avg_score: 0,
-  };
-  const leaderboard = useMemo(() => data?.leaderboard ?? [], [data]);
-  const gradeBreakdown = data?.grade_breakdown ?? [];
-  const sectionBreakdown = data?.section_breakdown ?? [];
-  const subjectBreakdown = data?.subject_breakdown ?? [];
-  const assignmentTable = data?.assignment_table ?? [];
-  const assignmentQuery = assignmentSearch.trim().toLowerCase();
-  const visibleAssignments = assignmentTable.filter(
-    (row) =>
-      (assignmentType === "all" ||
-        (assignmentType === "COURSE") === (row.assignment_type === "COURSE")) &&
-      (!assignmentQuery ||
-        row.title.toLowerCase().includes(assignmentQuery) ||
-        (row.subject ?? "").toLowerCase().includes(assignmentQuery)),
-  );
+  const counts = useMemo(() => {
+    const c: Record<Band, number> = { none: 0, low: 0, mid: 0, high: 0 };
+    students.forEach((s) => { c[studentBand(s)] += 1; });
+    return c;
+  }, [students]);
 
-  const goldCount = leaderboard.filter((s) => s.badge === "GOLD").length;
-  const silverCount = leaderboard.filter((s) => s.badge === "SILVER").length;
-  const bronzeCount = leaderboard.filter((s) => s.badge === "BRONZE").length;
+  const medals = useMemo(() => {
+    const m = { GOLD: 0, SILVER: 0, BRONZE: 0 };
+    students.forEach((s) => { if (s.badge !== "NONE") m[s.badge] += 1; });
+    return m;
+  }, [students]);
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) setSortAsc((a) => !a);
-    else { setSortKey(key); setSortAsc(key === "rank"); }
-  };
+  const published = summary?.total_assignments_published ?? 0;
+  const avg = published > 0 && summary ? summary.overall_avg_score : null;
 
-  const filteredLeaderboard = useMemo(() => {
-    let list = leaderboard;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (s) =>
-          s.student_name.toLowerCase().includes(q) ||
-          (s.grade ?? "").toLowerCase().includes(q) ||
-          (s.section ?? "").toLowerCase().includes(q),
-      );
-    }
-    return [...list].sort((a, b) => {
-      let diff = 0;
-      if (sortKey === "rank") diff = a.rank - b.rank;
-      else if (sortKey === "course") diff = b.course_assignment_score - a.course_assignment_score;
-      else if (sortKey === "daily") diff = b.daily_assignment_score - a.daily_assignment_score;
-      else if (sortKey === "overall") diff = b.overall_score - a.overall_score;
-      return sortAsc ? diff : -diff;
+  // Classes: sections when the server gives them, otherwise whole grades.
+  const classRows = useMemo(() => {
+    const src = (data?.section_breakdown?.length ? data.section_breakdown : data?.grade_breakdown ?? []) as Array<{ grade: string; section?: string | null; avg_course_score: number; avg_daily_score: number; avg_overall: number }>;
+    return src.map((r) => {
+      const sec = r.section ?? "";
+      const n = students.filter((s) => s.grade === r.grade && (!sec || s.section === sec)).length;
+      return { ...r, sec, n, label: sec ? `${formatGradeBadge(r.grade)}, ${formatSectionLabel(sec)}` : formatGradeBadge(r.grade) || "No class" };
     });
-  }, [leaderboard, search, sortKey, sortAsc]);
+  }, [data, students]);
 
-  if (loading) {
-    return (
-      <div className="bg-gray-50">
-        <div className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4">
-          <div className="h-6 bg-gray-200 rounded w-48 animate-pulse" />
-          <div className="h-4 bg-gray-100 rounded w-32 mt-2 animate-pulse" />
-        </div>
-        <div className="max-w-7xl mx-auto px-4 py-4 md:px-6 md:py-5 space-y-4 md:space-y-4">
-          <div className="grid grid-cols-4 gap-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-20 bg-gray-200 rounded-xl animate-pulse" />
-            ))}
-          </div>
-          <div className="h-96 bg-gray-200 rounded-xl animate-pulse" />
-        </div>
-      </div>
+  const subjects = useMemo(() => [...(data?.subject_breakdown ?? [])].sort((a, b) => b.avg_score - a.avg_score), [data]);
+  const perSubject = useMemo(() => {
+    const m = new Map<string, number>();
+    assignments.forEach((a) => m.set(a.subject, (m.get(a.subject) ?? 0) + 1));
+    return m;
+  }, [assignments]);
+
+  const visibleAssignments = useMemo(() => {
+    const q = aSearch.trim().toLowerCase();
+    const list = assignments.filter(
+      (a) => (aType === "all" || (aType === "COURSE") === (a.assignment_type === "COURSE")) && (!q || a.title.toLowerCase().includes(q) || (a.subject ?? "").toLowerCase().includes(q)),
     );
-  }
+    const graded = (a: AssignmentRow) => a.graded_count > 0;
+    if (aSort === "low") list.sort((a, b) => Number(!graded(a)) - Number(!graded(b)) || a.avg_score - b.avg_score);
+    else if (aSort === "high") list.sort((a, b) => Number(!graded(a)) - Number(!graded(b)) || b.avg_score - a.avg_score);
+    else if (aSort === "least") list.sort((a, b) => a.completion_rate - b.completion_rate);
+    return list;
+  }, [assignments, aSearch, aType, aSort]);
 
-  const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "leaderboard", label: "Leaderboard", icon: Trophy },
-    { id: "grade", label: "By Grade", icon: BarChart2 },
-    { id: "subject", label: "By Subject", icon: BookOpen },
-    { id: "assignments", label: "Assignments", icon: ClipboardList },
+  const aKey = `${aSearch}|${aType}|${aSort}`;
+  const aPage = pageState.key === aKey ? pageState.page : 1;
+  const setAPage = (p: number) => setPageState({ key: aKey, page: p });
+  const aRows = visibleAssignments.slice((aPage - 1) * PAGE_SIZE, aPage * PAGE_SIZE);
+  const aFiltered = !!aSearch || aType !== "all" || aSort !== "default";
+  const clearA = () => { setASearch(""); setAType("all"); setASort("default"); };
+
+  let status: React.ReactNode;
+  if (error) status = "The scores did not load. Try again.";
+  else if (isLoading) status = "Loading scores…";
+  else if ((summary?.total_students ?? 0) === 0) status = "No students have joined yet. Scores show up here once they submit work.";
+  else if (published === 0) status = "No assignments are published yet. Scores show up here once students submit work.";
+  else status = <><strong>{pct(summary?.overall_avg_score ?? 0)}</strong> is the school average across {plural(published, "assignment")}. {plural(counts.high, "student")} {counts.high === 1 ? "scores" : "score"} 75% or more{counts.low > 0 ? <>, and {counts.low} {counts.low === 1 ? "is" : "are"} under 50%</> : null}.</>;
+
+  const tiles = [
+    { label: "Students", value: String(summary?.total_students ?? 0), hint: "In your school" },
+    { label: "Assignments", value: String(published), hint: `${summary?.course_assignments_published ?? 0} course, ${summary?.daily_assignments_published ?? 0} daily` },
+    { label: "Average score", value: avg == null ? "–" : pct(avg), hint: "Across graded work" },
+    { label: "Medals", value: String(medals.GOLD + medals.SILVER + medals.BRONZE), hint: `${medals.GOLD} gold, ${medals.SILVER} silver, ${medals.BRONZE} bronze` },
   ];
 
-  const SortHeader = ({
-    label,
-    sKey,
-    className = "",
-  }: {
-    label: string;
-    sKey: SortKey;
-    className?: string;
-  }) => (
-    <th
-      className={`py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-800 select-none ${className}`}
-      onClick={() => handleSort(sKey)}
-    >
-      <span className="flex items-center gap-1 justify-end">
-        {label}
-        {sortKey === sKey ? (
-          sortAsc ? (
-            <ArrowUp className="h-3 w-3 text-blue-500" />
-          ) : (
-            <ArrowDown className="h-3 w-3 text-blue-500" />
-          )
-        ) : (
-          <ArrowUp className="h-3 w-3 text-gray-300" />
-        )}
-      </span>
-    </th>
-  );
+  const goStudents = (g: string, s: string) => { setGrade(g); setSection(s || "all"); setBand("all"); setTab("leaderboard"); };
 
   return (
-    <div className="bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 md:px-6 md:py-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-yellow-500" />
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Assignment Analytics</h1>
-          </div>
-          <p className="text-xs text-gray-500 mt-0.5">{summary.school_name}</p>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-4 md:px-6 md:py-5 space-y-4 md:space-y-5">
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-          <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
-              <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-blue-100 flex items-center justify-center">
-                <Users className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">
-                  {summary.total_students}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">Students</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
-              <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-purple-100 flex items-center justify-center">
-                <BookOpen className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">
-                  {summary.total_assignments_published}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">Assignments</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
-              <div className="h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">
-                  {summary.overall_avg_score.toFixed(1)}%
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">Avg Score</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-gray-200 shadow-sm">
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3">
-              <div className="max-sm:hidden h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-xl bg-yellow-100 flex items-center justify-center">
-                <Star className="h-5 w-5 text-yellow-600" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1 sm:gap-1.5 leading-none">
-                  <span className="text-sm font-bold text-yellow-600">{goldCount}</span>
-                  <span className="text-base">🥇</span>
-                  <span className="text-sm font-bold text-gray-500">{silverCount}</span>
-                  <span className="text-base">🥈</span>
-                  <span className="text-sm font-bold text-amber-700">{bronzeCount}</span>
-                  <span className="text-base">🥉</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">Achievers</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Top 3 podium */}
-        {leaderboard.length >= 3 && (
-          <Card className="border-gray-200 shadow-sm overflow-hidden">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-4 py-5 sm:px-6 sm:py-8">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest text-center mb-4 sm:mb-6">
-                Top Performers
-              </p>
-              <div className="flex items-end justify-center gap-4">
-                {/* 2nd place */}
-                <div className="flex flex-col items-center gap-2 mb-0">
-                  <div className="h-14 w-14 rounded-full bg-gray-400 flex items-center justify-center text-lg font-black text-white">
-                    {leaderboard[1]?.student_name.charAt(0)}
-                  </div>
-                  <p className="text-xs text-gray-300 font-semibold max-w-20 text-center truncate">
-                    {leaderboard[1]?.student_name}
-                  </p>
-                  <p className="text-sm font-bold text-gray-200">
-                    {leaderboard[1]?.overall_score.toFixed(1)}%
-                  </p>
-                  <div className="bg-gray-500 w-20 h-16 rounded-t-lg flex items-center justify-center">
-                    <span className="text-2xl">🥈</span>
-                  </div>
-                </div>
-                {/* 1st place */}
-                <div className="flex flex-col items-center gap-2">
-                  <div className="h-16 w-16 rounded-full bg-yellow-400 flex items-center justify-center text-xl font-black text-yellow-900 ring-4 ring-yellow-300/50">
-                    {leaderboard[0]?.student_name.charAt(0)}
-                  </div>
-                  <p className="text-xs text-yellow-200 font-bold max-w-20 text-center truncate">
-                    {leaderboard[0]?.student_name}
-                  </p>
-                  <p className="text-sm font-bold text-yellow-300">
-                    {leaderboard[0]?.overall_score.toFixed(1)}%
-                  </p>
-                  <div className="bg-yellow-500 w-20 h-24 rounded-t-lg flex items-center justify-center">
-                    <span className="text-3xl">🥇</span>
-                  </div>
-                </div>
-                {/* 3rd place */}
-                <div className="flex flex-col items-center gap-2 mb-0">
-                  <div className="h-14 w-14 rounded-full bg-amber-600 flex items-center justify-center text-lg font-black text-white">
-                    {leaderboard[2]?.student_name.charAt(0)}
-                  </div>
-                  <p className="text-xs text-amber-300 font-semibold max-w-20 text-center truncate">
-                    {leaderboard[2]?.student_name}
-                  </p>
-                  <p className="text-sm font-bold text-amber-200">
-                    {leaderboard[2]?.overall_score.toFixed(1)}%
-                  </p>
-                  <div className="bg-amber-700 w-20 h-10 rounded-t-lg flex items-center justify-center">
-                    <span className="text-2xl">🥉</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {/* Tabs */}
-        <div className="flex max-w-full gap-1 overflow-x-auto bg-white border border-gray-200 rounded-lg p-1 w-fit shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tabs.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                tab === id
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="aa-title">
+        <div className="sd-hero-copy">
+          <h1 id="aa-title" className="mc-hero-title">Assignment analytics</h1>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--ghost-dark" onClick={() => void refetch()} disabled={isFetching}>
+              <RefreshCw className={isFetching ? "animate-spin" : ""} aria-hidden="true" />{isFetching ? "Refreshing" : "Refresh"}
             </button>
-          ))}
+          </div>
         </div>
+        <ScoreRun counts={counts} selected={band} average={avg} onSelect={(b) => { setBand(b); setTab("leaderboard"); }} />
+      </section>
 
-        {/* Leaderboard table */}
-        {tab === "leaderboard" && (
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="px-5 py-3 border-b border-gray-100">
-              <CardTitle className="text-sm font-semibold text-gray-800">Student Rankings</CardTitle>
-              <p className="text-xs text-gray-400 mt-0.5">Overall = Course (60%) + Daily (40%), or just one if the student only has that kind · Ranked by school, grade, and section</p>
-            </CardHeader>
-            <CardContent className="p-4">
-              {leaderboard.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <Trophy className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                  <p className="text-sm">No data yet</p>
-                </div>
-              ) : (
-                <RankingTable
-                  rows={leaderboard.map((s): RankingRow => ({
-                    student_id: s.student_id,
-                    student_name: s.student_name,
-                    grade: s.grade,
-                    section: s.section,
-                    course_score: s.course_assignment_score,
-                    daily_score: s.daily_assignment_score,
-                    overall_score: s.overall_score,
-                    rank: s.school_rank ?? s.rank,
-                    school_rank: s.school_rank ?? s.rank,
-                    grade_rank: s.grade_rank,
-                    section_rank: s.section_rank,
-                    badge: s.badge,
-                  }))}
-                  showRanks={["school", "grade", "section"]}
-                  showGrade
-                  showScoreBreakdown
-                />
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Grade / section breakdown */}
-        {tab === "grade" && (
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="px-5 py-3 border-b border-gray-100">
-              <CardTitle className="text-sm font-semibold text-gray-800">
-                Class-wise Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-5 space-y-5">
-              {(sectionBreakdown.length > 0 ? sectionBreakdown : gradeBreakdown).length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No data yet</p>
-              ) : sectionBreakdown.length > 0 ? (
-                sectionBreakdown.map((row) => {
-                  const label = row.section ? `${row.grade}-${row.section}` : row.grade;
-                  return (
-                  <div key={`${row.grade}\0${row.section ?? ''}`} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-800">
-                        {label.startsWith('Grade') ? label : `Grade ${label}`}
-                      </span>
-                      <Badge className="bg-gray-100 text-gray-700 border-0 text-xs font-semibold">
-                        Overall {row.avg_overall.toFixed(1)}%
-                      </Badge>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="w-14 shrink-0">Course</span>
-                        <ScoreBar value={row.avg_course_score} color="bg-indigo-500" />
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="w-14 shrink-0">Daily</span>
-                        <ScoreBar value={row.avg_daily_score} color="bg-blue-400" />
-                      </div>
-                    </div>
-                  </div>
-                  );
-                })
-              ) : (
-                gradeBreakdown.map((row) => (
-                  <div key={row.grade} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-800">
-                        {row.grade.startsWith('Grade') ? row.grade : `Grade ${row.grade}`}
-                      </span>
-                      <Badge className="bg-gray-100 text-gray-700 border-0 text-xs font-semibold">
-                        Overall {row.avg_overall.toFixed(1)}%
-                      </Badge>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="w-14 shrink-0">Course</span>
-                        <ScoreBar value={row.avg_course_score} color="bg-indigo-500" />
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="w-14 shrink-0">Daily</span>
-                        <ScoreBar value={row.avg_daily_score} color="bg-blue-400" />
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Subject breakdown */}
-        {tab === "subject" && (
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="px-5 py-3 border-b border-gray-100">
-              <CardTitle className="text-sm font-semibold text-gray-800">
-                Subject-wise Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-5 space-y-3">
-              {subjectBreakdown.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No data yet</p>
-              ) : (
-                subjectBreakdown.map((row, i) => (
-                  <div key={row.subject} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400 w-5 text-right shrink-0">{i + 1}</span>
-                    <span className="text-sm font-medium text-gray-800 w-36 truncate shrink-0">
-                      {row.subject}
-                    </span>
-                    <div className="flex-1">
-                      <ScoreBar
-                        value={row.avg_score}
-                        color={
-                          row.avg_score >= 75
-                            ? "bg-emerald-500"
-                            : row.avg_score >= 50
-                            ? "bg-amber-400"
-                            : "bg-red-400"
-                        }
-                      />
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Assignment table */}
-        {tab === "assignments" && selectedAssignmentId && (
-          <AssignmentMarksPanel
-            key={selectedAssignmentId}
-            assignmentId={selectedAssignmentId}
-            onBack={() => setSelectedAssignmentId(null)}
-          />
-        )}
-        {tab === "assignments" && !selectedAssignmentId && (
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="px-5 py-3 border-b border-gray-100 space-y-2">
-              <div>
-                <CardTitle className="text-sm font-semibold text-gray-800">
-                  Assignment Performance
-                </CardTitle>
-                <p className="text-xs text-gray-400 mt-0.5">Click an assignment to see each student&apos;s marks</p>
-              </div>
-              {assignmentTable.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative basis-full sm:basis-auto sm:flex-1 sm:min-w-48">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                    <Input
-                      value={assignmentSearch}
-                      onChange={(e) => setAssignmentSearch(e.target.value)}
-                      placeholder="Search assignments..."
-                      className="h-8 pl-8 text-sm"
-                    />
-                  </div>
-                  {(["all", "DAILY", "COURSE"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setAssignmentType(t)}
-                      className={`h-8 px-3 rounded-md text-xs font-medium border transition-colors ${
-                        assignmentType === t
-                          ? "bg-gray-900 text-white border-gray-900"
-                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      {t === "all" ? "All" : t === "DAILY" ? "Daily" : "Course"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </CardHeader>
-            <CardContent className="p-0">
-              {visibleAssignments.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">
-                  {assignmentTable.length === 0 ? "No assignments published yet" : "No assignments match these filters"}
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/60">
-                        <th className="py-3 px-5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-left">
-                          Assignment
-                        </th>
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell text-left">
-                          Subject
-                        </th>
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">
-                          Type
-                        </th>
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">
-                          Submissions
-                        </th>
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right hidden md:table-cell">
-                          Completion
-                        </th>
-                        <th className="py-3 px-5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">
-                          Avg Score
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {visibleAssignments.map((row) => (
-                        <tr
-                          key={row.assignment_id}
-                          onClick={() => setSelectedAssignmentId(row.assignment_id)}
-                          className="hover:bg-blue-50/50 transition-colors cursor-pointer"
-                        >
-                          <td className="py-3 px-5">
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-semibold text-gray-900 truncate max-w-52">
-                                {row.title}
-                              </p>
-                              <ChevronRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
-                            </div>
-                            {row.total_marks != null && (
-                              <p className="text-[11px] text-gray-400">{row.total_marks} marks</p>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 hidden sm:table-cell">
-                            <span className="text-xs text-gray-500">{row.subject || "—"}</span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <Badge
-                              className={`border-0 text-xs ${
-                                row.assignment_type === "COURSE"
-                                  ? "bg-indigo-100 text-indigo-700"
-                                  : "bg-blue-100 text-blue-700"
-                              }`}
-                            >
-                              {row.assignment_type === "COURSE" ? "Course" : "Daily"}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-4 text-right text-xs text-gray-700 font-medium">
-                            {row.total_submissions}
-                            <span className="text-gray-400 font-normal"> / {row.targeted_students}</span>
-                          </td>
-                          <td className="py-3 px-4 text-right hidden md:table-cell">
-                            <div className="flex items-center justify-end gap-2">
-                              <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-emerald-500"
-                                  style={{
-                                    width: `${Math.min(100, row.completion_rate)}%`,
-                                  }}
-                                />
-                              </div>
-                              <span className="text-xs text-gray-600 w-8 text-right">
-                                {row.completion_rate.toFixed(0)}%
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-5 text-right">
-                            <span
-                              className={`text-sm font-bold ${
-                                row.avg_score >= 75
-                                  ? "text-emerald-600"
-                                  : row.avg_score >= 50
-                                  ? "text-amber-600"
-                                  : "text-red-500"
-                              }`}
-                            >
-                              {row.graded_count > 0 ? `${row.avg_score.toFixed(1)}%` : "—"}
-                            </span>
-                            {row.avg_marks != null && row.total_marks != null && (
-                              <p className="text-[11px] text-gray-400">
-                                {row.avg_marks.toFixed(1)}/{row.total_marks} marks
-                              </p>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+      <div className="sd-ledger" role="group" aria-label="Score summary">
+        {tiles.map((m) => (
+          <div key={m.label}>
+            <span className="sd-l">{m.label}</span>
+            {isLoading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4rem" }} /> : <b className="sd-n">{m.value}</b>}
+            <small>{m.hint}</small>
+          </div>
+        ))}
       </div>
+
+      <div className="mc-tabs" role="tablist" aria-label="Analytics views" style={{ justifySelf: "start" }}>
+        {([["leaderboard", "Leaderboard", students.length], ["classes", "Classes", classRows.length], ["subjects", "Subjects", subjects.length], ["assignments", "Assignments", assignments.length]] as const).map(([id, label, n]) => (
+          <button key={id} role="tab" className="mc-tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}<b>{n}</b></button>
+        ))}
+      </div>
+
+      {error ? (
+        <section className="sd-panel">
+          <div className="sd-empty"><b>We could not load the scores</b><p>Check your connection, then try again.</p><button className="sd-btn sd-btn--amber" onClick={() => void refetch()}>Try again</button></div>
+        </section>
+      ) : isLoading ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : tab === "leaderboard" ? (
+        <>
+          <p className="aa-note">Overall is 60% course and 40% daily work, or just one of them when a student only has that kind. Ranks are across the school, then within each grade and section.</p>
+          <Leaderboard students={students} band={band} onBand={setBand} grade={grade} section={section} onGrade={setGrade} onSection={setSection} />
+        </>
+      ) : tab === "classes" ? (
+        classRows.length === 0 ? (
+          <section className="sd-panel"><div className="sd-empty"><b>No class scores yet</b><p>Once students hand in graded work, you will see how each class is doing here.</p></div></section>
+        ) : (
+          <section className="sd-panel as-list mc-swap" aria-label="Scores by class">
+            <div className="aa-crow aa-head"><span>Class</span><span>Course</span><span>Daily</span><span>Overall</span><span /></div>
+            {classRows.map((r) => (
+              <article key={`${r.grade}\0${r.sec}`} className="aa-crow aa-item">
+                <span className="aa-who"><b>{r.label}</b><small>{plural(r.n, "student")}</small></span>
+                <span className="aa-part-bar"><small>Course</small>{r.avg_course_score > 0 ? <Meter value={r.avg_course_score} /> : <span className="sm-muted">No course scores</span>}</span>
+                <span className="aa-part-bar"><small>Daily</small>{r.avg_daily_score > 0 ? <Meter value={r.avg_daily_score} /> : <span className="sm-muted">No daily scores</span>}</span>
+                <span className="aa-part-bar"><small>Overall</small><Meter value={r.avg_overall} /></span>
+                <button className="sd-btn sd-btn--line" onClick={() => goStudents(r.grade, r.sec)} aria-label={`See the students in ${r.label}`}>See students</button>
+              </article>
+            ))}
+          </section>
+        )
+      ) : tab === "subjects" ? (
+        subjects.length === 0 ? (
+          <section className="sd-panel"><div className="sd-empty"><b>No subject scores yet</b><p>Subjects show up here once students hand in graded work.</p></div></section>
+        ) : (
+          <section className="sd-panel as-list mc-swap" aria-label="Scores by subject">
+            {subjects.map((sub) => (
+              <article key={sub.subject} className="aa-srow aa-item">
+                <span className="aa-who"><b>{sub.subject}</b><small>{plural(perSubject.get(sub.subject) ?? 0, "assignment")}</small></span>
+                <Meter value={sub.avg_score} />
+                <button className="sd-btn sd-btn--line" onClick={() => { setASearch(sub.subject); setAType("all"); setASort("default"); setOpenId(null); setTab("assignments"); }} aria-label={`See ${sub.subject} assignments`}>See assignments</button>
+              </article>
+            ))}
+          </section>
+        )
+      ) : openId ? (
+        <AssignmentMarksPanel key={openId} assignmentId={openId} onBack={() => setOpenId(null)} />
+      ) : assignments.length === 0 ? (
+        <section className="sd-panel"><div className="sd-empty"><b>No assignments published yet</b><p>Published assignments show up here with how many students handed them in and how they scored.</p></div></section>
+      ) : (
+        <>
+          <div className="aa-bar">
+            <input type="search" className="sd-field" placeholder="Search by title or subject" aria-label="Search assignments" value={aSearch} onChange={(e) => setASearch(e.target.value)} />
+            <ChipGroup label="Type" value={aType} options={[["all", "All"], ["DAILY", "Daily"], ["COURSE", "Course"]] as const} onChange={setAType} />
+            <select className="sd-field" aria-label="Sort by" value={aSort} onChange={(e) => setASort(e.target.value as ASort)}>
+              {(Object.keys(ASORTS) as ASort[]).map((k) => <option key={k} value={k}>{ASORTS[k]}</option>)}
+            </select>
+            {aFiltered && <button className="sd-btn sd-btn--line" onClick={clearA}>Clear filters</button>}
+          </div>
+          {visibleAssignments.length === 0 ? (
+            <section className="sd-panel"><div className="sd-empty"><b>No assignments match</b><p>Try a different search, or clear the filters.</p><button className="sd-btn sd-btn--line" onClick={clearA}>Clear filters</button></div></section>
+          ) : (
+            <section className="sd-panel as-list mc-swap" aria-label="Assignments">
+              <div className="aa-arow aa-head"><span>Assignment</span><span>Type</span><span>Handed in</span><span>Average</span></div>
+              {aRows.map((a) => (
+                <button key={a.assignment_id} className="aa-arow aa-item aa-open" onClick={() => setOpenId(a.assignment_id)} aria-label={`See marks for ${a.title}`}>
+                  <span className="aa-who"><b>{a.title}</b><small>{[a.subject, a.total_marks != null && `${a.total_marks} marks`].filter(Boolean).join(" · ") || "No subject"}</small></span>
+                  <span className="sm-chip" data-class={a.assignment_type === "COURSE" ? "true" : undefined}>{a.assignment_type === "COURSE" ? "Course" : "Daily"}</span>
+                  <span className="aa-score" data-band="done">
+                    <small className="aa-lbl">Handed in</small>
+                    <b>{a.total_submissions}<small> of {a.targeted_students}</small></b>
+                    <i className="tm-bar" aria-hidden="true"><u style={{ width: `${Math.min(100, a.completion_rate)}%` }} /></i>
+                  </span>
+                  {a.graded_count > 0 ? (
+                    <span className="aa-avg">
+                      <small className="aa-lbl">Average</small>
+                      <Meter value={a.avg_score} />
+                      {a.avg_marks != null && a.total_marks != null && <small>{a.avg_marks.toFixed(1)} of {a.total_marks} marks</small>}
+                    </span>
+                  ) : <span className="sm-muted">Not graded yet</span>}
+                </button>
+              ))}
+              <Pager offset={(aPage - 1) * PAGE_SIZE} count={aRows.length} total={visibleAssignments.length} pageSize={PAGE_SIZE} noun="assignments" onPrev={() => setAPage(Math.max(1, aPage - 1))} onNext={() => setAPage(aPage + 1)} />
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }

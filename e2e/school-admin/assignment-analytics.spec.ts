@@ -32,7 +32,7 @@ const fixture: QaFixture = JSON.parse(
 // school — so those three tabs should show real "no data" copy.
 
 test.describe('School Admin — Assignment Analytics', () => {
-  test('renders honest zero-activity state: students listed at 0%, other tabs empty', async ({
+  test('renders honest zero-activity state: students listed with no scores, other tabs empty', async ({
     page,
   }) => {
     const leaderboardResponse = page.waitForResponse(
@@ -42,39 +42,42 @@ test.describe('School Admin — Assignment Analytics', () => {
     const res = await leaderboardResponse;
     expect(res.ok()).toBeTruthy();
 
-    await expect(page.getByRole('heading', { name: 'Assignment Analytics' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Assignment analytics' })).toBeVisible();
 
-    // Summary cards: 3 real students, 0 assignments published, 0.0% avg score.
-    // NOTE: "text=Assignments" alone also matches the "Assignments" tab button
-    // below the cards, and `.locator('..').locator('..')` from that match
-    // walks up into the shared stat-card-row container (catching every other
-    // card's "0"). Scoping to `<p>` avoids matching the tab button, and the
-    // value/label paragraphs are siblings one level up (not two) per the
-    // actual StatCard-style markup this page uses.
-    const studentsCard = page.locator('p', { hasText: /^Students$/ }).locator('..');
-    await expect(studentsCard.getByText('3', { exact: true })).toBeVisible();
+    // Summary ledger: 3 real students, 0 assignments published, no average yet.
+    const ledger = page.getByRole('group', { name: 'Score summary' });
+    await expect(ledger.locator('div', { hasText: /^Students/ }).getByText('3', { exact: true })).toBeVisible();
+    await expect(ledger.locator('div', { hasText: /^Assignments/ }).getByText('0', { exact: true }).first()).toBeVisible();
 
-    const assignmentsCard = page.locator('p', { hasText: /^Assignments$/ }).locator('..');
-    await expect(assignmentsCard.getByText('0', { exact: true })).toBeVisible();
+    // The hero says why there is nothing to show.
+    await expect(page.getByText('No assignments are published yet')).toBeVisible();
 
-    await expect(page.getByText('0.0%', { exact: true })).toBeVisible();
+    // Leaderboard tab (default) is NOT empty: all 3 fixture students appear with "No scores yet".
+    await expect(page.getByRole('tab', { name: /Leaderboard/ })).toHaveAttribute('aria-selected', 'true');
+    const ranking = page.getByRole('region', { name: 'Student ranking' });
+    await expect(ranking.getByText('QA Student 0')).toBeVisible();
+    await expect(ranking.getByText('QA Student 1')).toBeVisible();
+    await expect(ranking.getByText('QA Student 2')).toBeVisible();
+    await expect(ranking.getByText('No scores yet').first()).toBeVisible();
 
-    // Leaderboard tab (default) is NOT empty — all 3 fixture students appear,
-    // each at 0% overall score, per the getGlobalRanking behavior above.
-    // NOTE: CardTitle (src/components/ui/card.tsx) renders a plain <div>, not
-    // a semantic heading — getByRole('heading', ...) never matches it.
-    await expect(page.getByText('Student Rankings', { exact: true })).toBeVisible();
-    await expect(page.getByText('QA Student 0')).toBeVisible();
-    await expect(page.getByText('QA Student 1')).toBeVisible();
-    await expect(page.getByText('QA Student 2')).toBeVisible();
-    // The "No data yet" placeholder must NOT show on the leaderboard tab.
-    await expect(page.getByText('No data yet')).not.toBeVisible();
-
-    // Top-3 podium renders too, since leaderboard.length >= 3.
-    await expect(page.getByText('Top Performers')).toBeVisible();
+    // Nobody has scores, so there is no top-three podium.
+    await expect(page.getByRole('list', { name: 'Top three students' })).toHaveCount(0);
   });
 
-  test('By Grade and By Subject tabs show real "no data" state (no graded submissions exist)', async ({
+  test('score track filters the leaderboard', async ({ page }) => {
+    await page.goto('/lms/school-admin/assignment-analytics');
+    await page.waitForResponse(
+      (res) => res.url().includes('/school-admin/leaderboard') && res.request().method() === 'GET',
+    );
+
+    // All fixture students sit in "No scores yet"; picking "Under 50%" leaves nobody.
+    await page.getByRole('button', { name: /^Under 50%/ }).click();
+    await expect(page.getByText('No students match')).toBeVisible();
+    await page.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(page.getByText('QA Student 0')).toBeVisible();
+  });
+
+  test('Classes and Subjects tabs show real "no scores" state (no graded submissions exist)', async ({
     page,
   }) => {
     await page.goto('/lms/school-admin/assignment-analytics');
@@ -82,14 +85,11 @@ test.describe('School Admin — Assignment Analytics', () => {
       (res) => res.url().includes('/school-admin/leaderboard') && res.request().method() === 'GET',
     );
 
-    // NOTE: these tab-panel titles are CardTitle <div>s too, not headings.
-    await page.getByRole('button', { name: 'By Grade' }).click();
-    await expect(page.getByText('Grade-wise Performance', { exact: true })).toBeVisible();
-    await expect(page.getByText('No data yet')).toBeVisible();
+    await page.getByRole('tab', { name: /^Classes/ }).click();
+    await expect(page.getByText('No class scores yet')).toBeVisible();
 
-    await page.getByRole('button', { name: 'By Subject' }).click();
-    await expect(page.getByText('Subject-wise Performance', { exact: true })).toBeVisible();
-    await expect(page.getByText('No data yet')).toBeVisible();
+    await page.getByRole('tab', { name: /^Subjects/ }).click();
+    await expect(page.getByText('No subject scores yet')).toBeVisible();
   });
 
   test('Assignments tab shows "No assignments published yet" (fixture course has no assignments)', async ({
@@ -100,8 +100,7 @@ test.describe('School Admin — Assignment Analytics', () => {
       (res) => res.url().includes('/school-admin/leaderboard') && res.request().method() === 'GET',
     );
 
-    await page.getByRole('button', { name: 'Assignments' }).click();
-    await expect(page.getByText('Assignment Performance', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: /^Assignments/ }).click();
     await expect(page.getByText('No assignments published yet')).toBeVisible();
   });
 });

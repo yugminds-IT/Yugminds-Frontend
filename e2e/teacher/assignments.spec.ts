@@ -19,7 +19,7 @@ async function login(request: APIRequestContext, email: string, password: string
 }
 
 test.describe('Teacher — Assignments', () => {
-  test('create a DAILY assignment via the real modal, grade a real student submission, and confirm the grade reaches the student', async ({
+  test('create a DAILY assignment through the three-step form, grade a real student submission, and confirm the grade reaches the student', async ({
     page,
     request,
   }) => {
@@ -31,35 +31,28 @@ test.describe('Teacher — Assignments', () => {
     await page.goto('/lms/teacher/assignments');
     await listResponse;
 
-    await page.getByRole('button', { name: 'New Assignment' }).first().click();
-    await expect(page.getByRole('heading', { name: 'New Daily Assignment' })).toBeVisible();
-
-    await page.locator('input[placeholder="e.g. Mathematics, Science…"]').fill('QA E2E Subject');
-
-    await page.getByText('Select school', { exact: true }).click();
-    await page.getByRole('option', { name: new RegExp(fixture.runId) }).click();
-
-    // The builder's own "Create Assignment" button (enabled) is distinct from
-    // the modal's footer submit button of the same name (disabled until a
-    // title exists) — target the enabled one.
-    await page.locator('button:not([disabled])', { hasText: /^Create Assignment$/ }).click();
-    const assignmentDialog = page.getByRole('dialog', { name: 'Create Assignment' });
-    await expect(assignmentDialog).toBeVisible();
-    await assignmentDialog.locator('#assignment-title').fill(uniqueTitle);
-    await assignmentDialog.getByRole('button', { name: 'Create Assignment' }).click();
-    await expect(assignmentDialog).not.toBeVisible();
+    // Open the three-step form from the hero. The active school is already chosen, so the title and subject are enough.
+    await page.getByRole('button', { name: 'New assignment' }).first().click();
+    const drawer = page.getByRole('dialog', { name: 'New assignment' });
+    await expect(drawer).toBeVisible();
+    await drawer.locator('#as-title').fill(uniqueTitle);
+    await drawer.locator('#as-subject').fill('QA E2E Subject');
+    await drawer.getByRole('button', { name: 'Next', exact: true }).click();
+    // Audience: "Entire school" is on by default.
+    await drawer.getByRole('button', { name: 'Next', exact: true }).click();
 
     const createResponse = page.waitForResponse(
       (res) => res.url().endsWith('/teacher/assignments') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Create Assignment' }).click();
+    await drawer.getByRole('button', { name: 'Create assignment' }).click();
     const createRes = await createResponse;
     expect(createRes.ok(), await createRes.text()).toBeTruthy();
     const createBody = await createRes.json();
     const assignmentId = createBody?.assignment?.id as string;
     expect(assignmentId).toBeTruthy();
 
-    await expect(page.locator('button', { hasText: uniqueTitle })).toBeVisible({ timeout: 10000 });
+    const listItem = page.getByRole('button', { name: new RegExp(uniqueTitle) });
+    await expect(listItem).toBeVisible({ timeout: 10000 });
 
     // A real student submits it (raw API — the student UI submission flow is
     // covered by the student-side suite; this spec is about the teacher's
@@ -74,16 +67,16 @@ test.describe('Teacher — Assignments', () => {
     const submissionsResponse = page.waitForResponse(
       (res) => res.url().includes(`/teacher/assignments/${assignmentId}/submissions`) && res.request().method() === 'GET',
     );
-    await page.locator('button', { hasText: uniqueTitle }).click();
+    await listItem.click();
     await submissionsResponse;
 
-    const studentRow = page.getByRole('row', { name: /QA Student 0/ });
+    const studentRow = page.locator('.tg-item-wrap').filter({ hasText: 'QA Student 0' });
     await expect(studentRow).toBeVisible({ timeout: 10000 });
-    await expect(studentRow.getByText('Pending')).toBeVisible();
-    await studentRow.click();
+    await expect(studentRow.getByText('To grade')).toBeVisible();
+    await studentRow.getByRole('button', { name: /Show attempts for QA Student 0/ }).click();
 
-    await page.getByPlaceholder('Score').fill('8');
-    await page.getByPlaceholder('Feedback').fill('QA e2e feedback');
+    await studentRow.getByLabel('Score for attempt 1').fill('8');
+    await studentRow.getByLabel('Feedback for attempt 1').fill('QA e2e feedback');
 
     const gradeResponse = page.waitForResponse(
       (res) =>
@@ -91,11 +84,11 @@ test.describe('Teacher — Assignments', () => {
         res.url().endsWith('/grade') &&
         res.request().method() === 'PATCH',
     );
-    await page.getByRole('button', { name: 'Grade' }).click();
+    await studentRow.getByRole('button', { name: 'Grade', exact: true }).click();
     const gradeRes = await gradeResponse;
     expect(gradeRes.ok(), await gradeRes.text()).toBeTruthy();
 
-    await expect(studentRow.getByText('Graded')).toBeVisible({ timeout: 10000 });
+    await expect(studentRow.getByText('Graded').first()).toBeVisible({ timeout: 10000 });
 
     // Cross-user check: the grade must actually reach the student's own view.
     const studentAssignmentRes = await request.get(`${BACKEND_URL}/student/assignments/${assignmentId}`, {

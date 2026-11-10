@@ -18,6 +18,7 @@ import {
 } from "@/components/teacher/AssignmentAudiencePicker";
 import AssignmentsPageHeader from "@/components/teacher/assignments/AssignmentsPageHeader";
 import AssignmentListPane from "@/components/teacher/assignments/AssignmentListPane";
+import AssignmentsRun from "@/components/teacher/assignments/AssignmentsRun";
 import AssignmentDetailPane from "@/components/teacher/assignments/AssignmentDetailPane";
 import AssignmentFormDrawer, {
   type CreatePayload,
@@ -31,8 +32,15 @@ import {
   type AssignmentDetail,
   type AssignmentsTab,
   type DetailTab,
+  type Stage,
+  stageOf,
+  STAGE_LABEL,
 } from "@/components/teacher/assignments/assignments-shared";
-import { AlertCircle, X } from "lucide-react";
+import { plural } from "@/components/teacher/overview/utils";
+import { AlertCircle, Plus, X } from "lucide-react";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/teacher/assignments/assignments.css";
 import { toast } from "@/components/ui/toast";
 
 type RetakeGrantInfo = {
@@ -85,6 +93,8 @@ export default function TeacherAssignmentsPage() {
   const { selectedSchool } = useTeacherSchool();
   const activeSchoolId = selectedSchool?.id;
   const [tab, setTab] = useState<AssignmentsTab>("daily");
+  const [stage, setStage] = useState<Stage | null>(null);
+  const [now] = useState(() => Date.now());
   const [dailyAssignments, setDailyAssignments] = useState<TeacherAssignment[]>([]);
   const [courseAssignments, setCourseAssignments] = useState<TeacherAssignment[]>([]);
   const [pendingRetakeRequestCount, setPendingRetakeRequestCount] = useState(0);
@@ -142,15 +152,22 @@ export default function TeacherAssignmentsPage() {
     : "Questions are locked while published. Unpublish (with no submissions) to edit questions. Subject, due date, and audience can still be updated.";
 
   const filteredAssignments = useMemo(() => {
-    if (!searchQuery.trim()) return assignments;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     return assignments.filter(
       (a) =>
-        a.title.toLowerCase().includes(q) ||
-        (a.subject ?? "").toLowerCase().includes(q) ||
-        (a.grade_name ?? "").toLowerCase().includes(q)
+        (!stage || stageOf(a, now) === stage) &&
+        (!q ||
+          a.title.toLowerCase().includes(q) ||
+          (a.subject ?? "").toLowerCase().includes(q) ||
+          (a.grade_name ?? "").toLowerCase().includes(q)),
     );
-  }, [assignments, searchQuery]);
+  }, [assignments, searchQuery, stage, now]);
+
+  const stageCounts = useMemo(() => {
+    const c: Record<Stage, number> = { draft: 0, live: 0, past: 0 };
+    assignments.forEach((a) => { c[stageOf(a, now)] += 1; });
+    return c;
+  }, [assignments, now]);
 
   const gradedSubmissions = useMemo(() => submissions.filter((s) => s.status === "graded"), [submissions]);
   const pendingSubmissions = useMemo(() => submissions.filter((s) => s.status !== "graded"), [submissions]);
@@ -394,6 +411,7 @@ export default function TeacherAssignmentsPage() {
     setNotSubmitted([]);
     setAssignmentDetail(null);
     setSearchQuery("");
+    setStage(null);
   }, [tab]);
 
   useEffect(() => {
@@ -975,44 +993,63 @@ export default function TeacherAssignmentsPage() {
     }
   };
 
+  const listTab = tab === "daily" || tab === "course";
+  const status: React.ReactNode =
+    tab === "analytics" ? "Scores and rankings across your assignments."
+    : tab === "requests" ? pendingRetakeRequestCount > 0 ? <><strong>{plural(pendingRetakeRequestCount, "student")}</strong> {pendingRetakeRequestCount === 1 ? "is" : "are"} asking for a retake.</> : "No retake requests are waiting."
+    : assignments.length === 0 ? (tab === "daily" ? "You have not set any daily assignments yet." : "No course assignments are set for your classes yet.")
+    : <><strong>{stageCounts.live} live</strong>, {stageCounts.draft} {stageCounts.draft === 1 ? "draft" : "drafts"}, {plural(statsBar.totalSubs, "submission")} so far.{pendingRetakeRequestCount > 0 ? ` ${plural(pendingRetakeRequestCount, "retake request")} waiting.` : ""}</>;
+
+  const ledger = [
+    { label: "Live now", value: stageCounts.live, hint: "Students can do these" },
+    { label: "Drafts", value: stageCounts.draft, hint: "Not published yet" },
+    { label: "Submissions", value: statsBar.totalSubs, hint: `Across ${plural(statsBar.total, "assignment")}` },
+    { label: "Retake requests", value: pendingRetakeRequestCount, hint: pendingRetakeRequestCount ? "Waiting for you" : "None waiting" },
+  ];
+
   return (
-    <div className="min-h-full bg-white">
-      <AssignmentsPageHeader
-        tab={tab}
-        onTabChange={setTab}
-        pendingRetakeCount={pendingRetakeRequestCount}
-        onNewAssignment={openCreateModal}
-      />
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="tg-title">
+        <div className="sd-hero-copy">
+          <h1 id="tg-title" className="mc-hero-title">Assignments</h1>
+          <p className="sd-where">{selectedSchool?.name ?? "All your schools"}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            {tab === "daily" && <button className="sd-btn sd-btn--amber" onClick={openCreateModal}><Plus aria-hidden="true" />New assignment</button>}
+            {pendingRetakeRequestCount > 0 && tab !== "requests" && <button className={`sd-btn ${tab === "daily" ? "sd-btn--ghost-dark" : "sd-btn--amber"}`} onClick={() => setTab("requests")}>Retake requests ({pendingRetakeRequestCount})</button>}
+          </div>
+        </div>
+        <AssignmentsRun
+          counts={stageCounts}
+          selected={listTab ? stage : null}
+          onSelect={(s) => { if (!listTab) setTab("daily"); setStage(listTab && stage === s ? null : s); }}
+          caption={stage && listTab ? `Showing ${STAGE_LABEL[stage].toLowerCase()} only` : "Press a stop to filter"}
+        />
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Assignment numbers">
+        {ledger.map((m) => (
+          <div key={m.label}><span className="sd-l">{m.label}</span><b className="sd-n">{m.value}</b><small>{m.hint}</small></div>
+        ))}
+      </div>
+
+      <AssignmentsPageHeader tab={tab} onTabChange={setTab} pendingRetakeCount={pendingRetakeRequestCount} />
 
       {error && (
-        <div className="mx-6 mt-4 flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
-            <X className="h-4 w-4" />
-          </button>
+        <div className="tg-error" role="alert">
+          <AlertCircle size={18} aria-hidden="true" />
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} aria-label="Dismiss"><X size={14} aria-hidden="true" /></button>
         </div>
       )}
 
-      {tab === "analytics" && (
-        <div className="px-0 py-4 md:px-6 md:py-6 max-w-6xl mx-auto">
-          <AssignmentAnalyticsPanel loading={analyticsLoading} data={analyticsData} />
-        </div>
-      )}
+      <div id="tg-panel" role="tabpanel" aria-labelledby={`tg-tab-${tab}`} className="mc-swap" key={tab}>
+        {tab === "analytics" && <AssignmentAnalyticsPanel loading={analyticsLoading} data={analyticsData} />}
 
-      {tab === "requests" && (
-        <div className="px-0 py-4 md:px-6 md:py-6 max-w-4xl mx-auto">
-          <TeacherRetakeRequestsPanel />
-        </div>
-      )}
+        {tab === "requests" && <TeacherRetakeRequestsPanel />}
 
-      {(tab === "daily" || tab === "course") && (
-        <div className="flex h-[calc(100vh-9.5rem)] border-t border-gray-100">
-          <div
-            className={`${
-              selectedId ? "hidden lg:flex" : "flex"
-            } w-full lg:w-auto`}
-          >
+        {listTab && (
+          <div className="tg-split" data-has={!!selectedId}>
             <AssignmentListPane
               tab={tab}
               assignments={assignments}
@@ -1023,77 +1060,70 @@ export default function TeacherAssignmentsPage() {
               onSelect={setSelectedId}
               onCreate={tab === "daily" ? openCreateModal : undefined}
               teacherClasses={teacherClasses}
-              stats={statsBar}
+              now={now}
+              filtered={!!stage}
+              onClearFilter={() => setStage(null)}
             />
+            <div className="tg-detail-wrap" style={{ minWidth: 0 }}>
+              <AssignmentDetailPane
+                tab={tab}
+                selectedAssignment={selectedAssignment ?? null}
+                assignmentDetail={assignmentDetail}
+                detailLoading={detailLoading}
+                detailTab={detailTab}
+                onDetailTabChange={setDetailTab}
+                onBack={() => setSelectedId("")}
+                loading={loading}
+                teacherClasses={teacherClasses}
+                submissionsCount={submissions.length}
+                gradedCount={gradedSubmissions.length}
+                pendingCount={pendingSubmissions.length}
+                onEdit={() => void openEditModal()}
+                onTogglePublish={() => selectedAssignment && void handleTogglePublish(selectedAssignment)}
+                onDelete={() => selectedAssignment && void handleDelete(selectedAssignment.id)}
+                onOpenRetakeForAll={() => void handleOpenRetakeForAll()}
+                onGrantRetake={(id) => void handleGrantRetake(id)}
+                onRevokeRetake={(id) => void handleRevokeRetake(id)}
+                grantingStudentId={grantingStudentId}
+                studentRows={studentRows}
+                filteredStudentRows={filteredStudentRows}
+                notSubmitted={notSubmitted}
+                filteredNotSubmitted={filteredNotSubmitted}
+                subSearch={subSearch}
+                onSubSearchChange={setSubSearch}
+                subFilter={subFilter}
+                onSubFilterChange={setSubFilter}
+                expanded={expanded}
+                onToggleExpand={(studentId) =>
+                  setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(studentId)) next.delete(studentId);
+                    else next.add(studentId);
+                    return next;
+                  })
+                }
+                grading={grading}
+                onGradingChange={(id, patch) =>
+                  setGrading((prev) => ({
+                    ...prev,
+                    [id]: {
+                      score: patch.score ?? prev[id]?.score ?? "",
+                      feedback: patch.feedback ?? prev[id]?.feedback ?? "",
+                    },
+                  }))
+                }
+                onGrade={(id) => void handleGrade(id)}
+                retakeRuleLabel={retakeRuleLabel}
+                grantSearch={grantSearch}
+                onGrantSearchChange={setGrantSearch}
+                grantFilter={grantFilter}
+                onGrantFilterChange={setGrantFilter}
+                filteredGrantRows={filteredGrantRows}
+              />
+            </div>
           </div>
-
-          <div
-            className={`${
-              selectedId ? "flex" : "hidden lg:flex"
-            } flex-1 min-w-0`}
-          >
-            <AssignmentDetailPane
-              tab={tab}
-              selectedAssignment={selectedAssignment ?? null}
-              assignmentDetail={assignmentDetail}
-              detailLoading={detailLoading}
-              detailTab={detailTab}
-              onDetailTabChange={setDetailTab}
-              onBack={() => setSelectedId("")}
-              loading={loading}
-              teacherClasses={teacherClasses}
-              submissionsCount={submissions.length}
-              gradedCount={gradedSubmissions.length}
-              pendingCount={pendingSubmissions.length}
-              onEdit={() => void openEditModal()}
-              onTogglePublish={() =>
-                selectedAssignment && void handleTogglePublish(selectedAssignment)
-              }
-              onDelete={() =>
-                selectedAssignment && void handleDelete(selectedAssignment.id)
-              }
-              onOpenRetakeForAll={() => void handleOpenRetakeForAll()}
-              onGrantRetake={(id) => void handleGrantRetake(id)}
-              onRevokeRetake={(id) => void handleRevokeRetake(id)}
-              grantingStudentId={grantingStudentId}
-              studentRows={studentRows}
-              filteredStudentRows={filteredStudentRows}
-              notSubmitted={notSubmitted}
-              filteredNotSubmitted={filteredNotSubmitted}
-              subSearch={subSearch}
-              onSubSearchChange={setSubSearch}
-              subFilter={subFilter}
-              onSubFilterChange={setSubFilter}
-              expanded={expanded}
-              onToggleExpand={(studentId) =>
-                setExpanded((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(studentId)) next.delete(studentId);
-                  else next.add(studentId);
-                  return next;
-                })
-              }
-              grading={grading}
-              onGradingChange={(id, patch) =>
-                setGrading((prev) => ({
-                  ...prev,
-                  [id]: {
-                    score: patch.score ?? prev[id]?.score ?? "",
-                    feedback: patch.feedback ?? prev[id]?.feedback ?? "",
-                  },
-                }))
-              }
-              onGrade={(id) => void handleGrade(id)}
-              retakeRuleLabel={retakeRuleLabel}
-              grantSearch={grantSearch}
-              onGrantSearchChange={setGrantSearch}
-              grantFilter={grantFilter}
-              onGrantFilterChange={setGrantFilter}
-              filteredGrantRows={filteredGrantRows}
-            />
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {modalMode && (
         <AssignmentFormDrawer

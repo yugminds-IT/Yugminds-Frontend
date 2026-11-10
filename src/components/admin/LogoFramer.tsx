@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Minus, Move, Plus, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 /** Zoom multiplier over "fit inside frame"; x/y are offsets as a fraction of the frame size. */
 export type Framing = { zoom: number; x: number; y: number };
@@ -130,7 +129,7 @@ export function LogoFramer({
   const r = nat && frame ? layout(nat.w, nat.h, frame, framing) : null;
 
   return (
-    <div className="space-y-3">
+    <div className="lg-framer">
       <div
         ref={frameRef}
         tabIndex={0}
@@ -155,15 +154,8 @@ export function LogoFramer({
           drag.current = null;
           setDragging(false);
         }}
-        className={`relative mx-auto aspect-square w-full max-w-[320px] overflow-hidden rounded-lg border bg-white touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-          dragging ? "cursor-grabbing" : "cursor-grab"
-        }`}
-        style={{
-          backgroundImage:
-            "linear-gradient(45deg,#f3f4f6 25%,transparent 25%),linear-gradient(-45deg,#f3f4f6 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f3f4f6 75%),linear-gradient(-45deg,transparent 75%,#f3f4f6 75%)",
-          backgroundSize: "16px 16px",
-          backgroundPosition: "0 0,0 8px,8px -8px,-8px 0",
-        }}
+        className="lg-frame"
+        data-dragging={dragging}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -174,21 +166,21 @@ export function LogoFramer({
             const img = e.currentTarget;
             setNat({ w: img.naturalWidth || 300, h: img.naturalHeight || 300 });
           }}
-          className="pointer-events-none absolute max-w-none"
+          className="lg-frame-img"
           style={r ? { width: r.w, height: r.h, left: r.left, top: r.top } : { visibility: "hidden" }}
         />
         {dragging && (
           <>
-            <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-blue-400/60" />
-            <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-blue-400/60" />
+            <div className="lg-guide lg-guide--v" />
+            <div className="lg-guide lg-guide--h" />
           </>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => zoomBy(1 / 1.2)} title="Zoom out">
-          <Minus className="h-4 w-4" />
-        </Button>
+      <div className="lg-zoom">
+        <button type="button" className="pl-ico" onClick={() => zoomBy(1 / 1.2)} title="Zoom out" aria-label="Zoom out">
+          <Minus />
+        </button>
         <input
           type="range"
           min={MIN_ZOOM}
@@ -199,27 +191,25 @@ export function LogoFramer({
             const zoom = Number(e.target.value);
             onChange((f) => ({ zoom, x: (f.x * zoom) / f.zoom, y: (f.y * zoom) / f.zoom }));
           }}
-          className="flex-1 accent-blue-600"
+          className="lg-range"
           aria-label="Zoom"
         />
-        <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => zoomBy(1.2)} title="Zoom in">
-          <Plus className="h-4 w-4" />
-        </Button>
-        <span className="w-12 text-right text-xs tabular-nums text-gray-600">{Math.round(framing.zoom * 100)}%</span>
-        <Button
+        <button type="button" className="pl-ico" onClick={() => zoomBy(1.2)} title="Zoom in" aria-label="Zoom in">
+          <Plus />
+        </button>
+        <output className="lg-zoom-n">{Math.round(framing.zoom * 100)}%</output>
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 shrink-0"
+          className="sd-btn sd-btn--line lg-reset"
           disabled={isDefaultFraming(framing)}
           onClick={() => onChange(DEFAULT_FRAMING)}
           title="Reset to fit"
         >
-          <RotateCcw className="mr-1 h-3.5 w-3.5" /> Reset
-        </Button>
+          <RotateCcw aria-hidden="true" />Reset
+        </button>
       </div>
-      <p className="flex items-center gap-1.5 text-xs text-gray-500">
-        <Move className="h-3.5 w-3.5" /> Drag to move · scroll or use the slider to zoom · arrow keys nudge. The upload matches this frame.
+      <p className="lg-hint">
+        <Move aria-hidden="true" />Drag to move, scroll or use the slider to zoom, arrow keys nudge. The upload matches this frame.
       </p>
     </div>
   );

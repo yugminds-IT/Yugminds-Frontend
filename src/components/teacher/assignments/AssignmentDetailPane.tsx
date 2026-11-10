@@ -1,29 +1,14 @@
 "use client";
 
 import { useState } from "react";
-
-import {
-  Users,
-  RotateCcw,
-  CheckCircle,
-  CheckSquare,
-  Eye,
-  EyeOff,
-  Trash2,
-  RefreshCw,
-  Search,
-  Edit,
-  HelpCircle,
-  Lock,
-  ArrowLeft,
-  Zap,
-  Download,
-} from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Download, Eye, EyeOff, Loader2, Lock, Pencil, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import type { TeacherClass } from "@/components/teacher/AssignmentAudiencePicker";
+import { classLabel, plural } from "@/components/teacher/overview/utils";
 import {
   StatusPill,
   Avatar,
   audienceChipLabel,
+  stageOf,
   type TeacherAssignment,
   type AssignmentDetail,
   type StudentRow,
@@ -80,945 +65,289 @@ type Props = {
   filteredGrantRows: StudentRow[];
 };
 
-function FilterChips<K extends SubFilter>({
-  value,
-  onChange,
-  counts,
-}: {
-  value: K;
-  onChange: (v: K) => void;
-  counts: Record<K, number>;
-}) {
+const FILTERS: Record<string, string> = { all: "All", graded: "Graded", pending: "Waiting", not_submitted: "Not submitted" };
+
+function FilterChips<K extends SubFilter>({ value, onChange, counts, label }: { value: K; onChange: (v: K) => void; counts: Record<K, number>; label: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="as-chips" role="group" aria-label={label}>
       {(Object.keys(counts) as K[]).map((f) => (
-        <button
-          key={f}
-          type="button"
-          onClick={() => onChange(f)}
-          className={`h-9 px-3 text-xs font-medium rounded-lg border transition-colors ${
-            value === f
-              ? "bg-gray-900 text-white border-gray-900"
-              : f === "not_submitted" && counts[f] > 0
-                ? "bg-white text-red-600 border-red-200 hover:border-red-300"
-                : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-          }`}
-        >
-          {f === "not_submitted"
-            ? "Not submitted"
-            : f.charAt(0).toUpperCase() + f.slice(1)}
-          <span className="ml-1.5 opacity-70">{counts[f]}</span>
+        <button key={f} type="button" className="as-chip" aria-pressed={value === f} onClick={() => onChange(f)}>
+          {FILTERS[f] ?? f}<b>{counts[f]}</b>
         </button>
       ))}
     </div>
   );
 }
 
+const pctOf = (score: number | null | undefined, max: number | null | undefined) => (score != null && max ? Math.round((score / max) * 100) : null);
+const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "");
+
+/** One assignment: who has handed it in and how they scored, its questions, and who may retake it. */
 export default function AssignmentDetailPane(props: Props) {
   const {
-    tab,
-    selectedAssignment,
-    assignmentDetail,
-    detailLoading,
-    detailTab,
-    onDetailTabChange,
-    onBack,
-    loading,
-    teacherClasses,
-    submissionsCount,
-    gradedCount,
-    pendingCount,
-    onEdit,
-    onTogglePublish,
-    onDelete,
-    onOpenRetakeForAll,
-    onGrantRetake,
-    onRevokeRetake,
-    grantingStudentId,
-    studentRows,
-    filteredStudentRows,
-    notSubmitted,
-    filteredNotSubmitted,
-    subSearch,
-    onSubSearchChange,
-    subFilter,
-    onSubFilterChange,
-    expanded,
-    onToggleExpand,
-    grading,
-    onGradingChange,
-    onGrade,
-    retakeRuleLabel,
-    grantSearch,
-    onGrantSearchChange,
-    grantFilter,
-    onGrantFilterChange,
-    filteredGrantRows,
+    tab, selectedAssignment, assignmentDetail, detailLoading, detailTab, onDetailTabChange, onBack, loading, teacherClasses,
+    submissionsCount, gradedCount, pendingCount, onEdit, onTogglePublish, onDelete, onOpenRetakeForAll, onGrantRetake, onRevokeRetake,
+    grantingStudentId, studentRows, filteredStudentRows, notSubmitted, filteredNotSubmitted, subSearch, onSubSearchChange, subFilter,
+    onSubFilterChange, expanded, onToggleExpand, grading, onGradingChange, onGrade, retakeRuleLabel, grantSearch, onGrantSearchChange,
+    grantFilter, onGrantFilterChange, filteredGrantRows,
   } = props;
   const [reportOpen, setReportOpen] = useState(false);
+  const [now] = useState(() => Date.now());
 
   if (!selectedAssignment) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-8 py-16 bg-white">
-        <p className="text-base font-medium text-gray-700 mb-1">
-          Select an assignment
-        </p>
-        <p className="text-sm text-gray-400 max-w-xs">
-          Choose one from the list to view submissions, grade students, and
-          manage retakes.
-        </p>
+      <div className="sd-panel tg-detail">
+        <div className="tg-empty">
+          <b>Pick an assignment</b>
+          <p>Open one from the list to see who has handed it in, grade it, and manage retakes.</p>
+        </div>
       </div>
     );
   }
 
-  const audience = audienceChipLabel(selectedAssignment, teacherClasses);
-  const filterCounts = {
-    all: studentRows.length,
-    graded: studentRows.filter((r) => r.best).length,
-    pending: studentRows.filter((r) => !r.best).length,
-  };
-  const subFilterCounts = {
-    ...filterCounts,
-    not_submitted: notSubmitted.length,
-  };
+  const a = selectedAssignment;
+  const audience = audienceChipLabel(a, teacherClasses);
+  const filterCounts = { all: studentRows.length, graded: studentRows.filter((r) => r.best).length, pending: studentRows.filter((r) => !r.best).length };
+  const subFilterCounts = { ...filterCounts, not_submitted: notSubmitted.length };
+  const locked = tab === "daily" && !detailLoading && (a.is_published || (a.submission_count ?? 0) > 0 || (assignmentDetail?.submission_count ?? 0) > 0);
+  const hasSubs = (a.submission_count ?? assignmentDetail?.submission_count ?? 0) > 0;
+  const questions = assignmentDetail?.questions ?? [];
 
   return (
-    <div className="flex-1 overflow-y-auto bg-white">
-      <div className="p-5 lg:p-6 max-w-4xl">
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="lg:hidden mb-4 inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to list
-          </button>
-        )}
+    <div className="sd-panel tg-detail">
+      {onBack && <button type="button" className="tg-back" onClick={onBack}><ArrowLeft aria-hidden="true" />Back to the list</button>}
 
-        {/* Header */}
-        <div className="mb-5 pb-5 border-b border-gray-100">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5">
-                <StatusPill published={selectedAssignment.is_published} />
-                <span className="text-[11px] text-gray-400 capitalize">
-                  {selectedAssignment.assignment_type?.toLowerCase() ?? tab}
-                </span>
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 leading-snug">
-                {selectedAssignment.title}
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {[
-                  selectedAssignment.subject ?? "General",
-                  audience,
-                  selectedAssignment.total_marks
-                    ? `${selectedAssignment.total_marks} marks`
-                    : null,
-                  selectedAssignment.due_date
-                    ? `Due ${new Date(selectedAssignment.due_date).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {tab === "daily" && (
-                <button
-                  type="button"
-                  onClick={onEdit}
-                  disabled={loading}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <Edit className="h-3.5 w-3.5" /> Edit
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onTogglePublish}
-                disabled={loading}
-                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                {selectedAssignment.is_published ? (
-                  <>
-                    <EyeOff className="h-3.5 w-3.5" /> Unpublish
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-3.5 w-3.5" /> Publish
-                  </>
-                )}
-              </button>
-              {tab === "daily" && (
-                <button
-                  type="button"
-                  onClick={onDelete}
-                  disabled={loading}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </button>
-              )}
-            </div>
+      <div className="tg-head">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="tg-badges">
+            <StatusPill stage={stageOf(a, now)} />
+            <span className="tg-chip">{a.assignment_type?.toLowerCase() === "course" || tab === "course" ? "Course" : "Daily"}</span>
           </div>
-          <p className="text-xs text-gray-500">
-            {studentRows.length} submitted ·{" "}
-            <span className={notSubmitted.length ? "text-red-600" : ""}>
-              {notSubmitted.length} not submitted
-            </span>{" "}
-            · {submissionsCount} attempt{submissionsCount !== 1 ? "s" : ""} ·{" "}
-            {gradedCount} graded · {pendingCount} pending
+          <h2>{a.title}</h2>
+          <p>
+            {[a.subject ?? "General", audience, a.total_marks ? `${a.total_marks} marks` : null, a.due_date ? `Due ${new Date(a.due_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : null].filter(Boolean).join(", ")}
           </p>
         </div>
-
-        {/* Detail tabs */}
-        <div className="flex gap-4 border-b border-gray-100 mb-5">
-          {(
-            [
-              { key: "submissions" as const, label: "Submissions", icon: Users },
-              { key: "questions" as const, label: "Questions", icon: HelpCircle },
-              { key: "retake" as const, label: "Retakes", icon: RotateCcw },
-            ] as const
-          ).map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onDetailTabChange(key)}
-              className={`relative flex items-center gap-1.5 pb-2.5 text-sm font-medium transition-colors ${
-                detailTab === key
-                  ? "text-gray-900"
-                  : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-              {key === "questions" && assignmentDetail?.questions?.length
-                ? ` (${assignmentDetail.questions.length})`
-                : ""}
-              {detailTab === key && (
-                <span className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-600 rounded-full" />
-              )}
-            </button>
-          ))}
+        <div className="tg-acts">
+          {tab === "daily" && <button type="button" className="sd-btn sd-btn--line" onClick={onEdit} disabled={loading}><Pencil aria-hidden="true" />Edit</button>}
+          <button type="button" className="sd-btn sd-btn--line" onClick={onTogglePublish} disabled={loading}>
+            {a.is_published ? <><EyeOff aria-hidden="true" />Unpublish</> : <><Eye aria-hidden="true" />Publish</>}
+          </button>
+          {tab === "daily" && <button type="button" className="sd-btn sd-btn--danger" onClick={onDelete} disabled={loading}><Trash2 aria-hidden="true" />Delete</button>}
         </div>
+      </div>
 
-        {/* Submissions */}
-        {detailTab === "submissions" && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                <input
-                  placeholder="Search students…"
-                  value={subSearch}
-                  onChange={(e) => onSubSearchChange(e.target.value)}
-                  className="w-full h-9 pl-8 pr-3 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-                />
-              </div>
-              <FilterChips
-                value={subFilter}
-                onChange={onSubFilterChange}
-                counts={subFilterCounts}
-              />
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                disabled={studentRows.length + notSubmitted.length === 0}
-                className="h-9 inline-flex items-center gap-1.5 text-xs font-medium px-3 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-              >
-                <Download className="h-3.5 w-3.5" /> Download report
-              </button>
-            </div>
-            {reportOpen && (
-              <ReportDownloadDialog
-                assignment={selectedAssignment}
-                rows={studentRows}
-                missing={notSubmitted}
-                onClose={() => setReportOpen(false)}
-              />
-            )}
+      <div className="tg-facts" role="group" aria-label="Where this assignment stands">
+        <div><b>{studentRows.length}</b><small>Handed in</small></div>
+        <div data-hot={notSubmitted.length > 0}><b>{notSubmitted.length}</b><small>Not handed in</small></div>
+        <div><b>{submissionsCount}</b><small>{submissionsCount === 1 ? "Attempt" : "Attempts"}</small></div>
+        <div><b>{gradedCount}</b><small>Graded</small></div>
+        <div><b>{pendingCount}</b><small>To grade</small></div>
+      </div>
 
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              {subFilter === "not_submitted" ? (
-                filteredNotSubmitted.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400 text-sm">
-                    {notSubmitted.length === 0
-                      ? "Every targeted student has submitted"
-                      : "No students match your search"}
-                  </div>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                          Student
-                        </th>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                          Class
-                        </th>
-                        <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredNotSubmitted.map((row) => (
-                        <tr key={row.student_id}>
-                          <td className="px-3 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <Avatar
-                                name={row.student_name}
-                                color={tab === "course" ? "indigo" : "blue"}
-                              />
-                              <span className="font-medium text-gray-900">
-                                {row.student_name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 text-xs text-gray-500">
-                            {[row.grade, row.section].filter(Boolean).join("-") ||
-                              "—"}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            <span className="text-[11px] font-medium text-red-600">
-                              Not submitted
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )
-              ) : studentRows.length === 0 ? (
-                <div className="text-center py-14 text-gray-400">
-                  <p className="text-sm font-medium text-gray-500">
-                    No submissions yet
-                  </p>
-                  <p className="text-xs mt-1">
-                    Students haven&apos;t submitted this assignment
-                  </p>
-                </div>
-              ) : filteredStudentRows.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 text-sm">
-                  No students match your search
-                </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-3 py-2.5 w-8" />
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                        Student
-                      </th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide hidden md:table-cell">
-                        Class
-                      </th>
-                      <th className="px-3 py-2.5 text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                        Attempts
-                      </th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                        {retakeRuleLabel}
-                      </th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredStudentRows.map((row) => {
-                      const isExpanded = expanded.has(row.student_id);
-                      const best = row.best;
-                      const latest = row.latest;
-                      const pct =
-                        best && best.max_score
-                          ? Math.round((best.score! / best.max_score) * 100)
-                          : null;
-                      const scoreColor =
-                        pct == null
-                          ? ""
-                          : pct >= 75
-                            ? "text-emerald-700"
-                            : pct >= 50
-                              ? "text-amber-600"
-                              : "text-red-600";
+      <div className="mc-tabs" role="tablist" aria-label="Assignment sections" style={{ justifySelf: "start" }}>
+        {([["submissions", "Submissions", studentRows.length], ["questions", "Questions", questions.length], ["retake", "Retakes", null]] as const).map(([key, label, n]) => (
+          <button key={key} type="button" role="tab" aria-selected={detailTab === key} className="mc-tab" onClick={() => onDetailTabChange(key)}>
+            {label}{n != null && <b>{n}</b>}
+          </button>
+        ))}
+      </div>
 
-                      return [
-                        <tr
-                          key={`row-${row.student_id}`}
-                          className="hover:bg-gray-50/80 cursor-pointer"
-                          onClick={() => onToggleExpand(row.student_id)}
-                        >
-                          <td className="px-3 py-3 text-gray-400 text-xs">
-                            {row.attempts.length > 1
-                              ? isExpanded
-                                ? "▾"
-                                : "▸"
-                              : ""}
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <Avatar
-                                name={row.student_name}
-                                color={tab === "course" ? "indigo" : "blue"}
-                              />
-                              <span className="font-medium text-gray-900">
-                                {row.student_name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 hidden md:table-cell text-xs text-gray-500">
-                            {[row.grade, row.section].filter(Boolean).join("-") ||
-                              "—"}
-                          </td>
-                          <td className="px-3 py-3 text-center text-xs text-gray-600">
-                            {row.attempts.length > 1 && (
-                              <RotateCcw className="h-3 w-3 text-amber-500 inline mr-1" />
-                            )}
-                            {row.attempts.length}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {best ? (
-                              <span className={`text-sm font-semibold ${scoreColor}`}>
-                                {best.score}/{best.max_score}
-                                {pct != null && (
-                                  <span className="text-xs font-normal text-gray-400 ml-1">
-                                    ({pct}%)
-                                  </span>
-                                )}
-                              </span>
-                            ) : latest.status !== "graded" ? (
-                              <span className="text-xs text-gray-400">Pending</span>
-                            ) : (
-                              <span className="text-xs text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            {best ? (
-                              <span className="text-[11px] font-medium text-emerald-700">
-                                Graded
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-medium text-amber-700">
-                                Pending
-                              </span>
-                            )}
-                          </td>
-                        </tr>,
-                        ...(isExpanded
-                          ? [
-                              <tr
-                                key={`exp-${row.student_id}`}
-                                className="bg-gray-50/50"
-                              >
-                                <td colSpan={6} className="px-4 py-3">
-                                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                                    <table className="w-full text-sm">
-                                      <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-100 text-[11px] text-gray-400 uppercase tracking-wide">
-                                          <th className="px-3 py-2 text-left font-semibold">
-                                            Attempt
-                                          </th>
-                                          <th className="px-3 py-2 text-left font-semibold">
-                                            Submitted
-                                          </th>
-                                          <th className="px-3 py-2 text-center font-semibold">
-                                            Type
-                                          </th>
-                                          <th className="px-3 py-2 text-right font-semibold">
-                                            Score
-                                          </th>
-                                          <th className="px-3 py-2 text-left font-semibold">
-                                            Feedback
-                                          </th>
-                                          <th className="px-3 py-2 font-semibold">
-                                            Action
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-gray-100">
-                                        {row.attempts.map((att) => (
-                                          <tr
-                                            key={att.id}
-                                            className={
-                                              att.id === best?.id
-                                                ? "bg-emerald-50/30"
-                                                : ""
-                                            }
-                                          >
-                                            <td className="px-3 py-2.5 font-medium text-gray-700">
-                                              #{att.attempt_number}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-gray-500 text-xs">
-                                              {att.submitted_at
-                                                ? new Date(
-                                                    att.submitted_at,
-                                                  ).toLocaleDateString("en-IN", {
-                                                    day: "numeric",
-                                                    month: "short",
-                                                  })
-                                                : "—"}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-center text-xs">
-                                              {att.is_retake ? (
-                                                <span className="text-amber-700 font-medium">
-                                                  Retake
-                                                </span>
-                                              ) : (
-                                                <span className="text-gray-400">
-                                                  Initial
-                                                </span>
-                                              )}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-right font-medium text-gray-700">
-                                              {att.status === "graded"
-                                                ? `${att.score}/${att.max_score}`
-                                                : "—"}
-                                              {att.id === best?.id && (
-                                                <span className="ml-1.5 text-[10px] font-medium text-emerald-700">
-                                                  {retakeRuleLabel}
-                                                </span>
-                                              )}
-                                            </td>
-                                            <td className="px-3 py-2.5 text-gray-500 text-xs max-w-[180px] truncate">
-                                              {att.feedback ?? "—"}
-                                            </td>
-                                            <td className="px-3 py-2.5">
-                                              {att.status !== "graded" ? (
-                                                <div className="flex items-center gap-2">
-                                                  <input
-                                                    type="number"
-                                                    placeholder="Score"
-                                                    className="w-20 h-9 px-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/30"
-                                                    value={
-                                                      grading[att.id]?.score ??
-                                                      ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      onGradingChange(att.id, {
-                                                        score: e.target.value,
-                                                      })
-                                                    }
-                                                    onClick={(e) =>
-                                                      e.stopPropagation()
-                                                    }
-                                                  />
-                                                  <input
-                                                    type="text"
-                                                    placeholder="Feedback"
-                                                    className="w-36 h-9 px-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/30"
-                                                    value={
-                                                      grading[att.id]
-                                                        ?.feedback ?? ""
-                                                    }
-                                                    onChange={(e) =>
-                                                      onGradingChange(att.id, {
-                                                        feedback:
-                                                          e.target.value,
-                                                      })
-                                                    }
-                                                    onClick={(e) =>
-                                                      e.stopPropagation()
-                                                    }
-                                                  />
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      onGrade(att.id);
-                                                    }}
-                                                    disabled={loading}
-                                                    className="h-9 px-3 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-50"
-                                                  >
-                                                    Grade
-                                                  </button>
-                                                </div>
-                                              ) : (
-                                                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
-                                                  <CheckCircle className="h-3.5 w-3.5" />{" "}
-                                                  Graded
-                                                </span>
-                                              )}
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </td>
-                              </tr>,
-                            ]
-                          : []),
-                      ];
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
+      {detailTab === "submissions" && (
+        <div className="tg-detail" style={{ gap: "0.9rem" }}>
+          <div className="tg-bar">
+            <input type="search" className="sd-field" placeholder="Search students" aria-label="Search students" value={subSearch} onChange={(e) => onSubSearchChange(e.target.value)} />
+            <FilterChips label="Show" value={subFilter} onChange={onSubFilterChange} counts={subFilterCounts} />
+            <button type="button" className="sd-btn sd-btn--line tg-btn" onClick={() => setReportOpen(true)} disabled={studentRows.length + notSubmitted.length === 0}><Download aria-hidden="true" />Download report</button>
           </div>
-        )}
+          {reportOpen && <ReportDownloadDialog assignment={a} rows={studentRows} missing={notSubmitted} onClose={() => setReportOpen(false)} />}
 
-        {/* Questions */}
-        {detailTab === "questions" && (
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="text-sm text-gray-500">
-                {detailLoading
-                  ? "Loading questions…"
-                  : `${assignmentDetail?.questions?.length ?? 0} question${
-                      (assignmentDetail?.questions?.length ?? 0) !== 1
-                        ? "s"
-                        : ""
-                    }`}
-                {assignmentDetail?.description && (
-                  <span className="block text-xs text-gray-400 mt-0.5">
-                    {assignmentDetail.description}
-                  </span>
-                )}
-                {tab === "daily" &&
-                  !detailLoading &&
-                  (selectedAssignment.is_published ||
-                    (selectedAssignment.submission_count ?? 0) > 0 ||
-                    (assignmentDetail?.submission_count ?? 0) > 0) && (
-                    <span className="mt-1 flex items-center gap-1 text-xs text-amber-700">
-                      <Lock className="h-3 w-3" />
-                      Questions are locked
-                      {(selectedAssignment.submission_count ??
-                        assignmentDetail?.submission_count ??
-                        0) > 0
-                        ? " because students have submitted"
-                        : " while published"}
-                      .
-                    </span>
-                  )}
+          {subFilter === "not_submitted" ? (
+            filteredNotSubmitted.length === 0 ? (
+              <div className="sd-empty"><b>{notSubmitted.length === 0 ? "Everyone has handed it in" : "No students match"}</b><p>{notSubmitted.length === 0 ? "Every student this was set for has submitted." : "Try a different search."}</p></div>
+            ) : (
+              <div className="tg-rows">
+                {filteredNotSubmitted.map((row) => (
+                  <div key={row.student_id} className="tg-item-wrap">
+                    <div className="tg-srow" style={{ gridTemplateColumns: "2.4rem minmax(0, 1fr) auto" }}>
+                      <Avatar name={row.student_name} />
+                      <span className="tg-who"><b>{row.student_name}</b><small>{classLabel(row.grade, row.section) || "No class"}</small></span>
+                      <span className="tg-chip" data-s="missing">Not handed in</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              {tab === "daily" && (
-                <button
-                  type="button"
-                  onClick={onEdit}
-                  disabled={loading || detailLoading}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-                >
-                  <Edit className="h-3.5 w-3.5" /> Edit
-                </button>
-              )}
-            </div>
-
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              {detailLoading ? (
-                <div className="text-center py-14 text-gray-400 text-sm">
-                  Loading questions…
-                </div>
-              ) : !assignmentDetail?.questions?.length ? (
-                <div className="text-center py-14 text-gray-400">
-                  <p className="text-sm font-medium text-gray-500">
-                    No questions yet
-                  </p>
-                  <p className="text-xs mt-1">
-                    {tab === "daily"
-                      ? "Edit this assignment to add questions."
-                      : "This course assignment has no questions attached."}
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {assignmentDetail.questions.map((question, index) => {
-                    const options = Array.isArray(question.options)
-                      ? question.options
-                      : [];
-                    const answer = (question.correct_answer || "").trim();
-                    return (
-                      <div key={question.id || index} className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xs font-semibold text-gray-600">
-                            {index + 1}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm text-gray-900">
-                              {question.question_text}
-                            </p>
-                            <p className="mt-0.5 mb-2 text-xs text-gray-500">
-                              {question.question_type === "FillBlank"
-                                ? "Fill in the blank"
-                                : "Multiple choice"}
-                              <span className="mx-1.5 text-gray-300">·</span>
-                              {question.marks} mark
-                              {question.marks !== 1 ? "s" : ""}
-                            </p>
-                            {question.question_type !== "FillBlank" &&
-                              options.length > 0 && (
-                                <div className="space-y-0.5">
-                                  {options.map((option, optIndex) => {
-                                    const isCorrect =
-                                      option.trim().toLowerCase() ===
-                                      answer.toLowerCase();
-                                    return (
-                                      <div
-                                        key={optIndex}
-                                        className={`text-xs ${
-                                          isCorrect
-                                            ? "font-medium text-green-700"
-                                            : "text-gray-500"
-                                        }`}
-                                      >
-                                        {String.fromCharCode(65 + optIndex)}.{" "}
-                                        {option}
-                                        {isCorrect && (
-                                          <CheckSquare className="ml-1 inline h-3 w-3" />
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            {question.question_type === "FillBlank" && (
-                              <p className="text-xs text-gray-500">
-                                Answer:{" "}
-                                <span className="font-medium text-green-700">
-                                  {answer || "—"}
+            )
+          ) : studentRows.length === 0 ? (
+            <div className="sd-empty"><b>No submissions yet</b><p>Students have not handed this in. They show up here as they do.</p></div>
+          ) : filteredStudentRows.length === 0 ? (
+            <div className="sd-empty"><b>No students match</b><p>Try a different search or filter.</p></div>
+          ) : (
+            <div className="tg-rows">
+              <div className="tg-srow tg-head-row"><span /><span>Student</span><span>Attempts</span><span>{retakeRuleLabel}</span><span>Status</span><span /></div>
+              {filteredStudentRows.map((row) => {
+                const open = expanded.has(row.student_id);
+                const best = row.best;
+                const pct = pctOf(best?.score, best?.max_score);
+                const many = row.attempts.length > 1;
+                return (
+                  <div key={row.student_id} className="tg-item-wrap">
+                    <div className="tg-srow">
+                      <Avatar name={row.student_name} />
+                      <button type="button" className="tg-who" onClick={() => onToggleExpand(row.student_id)} aria-expanded={open}>
+                        <b>{row.student_name}</b>
+                        <small>{classLabel(row.grade, row.section) || "No class"}</small>
+                      </button>
+                      <span className="tg-tries">{many && <RotateCcw aria-hidden="true" />}{plural(row.attempts.length, "try", "tries")}</span>
+                      <span className="tg-score" data-none={!best}>
+                        {best ? (
+                          <>
+                            <b>{best.score}/{best.max_score}{pct != null && <> <small>{pct}%</small></>}</b>
+                            {pct != null && <span className="sd-meter" data-t={pct < 50 ? "low" : undefined}><i style={{ "--p": `${pct}%` } as React.CSSProperties} /></span>}
+                          </>
+                        ) : <b>{row.latest.status !== "graded" ? "Waiting" : "–"}</b>}
+                      </span>
+                      <span className="tg-chip" data-s={best ? "graded" : "pending"}>{best ? "Graded" : "To grade"}</span>
+                      <button type="button" className="pl-ico" onClick={() => onToggleExpand(row.student_id)} aria-label={`${open ? "Hide" : "Show"} attempts for ${row.student_name}`} aria-expanded={open}>
+                        <ChevronDown style={{ transition: "rotate 0.2s ease", rotate: open ? "180deg" : "0deg" }} />
+                      </button>
+                    </div>
+                    {open && (
+                      <div className="tg-attempts">
+                        <ol aria-label={`Attempts by ${row.student_name}`}>
+                          {row.attempts.map((att) => (
+                            <li key={att.id} className="tg-att" data-best={att.id === best?.id}>
+                              <span><b>Attempt {att.attempt_number}</b><small>{when(att.submitted_at)}</small></span>
+                              <span>{att.is_retake ? "Retake" : "First try"}</span>
+                              <span>{att.status === "graded" ? <b>{att.score}/{att.max_score}</b> : "–"}{att.id === best?.id && <small>Counts: {retakeRuleLabel.toLowerCase()}</small>}</span>
+                              {att.status !== "graded" ? (
+                                <span className="tg-grade">
+                                  <input type="number" className="sd-field" placeholder="Score" aria-label={`Score for attempt ${att.attempt_number}`} value={grading[att.id]?.score ?? ""} onChange={(e) => onGradingChange(att.id, { score: e.target.value })} />
+                                  <input type="text" className="sd-field" placeholder="Feedback" aria-label={`Feedback for attempt ${att.attempt_number}`} value={grading[att.id]?.feedback ?? ""} onChange={(e) => onGradingChange(att.id, { feedback: e.target.value })} />
+                                  <button type="button" className="sd-btn sd-btn--amber tg-btn" onClick={() => onGrade(att.id)} disabled={loading}><Check aria-hidden="true" />Grade</button>
                                 </span>
-                                {options.length > 0 && (
-                                  <>
-                                    <span className="mx-1.5 text-gray-300">·</span>
-                                    Wrong choices:{" "}
-                                    <span className="text-red-600">
-                                      {options.join(", ")}
-                                    </span>
-                                  </>
-                                )}
-                              </p>
-                            )}
-                          </div>
+                              ) : (
+                                <span className="tg-att-last"><span className="tg-chip" data-s="graded"><Check aria-hidden="true" />Graded</span>{att.feedback && <span className="tg-note"> {att.feedback}</span>}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {detailTab === "questions" && (
+        <div className="tg-detail" style={{ gap: "0.9rem" }}>
+          <div className="tg-head">
+            <div>
+              <p style={{ marginTop: 0 }}>{detailLoading ? "Loading questions…" : plural(questions.length, "question")}</p>
+              {assignmentDetail?.description && <p className="tg-note">{assignmentDetail.description}</p>}
+              {locked && <p className="tg-lock"><Lock aria-hidden="true" />Questions are locked {hasSubs ? "because students have handed this in" : "while it is published"}.</p>}
+            </div>
+            {tab === "daily" && <button type="button" className="sd-btn sd-btn--line" onClick={onEdit} disabled={loading || detailLoading}><Pencil aria-hidden="true" />Edit</button>}
+          </div>
+
+          {detailLoading ? (
+            <div className="sd-skel" style={{ height: "8rem" }} />
+          ) : questions.length === 0 ? (
+            <div className="sd-empty"><b>No questions yet</b><p>{tab === "daily" ? "Edit this assignment to add questions." : "This course assignment has no questions attached."}</p></div>
+          ) : (
+            <ol className="tg-qs">
+              {questions.map((q, i) => {
+                const options = Array.isArray(q.options) ? q.options : [];
+                const answer = (q.correct_answer || "").trim();
+                return (
+                  <li key={q.id || i} className="tg-q">
+                    <div>
+                      <p>{q.question_text}</p>
+                      <small>{q.question_type === "FillBlank" ? "Fill in the blank" : "Multiple choice"}, {plural(q.marks, "mark")}</small>
+                      {q.question_type !== "FillBlank" && options.length > 0 && (
+                        <ul className="tg-opts">
+                          {options.map((o, oi) => (
+                            <li key={oi} data-ok={o.trim().toLowerCase() === answer.toLowerCase()}>{String.fromCharCode(65 + oi)}. {o}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {q.question_type === "FillBlank" && (
+                        <small style={{ margin: 0 }}>
+                          Answer: <b style={{ color: "var(--sd-ink)" }}>{answer || "–"}</b>
+                          {options.length > 0 && <> . Wrong choices: {options.join(", ")}</>}
+                        </small>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      )}
+
+      {detailTab === "retake" && (
+        <div className="tg-detail" style={{ gap: "0.9rem" }}>
+          <div className="tg-box">
+            <div>
+              <b>Open a retake for everyone</b>
+              <p>Lets every student who has handed this in try again. The {retakeRuleLabel.toLowerCase()} counts.</p>
+            </div>
+            <button type="button" className="sd-btn sd-btn--ink tg-btn" onClick={onOpenRetakeForAll} disabled={loading}><RefreshCw aria-hidden="true" />Open the window</button>
+          </div>
+
+          <div>
+            <h3 className="tg-h3">Give one student a retake</h3>
+            <p className="tg-note">Anyone who has already handed it in.</p>
+          </div>
+
+          {studentRows.length === 0 ? (
+            <div className="sd-empty"><b>Nobody has handed it in yet</b><p>Students must submit before you can give them a retake.</p></div>
+          ) : (
+            <>
+              <div className="tg-bar">
+                <input type="search" className="sd-field" placeholder="Search by name, grade or section" aria-label="Search students for a retake" value={grantSearch} onChange={(e) => onGrantSearchChange(e.target.value)} />
+                <FilterChips label="Show" value={grantFilter} onChange={(v) => onGrantFilterChange(v as "all" | "graded" | "pending")} counts={filterCounts as Record<SubFilter, number>} />
+              </div>
+              {filteredGrantRows.length === 0 ? (
+                <div className="sd-empty"><b>No students match</b><p>Try a different search.</p></div>
+              ) : (
+                <div className="tg-rows">
+                  {filteredGrantRows.map((row) => {
+                    const busy = grantingStudentId === row.student_id;
+                    return (
+                      <div key={row.student_id} className="tg-item-wrap">
+                        <div className="tg-grant">
+                          <Avatar name={row.student_name} />
+                          <span className="tg-who"><b>{row.student_name}</b><small>{classLabel(row.grade, row.section) || "No class"}</small></span>
+                          <span className="tg-tries">{plural(row.attempts.length, "try", "tries")}</span>
+                          <span className="tg-score" data-none={!row.best}><b>{row.best ? `${row.best.score}/${row.best.max_score}` : "Waiting"}</b></span>
+                          <span>
+                            {row.retake_granted ? <span className="tg-chip" data-s="granted">Granted{row.retake_grant_count > 1 ? ` x${row.retake_grant_count}` : ""}</span>
+                              : row.retake_grant_count > 0 ? <span className="tg-note">Used or revoked (x{row.retake_grant_count})</span> : null}
+                          </span>
+                          {row.retake_granted ? (
+                            <button type="button" className="sd-btn sd-btn--line tg-btn" onClick={() => onRevokeRetake(row.student_id)} disabled={loading || busy}>
+                              {busy ? <><Loader2 className="animate-spin" aria-hidden="true" />Updating</> : "Revoke"}
+                            </button>
+                          ) : (
+                            <button type="button" className="sd-btn sd-btn--ink tg-btn" onClick={() => onGrantRetake(row.student_id)} disabled={loading || busy}>
+                              {busy ? <><Loader2 className="animate-spin" aria-hidden="true" />Granting</> : <><RotateCcw aria-hidden="true" />Give retake</>}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Retakes */}
-        {detailTab === "retake" && (
-          <div className="space-y-5">
-            <div className="border border-gray-200 rounded-lg p-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Zap className="h-4 w-4 text-gray-500" />
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    Open retake for all
-                  </h3>
-                </div>
-                <p className="text-xs text-gray-500 max-w-md">
-                  Allow every student who has submitted to retake this
-                  assignment.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onOpenRetakeForAll}
-                disabled={loading}
-                className="inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg disabled:opacity-50"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Open window
-              </button>
-            </div>
-
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-900">
-                  Grant to a student
-                </h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Grant an individual retake to anyone who already submitted.
-                </p>
-              </div>
-
-              {studentRows.length === 0 ? (
-                <div className="px-4 py-10 text-center text-xs text-gray-400">
-                  No submissions yet — students must submit before you can grant
-                  a retake.
-                </div>
-              ) : (
-                <>
-                  <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-                    <div className="relative flex-1 min-w-[180px]">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                      <input
-                        placeholder="Search by name, grade or section…"
-                        value={grantSearch}
-                        onChange={(e) => onGrantSearchChange(e.target.value)}
-                        className="w-full h-9 pl-8 pr-3 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/30 bg-white"
-                      />
-                    </div>
-                    <FilterChips
-                      value={grantFilter}
-                      onChange={onGrantFilterChange}
-                      counts={filterCounts}
-                    />
-                  </div>
-
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50/60 border-b border-gray-100 text-[11px] text-gray-400 uppercase tracking-wide">
-                        <th className="px-4 py-2.5 text-left font-semibold">
-                          Student
-                        </th>
-                        <th className="px-3 py-2.5 text-left font-semibold hidden sm:table-cell">
-                          Class
-                        </th>
-                        <th className="px-3 py-2.5 text-center font-semibold">
-                          Attempts
-                        </th>
-                        <th className="px-3 py-2.5 text-center font-semibold">
-                          {retakeRuleLabel}
-                        </th>
-                        <th className="px-3 py-2.5 text-center font-semibold">
-                          Access
-                        </th>
-                        <th className="px-4 py-2.5 text-right font-semibold">
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredGrantRows.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="px-4 py-10 text-center text-xs text-gray-400"
-                          >
-                            No students match your search
-                          </td>
-                        </tr>
-                      ) : null}
-                      {filteredGrantRows.map((row) => {
-                        const isGranting =
-                          grantingStudentId === row.student_id;
-                        const pct =
-                          row.best && row.best.max_score
-                            ? Math.round(
-                                (row.best.score! / row.best.max_score) * 100,
-                              )
-                            : null;
-                        const scoreColor =
-                          pct == null
-                            ? "text-gray-400"
-                            : pct >= 75
-                              ? "text-emerald-600"
-                              : pct >= 50
-                                ? "text-amber-600"
-                                : "text-red-600";
-
-                        return (
-                          <tr
-                            key={row.student_id}
-                            className="hover:bg-gray-50/60"
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2.5">
-                                <Avatar name={row.student_name} />
-                                <span className="font-medium text-gray-900">
-                                  {row.student_name}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-3 py-3 text-xs text-gray-500 hidden sm:table-cell">
-                              {[row.grade, row.section]
-                                .filter(Boolean)
-                                .join("-") || "—"}
-                            </td>
-                            <td className="px-3 py-3 text-center text-xs text-gray-600">
-                              {row.attempts.length}
-                            </td>
-                            <td className="px-3 py-3 text-center">
-                              {row.best ? (
-                                <span
-                                  className={`text-sm font-semibold ${scoreColor}`}
-                                >
-                                  {row.best.score}/{row.best.max_score}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-amber-600">
-                                  Pending
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-3 text-center">
-                              {row.retake_granted ? (
-                                <div className="inline-flex flex-col items-center gap-0.5">
-                                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                    Granted
-                                  </span>
-                                  <span className="text-[10px] text-gray-400">
-                                    ×{row.retake_grant_count || 1}
-                                  </span>
-                                </div>
-                              ) : row.retake_grant_count > 0 ? (
-                                <span className="text-[11px] text-gray-400">
-                                  Used or revoked (×{row.retake_grant_count})
-                                </span>
-                              ) : (
-                                <span className="text-[11px] text-gray-400">
-                                  —
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {row.retake_granted ? (
-                                <button
-                                  type="button"
-                                  onClick={() => onRevokeRetake(row.student_id)}
-                                  disabled={loading || isGranting}
-                                  className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg disabled:opacity-50"
-                                >
-                                  {isGranting ? (
-                                    <>
-                                      <RefreshCw className="h-3 w-3 animate-spin" />{" "}
-                                      Updating…
-                                    </>
-                                  ) : (
-                                    "Revoke"
-                                  )}
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => onGrantRetake(row.student_id)}
-                                  disabled={loading || isGranting}
-                                  className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-                                >
-                                  {isGranting ? (
-                                    <>
-                                      <RefreshCw className="h-3 w-3 animate-spin" />{" "}
-                                      Granting…
-                                    </>
-                                  ) : (
-                                    <>
-                                      <RotateCcw className="h-3 w-3" /> Grant
-                                    </>
-                                  )}
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,122 +1,77 @@
 "use client";
 
-import { useState, Suspense, lazy, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense, lazy } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AreaChartAnalyticsCard } from "@/components/ui/area-chart-analytics-card";
-import {
-  RefreshCw,
-  UserPlus,
-  School,
-  Users,
-  User,
-  BookOpen,
-  type LucideIcon,
-} from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { RefreshCw, School, Search, UserPlus } from "lucide-react";
 import CreateAccountDialog from "@/components/admin/CreateAccountDialog";
 import { AdminTabErrorBoundary } from "@/components/admin/AdminTabErrorBoundary";
-import NeedsAttentionPanel from "@/components/admin/NeedsAttentionPanel";
-import { SkeletonDashboard } from "@/components/ui/skeleton-dashboard";
+import GrowthRun, { type GrowthKey } from "@/components/admin/overview/GrowthRun";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { queryKeys } from "@/lib/query-keys";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   useAdminDashboardStats,
   useAdminQuickPreviews,
   useAdminNeedsAttention,
   useAdminName,
-  type MonthlyGrowthPoint,
-  type QuickPreviewGroup,
 } from "@/hooks/useAdminDashboard";
+import "@/components/school-admin/overview.css"; // hero meta, to-do rows, two-column grid
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/admin/overview/overview.css";
 
 const AdminOverviewTab = lazy(() => import("@/components/admin/AdminOverviewTab"));
 const AdminReportsTab = lazy(() => import("@/components/admin/AdminReportsTab"));
 
-interface RecentActivity {
-  id: string;
-  title: string;
-  message: string;
-  created_at: string;
-  type: "success" | "warning" | "info" | "error";
+type TabId = "overview" | "reports";
+const TABS: { id: TabId; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "reports", label: "Reports" },
+];
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+function LoadFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <section className="sd-panel">
+      <div className="sd-empty">
+        <b>We could not load the dashboard numbers</b>
+        <p>Check your connection, then try again. Nothing was changed.</p>
+        <button className="sd-btn sd-btn--amber" onClick={onRetry}>Try again</button>
+      </div>
+    </section>
+  );
 }
 
-/** Only real, dated events (recent school/teacher/student/course creations) —
- * no fabricated "just now" alert items. */
-function buildRecentActivity(previews: QuickPreviewGroup[]): RecentActivity[] {
-  const items: RecentActivity[] = [];
-  for (const group of previews) {
-    for (const item of group.data) {
-      if (!item.created_at) continue;
-      const actor = item.name || item.full_name || item.title || "Record";
-      const noun = group.title.replace(/^Recent\s+/i, "");
-      items.push({
-        id: `${group.id}-${item.id ?? actor}-${item.created_at}`,
-        title: `${noun.replace(/s$/, "")} added`,
-        message: `${actor} was added to ${noun.toLowerCase()}.`,
-        created_at: item.created_at,
-        type: "info",
-      });
-    }
-  }
-  return items
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 8);
-}
-
-/** Real per-metric growth series from the backend's monthlyGrowth aggregation
- * (last 6 months) — replaces the previous sine-wave-fabricated sparkline. */
-function seriesFor(monthlyGrowth: MonthlyGrowthPoint[], key: "schools" | "teachers" | "students" | "courses") {
-  return monthlyGrowth.map((m) => ({ label: m.name, value: m[key] }));
-}
-
-const PREVIEW_ICON: Record<QuickPreviewGroup["id"], LucideIcon> = {
-  schools: School,
-  teachers: Users,
-  students: User,
-  courses: BookOpen,
-};
-
-/** AdminOverviewTab expects icon/loading/lastUpdated per group — built here so
- * the data hook itself stays free of JSX. */
-function toTabPreviews(previews: QuickPreviewGroup[], fetchedAt: string) {
-  return previews.map((group) => {
-    const Icon = PREVIEW_ICON[group.id];
-    return {
-      id: group.id,
-      title: group.title,
-      description: group.description,
-      icon: <Icon className="h-4 w-4" />,
-      data: group.data,
-      loading: false,
-      lastUpdated: fetchedAt,
-    };
-  });
+function TabSkeleton() {
+  return <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>;
 }
 
 export default function AdminDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isCreateAccountDialogOpen, setIsCreateAccountDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>("overview");
-  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set(["overview"]));
+  const [createOpen, setCreateOpen] = useState(false);
+  const [tab, setTab] = useState<TabId>("overview");
+  const [mounted, setMounted] = useState<Set<TabId>>(new Set(["overview"]));
+  const [metric, setMetric] = useState<GrowthKey>("students");
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // null until mounted so server and first client render match (the greeting depends on the clock)
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   const { data: adminName } = useAdminName();
-  const { data: dashboardData, isLoading: statsLoading } = useAdminDashboardStats();
-  const { data: previewsData, isLoading: previewsLoading, dataUpdatedAt: previewsUpdatedAt } = useAdminQuickPreviews();
+  const statsQ = useAdminDashboardStats();
+  const previewsQ = useAdminQuickPreviews();
   const { data: needsAttention = [] } = useAdminNeedsAttention();
 
-  const stats = dashboardData?.stats;
-  const monthlyGrowth = useMemo(() => dashboardData?.monthlyGrowth ?? [], [dashboardData]);
-  const teacherPerformance = dashboardData?.teacherPerformance;
-  const quickActionPreviews = useMemo(() => previewsData?.previews ?? [], [previewsData]);
-
-  const recentActivity = useMemo(() => buildRecentActivity(quickActionPreviews), [quickActionPreviews]);
-  const tabPreviews = useMemo(
-    () => toTabPreviews(quickActionPreviews, new Date(previewsUpdatedAt || Date.now()).toISOString()),
-    [quickActionPreviews, previewsUpdatedAt],
-  );
+  const stats = statsQ.data?.stats;
+  const monthlyGrowth = useMemo(() => statsQ.data?.monthlyGrowth ?? [], [statsQ.data]);
+  const previews = useMemo(() => previewsQ.data?.previews ?? [], [previewsQ.data]);
 
   const { isConnected } = useDashboardRealtime("admin", {
     enabled: true,
@@ -127,8 +82,6 @@ export default function AdminDashboard() {
       "dashboard:stats": [queryKeys.admin.dashboardStats],
     },
   });
-
-  const isLoading = statsLoading || previewsLoading;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -143,217 +96,143 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleQuickAction = async (actionId: string) => {
-    const routes: Record<string, string> = {
-      schools: "/lms/admin/schools",
-      teachers: "/lms/admin/teachers",
-      students: "/lms/admin/students",
-      courses: "/lms/admin/courses",
-    };
-    if (routes[actionId]) {
-      router.push(routes[actionId]);
-    } else {
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.quickPreviews });
-    }
-  };
+  const openSearch = () => window.dispatchEvent(new Event("admin-palette:open"));
 
-  const trendText = (monthKey: "schools" | "teachers" | "students" | "courses") => {
-    const series = monthlyGrowth;
-    const cur = series[series.length - 1]?.[monthKey] ?? 0;
-    const prev = series[series.length - 2]?.[monthKey] ?? 0;
-    if (prev === 0) return cur > 0 ? "New activity this month" : "No change this month";
-    const change = Math.round(((cur - prev) / prev) * 100);
-    return change ? `${change > 0 ? "+" : ""}${change}% from last month` : "No change this month";
-  };
+  const loading = statsQ.isLoading || previewsQ.isLoading;
+  const failed = statsQ.isError && !statsQ.data;
+  const newThis = (k: GrowthKey) => monthlyGrowth[monthlyGrowth.length - 1]?.[k] ?? 0;
+  const totals: Record<GrowthKey, number> = stats
+    ? { schools: stats.totalSchools, teachers: stats.totalTeachers, students: stats.totalStudents, courses: stats.activeCourses }
+    : { schools: 0, teachers: 0, students: 0, courses: 0 };
 
-  // The chart's own caption always talks about "this month" — the side box
-  // next to it must show that same month's real new-signup count, not an
-  // unrelated platform-wide metric (previously: attendance %/completion %
-  // reused here, or the card's own running total repeated verbatim).
-  const newThisMonth = (monthKey: "schools" | "teachers" | "students" | "courses") =>
-    monthlyGrowth[monthlyGrowth.length - 1]?.[monthKey] ?? 0;
+  const hour = now == null ? 12 : new Date(now).getHours();
+  const greeting = now == null ? "Hello" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const firstName = (adminName ?? "").trim().replace(/^(mr|mrs|ms|miss|dr|prof)\.?\s+/i, "").split(/[\s@]+/)[0];
 
-  if (isLoading || !stats) {
-    return <SkeletonDashboard />;
-  }
+  let status: React.ReactNode;
+  if (failed) status = "The numbers did not load. Try again.";
+  else if (statsQ.isError) status = "Some numbers did not load. Try refreshing.";
+  else if (loading || now == null) status = "Checking the platform…";
+  else if (needsAttention.length === 0) status = <><strong>Everything is up to date.</strong> Nothing needs you right now.</>;
+  else status = <><strong>{plural(needsAttention.length, "thing")}</strong> {needsAttention.length === 1 ? "needs" : "need"} your attention.</>;
 
-  const overviewStatCards = [
-    {
-      title: "Total Schools",
-      value: stats.totalSchools,
-      description: trendText("schools"),
-      badge: "Active",
-      icon: <School className="h-4 w-4" />,
-      accentColor: "#16a34a",
-      sideMetric: `${newThisMonth("schools")}`,
-      sideLabel: "new this month",
-      info: "Total active schools registered in the admin system.",
-      href: "/lms/admin/schools",
-      data: seriesFor(monthlyGrowth, "schools"),
-    },
-    {
-      title: "Total Teachers",
-      value: stats.totalTeachers,
-      description: trendText("teachers"),
-      badge: stats.avgAttendance > 0 ? `${stats.avgAttendance}% attendance` : "Teachers",
-      icon: <Users className="h-4 w-4" />,
-      accentColor: "#2563eb",
-      sideMetric: `${newThisMonth("teachers")}`,
-      sideLabel: "new this month",
-      info: "Total active teachers, with attendance shown when available.",
-      href: "/lms/admin/teachers",
-      data: seriesFor(monthlyGrowth, "teachers"),
-    },
-    {
-      title: "Total Students",
-      value: stats.totalStudents,
-      description: trendText("students"),
-      badge: stats.completionRate > 0 ? `${stats.completionRate}% completion` : "Students",
-      icon: <User className="h-4 w-4" />,
-      accentColor: "#9333ea",
-      sideMetric: `${newThisMonth("students")}`,
-      sideLabel: "new this month",
-      info: "Total active students, with course completion shown when available.",
-      href: "/lms/admin/students",
-      data: seriesFor(monthlyGrowth, "students"),
-    },
-    {
-      title: "Active Courses",
-      value: stats.activeCourses,
-      description: trendText("courses"),
-      badge: "Published",
-      icon: <BookOpen className="h-4 w-4" />,
-      accentColor: "#f97316",
-      sideMetric: `${newThisMonth("courses")}`,
-      sideLabel: "new this month",
-      info: "Published courses currently available on the platform.",
-      href: "/lms/admin/courses",
-      data: seriesFor(monthlyGrowth, "courses"),
-    },
+  const ledger: { key: GrowthKey; label: string; href: string }[] = [
+    { key: "schools", label: "Schools", href: "/lms/admin/schools" },
+    { key: "teachers", label: "Teachers", href: "/lms/admin/teachers" },
+    { key: "students", label: "Students", href: "/lms/admin/students" },
+    { key: "courses", label: "Active courses", href: "/lms/admin/courses" },
   ];
 
+  const onTabKey = (e: React.KeyboardEvent, i: number) => {
+    const to = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : null;
+    if (to == null) return;
+    e.preventDefault();
+    pick(TABS[(to + TABS.length) % TABS.length].id);
+    tabRefs.current[TABS[(to + TABS.length) % TABS.length].id]?.focus();
+  };
+  const pick = (id: TabId) => {
+    setTab(id);
+    setMounted((prev) => new Set([...prev, id]));
+  };
+
+  if (now == null) {
+    return <div className="sd-page"><div className="sd-skel" style={{ height: "22rem", borderRadius: "1.75rem" }} /></div>;
+  }
+
   return (
-    <div className="p-4 md:p-6 lg:p-8" style={{ minHeight: "100%", backgroundColor: "#f9fafb" }}>
-      {/* Header */}
-      <div className="mb-5 md:mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-            <div className="mt-1 md:mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <p className="text-sm md:text-base text-gray-600">Welcome back, {adminName || "Admin"}</p>
-              <span className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-300"}`} />
-                <span className="text-xs md:text-sm text-gray-500">{isConnected ? "Live" : "Reconnecting…"}</span>
-              </span>
-            </div>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ao-title">
+        <div className="sd-hero-copy">
+          <h1 id="ao-title" className="mc-hero-title">Admin dashboard</h1>
+          <p className="sd-where">{greeting}{firstName ? `, ${firstName}` : ""}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--amber" onClick={() => router.push("/lms/admin/schools?action=add")}><School aria-hidden="true" />Add school</button>
+            <button className="sd-btn sd-btn--ghost-dark" onClick={() => setCreateOpen(true)}><UserPlus aria-hidden="true" />Create account</button>
+            <button className="sd-btn sd-btn--ghost-dark ao-search" onClick={openSearch} aria-label="Search schools, teachers, students and courses"><Search aria-hidden="true" />Search <kbd>⌘K</kbd></button>
           </div>
-          <div className="grid w-full grid-cols-[1fr_1fr_auto] gap-2 sm:flex sm:w-auto sm:items-center">
-            <Button
-              variant="outline"
-              onClick={() => router.push("/lms/admin/schools?action=add")}
-              className="flex items-center gap-2"
-            >
-              <School className="h-4 w-4" />
-              Add School
-            </Button>
-            <Button onClick={() => setIsCreateAccountDialogOpen(true)} className="flex items-center gap-2">
-              <UserPlus className="h-4 w-4" />
-              <span className="sm:hidden">Account</span>
-              <span className="hidden sm:inline">Create Account</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="flex items-center gap-2"
-              aria-label="Refresh"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">{isRefreshing ? "Refreshing..." : "Refresh"}</span>
-            </Button>
+          <div className="so-meta">
+            <p className="so-live" data-on={isConnected}>
+              <i aria-hidden="true" />
+              {isConnected ? "Live" : "Reconnecting…"}
+            </p>
+            <button className="so-refresh" onClick={() => void handleRefresh()} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
           </div>
+        </div>
+        {loading ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : failed ? (
+          <div className="sd-run-card"><p style={{ color: "var(--sd-paper)", padding: "1rem 0.25rem" }}>Monthly numbers could not be loaded.</p></div>
+        ) : (
+          <GrowthRun months={monthlyGrowth} metric={metric} onMetric={setMetric} total={totals[metric]} />
+        )}
+      </section>
+
+      <nav className="sd-ledger" aria-label="Platform totals">
+        {ledger.map((m) => (
+          <Link key={m.key} href={m.href} aria-label={loading || failed ? m.label : `${m.label}: ${totals[m.key]}`}>
+            <span className="sd-l">{m.label}</span>
+            {loading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4.5rem" }} /> : <b className="sd-n">{failed ? "–" : totals[m.key].toLocaleString("en-IN")}</b>}
+            <small>{loading ? " " : failed ? "Not loaded" : newThis(m.key) > 0 ? `${newThis(m.key)} new this month` : `None new this month`}</small>
+          </Link>
+        ))}
+      </nav>
+
+      <div className="to-tabs-row">
+        <div className="mc-tabs" role="tablist" aria-label="Dashboard sections">
+          {TABS.map((t, i) => (
+            <button
+              key={t.id}
+              ref={(el) => { tabRefs.current[t.id] = el; }}
+              role="tab"
+              id={`ao-tab-${t.id}`}
+              aria-selected={tab === t.id}
+              aria-controls={`ao-panel-${t.id}`}
+              tabIndex={tab === t.id ? 0 : -1}
+              className="mc-tab"
+              onClick={() => pick(t.id)}
+              onKeyDown={(e) => onTabKey(e, i)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Needs attention — real, actionable counts only */}
-      <div className="mb-5 md:mb-6">
-        <NeedsAttentionPanel items={needsAttention} />
+      {/* Tabs stay mounted after the first visit so switching back does not flash */}
+      <div role="tabpanel" id="ao-panel-overview" aria-labelledby="ao-tab-overview" hidden={tab !== "overview"} className={tab === "overview" ? "mc-swap" : undefined}>
+        {mounted.has("overview") && (
+          <AdminTabErrorBoundary tabName="Overview">
+            <Suspense fallback={<TabSkeleton />}>
+              {failed ? (
+                <LoadFailed onRetry={() => void handleRefresh()} />
+              ) : loading || !stats ? (
+                <TabSkeleton />
+              ) : (
+                <AdminOverviewTab stats={stats} previews={previews} todos={needsAttention} teacherPerformance={statsQ.data?.teacherPerformance} now={now} />
+              )}
+            </Suspense>
+          </AdminTabErrorBoundary>
+        )}
+      </div>
+      <div role="tabpanel" id="ao-panel-reports" aria-labelledby="ao-tab-reports" hidden={tab !== "reports"} className={tab === "reports" ? "mc-swap" : undefined}>
+        {mounted.has("reports") && (
+          <AdminTabErrorBoundary tabName="Reports">
+            <Suspense fallback={<TabSkeleton />}>
+              {failed ? <LoadFailed onRetry={() => void handleRefresh()} /> : stats ? <AdminReportsTab stats={stats} monthlyGrowth={monthlyGrowth} needsAttention={needsAttention} isLoading={false} /> : <TabSkeleton />}
+            </Suspense>
+          </AdminTabErrorBoundary>
+        )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
-        {overviewStatCards.map((metric) => (
-          <AreaChartAnalyticsCard
-            key={metric.title}
-            title={metric.title}
-            value={metric.value}
-            description={metric.description}
-            badge={metric.badge}
-            icon={metric.icon}
-            accentColor={metric.accentColor}
-            sideMetric={metric.sideMetric}
-            sideLabel={metric.sideLabel}
-            info={metric.info}
-            href={metric.href}
-            data={metric.data}
-          />
-        ))}
-      </div>
-
-      {/* Main Content Tabs — tabs stay mounted after first visit to prevent re-render flash */}
-      <Tabs
-        value={activeTab}
-        onValueChange={(tab) => {
-          setActiveTab(tab);
-          setMountedTabs((prev) => new Set([...prev, tab]));
-        }}
-        className="space-y-6"
-      >
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="reports">Reports</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" forceMount className={activeTab !== "overview" ? "hidden" : "space-y-6"}>
-          {mountedTabs.has("overview") && (
-            <AdminTabErrorBoundary tabName="Overview">
-              <Suspense fallback={<SkeletonDashboard />}>
-                <AdminOverviewTab
-                  stats={stats}
-                  quickActionPreviews={tabPreviews}
-                  recentActivity={recentActivity}
-                  isLoading={false}
-                  onQuickAction={handleQuickAction}
-                  teacherPerformance={teacherPerformance}
-                />
-              </Suspense>
-            </AdminTabErrorBoundary>
-          )}
-        </TabsContent>
-
-        <TabsContent value="reports" forceMount className={activeTab !== "reports" ? "hidden" : "space-y-6"}>
-          {mountedTabs.has("reports") && (
-            <AdminTabErrorBoundary tabName="Reports">
-              <Suspense fallback={<SkeletonDashboard />}>
-                <AdminReportsTab
-                  stats={stats}
-                  monthlyGrowth={monthlyGrowth}
-                  needsAttention={needsAttention}
-                  isLoading={false}
-                />
-              </Suspense>
-            </AdminTabErrorBoundary>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {/* Create Account Dialog */}
       <CreateAccountDialog
-        isOpen={isCreateAccountDialogOpen}
-        onClose={() => setIsCreateAccountDialogOpen(false)}
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
         onSuccess={() => {
-          handleRefresh();
-          setIsCreateAccountDialogOpen(false);
+          void handleRefresh();
+          setCreateOpen(false);
         }}
       />
     </div>

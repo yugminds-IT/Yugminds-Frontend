@@ -34,66 +34,64 @@ test.describe('School Admin — Schedules', () => {
       timeout: 15000,
     });
 
-    // Step 1: Add a period via the real "Manage Periods" dialog.
-    await page.getByRole('button', { name: 'Add Periods' }).click();
+    // Step 1: Add a period in the real "Periods and breaks" dialog.
+    await page.getByRole('button', { name: 'Add periods' }).click();
+    const periodsDialog = page.getByRole('dialog', { name: /Periods and breaks/i });
+    await expect(periodsDialog).toBeVisible();
     const periodResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/periods') && res.request().method() === 'POST',
     );
-    // period_number/start_time/end_time default to sensible values; fill start/end explicitly.
-    await page.locator('input[type="time"]').first().fill('09:00');
-    await page.locator('input[type="time"]').nth(1).fill('10:00');
-    await page.getByRole('button', { name: '^Add Period$' }).click().catch(() =>
-      page.getByRole('button', { name: 'Add Period', exact: true }).click(),
-    );
+    // With no periods yet the number and start time are editable; fill start and end.
+    await periodsDialog.locator('#pf-start').fill('09:00');
+    await periodsDialog.locator('#pf-end').fill('10:00');
+    await periodsDialog.getByRole('button', { name: 'Add period', exact: true }).click();
     const periodRes = await periodResponse;
     expect(periodRes.ok(), await periodRes.text()).toBeTruthy();
-    await page.getByRole('button', { name: 'Done' }).click();
+    await periodsDialog.getByRole('button', { name: 'Done' }).click();
 
-    // Step 2: Add a room via the real "Manage Rooms" dialog.
-    await page.getByRole('button', { name: 'Add Rooms' }).click();
-    await page.locator('input[placeholder="R101"]').fill('QA-R101');
+    // Step 2: Add a room in the real "Rooms" dialog.
+    await page.getByRole('button', { name: 'Add rooms' }).click();
+    const roomsDialog = page.getByRole('dialog', { name: /Rooms/i });
+    await roomsDialog.locator('#rf-num').fill('QA-R101');
     const roomResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/rooms') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Add Room', exact: true }).click();
+    await roomsDialog.getByRole('button', { name: 'Add room', exact: true }).click();
     const roomRes = await roomResponse;
     expect(roomRes.ok(), await roomRes.text()).toBeTruthy();
     await page.keyboard.press('Escape');
 
-    await page.getByRole('button', { name: /Start Building Timetable/ }).click();
+    await page.getByRole('button', { name: /Start building the timetable/ }).click();
     await expect(page.getByRole('heading', { name: 'Set up your timetable' })).not.toBeVisible();
 
-    // Step 3: Create a schedule slot for QA Teacher 0 (Grade 1) via the real "Add Schedule" dialog.
-    await page.getByRole('button', { name: 'Add Schedule', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Add New Schedule' })).toBeVisible();
+    // Step 3: Create a class for QA Teacher 0 (Grade 1) in the real "Add a class" dialog.
+    await page.getByRole('button', { name: 'Add class', exact: true }).click();
+    const classDialog = page.getByRole('dialog', { name: /Add a class/i });
+    await expect(classDialog).toBeVisible();
 
-    await page.locator('#subject').fill('QA E2E Subject');
+    await classDialog.locator('#sc-subject').fill('QA E2E Subject');
 
-    // Grade select (placeholder "Grade").
-    await page.getByText('Grade', { exact: true }).click();
-    await page.getByRole('option', { name: fixture.grade, exact: true }).click();
-
+    // Day defaults to Monday. Grade, section and period are pill buttons.
+    await classDialog.getByRole('button', { name: fixture.grade, exact: true }).click();
     // Section is required when the grade has configured sections.
-    await page.getByText('Section', { exact: true }).click();
-    await page.getByRole('option', { name: fixture.section, exact: true }).click();
+    await classDialog.getByRole('button', { name: fixture.section, exact: true }).click();
+    await classDialog.getByRole('button', { name: /^P1/ }).click();
 
-    // Period select (placeholder "Select period").
-    await page.getByText('Select period').click();
-    await page.getByRole('option', { name: /Period 1/ }).click();
-
-    // Teacher select — pick QA Teacher 0 explicitly (the fixture teacher whose
-    // delivery we verify below), not the auto-suggested one.
-    await page.getByText('Select teacher (optional)').click();
-    await page.getByRole('option', { name: /QA Teacher 0/ }).click();
+    // Teacher: pick QA Teacher 0 explicitly (the fixture teacher whose delivery
+    // we verify below), not the suggested one. Options read "<name> · <load>".
+    const teacherSelect = classDialog.locator('#sc-teacher');
+    const teacherValue = await teacherSelect.locator('option', { hasText: 'QA Teacher 0' }).getAttribute('value');
+    expect(teacherValue, 'QA Teacher 0 should be offered in the teacher list').toBeTruthy();
+    await teacherSelect.selectOption(teacherValue!);
 
     const scheduleResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/schedules') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Create Schedule' }).click();
+    await classDialog.getByRole('button', { name: 'Add class', exact: true }).click();
     const scheduleRes = await scheduleResponse;
     expect(scheduleRes.ok(), await scheduleRes.text()).toBeTruthy();
 
-    // The dialog closes and the schedule now appears in the grid/list.
+    // The dialog closes (it was the last period) and the class now shows in the week grid.
     await expect(page.getByText('QA E2E Subject').first()).toBeVisible({ timeout: 10000 });
 
     // Step 4 — THE cross-user check per the project plan: does QA Teacher 0
@@ -117,21 +115,22 @@ test.describe('School Admin — Schedules', () => {
       'the newly-created schedule slot should be visible on the assigned teacher\'s own schedule endpoint with section',
     ).toBeTruthy();
 
-    // Step 5: exercise "Push to Teachers" — this fires a real-time notification
+    // Step 5: exercise "Send to teachers" — this fires a real-time notification
     // to the teacher (school-admin-extra.controller.ts syncSchedulesToTeachers),
     // it does NOT itself create the schedule linkage (that already happened in
     // step 3) — confirm the endpoint call succeeds and the teacher receives a
     // notification about it.
-    await page.getByRole('button', { name: 'Push to Teachers' }).click();
-    await expect(page.getByRole('heading', { name: 'Push Schedule to Teachers' })).toBeVisible();
+    await page.getByRole('button', { name: 'Send to teachers' }).click();
+    const pushDialog = page.getByRole('dialog', { name: /Send timetables to teachers/i });
+    await expect(pushDialog).toBeVisible();
 
     const pushResponse = page.waitForResponse(
       (res) => res.url().endsWith('/school-admin/schedules/sync-to-teachers') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: /^Push to \d+ Teachers?$/ }).click();
+    await pushDialog.getByRole('button', { name: /^Send to \d+ teachers?$/ }).click();
     const pushRes = await pushResponse;
     expect(pushRes.ok(), await pushRes.text()).toBeTruthy();
-    await expect(page.getByText('Push Complete')).toBeVisible({ timeout: 10000 });
+    await expect(pushDialog.getByText(/Notifications successfully sent/i)).toBeVisible({ timeout: 10000 });
 
     const teacherNotifsRes = await request.get(`${BACKEND_URL}/teacher/notifications`, {
       headers: { Authorization: `Bearer ${teacher0Token}` },
@@ -150,28 +149,28 @@ test.describe('School Admin — Schedules', () => {
   }) => {
     await page.goto('/lms/school-admin/schedules');
 
-    // Wizard (empty school) or main toolbar — both open the same Manage Periods dialog.
-    const addPeriods = page.getByRole('button', { name: 'Add Periods' });
-    const managePeriods = page.getByRole('button', { name: 'Manage Periods' });
-    await expect(addPeriods.or(managePeriods).first()).toBeVisible({ timeout: 15000 });
+    // First-run setup button, or the Periods summary button once periods exist — both open the same dialog.
+    const addPeriods = page.getByRole('button', { name: 'Add periods' });
+    const periodsSummary = page.getByRole('button', { name: /^Periods \d/ });
+    await expect(addPeriods.or(periodsSummary).first()).toBeVisible({ timeout: 15000 });
     if (await addPeriods.isVisible()) {
       await addPeriods.click();
     } else {
-      await managePeriods.click();
+      await periodsSummary.click();
     }
-    await expect(page.getByRole('heading', { name: 'Manage Periods' })).toBeVisible();
+    const dialog = page.getByRole('dialog', { name: /Periods and breaks/i });
+    await expect(dialog).toBeVisible();
 
-    await page.getByRole('button', { name: 'Custom', exact: true }).click();
-    const customPanel = page.locator('.rounded-xl.border.border-violet-100');
-    await expect(customPanel.getByText('Custom day template')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Build my own', exact: true }).click();
+    const customPanel = dialog.getByRole('region', { name: 'Build your own day' });
+    await expect(customPanel).toBeVisible();
 
     // 4 periods × 40 min from 08:30, lunch after period 2.
-    await customPanel.locator('input[type="time"]').fill('08:30');
-    const numberInputs = customPanel.locator('input[type="number"]');
-    await numberInputs.nth(0).fill('4');
-    await numberInputs.nth(1).fill('40');
+    await customPanel.locator('#pc-start').fill('08:30');
+    await customPanel.locator('#pc-count').fill('4');
+    await customPanel.locator('#pc-dur').fill('40');
 
-    await customPanel.getByRole('button', { name: '+ Lunch' }).click();
+    await customPanel.getByRole('button', { name: 'Lunch', exact: true }).click();
     await expect(customPanel.getByText('Lunch · 30 min')).toBeVisible();
 
     let periodPostCount = 0;
@@ -182,23 +181,21 @@ test.describe('School Admin — Schedules', () => {
     };
     page.on('response', onResponse);
 
-    await customPanel.getByRole('button', { name: 'Apply custom template' }).click();
+    await customPanel.getByRole('button', { name: 'Use this day' }).click();
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
 
     await expect(page.getByText(/Created 4 periods/i)).toBeVisible({ timeout: 15000 });
     page.off('response', onResponse);
     expect(periodPostCount).toBe(4);
 
-    // Four teaching period rows; lunch gap (30m after P2) shown in Current Periods.
-    await expect(page.getByText('Lunch · 30 min')).toBeVisible();
+    // Four teaching periods; the 30-minute lunch gap after P2 shows between rows.
+    await expect(dialog.locator('.ts-gap').getByText('Lunch · 30 min')).toBeVisible();
     for (const n of [1, 2, 3, 4]) {
-      await expect(
-        page.locator('span.text-xs.font-bold.text-violet-600', { hasText: String(n) }),
-      ).toBeVisible();
+      await expect(dialog.locator('.ts-pnum', { hasText: String(n) })).toBeVisible();
     }
 
     // P1 starts 8:30 AM; after P2 lunch, P3 starts 10:20 AM.
-    await expect(page.getByText('8:30 AM').first()).toBeVisible();
-    await expect(page.getByText('10:20 AM').first()).toBeVisible();
+    await expect(dialog.getByText('8:30 AM').first()).toBeVisible();
+    await expect(dialog.getByText('10:20 AM').first()).toBeVisible();
   });
 });

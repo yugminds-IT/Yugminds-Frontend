@@ -82,9 +82,7 @@ test.describe('School Admin — Reports', () => {
 
     await expect(page.getByText('QA e2e report topic')).toBeVisible();
 
-    const reportCard = page
-      .locator('div.rounded-lg.border')
-      .filter({ hasText: 'QA e2e report topic' });
+    const reportCard = page.getByRole('article').filter({ hasText: 'QA e2e report topic' });
 
     const approveResponse = page.waitForResponse(
       (res) =>
@@ -94,10 +92,11 @@ test.describe('School Admin — Reports', () => {
     const approveRes = await approveResponse;
     expect(approveRes.ok(), await approveRes.text()).toBeTruthy();
 
-    // Approved items leave the default inbox — open History to confirm.
-    await page.getByRole('button', { name: /History/i }).click();
-    await expect(page.getByText('QA e2e report topic')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Approved').first()).toBeVisible();
+    // Approved items leave the default inbox — open the Approved view to confirm.
+    await page.getByRole('button', { name: /^Approved/ }).click();
+    const approvedCard = page.getByRole('article').filter({ hasText: 'QA e2e report topic' });
+    await expect(approvedCard).toBeVisible({ timeout: 10000 });
+    await expect(approvedCard.getByText('Approved', { exact: true })).toBeVisible();
   });
 
   test('bulk-approve regression guard: PATCH /school-admin/reports/bulk is not shadowed by /reports/:id route ordering', async ({
@@ -114,11 +113,11 @@ test.describe('School Admin — Reports', () => {
 
     await page.getByRole('button', { name: /Select day/i }).first().click();
 
-    const stickyBar = page.locator('.fixed.bottom-6');
+    const stickyBar = page.getByRole('region', { name: 'Selected reports' });
     await expect(stickyBar).toBeVisible();
     await stickyBar.getByRole('button', { name: /^Approve$/ }).click();
 
-    const bulkDialog = page.getByRole('dialog', { name: /Approve selected reports/i });
+    const bulkDialog = page.getByRole('dialog', { name: /Approve \d+ reports?\?/i });
     await expect(bulkDialog).toBeVisible();
 
     const bulkResponse = page.waitForResponse(
@@ -128,6 +127,6 @@ test.describe('School Admin — Reports', () => {
     const bulkRes = await bulkResponse;
     expect(bulkRes.ok(), await bulkRes.text()).toBeTruthy();
 
-    await expect(page.getByText(/Successfully approved/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Approved \d+ reports?/i)).toBeVisible({ timeout: 10000 });
   });
 });

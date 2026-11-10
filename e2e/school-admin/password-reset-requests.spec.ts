@@ -40,7 +40,7 @@ test.describe('School Admin — Password Reset Requests', () => {
     expect(submitRes.ok(), await submitRes.text()).toBeTruthy();
     await publicPage.close();
 
-    // Now, as the school-admin, confirm it shows up under Pending Requests.
+    // Now, as the school-admin, confirm it shows up under Waiting.
     const listResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/password-reset-requests') && res.request().method() === 'GET',
     );
@@ -48,29 +48,43 @@ test.describe('School Admin — Password Reset Requests', () => {
     const listRes = await listResponse;
     expect(listRes.ok()).toBeTruthy();
 
-    const requestRow = page.getByRole('row', { name: new RegExp(fixture.teachers[1].email) });
-    await expect(requestRow).toBeVisible({ timeout: 10000 });
-    await expect(requestRow.getByText('Pending')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Password reset requests' })).toBeVisible();
 
-    await requestRow.getByRole('button', { name: /Approve/i }).click();
-    const approveDialog = page.getByRole('dialog', { name: /Approve Request/i });
+    // Requests are rows (<article>) in a list, not table rows.
+    const requestRow = page.getByRole('article').filter({ hasText: fixture.teachers[1].email });
+    await expect(requestRow).toBeVisible({ timeout: 10000 });
+    await expect(requestRow.getByRole('button', { name: /^Reject/ })).toBeVisible();
+
+    await requestRow.getByRole('button', { name: /^Approve/ }).click();
+    const approveDialog = page.getByRole('dialog', { name: /Approve request/i });
     await expect(approveDialog).toBeVisible();
+    // The server needs at least 6 characters; the button stays disabled until then.
+    const approveButton = approveDialog.getByRole('button', { name: /Approve and set password/i });
+    await approveDialog.locator('#sa-temp-password').fill('abc');
+    await expect(approveButton).toBeDisabled();
     await approveDialog.locator('#sa-temp-password').fill('QaTestTempPass123!');
+    await expect(approveButton).toBeEnabled();
 
     const approveResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/password-reset-requests') && res.request().method() === 'PATCH',
     );
-    await approveDialog.getByRole('button', { name: /Approve & Set Temp Password/i }).click();
+    await approveButton.click();
     const approveRes = await approveResponse;
     expect(approveRes.ok(), await approveRes.text()).toBeTruthy();
 
-    // Request moves out of "Pending" into history as Approved.
-    await expect(page.getByRole('row', { name: new RegExp(fixture.teachers[1].email) })).toHaveCount(0, {
+    // The dialog stays open to show the password once, so the admin can pass it on.
+    const doneDialog = page.getByRole('dialog', { name: /Password set/i });
+    await expect(doneDialog).toBeVisible();
+    await expect(doneDialog.getByText('QaTestTempPass123!')).toBeVisible();
+    await doneDialog.getByRole('button', { name: 'Done' }).click();
+
+    // Request moves out of Waiting into History as Approved.
+    await expect(page.getByRole('article').filter({ hasText: fixture.teachers[1].email })).toHaveCount(0, {
       timeout: 10000,
     });
-    await page.getByRole('button', { name: /Password Reset History/i }).click();
-    const historyRow = page.getByRole('row', { name: new RegExp(fixture.teachers[1].email) });
+    await page.getByRole('tab', { name: /^History/ }).click();
+    const historyRow = page.getByRole('article').filter({ hasText: fixture.teachers[1].email });
     await expect(historyRow).toBeVisible();
-    await expect(historyRow.getByText('Approved')).toBeVisible();
+    await expect(historyRow.getByText('Approved', { exact: true })).toBeVisible();
   });
 });

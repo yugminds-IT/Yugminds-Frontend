@@ -16,11 +16,14 @@ interface TeacherSchoolContextType {
   selectedSchool: TeacherSchool | null;
   schools: TeacherSchool[];
   onSchoolChange: (school: TeacherSchool | null) => void;
+  /** the teacher's own name, for greetings */
+  profileName?: string | null;
 }
 
 const TeacherSchoolContext = createContext<TeacherSchoolContextType>({
   selectedSchool: null,
   schools: [],
+  profileName: null,
   onSchoolChange: () => {},
 });
 

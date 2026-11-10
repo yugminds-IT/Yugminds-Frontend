@@ -52,11 +52,11 @@ test.describe('Teacher — Layout / Navigation', () => {
 
     await page.locator('nav a[href="/lms/teacher/leaves"]').click();
     await page.waitForURL(/\/lms\/teacher\/leaves/);
-    await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Leave requests' })).toBeVisible();
 
     await page.locator('nav a[href="/lms/teacher/attendance"]').click();
     await page.waitForURL(/\/lms\/teacher\/attendance/);
-    await expect(page.getByRole('heading', { name: 'Attendance' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Attendance' })).toBeVisible();
   });
 
   test('logout clears session and redirects to login, blocking back-navigation into the dashboard', async ({

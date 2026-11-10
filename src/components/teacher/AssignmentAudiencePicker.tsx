@@ -1,9 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { Checkbox } from "../ui/checkbox";
-import { Button } from "../ui/button";
-import { Globe, GraduationCap } from "lucide-react";
 
 export interface TeacherClass {
   grade_id: string;
@@ -356,27 +353,17 @@ export function AssignmentAudiencePicker({
 
   const hasAnyGrades = schoolGroups.some((g) => g.grades.length > 0);
 
+  const schoolCount = selectedSchoolIds?.length ?? 0;
+
   if (!hasAnyGrades && classes.length === 0) {
-    const schoolCount = selectedSchoolIds?.length ?? 0;
     return (
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 cursor-pointer rounded-md border border-blue-100 bg-white px-2.5 py-2 hover:bg-blue-50/50">
-          <Checkbox
-            checked={entireSchool}
-            onCheckedChange={(checked) => setEntireSchool(checked === true)}
-            aria-label={
-              schoolCount > 1 ? "Entire selected schools" : "Entire school"
-            }
-          />
-          <Globe className="h-3.5 w-3.5 text-blue-500" />
-          <div className="min-w-0">
-            <span className="text-sm font-medium text-gray-800">
-              {schoolCount > 1 ? "Entire selected schools" : "Entire school"}
-            </span>
-            <p className="text-[11px] text-gray-500 leading-tight">
-              You have no assigned classes yet — publish to the whole school(s).
-            </p>
-          </div>
+      <div className="tg-aud">
+        <label className="tg-opt">
+          <input type="checkbox" checked={entireSchool} onChange={(e) => setEntireSchool(e.target.checked)} aria-label={schoolCount > 1 ? "Entire selected schools" : "Entire school"} />
+          <span>
+            <b>{schoolCount > 1 ? "Entire selected schools" : "Entire school"}</b>
+            <small>You have no assigned classes yet, so this goes to the whole school.</small>
+          </span>
         </label>
       </div>
     );
@@ -388,109 +375,60 @@ export function AssignmentAudiencePicker({
     : "All grades and sections you teach at this school";
 
   return (
-    <div className="space-y-2">
-      <label className="flex items-center gap-2 cursor-pointer rounded-md border border-blue-100 bg-white px-2.5 py-2 hover:bg-blue-50/50">
-        <Checkbox
-          checked={entireSchool}
-          onCheckedChange={(checked) => setEntireSchool(checked === true)}
-          aria-label={entireLabel}
-        />
-        <Globe className="h-3.5 w-3.5 text-blue-500" />
-        <div className="min-w-0">
-          <span className="text-sm font-medium text-gray-800">{entireLabel}</span>
-          <p className="text-[11px] text-gray-500 leading-tight">{entireHint}</p>
-        </div>
+    <div className="tg-aud">
+      <label className="tg-opt">
+        <input type="checkbox" checked={entireSchool} onChange={(e) => setEntireSchool(e.target.checked)} aria-label={entireLabel} />
+        <span><b>{entireLabel}</b><small>{entireHint}</small></span>
       </label>
 
       {!entireSchool && (
         <>
-          <p className="text-xs text-gray-500 pt-1">
-            Or pick grades
-            {multiSchool ? " under each school" : ""} — check a grade for all
-            its sections, or choose only the sections you need.
+          <p className="tg-fine">
+            Or pick grades{multiSchool ? " under each school" : ""}. Tick a grade for all its sections, or choose only the sections you need.
           </p>
           {targets.length === 0 && (
-            <p className="text-xs text-amber-600">
-              No grades selected yet. Turn on{" "}
-              {multiSchool ? "Entire selected schools" : "Entire school"}, or
-              select at least one grade / section per school.
+            <p className="tg-warn">
+              Nothing picked yet. Turn on {multiSchool ? "Entire selected schools" : "Entire school"}, or pick at least one grade or section per school.
             </p>
           )}
-          <div className="max-h-80 overflow-y-auto space-y-4 pr-1">
+          <div className="tg-aud-scroll">
             {schoolGroups.map((group) => (
-              <div key={group.id} className="space-y-1.5">
-                {multiSchool && (
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-0.5">
-                    {group.name}
-                  </p>
-                )}
+              <div key={group.id} className="tg-aud-group">
+                {multiSchool && <b>{group.name}</b>}
                 {group.grades.length === 0 ? (
-                  <p className="text-xs text-gray-500 px-0.5 py-1">
-                    No assigned classes at this school. Use Entire selected
-                    schools, or pick another school.
-                  </p>
+                  <p className="tg-fine">No assigned classes at this school. Use Entire selected schools, or pick another school.</p>
                 ) : (
                   group.grades.map((g) => {
                     const sections = group.sectionsByGrade.get(g.id) ?? [];
                     const target = targetByGrade.get(g.id);
                     const gradeSelected = !!target;
                     const chosenSections = target?.sectionIds ?? [];
-                    const allSections =
-                      gradeSelected && chosenSections.length === 0;
+                    const allSections = gradeSelected && chosenSections.length === 0;
                     const gradeKey = `${group.id}:${g.id}`;
                     return (
-                      <div
-                        key={gradeKey}
-                        className={`rounded-md border ${gradeSelected ? "border-blue-200 bg-white" : "border-gray-100 bg-white"}`}
-                      >
-                        <div className="flex items-center gap-2 px-2 py-1.5">
-                          <Checkbox
-                            checked={gradeSelected}
-                            onCheckedChange={() => toggleGrade(g.id)}
-                            aria-label={`Select ${formatGradeLabel(g.name)}`}
-                          />
-                          <GraduationCap className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                          <span className="text-sm flex-1 min-w-0">
-                            {formatGradeLabel(g.name)}
-                          </span>
+                      <div key={gradeKey} className="tg-grade-box" data-on={gradeSelected}>
+                        <label className="tg-grade-row">
+                          <input type="checkbox" className="tg-check" checked={gradeSelected} onChange={() => toggleGrade(g.id)} aria-label={`Select ${formatGradeLabel(g.name)}`} />
+                          <b>{formatGradeLabel(g.name)}</b>
                           {gradeSelected && (
-                            <span className="text-xs text-blue-600 font-medium shrink-0">
+                            <small>
                               {allSections
-                                ? sections.length === 1
-                                  ? "1 section"
-                                  : `All ${sections.length} sections`
-                                : `${chosenSections.length} section${chosenSections.length === 1 ? "" : "s"}`}
-                            </span>
+                                ? sections.length === 1 ? "1 section" : `All ${sections.length} sections`
+                                : `${chosenSections.length} ${chosenSections.length === 1 ? "section" : "sections"}`}
+                            </small>
                           )}
-                        </div>
-
+                        </label>
                         {sections.length > 0 && (
-                          <div className="border-t border-gray-50 px-3 pb-2 pt-1.5 space-y-1.5">
-                            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                              {sections.map((s) => {
-                                const sectionChecked =
-                                  gradeSelected &&
-                                  (allSections ||
-                                    chosenSections.includes(s.id));
-                                return (
-                                  <label
-                                    key={`${gradeKey}:${s.id}`}
-                                    className="flex items-center gap-1.5 cursor-pointer"
-                                  >
-                                    <Checkbox
-                                      checked={sectionChecked}
-                                      onCheckedChange={() =>
-                                        toggleSection(g.id, s.id, sections)
-                                      }
-                                      aria-label={`Select section ${s.name}`}
-                                    />
-                                    <span className="text-xs text-gray-700">
-                                      {s.name}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
+                          <div className="tg-sections">
+                            {sections.map((sc) => {
+                              const sectionChecked = gradeSelected && (allSections || chosenSections.includes(sc.id));
+                              return (
+                                <label key={`${gradeKey}:${sc.id}`}>
+                                  <input type="checkbox" className="tg-check" checked={sectionChecked} onChange={() => toggleSection(g.id, sc.id, sections)} aria-label={`Select section ${sc.name}`} />
+                                  {sc.name}
+                                </label>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -501,25 +439,10 @@ export function AssignmentAudiencePicker({
             ))}
           </div>
           {targets.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => onChangeTargets([])}
-            >
-              Clear selection
-            </Button>
+            <button type="button" className="tg-linkbtn" style={{ justifySelf: "start" }} onClick={() => onChangeTargets([])}>Clear selection</button>
           )}
         </>
       )}
     </div>
   );
 }
-
-
-
-
-
-
-

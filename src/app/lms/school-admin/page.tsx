@@ -1,31 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, ClipboardList, CalendarOff, KeyRound, RefreshCw, Send, type LucideIcon } from "lucide-react";
 import { useSchoolAdmin } from "@/contexts/SchoolAdminContext";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/student/StatCard";
-import NeedsAttentionPanel, { type NeedsAttentionItem } from "@/components/admin/NeedsAttentionPanel";
-import {
-  Users,
-  User,
-  BookOpen,
-  CalendarCheck,
-  ArrowRight,
-  RefreshCw,
-  Clock,
-  CheckCircle,
-  ClipboardList,
-  School,
-} from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
+import { WEEKDAY_NAMES } from "@/lib/weekday-utils";
+import Droid from "@/components/portal/Droid";
+import { initialsOf } from "@/components/portal/notifications";
+import SchoolDayRun, { type DaySlot } from "@/components/school-admin/SchoolDayRun";
+import "@/components/school-admin/overview.css";
 
 interface DashboardStats {
   totalStudents: number;
@@ -35,49 +23,6 @@ interface DashboardStats {
   pendingLeaves: number;
   pendingEmergencyLeaves?: number;
   averageAttendance: number;
-}
-
-interface PreviewItem {
-  id?: string;
-  name?: string;
-  full_name?: string;
-  title?: string;
-  created_at: string;
-  status?: string;
-  email?: string;
-}
-
-interface QuickActionPreview {
-  id: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  data: PreviewItem[];
-  loading: boolean;
-  /** real fetch time from React Query, not `new Date()` */
-  lastUpdated: number;
-  route: string;
-}
-
-interface RecentActivity {
-  id: string;
-  title: string;
-  message: string;
-  created_at: string;
-  type: "success" | "warning" | "info" | "error";
-}
-
-/** "5m ago" / "3h ago" / "2d ago" — rolls up instead of showing "43200m ago". */
-function timeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(ms / 60_000);
-  if (!Number.isFinite(minutes)) return "";
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 const DEFAULT_STATS: DashboardStats = {
@@ -90,45 +35,78 @@ const DEFAULT_STATS: DashboardStats = {
   averageAttendance: 0,
 };
 
-interface RawStudent {
-  id?: string;
-  profile?: { full_name?: string; email?: string };
-  enrolled_at?: string;
-  created_at?: string;
-}
-interface RawTeacher {
-  id?: string;
-  teacher_id?: string;
-  teacher?: { full_name?: string; email?: string };
-  full_name?: string;
-  email?: string;
-  assigned_at?: string;
-  created_at?: string;
-}
-interface RawReport {
-  id?: string;
+interface RawStudent { id?: string; profile?: { full_name?: string; email?: string }; enrolled_at?: string; created_at?: string }
+interface RawTeacher { id?: string; teacher_id?: string; teacher?: { full_name?: string; email?: string }; full_name?: string; email?: string; assigned_at?: string; created_at?: string }
+interface RawReport { id?: string; teacher?: { full_name?: string }; topics_taught?: string; created_at?: string; date?: string }
+interface RawCourse { id?: string; title?: string; created_at?: string; status?: string }
+interface Period { id: string; period_number: number; start_time: string; end_time: string; is_active?: boolean }
+interface Schedule {
+  id: string;
+  subject: string;
+  grade: string;
+  section?: string | null;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
   teacher?: { full_name?: string };
-  topics_taught?: string;
-  created_at?: string;
-  date?: string;
+  room?: { room_number?: string; room_name?: string };
+  period?: { period_number: number; start_time: string; end_time: string };
 }
-interface RawCourse {
-  id?: string;
-  title?: string;
-  created_at?: string;
-  status?: string;
+
+/** "09:30" or "09:30:00" to minutes since midnight. */
+const toMin = (t: string | undefined) => {
+  const [h, m] = (t ?? "").split(":");
+  const v = Number(h) * 60 + Number(m);
+  return Number.isFinite(v) ? v : NaN;
+};
+/** 570 to "9:30 am" */
+const clock = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = String(min % 60).padStart(2, "0");
+  return `${h % 12 || 12}:${m} ${h < 12 ? "am" : "pm"}`;
+};
+const short = (t: string) => clock(toMin(t)).replace(" am", "").replace(" pm", "");
+
+function ago(iso: string, now: number): string {
+  const mins = Math.floor((now - new Date(iso).getTime()) / 60_000);
+  if (!Number.isFinite(mins)) return "";
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
+
+/** "101" becomes "Room 101"; names like "Lab 2" are left as they are. */
+const roomLabel = (r?: { room_number?: string; room_name?: string }) => {
+  const v = (r?.room_name || r?.room_number || "").trim();
+  return v && /^\d+$/.test(v) ? `Room ${v}` : v;
+};
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** A small dashboard query that shares the school-admin preview cache and its refresh. */
+function usePreview<T>(key: string, load: () => Promise<T>) {
+  return useQuery({ queryKey: [...queryKeys.schoolAdmin.quickPreviews, key], queryFn: load });
+}
+
+type Todo = { id: string; href: string; icon: LucideIcon; title: string; sub?: string; hot?: boolean; count: number; tone?: "red" };
 
 export default function SchoolAdminDashboard() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const { schoolInfo, profileFullName } = useSchoolAdmin();
-  const [isMounted, setIsMounted] = useState(false);
+  // null until mounted so server and first client render match (times depend on the clock)
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    // Gates client-only time formatting so SSR and first client render match.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsMounted(true);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clock is client-only so SSR and first paint match
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
   }, []);
 
   const statsQuery = useQuery<DashboardStats>({
@@ -148,211 +126,151 @@ export default function SchoolAdminDashboard() {
     },
   });
 
-  const studentsPreviewQuery = useQuery({
-    queryKey: [...queryKeys.schoolAdmin.quickPreviews, "students"],
-    queryFn: async () => {
-      const res = await schoolAdminApi.students.list({ limit: 3 });
-      return ((res.data as { students?: RawStudent[] })?.students ?? []) as RawStudent[];
-    },
+  const studentsQuery = usePreview("students", async () => {
+    const res = await schoolAdminApi.students.list({ limit: 3 });
+    return ((res.data as { students?: RawStudent[] })?.students ?? []) as RawStudent[];
   });
-
-  const teachersPreviewQuery = useQuery({
-    queryKey: [...queryKeys.schoolAdmin.quickPreviews, "teachers"],
-    queryFn: async () => {
-      const res = await schoolAdminApi.teachers.list({ limit: 3 });
-      return ((res.data as { teachers?: RawTeacher[] })?.teachers ?? []) as RawTeacher[];
-    },
+  const teachersQuery = usePreview("teachers", async () => {
+    const res = await schoolAdminApi.teachers.list({ limit: 3 });
+    return ((res.data as { teachers?: RawTeacher[] })?.teachers ?? []) as RawTeacher[];
   });
-
-  const reportsPreviewQuery = useQuery({
-    queryKey: [...queryKeys.schoolAdmin.quickPreviews, "reports"],
-    queryFn: async () => {
-      const res = await schoolAdminApi.reports.list({ limit: 3, pending: 1 });
-      return ((res.data as { reports?: RawReport[] })?.reports ?? []) as RawReport[];
-    },
+  const reportsQuery = usePreview("reports", async () => {
+    const res = await schoolAdminApi.reports.list({ limit: 3, pending: 1 });
+    return ((res.data as { reports?: RawReport[] })?.reports ?? []) as RawReport[];
   });
-
-  const coursesPreviewQuery = useQuery({
-    queryKey: [...queryKeys.schoolAdmin.quickPreviews, "courses"],
-    queryFn: async () => {
-      const res = await schoolAdminApi.courses.list({ status: "Published", limit: 3 });
-      return ((res.data as { courses?: RawCourse[] })?.courses ?? []) as RawCourse[];
-    },
+  const coursesQuery = usePreview("courses", async () => {
+    const res = await schoolAdminApi.courses.list({ status: "Published", limit: 3 });
+    return ((res.data as { courses?: RawCourse[] })?.courses ?? []) as RawCourse[];
+  });
+  const periodsQuery = usePreview("periods", async () => {
+    const res = await schoolAdminApi.periods.list();
+    const d = res.data ?? {};
+    return ((d as { periods?: Period[] }).periods ?? (Array.isArray(d) ? d : [])) as Period[];
+  });
+  const schedulesQuery = usePreview("schedules", async () => {
+    const res = await schoolAdminApi.schedules.list();
+    const d = res.data ?? {};
+    return ((d as { schedules?: Schedule[] }).schedules ?? (Array.isArray(d) ? d : [])) as Schedule[];
+  });
+  const resetsQuery = usePreview("password-resets", async () => {
+    const res = await schoolAdminApi.passwordResetRequests.pendingCount();
+    return Number((res.data as { count?: number })?.count ?? 0);
   });
 
   const stats = statsQuery.data ?? DEFAULT_STATS;
   const statsLoading = statsQuery.isLoading;
+  const pendingResets = resetsQuery.data ?? 0;
+  const firstName = (profileFullName ?? "").trim().replace(/^(mr|mrs|ms|miss|dr|prof)\.?\s+/i, "").split(/\s+/)[0];
 
-  const quickActionPreviews = useMemo<QuickActionPreview[]>(() => {
-    const previews: QuickActionPreview[] = [];
+  const greeting = useMemo(() => {
+    if (now == null) return "Hello";
+    const h = new Date(now).getHours();
+    return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  }, [now]);
 
-    previews.push({
-      id: "students",
-      title: "Recent Students",
-      description: "Latest student enrollments",
-      icon: <User className="h-4 w-4" />,
-      data: (studentsPreviewQuery.data ?? [])
-        .filter((s) => s.enrolled_at || s.created_at)
-        .map((s) => ({
-          id: s.id,
-          full_name: s.profile?.full_name || "Unknown",
-          email: s.profile?.email || "",
-          created_at: String(s.enrolled_at ?? s.created_at),
-        })),
-      loading: studentsPreviewQuery.isFetching,
-      lastUpdated: studentsPreviewQuery.dataUpdatedAt,
-      route: "/lms/school-admin/students",
-    });
-
-    previews.push({
-      id: "teachers",
-      title: "Recent Teachers",
-      description: "Latest teacher assignments",
-      icon: <Users className="h-4 w-4" />,
-      data: (teachersPreviewQuery.data ?? [])
-        .filter((t) => t.assigned_at || t.created_at)
-        .map((t) => {
-          const teacher = t.teacher ?? t;
-          return {
-            id: t.id,
-            full_name: teacher?.full_name || "Unknown",
-            email: teacher?.email || "",
-            created_at: String(t.assigned_at ?? t.created_at),
-          };
-        }),
-      loading: teachersPreviewQuery.isFetching,
-      lastUpdated: teachersPreviewQuery.dataUpdatedAt,
-      route: "/lms/school-admin/teachers",
-    });
-
-    const recentReports = reportsPreviewQuery.data ?? [];
-    if (recentReports.length > 0) {
-      previews.push({
-        id: "reports",
-        title: "Pending Reports",
-        description: "Teacher reports awaiting approval",
-        icon: <ClipboardList className="h-4 w-4" />,
-        data: recentReports
-          .filter((r) => r.created_at || r.date)
-          .map((r) => ({
-            id: r.id,
-            full_name: r.teacher?.full_name || "Unknown Teacher",
-            name: r.topics_taught?.substring(0, 30) || "Report",
-            created_at: String(r.created_at ?? r.date),
-            status: "Pending",
-          })),
-        loading: reportsPreviewQuery.isFetching,
-        lastUpdated: reportsPreviewQuery.dataUpdatedAt,
-        route: "/lms/school-admin/reports",
-      });
-    }
-
-    previews.push({
-      id: "courses",
-      title: "Active Courses",
-      description: "Published courses in your school",
-      icon: <BookOpen className="h-4 w-4" />,
-      data: (coursesPreviewQuery.data ?? [])
-        .filter((c) => c.created_at)
-        .map((c) => ({
-          id: c.id,
-          title: c.title,
-          created_at: String(c.created_at),
-          status: c.status,
-        })),
-      loading: coursesPreviewQuery.isFetching,
-      lastUpdated: coursesPreviewQuery.dataUpdatedAt,
-      route: "/lms/school-admin/courses",
-    });
-
-    return previews;
-  }, [
-    coursesPreviewQuery.data, coursesPreviewQuery.isFetching, coursesPreviewQuery.dataUpdatedAt,
-    reportsPreviewQuery.data, reportsPreviewQuery.isFetching, reportsPreviewQuery.dataUpdatedAt,
-    studentsPreviewQuery.data, studentsPreviewQuery.isFetching, studentsPreviewQuery.dataUpdatedAt,
-    teachersPreviewQuery.data, teachersPreviewQuery.isFetching, teachersPreviewQuery.dataUpdatedAt,
-  ]);
-
-  /** Only genuinely dated events — pending counts belong in Needs Attention, not here. */
-  const recentActivity = useMemo<RecentActivity[]>(() => {
-    const items: RecentActivity[] = [];
-
-    (studentsPreviewQuery.data ?? []).slice(0, 3).forEach((s) => {
-      const when = s.enrolled_at ?? s.created_at;
-      if (!when) return;
-      items.push({
-        id: `student-${s.id}`,
-        title: "New Student Enrollment",
-        message: `${s.profile?.full_name || "A student"} enrolled in the school`,
-        created_at: String(when),
-        type: "success",
-      });
-    });
-
-    (teachersPreviewQuery.data ?? []).slice(0, 3).forEach((t) => {
-      const when = t.assigned_at ?? t.created_at;
-      if (!when) return;
-      const teacher = t.teacher ?? t;
-      items.push({
-        id: `teacher-${t.id ?? t.teacher_id}`,
-        title: "New Teacher Assignment",
-        message: `${teacher?.full_name || "A teacher"} was assigned to the school`,
-        created_at: String(when),
-        type: "info",
-      });
-    });
-
-    return items
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 5);
-  }, [studentsPreviewQuery.data, teachersPreviewQuery.data]);
-
-  const needsAttention = useMemo<NeedsAttentionItem[]>(() => {
-    const items: NeedsAttentionItem[] = [];
-    if (stats.pendingReports > 0) {
-      items.push({
-        id: "pending-reports",
-        label: `${stats.pendingReports} teacher report${stats.pendingReports !== 1 ? "s" : ""} awaiting approval`,
-        count: stats.pendingReports,
-        href: "/lms/school-admin/reports",
-        tone: "amber",
-      });
-    }
+  /* ───────── what is waiting for the admin ───────── */
+  const todos = useMemo<Todo[]>(() => {
+    const out: Todo[] = [];
+    const emergency = stats.pendingEmergencyLeaves ?? 0;
     if (stats.pendingLeaves > 0) {
-      items.push({
-        id: "pending-leaves",
-        label: `${stats.pendingLeaves} leave request${stats.pendingLeaves !== 1 ? "s" : ""} awaiting review${stats.pendingEmergencyLeaves ? ` (${stats.pendingEmergencyLeaves} emergency)` : ""}`,
-        count: stats.pendingLeaves,
+      out.push({
+        id: "leaves",
         href: "/lms/school-admin/teachers?tab=leaves",
-        tone: "red",
+        icon: CalendarOff,
+        title: plural(stats.pendingLeaves, "leave request") + " to review",
+        sub: emergency > 0 ? `${emergency} ${emergency === 1 ? "is" : "are"} marked emergency` : "From your teachers",
+        hot: emergency > 0,
+        count: stats.pendingLeaves,
+        tone: emergency > 0 ? "red" : undefined,
       });
     }
-    return items;
-  }, [stats.pendingReports, stats.pendingLeaves, stats.pendingEmergencyLeaves]);
+    if (stats.pendingReports > 0) {
+      const latest = (reportsQuery.data ?? [])[0];
+      const who = latest?.teacher?.full_name;
+      out.push({
+        id: "reports",
+        href: "/lms/school-admin/reports",
+        icon: ClipboardList,
+        title: plural(stats.pendingReports, "teacher report") + " to approve",
+        sub: who ? `Latest from ${who}${latest?.topics_taught ? `: ${latest.topics_taught}` : ""}` : "Waiting for your approval",
+        count: stats.pendingReports,
+      });
+    }
+    if (pendingResets > 0) {
+      out.push({
+        id: "resets",
+        href: "/lms/school-admin/password-reset-requests",
+        icon: KeyRound,
+        title: plural(pendingResets, "password reset request") + " waiting",
+        sub: "Someone is locked out",
+        count: pendingResets,
+      });
+    }
+    return out;
+  }, [stats.pendingLeaves, stats.pendingEmergencyLeaves, stats.pendingReports, pendingResets, reportsQuery.data]);
 
-  const isRefreshing =
-    statsQuery.isFetching ||
-    studentsPreviewQuery.isFetching ||
-    teachersPreviewQuery.isFetching ||
-    reportsPreviewQuery.isFetching ||
-    coursesPreviewQuery.isFetching;
+  const hasPeriods = (periodsQuery.data ?? []).length > 0;
+  const totalWaiting = todos.reduce((n, t) => n + t.count, 0);
+  const lead = todos.find((t) => t.hot) ?? todos[0];
 
-  const lastRefresh = useMemo(() => {
-    const latest = Math.max(
-      statsQuery.dataUpdatedAt || 0,
-      studentsPreviewQuery.dataUpdatedAt || 0,
-      teachersPreviewQuery.dataUpdatedAt || 0,
-      reportsPreviewQuery.dataUpdatedAt || 0,
-      coursesPreviewQuery.dataUpdatedAt || 0,
-    );
-    return latest ? new Date(latest) : null;
-  }, [
-    coursesPreviewQuery.dataUpdatedAt,
-    reportsPreviewQuery.dataUpdatedAt,
-    statsQuery.dataUpdatedAt,
-    studentsPreviewQuery.dataUpdatedAt,
-    teachersPreviewQuery.dataUpdatedAt,
-  ]);
+  /* ───────── today's school day ───────── */
+  const day = useMemo(() => {
+    if (now == null) return null;
+    const d = new Date(now);
+    const dayName = WEEKDAY_NAMES[d.getDay()];
+    const minutes = d.getHours() * 60 + d.getMinutes();
+    const classes = (schedulesQuery.data ?? [])
+      .filter((s) => s.is_active !== false && s.day_of_week === dayName)
+      .map((s) => ({
+        ...s,
+        from: toMin(s.period?.start_time ?? s.start_time),
+        to: toMin(s.period?.end_time ?? s.end_time),
+      }))
+      .filter((s) => Number.isFinite(s.from))
+      .sort((a, b) => a.from - b.from);
+
+    const periods = (periodsQuery.data ?? [])
+      .filter((p) => p.is_active !== false && Number.isFinite(toMin(p.start_time)))
+      .sort((a, b) => a.period_number - b.period_number);
+    const slots: DaySlot[] = periods.map((p) => {
+      const s = toMin(p.start_time);
+      const e = toMin(p.end_time);
+      return { n: p.period_number, label: short(p.start_time), state: minutes >= e ? "past" : minutes >= s ? "now" : "next" };
+    });
+
+    const stateOf = (from: number, to: number) => (minutes >= to ? "past" : minutes >= from ? "now" : "next");
+    const rows = classes.map((c) => ({ ...c, state: stateOf(c.from, Number.isFinite(c.to) ? c.to : c.from + 40) }));
+
+    let caption = "No classes are scheduled today";
+    if (classes.length > 0 && slots.length > 0) {
+      const cur = slots.find((s) => s.state === "now");
+      const nextSlot = slots.find((s) => s.state === "next");
+      if (cur) caption = `Period ${cur.n} is on now`;
+      else if (nextSlot) caption = minutes < toMin(periods[0].start_time) ? `First bell at ${clock(toMin(periods[0].start_time))}` : `Period ${nextSlot.n} starts at ${nextSlot.label}`;
+      else caption = "The school day is over";
+    }
+    return { slots, rows, caption, dayName };
+  }, [now, schedulesQuery.data, periodsQuery.data]);
+
+  /* ───────── recently joined ───────── */
+  const joined = useMemo(() => {
+    const items: { id: string; name: string; email: string; role: "student" | "teacher"; at: string }[] = [];
+    (studentsQuery.data ?? []).forEach((s) => {
+      const at = s.enrolled_at ?? s.created_at;
+      if (at) items.push({ id: `s-${s.id}`, name: s.profile?.full_name || "Unnamed student", email: s.profile?.email || "", role: "student", at: String(at) });
+    });
+    (teachersQuery.data ?? []).forEach((t) => {
+      const at = t.assigned_at ?? t.created_at;
+      const p = t.teacher ?? t;
+      if (at) items.push({ id: `t-${t.id ?? t.teacher_id}`, name: p?.full_name || "Unnamed teacher", email: p?.email || "", role: "teacher", at: String(at) });
+    });
+    return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 5);
+  }, [studentsQuery.data, teachersQuery.data]);
+
+  /* ───────── refresh + realtime (unchanged behaviour) ───────── */
+  const queries = [statsQuery, studentsQuery, teachersQuery, reportsQuery, coursesQuery, periodsQuery, schedulesQuery, resetsQuery];
+  const isRefreshing = queries.some((q) => q.isFetching);
+  const lastRefresh = Math.max(0, ...queries.map((q) => q.dataUpdatedAt || 0));
 
   const refreshDashboard = useCallback(async () => {
     await Promise.all([
@@ -381,8 +299,7 @@ export default function SchoolAdminDashboard() {
       ],
     },
     onStats: (payload) => {
-      const current =
-        queryClient.getQueryData<DashboardStats>(queryKeys.schoolAdmin.dashboardStats) ?? DEFAULT_STATS;
+      const current = queryClient.getQueryData<DashboardStats>(queryKeys.schoolAdmin.dashboardStats) ?? DEFAULT_STATS;
       queryClient.setQueryData(queryKeys.schoolAdmin.dashboardStats, {
         totalStudents: Number(payload.totalStudents ?? current.totalStudents),
         totalTeachers: Number(payload.totalTeachers ?? current.totalTeachers),
@@ -395,279 +312,189 @@ export default function SchoolAdminDashboard() {
     },
   });
 
-  useSmartRefresh({
-    customRefresh: refreshDashboard,
-    minRefreshInterval: 60000,
-  });
+  useSmartRefresh({ customRefresh: refreshDashboard, minRefreshInterval: 60000 });
 
-  const statCards = [
+  /* ───────── copy ───────── */
+  let status: React.ReactNode;
+  if (statsQuery.isError) status = "Some numbers did not load. Try refreshing.";
+  else if (statsLoading) status = "Checking your school…";
+  else if (totalWaiting === 0) status = "Everything is up to date. Nothing is waiting for you.";
+  else {
+    const parts = todos.map((t) => `${t.count} ${t.id === "leaves" ? (t.count === 1 ? "leave request" : "leave requests") : t.id === "reports" ? (t.count === 1 ? "report" : "reports") : t.count === 1 ? "password reset" : "password resets"}`);
+    status = <><strong>{plural(totalWaiting, "thing")}</strong> {totalWaiting === 1 ? "is" : "are"} waiting: {parts.join(", ")}.</>;
+  }
+
+  const ledger = [
+    { label: "Students", value: stats.totalStudents, hint: "Active enrollments", href: "/lms/school-admin/students" },
+    { label: "Teachers", value: stats.totalTeachers, hint: "Active teachers", href: "/lms/school-admin/teachers" },
+    { label: "Courses", value: stats.activeCourses, hint: "Published for students", href: "/lms/school-admin/courses" },
     {
-      title: "Total Students",
-      value: stats.totalStudents,
-      description: "Active enrollments",
-      badge: "Active",
-      icon: <User className="h-4 w-4" />,
-      accentColor: "#2563eb",
-      info: "Students actively enrolled in this school.",
-      href: "/lms/school-admin/students",
-    },
-    {
-      title: "Total Teachers",
-      value: stats.totalTeachers,
-      description: "Active teachers",
-      badge: "Assigned",
-      icon: <Users className="h-4 w-4" />,
-      accentColor: "#16a34a",
-      info: "Active teacher accounts assigned to this school.",
-      href: "/lms/school-admin/teachers",
-    },
-    {
-      title: "Active Courses",
-      value: stats.activeCourses,
-      description: "Published courses",
-      badge: "Published",
-      icon: <BookOpen className="h-4 w-4" />,
-      accentColor: "#f97316",
-      info: "Published courses available to students in this school.",
-      href: "/lms/school-admin/courses",
-    },
-    {
-      title: "Avg Attendance",
+      label: "Teacher attendance",
       value: `${stats.averageAttendance}%`,
-      description: "Teacher attendance, last 30 days",
-      badge: stats.averageAttendance >= 90 ? "Healthy" : stats.averageAttendance > 0 ? "Watch" : "No data",
-      icon: <CalendarCheck className="h-4 w-4" />,
-      accentColor: "#0891b2",
-      info: "Average teacher attendance across the last 30 days.",
+      hint: stats.averageAttendance >= 90 ? "Last 30 days, healthy" : stats.averageAttendance > 0 ? "Last 30 days, worth a look" : "No attendance recorded yet",
       href: "/lms/school-admin/reports",
     },
   ];
 
+  const shownClasses = day?.rows.slice(0, 8) ?? [];
+  const hiddenClasses = (day?.rows.length ?? 0) - shownClasses.length;
+
   return (
-    <div className="p-4 md:p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-4 md:mb-6">
-        <div className="flex justify-between items-start sm:items-center gap-3 md:gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl md:text-3xl font-bold text-gray-900">
-              {schoolInfo?.name ? `${schoolInfo.name} Admin Panel` : "School Admin Dashboard"}
-            </h1>
-            <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">{`Welcome back, ${profileFullName ?? "School Admin"}`}</p>
-            <div className="flex items-center gap-2 mt-1">
-              <div
-                className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-gray-300"}`}
-              />
-              <span className="text-xs md:text-sm text-gray-500">
-                {isConnected ? "Live" : "Reconnecting…"}
-                {isMounted && lastRefresh
-                  ? ` · updated ${lastRefresh.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-                  : ""}
-              </span>
-            </div>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="so-title">
+        <div className="sd-hero-copy">
+          <h1 id="so-title" className="mc-hero-title">{schoolInfo?.name ?? "Your school"}</h1>
+          <p className="sd-where">{greeting}{firstName ? `, ${firstName}` : ""}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            {lead ? (
+              <Link href={lead.href} className="sd-btn sd-btn--amber">
+                <lead.icon aria-hidden="true" />Review {lead.count} {lead.id === "leaves" ? (lead.count === 1 ? "leave request" : "leave requests") : lead.id === "reports" ? (lead.count === 1 ? "report" : "reports") : lead.count === 1 ? "reset request" : "reset requests"}
+              </Link>
+            ) : hasPeriods ? (
+              <Link href="/lms/school-admin/schedules" className="sd-btn sd-btn--amber">Open the timetable</Link>
+            ) : null}
+            <Link href="/lms/school-admin/notifications" className={`sd-btn ${lead || hasPeriods ? "sd-btn--ghost-dark" : "sd-btn--amber"}`}><Send aria-hidden="true" />Message the school</Link>
           </div>
-          <Button
-            variant="outline"
-            onClick={refreshDashboard}
-            disabled={isRefreshing}
-            className="flex shrink-0 items-center gap-2 max-sm:h-9 max-sm:px-3"
-            aria-label="Refresh"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">{isRefreshing ? "Refreshing..." : "Refresh"}</span>
-          </Button>
+          <div className="so-meta">
+            <p className="so-live" data-on={isConnected}>
+              <i aria-hidden="true" />
+              {isConnected ? "Live" : "Reconnecting…"}
+              {now != null && lastRefresh > 0 && ` · updated ${new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+            </p>
+            <button className="so-refresh" onClick={refreshDashboard} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-      </div>
+        <SchoolDayRun
+          slots={day?.slots ?? []}
+          classCount={day?.rows.length ?? 0}
+          caption={day?.caption ?? ""}
+          loading={now == null || periodsQuery.isLoading || schedulesQuery.isLoading}
+        />
+      </section>
 
-      {/* Needs attention — real, actionable counts only */}
-      <div className="mb-4 md:mb-6">
-        <NeedsAttentionPanel items={needsAttention} />
-      </div>
+      <nav className="sd-ledger" aria-label="School summary">
+        {ledger.map((m) => (
+          <Link key={m.label} href={m.href}>
+            <span className="sd-l">{m.label}</span>
+            {statsLoading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4.5rem" }} /> : <b className="sd-n">{typeof m.value === "number" ? m.value.toLocaleString("en-IN") : m.value}</b>}
+            <small>{m.hint}</small>
+          </Link>
+        ))}
+      </nav>
 
-      {/* Stats Cards — skeletons while loading (a 0 is a claim, not a loading state) */}
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-4 md:mb-8">
-        {statsLoading
-          ? [...Array(4)].map((_, i) => <Skeleton key={i} className="h-[120px] w-full rounded-xl" />)
-          : statCards.map((metric) => (
-              <StatCard
-                key={metric.title}
-                title={metric.title}
-                value={metric.value}
-                description={metric.description}
-                badge={metric.badge}
-                icon={metric.icon}
-                accentColor={metric.accentColor}
-                info={metric.info}
-                href={metric.href}
-              />
-            ))}
-      </div>
+      <div className="so-grid">
+        <div className="so-col">
+          <section className="sd-panel" aria-labelledby="so-todo">
+            <div className="sd-panel-head"><div><h2 id="so-todo">Needs your attention</h2><p>Each one opens where you can deal with it.</p></div></div>
+            {statsLoading ? (
+              <><div className="sd-skel" /><div className="sd-skel" /></>
+            ) : todos.length === 0 ? (
+              <div className="so-clear">
+                <span className="so-clear-droid"><Droid /></span>
+                <div><b>You are all caught up</b><p>New reports, leave requests and password resets will show up here.</p></div>
+              </div>
+            ) : (
+              <div>
+                {todos.map((t) => (
+                  <Link key={t.id} href={t.href} className="so-todo" data-tone={t.tone}>
+                    <span className="so-todo-ico" aria-hidden="true"><t.icon /></span>
+                    <span className="so-todo-text"><b>{t.title}</b>{t.sub && <small data-hot={t.hot}>{t.sub}</small>}</span>
+                    <span className="so-count">{t.count}</span>
+                    <ChevronRight aria-hidden="true" />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
 
-      <div className="space-y-4 md:space-y-6">
-        {/* Quick Actions */}
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="border-b bg-slate-50/80">
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription className="hidden sm:block">Common administrative tasks — latest 3 of each</CardDescription>
-          </CardHeader>
-          <CardContent className="flex snap-x snap-mandatory gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:gap-4">
-            {quickActionPreviews.map((preview) => (
-              <div
-                key={preview.id}
-                className="w-[82%] shrink-0 snap-start rounded-xl border border-slate-200 bg-white p-3 md:w-auto md:p-4 transition-all hover:border-slate-300 hover:shadow-sm"
-              >
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-700">
-                      {preview.icon}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{preview.title}</p>
-                      <p className="text-xs text-slate-500">
-                        {isMounted && preview.lastUpdated
-                          ? `Updated ${timeAgo(new Date(preview.lastUpdated).toISOString())}`
-                          : " "}
-                      </p>
-                    </div>
+          <section className="sd-panel as-list" aria-labelledby="so-today">
+            <div className="sd-panel-head" style={{ margin: 0, padding: "1.25rem 1.25rem 0.9rem" }}>
+              <div><h2 id="so-today">Today&apos;s classes</h2><p>{day ? `${day.dayName}, in time order` : " "}</p></div>
+              <Link href="/lms/school-admin/schedules" className="sd-link">Timetable</Link>
+            </div>
+            {schedulesQuery.isLoading || now == null ? (
+              <div style={{ padding: "0 1.25rem 1.25rem" }}><div className="sd-skel" /><div className="sd-skel" /></div>
+            ) : shownClasses.length === 0 ? (
+              <div className="sd-empty" style={{ padding: "0 1.25rem 1.25rem" }}>
+                <b>No classes today</b>
+                <p>{(schedulesQuery.data ?? []).length === 0 ? "Your timetable is empty. Add classes to see the day here." : "Nothing is scheduled for today."}</p>
+                <Link href="/lms/school-admin/schedules" className="sd-btn sd-btn--line">Open the timetable</Link>
+              </div>
+            ) : (
+              <>
+                {shownClasses.map((c) => (
+                  <div key={c.id} className="so-class" data-state={c.state}>
+                    <span className="so-class-time">{clock(c.from)}{Number.isFinite(c.to) && <small>to {clock(c.to)}</small>}</span>
+                    <span className="so-class-main">
+                      <b>{c.subject}</b>
+                      <small>
+                        {c.grade}{c.section ? ` ${c.section}` : ""}
+                        {c.teacher?.full_name ? ` · ${c.teacher.full_name}` : ""}
+                        {roomLabel(c.room) ? ` · ${roomLabel(c.room)}` : ""}
+                      </small>
+                    </span>
+                    {c.state === "now" && <span className="so-chip" data-now="true">On now</span>}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => router.push(preview.route)}
-                    disabled={preview.loading}
-                    className="h-8 rounded-md border-slate-200 px-2.5"
-                  >
-                    {preview.loading ? (
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ArrowRight className="h-3 w-3" />
-                    )}
-                  </Button>
-                </div>
-                <p className="mb-3 hidden text-sm leading-relaxed text-slate-600 md:block">{preview.description}</p>
-                <div className="space-y-2">
-                  {preview.data.length > 0 ? (
-                    preview.data.slice(0, 3).map((item, index: number) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-2.5 py-2 text-xs"
-                      >
-                        <span className="truncate text-slate-600">
-                          {item.name || item.full_name || item.title || "Unknown"}
-                        </span>
-                        <span className="shrink-0 text-slate-400">
-                          {new Date(item.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs italic text-slate-400">
-                      No recent data
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+                ))}
+                {hiddenClasses > 0 && (
+                  <p className="so-more">and {plural(hiddenClasses, "more class", "more classes")}. <Link href="/lms/school-admin/schedules" className="sd-link">See all</Link></p>
+                )}
+              </>
+            )}
+          </section>
+        </div>
 
-        {/* School Status */}
-        <Card>
-          <CardHeader>
-            <CardTitle>School Status</CardTitle>
-            <CardDescription>Current school metrics</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1 md:space-y-4">
-              <button
-                onClick={() => router.push("/lms/school-admin/reports")}
-                className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
-              >
-                <span className="text-sm font-medium">Pending Reports</span>
-                <Badge variant={stats.pendingReports > 0 ? "destructive" : "secondary"}>
-                  {stats.pendingReports}
-                </Badge>
-              </button>
-              <button
-                onClick={() => router.push("/lms/school-admin/teachers?tab=leaves")}
-                className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
-              >
-                <span className="text-sm font-medium">
-                  Pending Leave Requests
-                  {!!stats.pendingEmergencyLeaves && (
-                    <span className="ml-2 text-xs font-semibold text-red-600">{stats.pendingEmergencyLeaves} emergency</span>
-                  )}
-                </span>
-                <Badge variant={stats.pendingLeaves > 0 ? "destructive" : "secondary"}>
-                  {stats.pendingLeaves}
-                </Badge>
-              </button>
-              <div className="flex items-center justify-between px-2 py-1.5">
-                <span className="text-sm font-medium">Total People</span>
-                <Badge variant="outline">{stats.totalStudents + stats.totalTeachers}</Badge>
-              </div>
-              <div className="flex items-center justify-between px-2 py-1.5">
-                <span className="text-sm font-medium">Active Courses</span>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="bg-purple-100 text-purple-800">
-                    {stats.activeCourses}
-                  </Badge>
-                  <CheckCircle className="h-4 w-4 text-purple-500" />
-                </div>
+        <div className="so-col">
+          <section className="sd-panel" aria-labelledby="so-joined">
+            <div className="sd-panel-head">
+              <div><h2 id="so-joined">Recently joined</h2><p>New students and teachers</p></div>
+              <div className="so-panel-links">
+                <Link href="/lms/school-admin/students" className="sd-link">Students</Link>
+                <Link href="/lms/school-admin/teachers" className="sd-link">Teachers</Link>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Activity — real dated events only */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest enrollments and teacher assignments</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 md:space-y-4">
-              {recentActivity.length > 0 ? (
-                recentActivity.map((activity, index) => (
-                  <div
-                    key={activity.id}
-                    className={`${index >= 4 ? "hidden md:flex" : "flex"} items-center gap-3 p-2.5 md:p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors`}
-                  >
-                    <div
-                      className={`w-2 h-2 rounded-full ${
-                        activity.type === "success"
-                          ? "bg-green-500"
-                          : activity.type === "warning"
-                          ? "bg-yellow-500"
-                          : activity.type === "error"
-                          ? "bg-red-500"
-                          : "bg-blue-500"
-                      }`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{activity.title}</p>
-                      <p className="text-xs text-gray-500 [overflow-wrap:anywhere]">{activity.message}</p>
-                      <p className="hidden text-xs text-gray-400 mt-1 md:block">
-                        {new Date(activity.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Clock className="h-3 w-3 text-gray-400" />
-                      <span className="text-xs text-gray-400">
-                        {isMounted ? timeAgo(activity.created_at) : ""}
-                      </span>
-                    </div>
+            {studentsQuery.isLoading || teachersQuery.isLoading ? (
+              <><div className="sd-skel" /><div className="sd-skel" /></>
+            ) : joined.length === 0 ? (
+              <div className="sd-empty"><b>Nobody new yet</b><p>New enrollments and teacher assignments will appear here.</p></div>
+            ) : (
+              <div>
+                {joined.map((p) => (
+                  <div key={p.id} className="so-row">
+                    <span className="sd-avatar" aria-hidden="true">{initialsOf(p.name)}</span>
+                    <span className="so-row-text"><b>{p.name}</b><small>{p.email || (p.role === "student" ? "Student" : "Teacher")}</small></span>
+                    <span className="so-chip">{p.role}</span>
+                    <time dateTime={p.at}>{now != null ? ago(p.at, now) : ""}</time>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <School className="h-8 w-8 mx-auto mb-2" />
-                  <p>No recent activity</p>
-                  <p className="text-sm">New enrollments and assignments will appear here</p>
-                </div>
-              )}
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="sd-panel" aria-labelledby="so-courses">
+            <div className="sd-panel-head">
+              <div><h2 id="so-courses">Courses</h2><p>Latest published for your school</p></div>
+              <Link href="/lms/school-admin/courses" className="sd-link">All courses</Link>
             </div>
-          </CardContent>
-        </Card>
+            {coursesQuery.isLoading ? (
+              <><div className="sd-skel" /><div className="sd-skel" /></>
+            ) : (coursesQuery.data ?? []).length === 0 ? (
+              <div className="sd-empty"><b>No published courses</b><p>Courses your school can teach will show up here.</p></div>
+            ) : (
+              <div>
+                {(coursesQuery.data ?? []).map((c) => (
+                  <div key={c.id} className="so-row">
+                    <span className="so-row-text"><b>{c.title}</b>{c.created_at && now != null && <small>Added {ago(c.created_at, now).toLowerCase()}</small>}</span>
+                    {c.status && <span className="so-chip">{c.status}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );

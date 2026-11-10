@@ -16,23 +16,20 @@ test.describe('School Admin — Dashboard', () => {
     await page.goto('/lms/school-admin');
     await statsResponse;
 
-    // Header reflects the fixture school name and admin's real name.
-    await expect(page.getByRole('heading', { name: /Admin Panel|School Admin Dashboard/ })).toBeVisible();
-    await expect(page.getByText('Welcome back, QA School Admin')).toBeVisible();
+    // Header shows the fixture school name; the greeting uses the admin's first name.
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByText(/Good (morning|afternoon|evening), QA/)).toBeVisible();
 
-    // Stat cards: fixture has 3 students and 2 teachers — a real, non-zero claim.
-    // StatCard (src/components/student/StatCard.tsx) renders as a <Link> with
-    // aria-label={`${title}: ${displayValue}`} — asserting on that accessible
-    // name is exact and avoids guessing the DOM's nesting depth.
-    await expect(page.getByRole('link', { name: 'Total Students: 3' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Total Teachers: 2' })).toBeVisible();
+    // Summary ledger: fixture has 3 students and 2 teachers — a real, non-zero claim.
+    // Each entry is a link whose accessible name is "<label> <value> <hint>".
+    const summary = page.getByRole('navigation', { name: 'School summary' });
+    await expect(summary.getByRole('link', { name: /^Students 3\b/ })).toBeVisible();
+    await expect(summary.getByRole('link', { name: /^Teachers 2\b/ })).toBeVisible();
   });
 
-  test('quick actions preview shows recent students and teachers by name', async ({ page }) => {
+  test('recently joined shows students and teachers by name', async ({ page }) => {
     await page.goto('/lms/school-admin');
-    // Recent Students / Recent Teachers preview cards render fixture names, not "No recent data".
-    // Both names legitimately appear twice (once in "Recent Teachers" preview,
-    // once in "Recent Activity" below) — .first() just confirms presence.
+    // The "Recently joined" panel lists fixture people by name, not the empty state.
     await expect(page.getByText('QA Teacher 0').or(page.getByText('QA Teacher 1')).first()).toBeVisible({
       timeout: 15000,
     });
@@ -50,9 +47,9 @@ test.describe('School Admin — Dashboard', () => {
     expect(res.ok()).toBeTruthy();
   });
 
-  test('stat card links navigate to the matching tab', async ({ page }) => {
+  test('summary links navigate to the matching tab', async ({ page }) => {
     await page.goto('/lms/school-admin');
-    await page.getByText('Total Students').click();
+    await page.getByRole('navigation', { name: 'School summary' }).getByRole('link', { name: /^Students/ }).click();
     await expect(page).toHaveURL(/\/lms\/school-admin\/students/);
   });
 });

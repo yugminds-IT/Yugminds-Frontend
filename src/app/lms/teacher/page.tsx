@@ -1,24 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense, lazy } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense, lazy } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
+import { CalendarOff, FileText, Flag, RefreshCw } from "lucide-react";
 import { useTeacherSchool } from "./context";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { StatCard } from "@/components/student/StatCard";
-import { AreaChartAnalyticsCard } from "@/components/ui/area-chart-analytics-card";
-import {
-  BookOpen,
-  FileText,
-  Calendar,
-  Clock,
-  Users,
-  AlertCircle,
-  RefreshCw
-} from "lucide-react";
 import {
   useTeacherClasses,
   useTeacherReports,
@@ -30,9 +16,13 @@ import {
   currentMonthKey,
 } from "@/hooks/useTeacherData";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
-import { SkeletonDashboard } from "@/components/ui/skeleton-dashboard";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { queryKeys } from "@/lib/query-keys";
+import DayRun from "@/components/teacher/overview/DayRun";
+import { buildDay, clock, firstNameOf, plural } from "@/components/teacher/overview/utils";
+import type { Todo } from "@/components/teacher/TeacherOverviewTab";
+import "@/components/school-admin/overview.css"; // shared with the school-admin overview: hero meta, to-do rows, class rows
+import "@/components/teacher/overview/overview.css";
 
 // Lazy load tab components
 const TeacherOverviewTab = lazy(() => import("@/components/teacher/TeacherOverviewTab"));
@@ -40,385 +30,311 @@ const TeacherAttendanceTab = lazy(() => import("@/components/teacher/TeacherAtte
 const TeacherReportsTab = lazy(() => import("@/components/teacher/TeacherReportsTab"));
 const TeacherAnalyticsTab = lazy(() => import("@/components/teacher/TeacherAnalyticsTab"));
 
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "attendance", label: "Attendance" },
+  { id: "reports", label: "Reports" },
+  { id: "analytics", label: "Analytics" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
+type TodayStatus = { attendance?: { status?: string | null } | null; notScheduledToday?: boolean; before_cutoff?: boolean };
+
+type MonthRow = { total_days?: number; present_count: number; absent_count: number; leave_count: number; unreported_count: number };
+const pctOf = (m: MonthRow) => {
+  const total = m.total_days || m.present_count + m.absent_count + m.leave_count + m.unreported_count || 0;
+  return total > 0 ? Math.round((m.present_count / total) * 100) : 0;
+};
+
+function TabSkeleton() {
+  return <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>;
+}
+
 export default function TeacherDashboard() {
   const queryClient = useQueryClient();
-  const { selectedSchool, schools } = useTeacherSchool();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const [isMounted, setIsMounted] = useState(false);
-
-  // React Query hooks - only load data needed for stats.
-  // Reports: fetch the full window (backend caps at 500) — counting "pending"
-  // among only the 5 most recent reports undercounted the real number.
-  const { data: classes, isLoading: classesLoading } = useTeacherClasses(selectedSchool?.id);
-  const { data: todaysClasses, isLoading: todaysClassesLoading } = useTodaysClasses(selectedSchool?.id);
-  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchool?.id, { limit: 500 });
-  const { data: monthlyAttendance, isLoading: attendanceLoading } = useTeacherMonthlyAttendance(selectedSchool?.id, 6);
-  const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
-  const { data: todayStatus } = useTodayAttendanceStatus(selectedSchool?.id);
-
-  // Refresh function to reload all dashboard data. selectedSchool?.id is
-  // undefined in "All Schools" mode — react-query's partial key matching
-  // still finds and invalidates the aggregate-keyed queries (e.g.
-  // ['teacher','classes', undefined]) fetched by the hooks above, so this
-  // works the same way for one school or all of them.
-  const loadDashboardData = async () => {
-    setIsRefreshing(true);
-    try {
-      // Invalidate all teacher-related queries to force refetch (match actual query keys)
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool?.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchool?.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'reports', selectedSchool?.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'monthly-attendance', selectedSchool?.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves', selectedSchool?.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool?.id] });
-      await queryClient.invalidateQueries({ queryKey: ['teacher', 'today-attendance', selectedSchool?.id] });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress });
-
-      setLastRefresh(new Date());
-    } catch (error) {
-      console.error('Error refreshing dashboard data:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useDashboardRealtime('teacher', {
-    enabled: true,
-    debugLabel: 'teacher-dashboard',
-    customEventMap: {
-      'notification:new': [queryKeys.teacher.dashboard, queryKeys.teacher.studentProgress, queryKeys.teacher.schedules],
-      'notification:read': [queryKeys.teacher.dashboard, queryKeys.teacher.studentProgress, queryKeys.teacher.schedules],
-      'dashboard:stats': [queryKeys.teacher.dashboard, queryKeys.teacher.schedules],
-    },
-    onStats: () => {
-      queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool?.id] });
-      queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool?.id] });
-      queryClient.invalidateQueries({ queryKey: ['teacher', 'today-classes', selectedSchool?.id] });
-      queryClient.invalidateQueries({ queryKey: ['teacher', 'reports', selectedSchool?.id] });
-      queryClient.invalidateQueries({ queryKey: ['teacher', 'monthly-attendance', selectedSchool?.id] });
-      queryClient.invalidateQueries({ queryKey: ['teacher', 'leaves', selectedSchool?.id] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress });
-      setLastRefresh(new Date());
-    },
-    onEvent: ({ eventType }) => {
-      if (eventType === 'notification:new' || eventType === 'notification:read' || eventType === 'dashboard:stats') {
-        setLastRefresh(new Date());
-      }
-    },
-  });
+  const { selectedSchool, schools, profileName } = useTeacherSchool();
+  const [tab, setTab] = useState<TabId>("overview");
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // null until mounted so server and first client render match (everything here depends on the clock)
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    setIsMounted(true);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clock is client-only so SSR and first paint match
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
   }, []);
 
-  // Use smart refresh for tab switching
-  useSmartRefresh({
-    customRefresh: loadDashboardData,
-    minRefreshInterval: 60000, // 1 minute minimum between refreshes
+  // Reports: fetch the full window (backend caps at 500). Counting "pending" among only the newest few undercounted the real number.
+  const classesQ = useTeacherClasses(selectedSchool?.id);
+  const todayQ = useTodaysClasses(selectedSchool?.id);
+  const reportsQ = useTeacherReports(selectedSchool?.id, { limit: 500 });
+  const attendanceQ = useTeacherMonthlyAttendance(selectedSchool?.id, 6);
+  const leavesQ = useTeacherLeaves(selectedSchool?.id);
+  const statusQ = useTodayAttendanceStatus(selectedSchool?.id);
+  const classes = useMemo(() => (Array.isArray(classesQ.data) ? classesQ.data : []), [classesQ.data]);
+  const reports = useMemo(() => (Array.isArray(reportsQ.data) ? reportsQ.data : []), [reportsQ.data]);
+  const leaves = useMemo(() => (Array.isArray(leavesQ.data) ? leavesQ.data : []), [leavesQ.data]);
+  const monthly = attendanceQ.data;
+  const today = statusQ.data as TodayStatus | undefined;
+
+  // Selected school undefined means "All schools": react-query's partial key matching still finds the aggregate-keyed queries.
+  const loadDashboardData = async () => {
+    const id = selectedSchool?.id;
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["teacher", "classes", id] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "today-classes", id] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "reports", id] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "monthly-attendance", id] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "leaves", id] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "schedules", id] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "today-attendance", id] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress }),
+    ]);
+  };
+
+  const { isConnected } = useDashboardRealtime("teacher", {
+    enabled: true,
+    debugLabel: "teacher-dashboard",
+    customEventMap: {
+      "notification:new": [queryKeys.teacher.dashboard, queryKeys.teacher.studentProgress, queryKeys.teacher.schedules],
+      "notification:read": [queryKeys.teacher.dashboard, queryKeys.teacher.studentProgress, queryKeys.teacher.schedules],
+      "dashboard:stats": [queryKeys.teacher.dashboard, queryKeys.teacher.schedules],
+    },
+    onStats: () => {
+      const id = selectedSchool?.id;
+      for (const key of ["schedules", "classes", "today-classes", "reports", "monthly-attendance", "leaves"]) {
+        queryClient.invalidateQueries({ queryKey: ["teacher", key, id] });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacher.studentProgress });
+    },
   });
 
-  const statsLoading =
-    classesLoading || todaysClassesLoading || reportsLoading || attendanceLoading || leavesLoading;
+  useSmartRefresh({ customRefresh: loadDashboardData, minRefreshInterval: 60000 });
 
-  // Current-month attendance: only trust the log entry whose month IS the
-  // current month — monthlyAttendance[0] is merely the most recent logged
-  // month and previously showed last month's numbers as "this month".
-  const currentMonthEntry = useMemo(() => {
-    if (!isMounted || !Array.isArray(monthlyAttendance)) return null;
-    const key = currentMonthKey();
-    return monthlyAttendance.find((m) => String(m.month).slice(0, 7) === key) ?? null;
-  }, [monthlyAttendance, isMounted]);
+  const queries = [classesQ, todayQ, reportsQ, attendanceQ, leavesQ, statusQ];
+  const isRefreshing = queries.some((q) => q.isFetching);
+  const lastRefresh = Math.max(0, ...queries.map((q) => q.dataUpdatedAt || 0));
+  const statsLoading = classesQ.isLoading || todayQ.isLoading || reportsQ.isLoading || attendanceQ.isLoading || leavesQ.isLoading;
 
-  const dashboardStats = useMemo(() => {
-    // selectedSchool === null means "All Schools" — every hook above was
-    // already called with schoolId=undefined in that case, which the
-    // backend resolves as a combined view across every assigned school, so
-    // the same computation below works for both a single school and all of
-    // them; no special-casing needed here.
-    const todaysClassesCount = Array.isArray(todaysClasses) ? todaysClasses.length : 0;
-    const pendingReportsCount = Array.isArray(reports)
-      ? (reports as Array<{ report_status?: string }>).filter((r) => r.report_status === 'Pending').length
-      : 0;
-    const totalClassesCount = Array.isArray(classes) ? classes.length : 0;
+  /* ───────── today ───────── */
+  const nowDate = now == null ? null : new Date(now);
+  const nowMin = nowDate ? nowDate.getHours() * 60 + nowDate.getMinutes() : 0;
+  const dayName = nowDate ? nowDate.toLocaleDateString("en-IN", { weekday: "long" }) : "";
+  const day = useMemo(() => buildDay(todayQ.data, nowMin), [todayQ.data, nowMin]);
+  const unreported = useMemo(() => day.filter((r) => !r.reported), [day]);
+  const reported = day.length - unreported.length;
 
-    const attendancePct = (() => {
-      if (!currentMonthEntry) return 0;
-      const total = currentMonthEntry.total_days ||
-        (currentMonthEntry.present_count + currentMonthEntry.absent_count +
-         currentMonthEntry.leave_count + currentMonthEntry.unreported_count) || 0;
-      return total > 0 ? Math.round((currentMonthEntry.present_count / total) * 100) : 0;
-    })();
+  const dayCaption = (() => {
+    const live = day.find((r) => r.phase === "live");
+    const next = day.find((r) => r.phase === "upcoming");
+    if (live) return `${live.subject} is on now`;
+    if (next) return `Next: ${next.subject} at ${clock(next.from)}`;
+    return unreported.length === 0 ? "All reports are in" : "The school day is over";
+  })();
 
-    const pendingLeavesCount = Array.isArray(leaves)
-      ? (leaves as Array<{ status?: string }>).filter((l) => l.status === 'Pending').length
-      : 0;
+  const emptyDay = (() => {
+    const s = today?.attendance?.status;
+    if (s === "Holiday") return { title: "Today is a holiday", text: "No classes are held and no reports are due." };
+    if (s === "Leave-Approved") return { title: "You are on leave today", text: "Your leave was approved, so no reports are due." };
+    if (today?.notScheduledToday || s === "Not-Scheduled") return { title: "You are off today", text: "You are not scheduled to teach at this school today." };
+    return { title: "No classes today", text: "Nothing is scheduled for you, so no reports are due." };
+  })();
 
-    return {
-      todaysClasses: todaysClassesCount,
-      pendingReports: pendingReportsCount,
-      totalClasses: totalClassesCount,
-      monthlyAttendance: attendancePct,
-      pendingLeaves: pendingLeavesCount,
-    };
-  }, [selectedSchool, classes, todaysClasses, reports, leaves, currentMonthEntry]);
+  /* ───────── what is waiting for the teacher ───────── */
+  const flagged = reports.filter((r) => r.report_status === "Flagged").length;
+  const pendingReports = reports.filter((r) => r.report_status === "Pending").length;
+  const pendingLeaves = leaves.filter((l) => l.status === "Pending").length;
+  const cutoffPassed = today?.before_cutoff === false;
 
-  // Needs attention: real, actionable items only, each linking to its fix.
-  const needsAttention = useMemo(() => {
-    const items: Array<{ id: string; label: string; href: string; tone: 'red' | 'amber' }> = [];
-
-    const ts = todayStatus as { totalPeriods?: number; periodsWithReports?: number } | undefined;
-    const unreported = (ts?.totalPeriods ?? 0) - (ts?.periodsWithReports ?? 0);
-    if (unreported > 0) {
-      items.push({
-        id: 'unreported-periods',
-        label: `${unreported} period${unreported !== 1 ? 's' : ''} today without a report`,
-        href: '/lms/teacher/reports',
-        tone: 'amber',
+  const todos = useMemo<Todo[]>(() => {
+    const out: Todo[] = [];
+    if (unreported.length > 0) {
+      out.push({
+        id: "unreported",
+        href: unreported.length === 1 ? unreported[0].href : "/lms/teacher/reports",
+        icon: FileText,
+        title: `${plural(unreported.length, "class", "classes")} today without a report`,
+        sub: cutoffPassed ? "The 8 PM cutoff has passed. Submit them anyway." : "Reports are due by 8 PM",
+        count: unreported.length,
+        tone: cutoffPassed ? "red" : undefined,
       });
     }
-
-    const flagged = Array.isArray(reports)
-      ? (reports as Array<{ report_status?: string }>).filter((r) => r.report_status === 'Flagged').length
-      : 0;
     if (flagged > 0) {
-      items.push({
-        id: 'flagged-reports',
-        label: `${flagged} report${flagged !== 1 ? 's' : ''} flagged by admin`,
-        href: '/lms/teacher/reports',
-        tone: 'red',
+      out.push({
+        id: "flagged",
+        href: "/lms/teacher/reports",
+        icon: Flag,
+        title: `${plural(flagged, "report")} flagged by your admin`,
+        sub: "Open them and fix what was flagged",
+        count: flagged,
+        tone: "red",
       });
     }
-
-    if (dashboardStats.pendingLeaves > 0) {
-      items.push({
-        id: 'pending-leaves',
-        label: `${dashboardStats.pendingLeaves} leave request${dashboardStats.pendingLeaves !== 1 ? 's' : ''} awaiting approval`,
-        href: '/lms/teacher/leaves',
-        tone: 'amber',
+    if (pendingLeaves > 0) {
+      out.push({
+        id: "leaves",
+        href: "/lms/teacher/leaves",
+        icon: CalendarOff,
+        title: `${plural(pendingLeaves, "leave request")} waiting`,
+        sub: "Your admin has not answered yet",
+        count: pendingLeaves,
       });
     }
+    return out;
+  }, [unreported, flagged, pendingLeaves, cutoffPassed]);
 
-    return items;
-  }, [todayStatus, reports, dashboardStats.pendingLeaves]);
+  /* ───────── attendance this month, and its six-month trend ───────── */
+  // Only trust the entry whose month IS this month: the newest logged month may be an older one.
+  const monthEntry = useMemo(() => {
+    if (!Array.isArray(monthly)) return null;
+    const key = currentMonthKey();
+    return monthly.find((m) => String(m.month).slice(0, 7) === key) ?? null;
+  }, [monthly]);
 
-  // Real 6-month attendance series for the one card that has genuine trend data.
-  const attendanceSeries = useMemo(() => {
-    if (!Array.isArray(monthlyAttendance)) return [];
-    return [...monthlyAttendance]
-      .reverse()
-      .map((m) => {
-        const total = m.total_days ||
-          (m.present_count + m.absent_count + m.leave_count + m.unreported_count) || 0;
-        return {
-          label: formatMonthLabel(m.month),
-          value: total > 0 ? Math.round((m.present_count / total) * 100) : 0,
-        };
-      });
-  }, [monthlyAttendance]);
+  const attendancePct = monthEntry ? pctOf(monthEntry) : 0;
+  const trend = useMemo(() => (Array.isArray(monthly) ? [...monthly].reverse().map((m) => ({ label: formatMonthLabel(m.month), value: pctOf(m) })) : []), [monthly]);
 
-  if (!isMounted) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  /* ───────── copy ───────── */
+  const firstName = firstNameOf(profileName);
+  const hour = nowDate?.getHours() ?? 12;
+  const greeting = now == null ? "Hello" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  // Only genuinely blocked when the teacher has no schools at all —
-  // selectedSchool === null with schools.length > 0 means "All Schools"
-  // is intentionally selected, and every stat/hook above already computes
-  // the combined view for that case.
-  if (schools.length === 0) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="p-8">
-            <div className="text-center py-8">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
-              <p className="text-lg font-medium">No school assigned</p>
-              <p className="text-sm text-gray-600 mt-2">
-                You aren&apos;t assigned to any school yet. Please contact your admin.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  let status: React.ReactNode;
+  if (todayQ.isError) status = "Your day did not load. Try refreshing.";
+  else if (todayQ.isLoading || now == null) status = "Checking your day…";
+  else if (day.length === 0) status = emptyDay.title + ". " + emptyDay.text;
+  else if (unreported.length === 0) status = <><strong>All {day.length} {day.length === 1 ? "report is" : "reports are"} in.</strong> You are done for the day.</>;
+  else status = <><strong>{reported} of {day.length}</strong> classes reported.{" "}{cutoffPassed ? "The 8 PM cutoff has passed, but please still submit." : "Reports are due by 8 PM."}</>;
 
-  const teacherStatCards = [
+  const primary = unreported.length > 0
+    ? { href: unreported.length === 1 ? unreported[0].href : "/lms/teacher/reports", icon: FileText, label: `Submit ${plural(unreported.length, "report")}` }
+    : flagged > 0
+      ? { href: "/lms/teacher/reports", icon: Flag, label: `Fix ${plural(flagged, "flagged report")}` }
+      : { href: "/lms/teacher/classes", icon: null, label: "Open my classes" };
+
+  const ledger = [
+    { label: "Classes today", value: String(day.length), hint: day.length === 0 ? "Nothing scheduled" : `${reported} reported so far`, href: "/lms/teacher/classes" },
+    { label: "Reports in review", value: String(pendingReports), hint: pendingReports > 0 ? "Waiting for your admin" : "Nothing waiting", href: "/lms/teacher/reports" },
+    { label: "Leave requests", value: String(pendingLeaves), hint: pendingLeaves > 0 ? "Waiting for approval" : "None waiting", href: "/lms/teacher/leaves" },
     {
-      title: "Today's Classes",
-      value: dashboardStats.todaysClasses,
-      description: "Periods scheduled today",
-      badge: "Today",
-      icon: <BookOpen className="h-4 w-4" />,
-      accentColor: "#2563eb",
-      info: "Scheduled periods for today at the selected school.",
-      href: "/lms/teacher/classes",
-    },
-    {
-      title: "Pending Reports",
-      value: dashboardStats.pendingReports,
-      description: "Awaiting admin review",
-      badge: dashboardStats.pendingReports > 0 ? "Pending" : "Clear",
-      icon: <FileText className="h-4 w-4" />,
-      accentColor: dashboardStats.pendingReports > 0 ? "#f97316" : "#16a34a",
-      info: "Your submitted reports currently waiting for school admin review.",
-      href: "/lms/teacher/reports",
-    },
-    {
-      title: "Total Classes",
-      value: dashboardStats.totalClasses,
-      description: "Classes assigned",
-      badge: "Assigned",
-      icon: <Users className="h-4 w-4" />,
-      accentColor: "#7c3aed",
-      info: "Total classes assigned to you in the selected school.",
-      href: "/lms/teacher/classes",
-    },
-    {
-      title: "Pending Leaves",
-      value: dashboardStats.pendingLeaves,
-      description: "Awaiting approval",
-      badge: dashboardStats.pendingLeaves > 0 ? "Pending" : "Clear",
-      icon: <Clock className="h-4 w-4" />,
-      accentColor: dashboardStats.pendingLeaves > 0 ? "#f59e0b" : "#16a34a",
-      info: "Leave requests that are still awaiting approval.",
-      href: "/lms/teacher/leaves",
+      label: "Attendance this month",
+      value: monthEntry ? `${attendancePct}%` : "–",
+      hint: monthEntry ? formatMonthLabel(monthEntry.month, { month: "long", year: "numeric" }) : "No log for this month yet",
+      href: "/lms/teacher/attendance",
     },
   ];
 
-  return (
-    <div className="space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Teacher Dashboard</h1>
-          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
-            <span className="hidden md:inline">Welcome back! Here&apos;s an overview of your teaching activities</span>
-            <span className="md:hidden">Welcome back</span>
-            {selectedSchool ? ` at ${selectedSchool.name}` : ' across all your schools'}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Last updated {lastRefresh.toLocaleTimeString()}
-          </p>
-        </div>
-        <Button
-          onClick={loadDashboardData}
-          disabled={isRefreshing}
-          variant="outline"
-          size="sm"
-          className="flex shrink-0 items-center gap-2 md:h-10 md:px-4"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline">Refresh</span>
-        </Button>
-      </div>
+  const onTabKey = (e: React.KeyboardEvent, i: number) => {
+    const to = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : null;
+    if (to == null) return;
+    e.preventDefault();
+    const next = TABS[(to + TABS.length) % TABS.length].id;
+    setTab(next);
+    tabRefs.current[next]?.focus();
+  };
 
-      {/* Needs attention — real, actionable items only */}
-      {needsAttention.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {needsAttention.map((item) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                item.tone === 'red'
-                  ? 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100'
-                  : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
-              }`}
+  if (now == null) {
+    return <div className="sd-page"><div className="sd-skel" style={{ height: "22rem", borderRadius: "1.75rem" }} /></div>;
+  }
+
+  // Only genuinely blocked when the teacher has no schools at all: no selected school with schools present means "All schools".
+  if (schools.length === 0) {
+    return (
+      <div className="sd-page">
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>No school assigned</b>
+            <p>You are not assigned to any school yet. Ask your admin to add you to one.</p>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="to-title">
+        <div className="sd-hero-copy">
+          <h1 id="to-title" className="mc-hero-title">{selectedSchool?.name ?? "All your schools"}</h1>
+          <p className="sd-where">{greeting}{firstName ? `, ${firstName}` : ""}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <Link href={primary.href} className="sd-btn sd-btn--amber">{primary.icon && <primary.icon aria-hidden="true" />}{primary.label}</Link>
+            <Link href="/lms/teacher/leaves?apply=1" className="sd-btn sd-btn--ghost-dark"><CalendarOff aria-hidden="true" />Apply for leave</Link>
+          </div>
+          <div className="so-meta">
+            <p className="so-live" data-on={isConnected}>
+              <i aria-hidden="true" />
+              {isConnected ? "Live" : "Reconnecting…"}
+              {lastRefresh > 0 && ` · updated ${new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+            </p>
+            <button className="so-refresh" onClick={loadDashboardData} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <DayRun rows={day} caption={dayCaption} loading={todayQ.isLoading} empty={emptyDay} />
+      </section>
+
+      <nav className="sd-ledger to-ledger" aria-label="Your numbers">
+        {ledger.map((m, i) => (
+          <Link key={m.label} href={m.href}>
+            <span className="sd-l">{m.label}</span>
+            {statsLoading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4.5rem" }} /> : <b className="sd-n">{m.value}</b>}
+            <small>{m.hint}</small>
+            {i === 3 && !statsLoading && trend.length > 1 && (
+              <span className="to-spark" aria-hidden="true" title="Attendance, last 6 months">
+                {trend.map((t, k) => <i key={k} style={{ "--h": `${Math.max(t.value, 6)}%` } as React.CSSProperties} />)}
+              </span>
+            )}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="to-tabs-row">
+        <div className="mc-tabs" role="tablist" aria-label="Dashboard sections">
+          {TABS.map((t, i) => (
+            <button
+              key={t.id}
+              ref={(el) => { tabRefs.current[t.id] = el; }}
+              role="tab"
+              id={`to-tab-${t.id}`}
+              aria-selected={tab === t.id}
+              aria-controls={`to-panel-${t.id}`}
+              tabIndex={tab === t.id ? 0 : -1}
+              className="mc-tab"
+              onClick={() => setTab(t.id)}
+              onKeyDown={(e) => onTabKey(e, i)}
             >
-              <AlertCircle className={`h-4 w-4 shrink-0 ${item.tone === 'red' ? 'text-red-500' : 'text-amber-500'}`} />
-              {item.label}
-            </Link>
+              {t.label}
+            </button>
           ))}
         </div>
-      )}
-
-      {/* Stats Cards — skeletons while loading (a 0 is a claim, not a loading state) */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-6 [&>*:last-child]:max-md:col-span-2">
-        {statsLoading ? (
-          [...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-[100px] md:h-[132px] w-full rounded-xl" />
-          ))
-        ) : (
-          <>
-            {teacherStatCards.map((metric) => (
-              <StatCard
-                key={metric.title}
-                title={metric.title}
-                value={metric.value}
-                description={metric.description}
-                badge={metric.badge}
-                icon={metric.icon}
-                accentColor={metric.accentColor}
-                info={metric.info}
-                href={metric.href}
-              />
-            ))}
-            {/* Attendance is the one metric with a real monthly series — keep the chart card for it */}
-            <AreaChartAnalyticsCard
-              title="Monthly Attendance"
-              value={currentMonthEntry ? `${dashboardStats.monthlyAttendance}%` : "—"}
-              description={
-                currentMonthEntry
-                  ? formatMonthLabel(currentMonthEntry.month, { month: 'long', year: 'numeric' })
-                  : "No log for this month yet"
-              }
-              badge="6 months"
-              icon={<Calendar className="h-4 w-4" />}
-              accentColor="#0891b2"
-              sideMetric={currentMonthEntry ? `${dashboardStats.monthlyAttendance}%` : "—"}
-              sideLabel="present"
-              info="Attendance percentage per month over the last 6 logged months."
-              href="/lms/teacher/attendance"
-              data={attendanceSeries}
-            />
-          </>
-        )}
       </div>
 
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="reports">Reports</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-        </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          <Suspense fallback={<SkeletonDashboard />}>
-            <TeacherOverviewTab selectedSchoolId={selectedSchool?.id} />
-          </Suspense>
-        </TabsContent>
-
-        {/* Attendance Tab */}
-        <TabsContent value="attendance" className="space-y-6">
-          <Suspense fallback={<SkeletonDashboard />}>
-            <TeacherAttendanceTab />
-          </Suspense>
-        </TabsContent>
-
-        {/* Reports Tab */}
-        <TabsContent value="reports" className="space-y-6">
-          <Suspense fallback={<SkeletonDashboard />}>
-            <TeacherReportsTab selectedSchoolId={selectedSchool?.id} />
-          </Suspense>
-        </TabsContent>
-
-        {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-6">
-          <Suspense fallback={<SkeletonDashboard />}>
-            <TeacherAnalyticsTab selectedSchoolId={selectedSchool?.id} />
-          </Suspense>
-        </TabsContent>
-
-      </Tabs>
+      <div role="tabpanel" id={`to-panel-${tab}`} aria-labelledby={`to-tab-${tab}`} className="mc-swap" key={tab}>
+        <Suspense fallback={<TabSkeleton />}>
+          {tab === "overview" && (
+            <TeacherOverviewTab
+              day={day}
+              dayName={dayName}
+              dayLoading={todayQ.isLoading}
+              todos={todos}
+              todosLoading={todayQ.isLoading || reportsQ.isLoading || leavesQ.isLoading}
+              classes={classes}
+              classesLoading={classesQ.isLoading}
+              reports={reports}
+              reportsLoading={reportsQ.isLoading || leavesQ.isLoading}
+              leaves={leaves}
+              now={now}
+            />
+          )}
+          {tab === "attendance" && <TeacherAttendanceTab />}
+          {tab === "reports" && <TeacherReportsTab selectedSchoolId={selectedSchool?.id} />}
+          {tab === "analytics" && <TeacherAnalyticsTab selectedSchoolId={selectedSchool?.id} />}
+        </Suspense>
+      </div>
     </div>
   );
 }

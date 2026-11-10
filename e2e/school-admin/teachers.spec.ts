@@ -21,9 +21,7 @@ test.describe('School Admin — Teachers', () => {
     await expect(page.getByText('QA Teacher 1')).toBeVisible();
   });
 
-  test('teacher grade/subject data exists in the API payload but is not surfaced in the table UI (BUG)', async ({
-    page,
-  }) => {
+  test('teacher classes and subjects are shown in the teacher list', async ({ page }) => {
     const teachersResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/teachers') && res.request().method() === 'GET',
     );
@@ -37,34 +35,35 @@ test.describe('School Admin — Teachers', () => {
 
     const teacher0 = teachers.find((t) => t.email === fixture.teachers[0].email);
     expect(teacher0, 'fixture teacher 0 should be present in API response').toBeTruthy();
-    // Backend does return Grade 1 / General subject via teacherSectionAssignments — confirming
-    // the fixture's assignment made it into the API contract.
+    // The backend returns the fixture's grade and subject...
     expect(teacher0!.teacher_schools?.[0]?.grades_assigned).toContain(fixture.grade);
     expect(teacher0!.teacher_schools?.[0]?.subjects).toContain('General');
-    // NOTE: the backend only derives `grades_assigned` (grade name) from
-    // teacherSectionAssignments — it never returns the assigned *section* name
-    // (see school-admin-extra.controller.ts listTeachers(), ~line 561: only
-    // `a.section?.grade?.name` is read, `a.section?.name` is discarded). So even
-    // at the API layer, "teacher 0 is Section A vs teacher 1 is Section B" is
-    // unverifiable from this endpoint's response.
+    // NOTE: the backend only derives `grades_assigned` (the grade name) from
+    // teacherSectionAssignments; it does not return the assigned *section* name
+    // (school-admin-extra.controller.ts listTeachers()), so the row shows the grade only.
 
-    // BUG: The Teachers Management table never renders grade/section/subject at
-    // all, despite the backend supplying `teacher_schools[].grades_assigned` and
-    // `.subjects` in this same response. Frontend root cause:
-    //   - src/app/lms/school-admin/teachers/page.tsx mapTeacherToTableRow()
-    //     (~line 48-69) drops `teacher.teacher_schools` entirely — it only maps
-    //     name/email/qualification/specialization/leaves/status onto the row.
-    //   - src/components/ui/management-table-presets.tsx
-    //     SCHOOL_ADMIN_TEACHER_COLUMNS (~line 775) has no grade/section/subject
-    //     column to render one even if the row carried the data.
-    // Net effect: a school admin cannot tell which grade/section/subject a
-    // teacher is assigned to from this page at all. Asserting the *absence* of
-    // that text in the teacher's row to document the gap precisely (not just
-    // asserting on the API body).
-    const teacherRow = page.getByRole('row', { name: /QA Teacher 0/ });
+    // ...and the list now shows both. (The old table dropped teacher_schools
+    // entirely, so a school admin could not see what a teacher was assigned.)
+    const teacherRow = page.getByRole('article').filter({ hasText: 'QA Teacher 0' });
     await expect(teacherRow).toBeVisible();
-    await expect(teacherRow.getByText(fixture.grade, { exact: false })).toHaveCount(0);
-    await expect(teacherRow.getByText('General', { exact: false })).toHaveCount(0);
+    await expect(teacherRow).toContainText(fixture.grade);
+    await expect(teacherRow).toContainText('General');
+  });
+
+  test('picking an attendance band on the track filters the list', async ({ page }) => {
+    const teachersResponse = page.waitForResponse(
+      (res) => res.url().includes('/school-admin/teachers') && res.request().method() === 'GET',
+    );
+    await page.goto('/lms/school-admin/teachers');
+    await teachersResponse;
+    await expect(page.getByText('QA Teacher 0')).toBeVisible();
+
+    // Bands are buttons named "<band>: <n> teachers". Choosing one narrows the list
+    // and offers a way back.
+    await page.getByRole('button', { name: /^(Below 75%|75 to 89%|90% and up|No data): \d+ teachers?$/ }).first().click();
+    await expect(page.getByRole('button', { name: /Show all teachers/ })).toBeVisible();
+    await page.getByRole('button', { name: /Show all teachers/ }).click();
+    await expect(page.getByText('QA Teacher 0')).toBeVisible();
   });
 
   test('school admin can approve a pending teacher leave request through the real UI', async ({
@@ -104,7 +103,7 @@ test.describe('School Admin — Teachers', () => {
     });
     expect(createLeaveRes.ok(), await createLeaveRes.text()).toBeTruthy();
 
-    // Reload the school-admin teachers page and switch to the Leaves tab.
+    // Open the school-admin Teachers page on the leave requests tab.
     const leavesResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/leaves') && res.request().method() === 'GET',
     );
@@ -120,7 +119,6 @@ test.describe('School Admin — Teachers', () => {
     // SchoolAdminExtraController's handlers win and the dedicated
     // leaves.controller.ts is dead code. This test asserts against the observed
     // (Extra controller) behavior, not the unreachable one.
-    const leaveRow = page.locator('div', { hasText: 'QA e2e leave request' }).last();
     await expect(page.getByText('QA Teacher 0').first()).toBeVisible();
     await expect(page.getByText('QA e2e leave request')).toBeVisible();
 
@@ -135,8 +133,10 @@ test.describe('School Admin — Teachers', () => {
     const patchRes = await patchResponse;
     expect(patchRes.ok(), await patchRes.text()).toBeTruthy();
 
-    // Status badge should flip to Approved for this leave after the reload the
-    // component itself triggers (loadTeachers() re-fetch inside handleLeaveRequest).
-    await expect(page.getByText('Approved').first()).toBeVisible({ timeout: 10000 });
+    // The request's own card should show the Approved chip after the page reloads its leaves.
+    // (The "Approved" filter pill is always on screen, so check inside the request.)
+    await expect(
+      page.getByRole('article').filter({ hasText: 'QA e2e leave request' }).getByText('Approved', { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
   });
 });

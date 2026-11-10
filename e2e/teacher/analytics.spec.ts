@@ -86,14 +86,14 @@ test.describe('Teacher — Analytics', () => {
     await page.goto('/lms/teacher/analytics');
     await reportsResponse;
 
-    await expect(page.getByRole('heading', { name: 'Analytics Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible();
 
-    const totalReportsCard = page.getByText('Total Reports').locator('..').locator('..');
-    const totalReportsText = await totalReportsCard.locator('.text-2xl').first().innerText();
-    expect(Number(totalReportsText), 'Total Reports should reflect the real report just seeded, not 0').toBeGreaterThan(0);
+    // "Reports submitted" is the first number under the hero: it must reflect the report just seeded, not 0.
+    const numbers = page.getByRole('group', { name: 'Your numbers' });
+    await expect(numbers.locator('.sd-n').first()).toHaveText(/^[1-9]\d*$/, { timeout: 10000 });
 
-    // A real report/leave was just submitted — the charts' empty states must not show.
-    await expect(page.getByText('No reports submitted yet')).not.toBeVisible();
-    await expect(page.getByText('No leave requests submitted yet')).not.toBeVisible();
+    // A real report and leave were just submitted, so the empty states must not show.
+    await expect(page.getByText(/No reports yet/)).toHaveCount(0);
+    await expect(page.getByText('You have not asked for leave yet.')).toHaveCount(0);
   });
 });

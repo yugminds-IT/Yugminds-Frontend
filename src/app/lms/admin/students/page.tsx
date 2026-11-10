@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, Fragment } from "react";
+import Link from "next/link";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
@@ -10,9 +11,9 @@ import BulkDeleteStudentsButton from "@/components/admin/BulkDeleteStudentsButto
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { escapeHtml } from "@/lib/escape-html";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, 
@@ -20,8 +21,7 @@ import {
   DialogDescription, 
   DialogFooter, 
   DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+  DialogTitle
 } from "@/components/ui/dialog";
 import { 
   Table, 
@@ -31,13 +31,6 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { StudentManagementTable } from "@/components/ui/table-edit";
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from "@/components/ui/tabs";
 import { 
   Select,
   SelectContent,
@@ -57,20 +50,28 @@ import {
   Download,
   Users,
   School,
-  BookOpen,
-  GraduationCap,
   FileSpreadsheet,
-  X,
   Loader2,
   RefreshCw,
   Copy,
   Shield,
   CheckCircle2,
   RotateCcw,
-  ArrowRight,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  MoveRight,
 } from "lucide-react";
+import Modal from "@/components/portal/Modal";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import ProgressRun from "@/components/admin/students/ProgressRun";
+import StudentsTab from "@/components/admin/students/StudentsTab";
+import ReportsTab, { type ReportId } from "@/components/admin/students/ReportsTab";
+import { bandOf, plural, type Band } from "@/components/admin/students/utils";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips and forms
+import "@/components/school-admin/teachers.css"; // tm- track nodes
+import "@/components/admin/students/students.css";
 import { uniqueStudentEmail } from "@/lib/student-email";
 import { exportClassOptions, matchingEnrollment, type ExportClassOption } from "@/lib/student-export";
 
@@ -219,6 +220,12 @@ interface BulkImportData {
 /** Same rule the backend enforces on `email_domain` (e.g. "snt.edu.in"). */
 const EMAIL_DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
+/** Standard grades from Pre-K to Grade 12, used when a school has not set up its own. */
+const availableGrades = [
+  'Pre-K', 'Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5',
+  'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'
+];
+
 export default function StudentsManagement() {
   const [students, setStudents] = useState<Student[]>([]);
   const [totalStudentsCount, setTotalStudentsCount] = useState<number>(0);
@@ -230,6 +237,7 @@ export default function StudentsManagement() {
     students_completed: number;
   }>({ average_system_progress: 0, students_completed: 0 });
   const [isStudentsLoading, setIsStudentsLoading] = useState(true);
+  const [studentsFailed, setStudentsFailed] = useState(false);
   const [activeTab, setActiveTab] = useState('students');
   const [isSyncingEnrollments, setIsSyncingEnrollments] = useState(false);
   const [isEnrollingStudent, setIsEnrollingStudent] = useState<string | null>(null);
@@ -240,10 +248,9 @@ export default function StudentsManagement() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [deletingStudent, setDeletingStudent] = useState<Student | null>(null);
-  const [isDeleteStudentDialogOpen, setIsDeleteStudentDialogOpen] = useState(false);
+  const [bandFilter, setBandFilter] = useState<Band | null>(null);
   const [isDeletingStudent, setIsDeletingStudent] = useState(false);
   const [bulkDeleteStudents, setBulkDeleteStudents] = useState<StudentTableRow[] | null>(null);
-  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isBulkDeletingStudents, setIsBulkDeletingStudents] = useState(false);
   const [bulkSelectionResetKey, setBulkSelectionResetKey] = useState(0);
   // Bulk move-to-section / bulk enroll (server-side bulk endpoint)
@@ -402,12 +409,6 @@ export default function StudentsManagement() {
   const requestCloseEditStudent = () => {
     void requestClose(isEditStudentDirty, discardEditStudentDialog);
   };
-
-  // Standard available grades from Pre-K to Grade 12
-  const availableGrades = [
-    'Pre-K', 'Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5',
-    'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'
-  ];
 
   // Grades/sections configured for the currently selected school
   const [selectedSchoolGrades, setSelectedSchoolGrades] = useState<SchoolGrade[]>([]);
@@ -569,6 +570,7 @@ export default function StudentsManagement() {
 
   const loadData = async () => {
     setIsStudentsLoading(true);
+    setStudentsFailed(false);
     try {
       try {
         // Paged loading: pages are fetched in parallel and merged. Replaces the
@@ -686,15 +688,12 @@ export default function StudentsManagement() {
         if (status === 401 || status === 403) {
           toast.error('Authentication required. Please log in again.');
         }
-        setStudents([]);
-        setStudentProgressSummary({
-          average_system_progress: 0,
-          students_completed: 0,
-        });
+        // Keep what is on screen from an earlier load; the page says so when there is nothing to show.
+        setStudentsFailed(true);
       }
     } catch (error) {
       console.error('Error loading data:', error);
-      setStudents([]);
+      setStudentsFailed(true);
     } finally {
       setIsStudentsLoading(false);
     }
@@ -872,13 +871,11 @@ export default function StudentsManagement() {
 
   const requestDeleteStudent = (student: StudentTableRow) => {
     setDeletingStudent(student);
-    setIsDeleteStudentDialogOpen(true);
   };
 
   const requestBulkDeleteStudents = (rows: StudentTableRow[]) => {
     if (rows.length === 0) return;
     setBulkDeleteStudents(rows);
-    setIsBulkDeleteDialogOpen(true);
   };
 
   const confirmBulkDeleteStudents = async () => {
@@ -918,7 +915,6 @@ export default function StudentsManagement() {
       toast.error("Bulk delete failed unexpectedly.");
     } finally {
       setIsBulkDeletingStudents(false);
-      setIsBulkDeleteDialogOpen(false);
       setBulkDeleteStudents(null);
     }
   };
@@ -994,9 +990,8 @@ export default function StudentsManagement() {
       await adminApi.students.delete(student.id);
       setStudents((prev) => prev.filter((s: Student) => s.id !== student.id));
       setTotalStudentsCount((prev) => Math.max(0, prev - 1));
-      setIsDeleteStudentDialogOpen(false);
       setDeletingStudent(null);
-      toast.success(`Student "${student.full_name}" deleted successfully.`);
+      toast.success(`${student.full_name} was deleted.`);
     } catch (error) {
       console.error('Error deleting student:', error);
       const err = error as { message?: string };
@@ -1485,8 +1480,8 @@ export default function StudentsManagement() {
         <h1>Student Import Credentials</h1>
         <div class="summary">
           <p><strong>Total Students:</strong> ${filtered.length}</p>
-          <p><strong>Grade:</strong> ${credentialsGradeFilter === 'all' ? 'All grades' : credentialsGradeFilter}</p>
-          <p><strong>Section:</strong> ${credentialsSectionFilter === 'all' ? 'All sections' : credentialsSectionFilter}</p>
+          <p><strong>Grade:</strong> ${escapeHtml(credentialsGradeFilter === 'all' ? 'All grades' : credentialsGradeFilter)}</p>
+          <p><strong>Section:</strong> ${escapeHtml(credentialsSectionFilter === 'all' ? 'All sections' : credentialsSectionFilter)}</p>
           <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
           <p><strong>Note:</strong> These are newly generated passwords from this import — save this file securely.</p>
         </div>
@@ -1506,12 +1501,12 @@ export default function StudentsManagement() {
             ${filtered.map((c, index) => `
               <tr>
                 <td>${index + 1}</td>
-                <td>${c.name}</td>
-                <td>${c.email}</td>
-                <td>${c.password}</td>
-                <td>${c.school}</td>
-                <td>${c.grade}</td>
-                <td>${c.section}</td>
+                <td>${escapeHtml(c.name)}</td>
+                <td>${escapeHtml(c.email)}</td>
+                <td>${escapeHtml(c.password)}</td>
+                <td>${escapeHtml(c.school)}</td>
+                <td>${escapeHtml(c.grade)}</td>
+                <td>${escapeHtml(c.section)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -2190,8 +2185,8 @@ export default function StudentsManagement() {
             <h1>Student Info Export</h1>
             <div class="summary">
               <p><strong>Total Students:</strong> ${credentials.length}</p>
-              <p><strong>Schools:</strong> ${exportSelectedSchools.length === 0 ? 'All Schools' : exportSelectedSchools.map((id: string) => schools.find((s: School) => s.id === id)?.name).filter(Boolean).join(', ')}</p>
-              <p><strong>Grades:</strong> ${exportClassesLabel}</p>
+              <p><strong>Schools:</strong> ${escapeHtml(exportSelectedSchools.length === 0 ? 'All Schools' : exportSelectedSchools.map((id: string) => schools.find((s: School) => s.id === id)?.name).filter(Boolean).join(', '))}</p>
+              <p><strong>Grades:</strong> ${escapeHtml(exportClassesLabel)}</p>
               <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
               ${resetPasswordsOnExport
                 ? '<p><strong>Note:</strong> Every password below is brand new, generated for this export. Previous passwords no longer work.</p>'
@@ -2215,12 +2210,12 @@ export default function StudentsManagement() {
                 ${credentials.map((c, index) => `
                   <tr>
                     <td>${index + 1}</td>
-                    <td>${c.name}</td>
-                    <td>${c.email}</td>
-                    ${showPasswordColumn ? `<td>${c.password ?? ''}</td>` : ''}
-                    <td>${c.school}</td>
-                    <td>${c.grade}</td>
-                    <td>${c.section}</td>
+                    <td>${escapeHtml(c.name)}</td>
+                    <td>${escapeHtml(c.email)}</td>
+                    ${showPasswordColumn ? `<td>${escapeHtml(c.password)}</td>` : ''}
+                    <td>${escapeHtml(c.school)}</td>
+                    <td>${escapeHtml(c.grade)}</td>
+                    <td>${escapeHtml(c.section)}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -2316,6 +2311,10 @@ export default function StudentsManagement() {
     return Array.from(sections).sort();
   };
 
+  const downloadReport = (id: ReportId) => {
+    ({ enrollment: downloadEnrollmentReport, progress: downloadProgressReport, grade: downloadGradeWiseReport, school: downloadSchoolWiseReport })[id]();
+  };
+
   const studentTableRows = useMemo(
     () => students.map(mapStudentToTableRow),
     [students],
@@ -2330,79 +2329,515 @@ export default function StudentsManagement() {
       : true // if studentCount not available, assume active
   ).length;
 
+  const findStudent = (id: string) => studentTableRows.find((r) => r.id === id);
+  const bands: Record<Band, number> = { new: 0, going: 0, half: 0, done: 0 };
+  students.forEach((st) => { bands[bandOf(st.progress)] += 1; });
+  const totalStudents = totalStudentsCount || students.length;
+  const avgProgress = students.length > 0 ? studentProgressSummary.average_system_progress : null;
+  const tabs: { id: string; label: string; n?: number }[] = [
+    { id: 'students', label: 'Students', n: totalStudents },
+    { id: 'import', label: 'Bulk import' },
+    { id: 'reports', label: 'Reports' },
+  ];
+  const openAdd = () => {
+    setEditingStudent(null);
+    setFormData(emptyStudentForm);
+    setSectionInputMode('predefined');
+    setCustomSection("");
+    setIsDialogOpen(true);
+  };
+
+  let statusLine: React.ReactNode;
+  if (isStudentsLoading && students.length === 0) statusLine = 'Loading students…';
+  else if (studentsFailed && students.length === 0) statusLine = 'The students did not load. Try again.';
+  else if (students.length === 0) statusLine = 'No students yet. Add one, or import a whole class from a spreadsheet.';
+  else statusLine = <><strong>{plural(totalStudents, 'student')}</strong> in {plural(activeSchoolsWithStudents, 'school')}{bands.new > 0 ? `. ${bands.new} ${bands.new === 1 ? 'has' : 'have'} not started a course.` : '.'}</>;
+
   return (
-    <div className="p-8 bg-white">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Students Management</h1>
-            <p className="text-gray-600 mt-2">Manage student accounts, enrollment, and progress</p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ad-title">
+        <div className="sd-hero-copy">
+          <h1 id="ad-title" className="mc-hero-title">Students</h1>
+          <p className="sd-where">Every student on the platform</p>
+          <p className="sd-status">{statusLine}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--amber" onClick={openAdd}><Plus aria-hidden="true" />Add student</button>
+            <button className="sd-btn sd-btn--ghost-dark" onClick={() => setActiveTab('import')}><Upload aria-hidden="true" />Import a class</button>
+            <button className="sd-btn sd-btn--ghost-dark" onClick={handleOpenExportDialog}><Download aria-hidden="true" />Export</button>
           </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8">
-            <Card className="bg-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalStudentsCount || students.length}</div>
-                <p className="text-xs text-muted-foreground">Enrolled students</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Schools</CardTitle>
-                <School className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{activeSchoolsWithStudents}</div>
-                <p className="text-xs text-muted-foreground">
-                  {activeSchoolsWithStudents === schools.length
-                    ? `All ${schools.length} schools active`
-                    : `of ${schools.length} schools have students`}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Average Progress</CardTitle>
-                <BookOpen className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{studentProgressSummary.average_system_progress}%</div>
-                <p className="text-xs text-muted-foreground">Average course progress</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Graduated</CardTitle>
-                <GraduationCap className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{studentProgressSummary.students_completed}</div>
-                <p className="text-xs text-muted-foreground">Completed all courses</p>
-              </CardContent>
-            </Card>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void loadData()} disabled={isStudentsLoading} aria-label={isStudentsLoading ? 'Refreshing' : 'Refresh'} title="Refresh">
+              <RefreshCw className={isStudentsLoading ? 'animate-spin' : ''} aria-hidden="true" />
+            </button>
           </div>
+        </div>
+        {isStudentsLoading && students.length === 0 ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: '9rem' }} /></div>
+        ) : (
+          <ProgressRun counts={bands} selected={bandFilter} onSelect={(b) => { setBandFilter(b); if (b) setActiveTab('students'); }} average={avgProgress} />
+        )}
+      </section>
 
-          {/* Main Content */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="students">Students</TabsTrigger>
-              <TabsTrigger value="import">Bulk Import</TabsTrigger>
-              <TabsTrigger value="reports">Reports</TabsTrigger>
-            </TabsList>
+      <div className="sd-ledger" role="group" aria-label="Student numbers">
+        <button type="button" aria-pressed={!bandFilter && activeTab === 'students'} onClick={() => { setBandFilter(null); setActiveTab('students'); }}>
+          <span className="sd-l">Students</span><b className="sd-n">{totalStudents}</b><small>{totalStudents > students.length ? `${students.length} loaded here` : 'Every account'}</small>
+        </button>
+        <Link href="/lms/admin/schools">
+          <span className="sd-l">Schools with students</span><b className="sd-n">{students.length === 0 ? 0 : activeSchoolsWithStudents}</b><small>{students.length > 0 && activeSchoolsWithStudents === schools.length ? `All ${schools.length} schools` : `of ${schools.length} schools`}</small>
+        </Link>
+        <Link href="/lms/admin/student-progress">
+          <span className="sd-l">Average progress</span><b className="sd-n">{avgProgress == null ? '–' : `${Math.round(avgProgress)}%`}</b><small>Open course progress</small>
+        </Link>
+        <button type="button" aria-pressed={bandFilter === 'done'} onClick={() => { setBandFilter(bandFilter === 'done' ? null : 'done'); setActiveTab('students'); }}>
+          <span className="sd-l">Finished all courses</span><b className="sd-n">{students.length === 0 ? 0 : studentProgressSummary.students_completed}</b><small>Tap to see who</small>
+        </button>
+      </div>
 
-            {/* Students Tab */}
-            <TabsContent value="students" className="space-y-6">
-              {/* Actions Bar */}
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap gap-4 items-center">
-                  <div className="flex flex-wrap gap-2">
+      <div className="mc-tabs" role="tablist" aria-label="Students, import and reports" style={{ justifySelf: 'start' }}>
+        {tabs.map((tb) => (
+          <button key={tb.id} role="tab" className="mc-tab" aria-selected={activeTab === tb.id} onClick={() => setActiveTab(tb.id)}>
+            {tb.label}{tb.n != null && <b>{tb.n}</b>}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'students' && studentsFailed && students.length === 0 && !isStudentsLoading && (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the students</b>
+            <p>Check your connection, then try again. Nothing was changed.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void loadData()}>Try again</button>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'students' && !(studentsFailed && students.length === 0 && !isStudentsLoading) && (
+        <StudentsTab
+          students={studentTableRows}
+          loading={isStudentsLoading}
+          band={bandFilter}
+          onClearBand={() => setBandFilter(null)}
+          resetKey={bulkSelectionResetKey}
+          enrollingId={isEnrollingStudent}
+          syncing={isSyncingEnrollments}
+          bulkEnrolling={isBulkEnrolling}
+          onAdd={openAdd}
+          onSync={handleSyncEnrollments}
+          onView={(id) => { const r = findStudent(id); if (r) handleViewStudent(r); }}
+          onEdit={(id) => { const r = findStudent(id); if (r) handleEditStudent(r); }}
+          onEnroll={(id) => { const r = findStudent(id); if (r) void handleEnrollStudent(r); }}
+          onDelete={(id) => { const r = findStudent(id); if (r) requestDeleteStudent(r); }}
+          onBulkMove={(ids) => requestBulkMoveStudents(studentTableRows.filter((r) => ids.includes(r.id)))}
+          onBulkEnroll={(ids) => void handleBulkEnrollStudents(studentTableRows.filter((r) => ids.includes(r.id)))}
+          onBulkDelete={(ids) => requestBulkDeleteStudents(studentTableRows.filter((r) => ids.includes(r.id)))}
+          extraActions={
+            <BulkDeleteStudentsButton
+              schools={schools}
+              onDeleted={() => {
+                setBulkSelectionResetKey((k) => k + 1);
+                void loadData();
+              }}
+            />
+          }
+        />
+      )}
+
+            {activeTab === 'import' && (
+              <section className="sd-panel ad-import mc-swap" aria-labelledby="ad-import-title">
+                <div className="sd-panel-head"><div><h2 id="ad-import-title">Bulk import students</h2><p>Pick a school, then upload a filled-in template to create many students at once.</p></div></div>
+                <div className="ad-import">
+                  {!bulkImportDone && (
+                  <>
+                  {/* Step 1: Select School */}
+                  <div className="ad-step">
+                    <h3>1. Pick the school</h3>
+                    <p>Every student in this import joins the school you pick.</p>
+                    {schools.length === 0 ? (
+                      <p className="st-hint"><Loader2 className="inline h-4 w-4 animate-spin" aria-hidden="true" /> Loading schools…</p>
+                    ) : (
+                      <div className="sd-field-wrap">
+                        <label htmlFor="bulk-school">School</label>
+                        <select
+                          id="bulk-school"
+                          className="sd-field"
+                          value={selectedSchoolForImport}
+                          onChange={(e) => {
+                            const selectedSchool = schools.find((s: School) => s.id === e.target.value);
+                            setSelectedSchoolGrades(selectedSchool?.grades ?? []);
+                            setSelectedSchoolForImport(e.target.value);
+                          }}
+                        >
+                          <option value="">Choose a school</option>
+                          {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div className="sd-field-wrap">
+                      <label htmlFor="bulk-email-domain">Email domain <small>(optional)</small></label>
+                      <input
+                        id="bulk-email-domain"
+                        className="sd-field"
+                        value={bulkEmailDomain}
+                        onChange={(e) => setBulkEmailDomain(e.target.value)}
+                        placeholder={(schools.find((s: School) => s.id === selectedSchoolForImport)?.name?.toLowerCase().replace(/\s+/g, '') || 'schoolname') + '.edu'}
+                        aria-invalid={bulkEmailDomainInvalid}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      {bulkEmailDomainInvalid ? (
+                        <p className="st-hint" data-t="bad">Enter a domain like school.edu.in, with no spaces and no @ in the middle.</p>
+                      ) : (
+                        <p className="st-hint">The part after @ in student emails. Leave it blank to use the school name.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Step 2: Upload */}
+                  <div className="ad-step">
+                    <h3>2. Upload the file</h3>
+                    <p>CSV or Excel (.xlsx, .xls) with the columns Student Name, Father Name, Phone Number, Grade and Section.</p>
+                    <div className="ad-drop" data-ready={!!selectedSchoolForImport}>
+                      <FileSpreadsheet aria-hidden="true" />
+                      <b>Choose your file</b>
+                      <span>{selectedSchoolForImport ? 'Upload a CSV or Excel file with your students.' : 'Pick a school first.'}</span>
+                      <div className="ad-drop-acts">
+                        <input
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          id="bulk-file-upload-tab"
+                          disabled={!selectedSchoolForImport}
+                        />
+                        <label htmlFor="bulk-file-upload-tab" className="sd-btn sd-btn--amber" aria-disabled={!selectedSchoolForImport}>
+                          <Upload aria-hidden="true" />Choose file
+                        </label>
+                        <button type="button" className="sd-btn sd-btn--line" onClick={downloadSampleCSV}>
+                          <Download aria-hidden="true" />Download template
+                        </button>
+                      </div>
+                      {uploadFile && (
+                        <>
+                          <span className="ad-ok">Selected: {uploadFile.name}</span>
+                          {isParsingFile && <span><Loader2 className="inline h-4 w-4 animate-spin" aria-hidden="true" /> Reading the file…</span>}
+                          {!isParsingFile && bulkData.length > 0 && (
+                            <span className="ad-ok">Read {bulkData.length} student{bulkData.length !== 1 ? 's' : ''}. Emails are filled in {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}.</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {bulkImportError && (
+                    <div className="ad-err" role="alert"><b>The import hit a problem</b>{bulkImportError}</div>
+                  )}
+                  </>
+                  )}
+
+                  {bulkData.length > 0 && (
+                    <>
+                      {/* Step 3: Review & Edit */}
+                      {!bulkImportDone && (
+                      <div className="ad-step">
+                        <div className="ad-review-head">
+                          <div>
+                            <h3>3. Check the students ({bulkData.length})</h3>
+                            <p>
+                              Emails are filled in {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}. Leave a password blank and the student gets a unique one. Type one only to set your own.
+                            </p>
+                          </div>
+                          <button
+                            className="sd-btn sd-btn--amber"
+                            onClick={handleBulkImport}
+                            disabled={isBulkImporting || !selectedSchoolForImport || bulkEmailDomainInvalid || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
+                          >
+                            {isBulkImporting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
+                            {isBulkImporting ? 'Importing…' : `Import ${bulkData.length} student${bulkData.length !== 1 ? 's' : ''}`}
+                          </button>
+                        </div>
+                        {(() => {
+                          const missingPhone = bulkData.filter((s) => !s.phone_number?.trim()).length;
+                          const missingFather = bulkData.filter((s) => !s.father_name?.trim()).length;
+                          const unknownGrade = bulkData.filter(
+                            (s) => s.grade?.trim() && !availableGradesForSchool.includes(s.grade.trim())
+                          ).length;
+                          const notes: string[] = [];
+                          if (missingPhone > 0) notes.push(`${missingPhone} missing phone number`);
+                          if (missingFather > 0) notes.push(`${missingFather} missing father's name`);
+                          if (unknownGrade > 0) notes.push(`${unknownGrade} grade not in this school's list`);
+                          if (notes.length === 0) return null;
+                          return (
+                            <p className="ad-warn">
+                              {notes.join(', ')}. These will not block the import, but check them below.
+                            </p>
+                          );
+                        })()}
+                        {availableBulkSections.length > 1 && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <Label className="text-xs text-gray-500 font-normal">Filter by section:</Label>
+                            <Select value={bulkSectionFilter} onValueChange={setBulkSectionFilter}>
+                              <SelectTrigger className="h-8 text-sm w-40">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-white">
+                                <SelectItem value="all">All sections</SelectItem>
+                                {availableBulkSections.map((section) => (
+                                  <SelectItem key={section} value={section}>
+                                    Section {section}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {bulkSectionFilter !== "all" && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-xs text-gray-500"
+                                onClick={() => setBulkSectionFilter("all")}
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                        <div className="max-h-96 overflow-y-auto border rounded-lg">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-12">#</TableHead>
+                                <TableHead>Student Name</TableHead>
+                                <TableHead>Father Name</TableHead>
+                                <TableHead>Phone</TableHead>
+                                <TableHead>Grade</TableHead>
+                                <TableHead>Section</TableHead>
+                                <TableHead>Email</TableHead>
+                                <TableHead>Password</TableHead>
+                                <TableHead className="w-16">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            {groupedBulkRows.map((group) => (
+                            <TableBody key={group.key}>
+                              <TableRow className={group.key === REVIEW_GROUP_KEY ? "bg-amber-50 hover:bg-amber-50" : "bg-gray-50 hover:bg-gray-50"}>
+                                <TableCell colSpan={9} className="py-2">
+                                  <span className={`text-xs font-semibold uppercase tracking-wide ${group.key === REVIEW_GROUP_KEY ? "text-amber-700" : "text-gray-500"}`}>
+                                    {group.label} · {group.rows.length} student{group.rows.length !== 1 ? "s" : ""}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                              {(group.subgroups ?? [{ section: null, rows: group.rows }]).map((subgroup, sgIdx) => (
+                                <Fragment key={subgroup.section ?? `${group.key}-flat-${sgIdx}`}>
+                                  {subgroup.section && (group.subgroups?.length ?? 0) > 1 && (
+                                    <TableRow className="bg-gray-50/60 hover:bg-gray-50/60">
+                                      <TableCell colSpan={9} className="py-1.5 pl-8">
+                                        <span className="text-[11px] font-medium text-gray-400">
+                                          Section {subgroup.section} · {subgroup.rows.length} student{subgroup.rows.length !== 1 ? "s" : ""}
+                                        </span>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                  {subgroup.rows.map(({ student, index }) => {
+                                const gradeUnknown = !!student.grade?.trim() && !availableGradesForSchool.includes(student.grade.trim());
+                                return (
+                                <TableRow key={student.id || index}>
+                                  <TableCell className="font-medium">{index + 1}</TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.student_name}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'student_name', e.target.value)}
+                                      className={`h-8 text-sm ${!student.student_name?.trim() ? 'border-red-300' : ''}`}
+                                      placeholder="Required"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.father_name || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'father_name', e.target.value)}
+                                      className={`h-8 text-sm ${!student.father_name?.trim() ? 'border-amber-300' : ''}`}
+                                      placeholder="Optional"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.phone_number || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'phone_number', e.target.value)}
+                                      className={`h-8 text-sm ${!student.phone_number?.trim() ? 'border-amber-300' : ''}`}
+                                      placeholder="Optional"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Select
+                                      value={student.grade || ''}
+                                      onValueChange={(value) => handleEditBulkData(student.id || `temp-${index}`, 'grade', value)}
+                                    >
+                                      <SelectTrigger className={`h-8 text-sm w-full ${!student.grade?.trim() ? 'border-red-300' : gradeUnknown ? 'border-amber-300' : ''}`}>
+                                        <SelectValue placeholder="Select Grade" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-white max-h-60">
+                                        {availableGradesForSchool.map((grade) => (
+                                          <SelectItem key={grade} value={grade}>
+                                            {grade}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {gradeUnknown && (
+                                      <p className="text-xs text-amber-600 mt-1">Not in this school&apos;s grade list — will still be saved as entered</p>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={student.section || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'section', e.target.value)}
+                                      className={`h-8 text-sm ${!student.section?.trim() ? 'border-red-300' : ''}`}
+                                      placeholder="Required (e.g., A, B, C)"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="email"
+                                      value={student.email || ''}
+                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'email', e.target.value)}
+                                      className={`h-8 text-sm ${!student.email?.trim() ? 'border-red-300' : ''}`}
+                                      placeholder="Required"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="relative">
+                                      <Input
+                                        type={showStudentPasswords[student.id || `temp-${index}`] ? "text" : "password"}
+                                        value={student.password || ''}
+                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'password', e.target.value)}
+                                        className="h-8 text-sm pr-10"
+                                        placeholder="Optional — auto-generated if blank"
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="absolute right-0 top-0 h-full px-2 py-1 hover:bg-transparent"
+                                        onClick={() => {
+                                          const studentId = student.id || `temp-${index}`;
+                                          setShowStudentPasswords({ ...showStudentPasswords, [studentId]: !showStudentPasswords[studentId] });
+                                        }}
+                                        title={showStudentPasswords[student.id || `temp-${index}`] ? "Hide password" : "Show password"}
+                                      >
+                                        {showStudentPasswords[student.id || `temp-${index}`] ? (
+                                          <EyeOff className="h-3 w-3 text-gray-500" />
+                                        ) : (
+                                          <Eye className="h-3 w-3 text-gray-400" />
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteBulkDataRow(student.id || `temp-${index}`)}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
+                                      title="Remove student"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                                );
+                                  })}
+                                </Fragment>
+                              ))}
+                            </TableBody>
+                            ))}
+                          </Table>
+                        </div>
+                      </div>
+                      )}
+
+                      {/* Import Results */}
+                      {bulkImportResults && (
+                        <div className="ad-step">
+                          {bulkImportDone ? (
+                            <div className="ad-done">
+                              <CheckCircle2 aria-hidden="true" className="h-10 w-10" />
+                              <h3>Import complete</h3>
+                              <p>
+                                {bulkImportResults.success} student{bulkImportResults.success !== 1 ? "s" : ""} added to{" "}
+                                <strong>{schools.find((s: School) => s.id === selectedSchoolForImport)?.name ?? "the school"}</strong>
+                                {uploadFile ? ` from ${uploadFile.name}` : ""}.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="ad-err" role="alert"><b>No students were imported</b>Fix the rows above and try again.</div>
+                          )}
+                          <div className="ad-tally">
+                            <div><b>{bulkImportResults.success}</b><span>Imported</span></div>
+                            <div data-bad={bulkImportResults.failed > 0}><b>{bulkImportResults.failed}</b><span>Failed</span></div>
+                          </div>
+                          {bulkImportResults.errors.length > 0 && (
+                            <div className="ad-err" role="alert">
+                              <b>{bulkImportDone ? "These rows were not imported. Add them again in a new import:" : "What went wrong:"}</b>
+                              <ul className="ad-names">
+                                {bulkImportResults.errors.map((error, idx) => <li key={idx}>{error}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                          {bulkImportCredentials && bulkImportCredentials.length > 0 && (() => {
+                            const gradesPresent = Array.from(new Set(bulkImportCredentials.map((c) => c.grade)))
+                              .sort((a, b) => {
+                                const ai = availableGradesForSchool.indexOf(a);
+                                const bi = availableGradesForSchool.indexOf(b);
+                                return (ai === -1 ? Number.MAX_SAFE_INTEGER : ai) - (bi === -1 ? Number.MAX_SAFE_INTEGER : bi);
+                              });
+                            const sectionsPresent = Array.from(new Set(
+                              bulkImportCredentials
+                                .filter((c) => credentialsGradeFilter === 'all' || c.grade === credentialsGradeFilter)
+                                .map((c) => c.section)
+                            )).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                            const filteredCount = getFilteredBulkImportCredentials().length;
+                            return (
+                              <div className="ad-creds">
+                                <div>
+                                  <b>Download the login details</b>
+                                  <p>{bulkImportCredentials.length} student{bulkImportCredentials.length !== 1 ? 's' : ''} got an auto-generated password. Download them before you leave this page, so you can share them with the school.</p>
+                                </div>
+                                <div className="ad-creds-bar">
+                                  <select className="sd-field" aria-label="Grade" value={credentialsGradeFilter} onChange={(e) => { setCredentialsGradeFilter(e.target.value); setCredentialsSectionFilter('all'); }}>
+                                    <option value="all">All grades</option>
+                                    {gradesPresent.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+                                  </select>
+                                  <select className="sd-field" aria-label="Section" value={credentialsSectionFilter} onChange={(e) => setCredentialsSectionFilter(e.target.value)}>
+                                    <option value="all">All sections</option>
+                                    {sectionsPresent.map((section) => <option key={section} value={section}>Section {section}</option>)}
+                                  </select>
+                                  <span className="st-hint">{filteredCount} student{filteredCount !== 1 ? 's' : ''} match</span>
+                                </div>
+                                <div className="ad-creds-bar">
+                                  <button type="button" className="sd-btn sd-btn--line" disabled={filteredCount === 0} onClick={() => downloadBulkImportCredentials('csv')}><Download aria-hidden="true" />Download CSV</button>
+                                  <button type="button" className="sd-btn sd-btn--line" disabled={filteredCount === 0} onClick={() => downloadBulkImportCredentials('pdf')}><Download aria-hidden="true" />Download PDF</button>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {bulkImportDone && (
+                            <div className="ad-import-foot">
+                              <button type="button" className="sd-btn sd-btn--line" onClick={handleGoToStudentsList}><Users aria-hidden="true" />View students</button>
+                              <button type="button" className="sd-btn sd-btn--amber" onClick={handleResetAndNewImport}><RotateCcw aria-hidden="true" />Done, start a new import</button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </section>
+            )}
+
+
+      {activeTab === 'reports' && <ReportsTab onDownload={downloadReport} disabled={students.length === 0} />}
+
+      {/* Add student */}
                     <Dialog
                       open={isDialogOpen}
                       onOpenChange={(open) => {
@@ -2413,20 +2848,6 @@ export default function StudentsManagement() {
                         requestCloseAddStudent();
                       }}
                     >
-                      <DialogTrigger asChild>
-                        <Button 
-                          onClick={() => {
-                            setEditingStudent(null);
-                            setFormData(emptyStudentForm);
-                            setSectionInputMode('predefined');
-                            setCustomSection("");
-                          }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Plus className="mr-2 h-4 w-4" />
-                          Add Student
-                        </Button>
-                      </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px] bg-white max-h-[90vh] flex flex-col">
                       <DialogHeader className="flex-shrink-0">
                         <DialogTitle>Add New Student</DialogTitle>
@@ -2613,327 +3034,93 @@ export default function StudentsManagement() {
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
-                  
-                  <Button
-                    onClick={handleOpenExportDialog}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Export Student Info
-                  </Button>
 
-                  <Button
-                    onClick={handleSyncEnrollments}
-                    disabled={isSyncingEnrollments}
-                    variant="outline"
-                    className="border-green-600 text-green-700 hover:bg-green-50"
-                  >
-                    {isSyncingEnrollments ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Sync Enrollments
-                      </>
-                    )}
-                  </Button>
-                  <BulkDeleteStudentsButton
-                    schools={schools}
-                    onDeleted={() => {
-                      setBulkSelectionResetKey((k) => k + 1);
-                      void loadData();
-                    }}
-                  />
-                  </div>
-                </div>
-              </div>
+      <ConfirmModal
+        open={deletingStudent !== null}
+        onClose={() => setDeletingStudent(null)}
+        title="Delete this student?"
+        subtitle={deletingStudent ? `${deletingStudent.full_name}, ${deletingStudent.email}` : undefined}
+        confirmLabel="Delete student"
+        danger
+        busy={isDeletingStudent}
+        onConfirm={() => void confirmDeleteStudent()}
+      >
+        <p>This cannot be undone. Their account, enrollment and progress are removed, and their email can be used again.</p>
+      </ConfirmModal>
 
+      <ConfirmModal
+        open={bulkDeleteStudents !== null}
+        onClose={() => setBulkDeleteStudents(null)}
+        title={`Delete ${plural(bulkDeleteStudents?.length ?? 0, 'student')}?`}
+        confirmLabel="Delete students"
+        danger
+        busy={isBulkDeletingStudents}
+        onConfirm={() => void confirmBulkDeleteStudents()}
+      >
+        <p>This cannot be undone. Their accounts, enrollment and progress are removed, and their emails can be used again.</p>
+        <ul className="ad-names">
+          {(bulkDeleteStudents ?? []).slice(0, 20).map((st) => <li key={st.id}>{st.full_name} ({st.email})</li>)}
+          {(bulkDeleteStudents?.length ?? 0) > 20 && <li style={{ listStyle: 'none' }}>…and {(bulkDeleteStudents?.length ?? 0) - 20} more</li>}
+        </ul>
+      </ConfirmModal>
 
-              {/* Students Table */}
-              <Card className="bg-white">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Students ({totalStudentsCount || students.length})</CardTitle>
-                      <CardDescription>
-                        Manage all student accounts — use the table search and column filters to narrow the list.
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {students.length === 0 && !isStudentsLoading ? (
-                    <div className="text-center py-12">
-                      <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Students Found</h3>
-                      <p className="text-gray-600 mb-4">
-                        No students enrolled yet. Add students to get started.
-                      </p>
-                    </div>
-                  ) : (
-                    <StudentManagementTable<StudentTableRow>
-                      rows={studentTableRows}
-                      loading={isStudentsLoading}
-                      onView={handleViewStudent}
-                      onEdit={handleEditStudent}
-                      onDelete={requestDeleteStudent}
-                      onEnroll={handleEnrollStudent}
-                      onBulkDeleteSelected={requestBulkDeleteStudents}
-                      bulkActions={[
-                        {
-                          id: "move",
-                          label: "Move to grade/section",
-                          onClick: requestBulkMoveStudents,
-                        },
-                        {
-                          id: "enroll",
-                          label: isBulkEnrolling ? "Enrolling…" : "Enroll in courses",
-                          onClick: handleBulkEnrollStudents,
-                        },
-                      ]}
-                      resetSelectionKey={bulkSelectionResetKey}
-                      searchPlaceholder="Search students by name, email, school, grade..."
-                      itemsPerPage={25}
-                      emptyMessage="No students match your filters or search."
-                      className="shadow-sm"
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+      <Modal
+        open={!!bulkMoveRows}
+        onClose={() => { if (!isBulkMoving) setBulkMoveRows(null); }}
+        title="Move students to a class"
+        subtitle={`${plural(bulkMoveRows?.length ?? 0, 'student')} selected. Students who are not in the school you pick are skipped.`}
+        footer={
+          <>
+            <button className="sd-btn sd-btn--line" onClick={() => setBulkMoveRows(null)} disabled={isBulkMoving}>Cancel</button>
+            <button className="sd-btn sd-btn--amber" disabled={isBulkMoving || !bulkMoveSchoolId || !bulkMoveGrade} onClick={() => void confirmBulkMoveStudents()}>
+              {isBulkMoving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <MoveRight aria-hidden="true" />}
+              Move {plural(bulkMoveRows?.length ?? 0, 'student')}
+            </button>
+          </>
+        }
+      >
+        <div className="sm-form">
+          <div className="sd-field-wrap">
+            <label htmlFor="bm-school">School</label>
+            <select id="bm-school" className="sd-field" value={bulkMoveSchoolId} onChange={(e) => { setBulkMoveSchoolId(e.target.value); setBulkMoveGrade(''); setBulkMoveSection(''); }}>
+              <option value="">Choose a school</option>
+              {schools.map((sc: School) => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
+            </select>
+          </div>
+          <div className="sm-two">
+            <div className="sd-field-wrap">
+              <label htmlFor="bm-grade">Grade</label>
+              <select id="bm-grade" className="sd-field" value={bulkMoveGrade} disabled={!bulkMoveSchoolId} onChange={(e) => { setBulkMoveGrade(e.target.value); setBulkMoveSection(''); }}>
+                <option value="">Choose a grade</option>
+                {(() => {
+                  const school = schools.find((sc: School) => sc.id === bulkMoveSchoolId);
+                  const names = (school?.grades ?? []).map((g) => g.name);
+                  return (names.length > 0 ? names : availableGrades).map((g) => <option key={g} value={g}>{g}</option>);
+                })()}
+              </select>
+            </div>
+            <div className="sd-field-wrap">
+              <label htmlFor="bm-section">Section <small>(optional)</small></label>
+              <select id="bm-section" className="sd-field" value={bulkMoveSection} disabled={!bulkMoveGrade} onChange={(e) => setBulkMoveSection(e.target.value)}>
+                <option value="">Keep current section</option>
+                {(() => {
+                  const school = schools.find((sc: School) => sc.id === bulkMoveSchoolId);
+                  const gradeObj = (school?.grades ?? []).find((g) => g.name === bulkMoveGrade);
+                  const names = (gradeObj?.sections ?? []).map((x) => x.name);
+                  return (names.length > 0 ? names : ["A", "B", "C", "D", "E", "F", "G", "H"]).map((x) => <option key={x} value={x}>{x}</option>);
+                })()}
+              </select>
+            </div>
+          </div>
+        </div>
+      </Modal>
 
-            {/* Delete student confirmation */}
-            <Dialog
-              open={isDeleteStudentDialogOpen}
-              onOpenChange={(open) => {
-                setIsDeleteStudentDialogOpen(open);
-                if (!open) setDeletingStudent(null);
-              }}
-            >
-              <DialogContent className="bg-white max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Delete student</DialogTitle>
-                  <DialogDescription>
-                    This cannot be undone. The student&apos;s account, enrollment, and progress will be permanently removed, and their email will be free to reuse.
-                  </DialogDescription>
-                </DialogHeader>
-                {deletingStudent && (
-                  <p className="text-sm text-gray-700 py-2">
-                    Delete <span className="font-semibold">{deletingStudent.full_name}</span> ({deletingStudent.email})?
-                  </p>
-                )}
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setIsDeleteStudentDialogOpen(false);
-                      setDeletingStudent(null);
-                    }}
-                    disabled={isDeletingStudent}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="bg-red-600 hover:bg-red-700"
-                    disabled={isDeletingStudent || !deletingStudent}
-                    onClick={() => void confirmDeleteStudent()}
-                  >
-                    {isDeletingStudent ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Deleting…
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete student
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            {/* Bulk delete confirmation */}
-            <Dialog
-              open={isBulkDeleteDialogOpen}
-              onOpenChange={(open) => {
-                setIsBulkDeleteDialogOpen(open);
-                if (!open) setBulkDeleteStudents(null);
-              }}
-            >
-              <DialogContent className="bg-white max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Delete selected students</DialogTitle>
-                  <DialogDescription>
-                    This cannot be undone. Their accounts, enrollment, and progress will be permanently removed, and their emails will be free to reuse.
-                  </DialogDescription>
-                </DialogHeader>
-                {bulkDeleteStudents && bulkDeleteStudents.length > 0 && (
-                  <div className="space-y-2 py-2">
-                    <p className="text-sm text-gray-700">
-                      Delete{" "}
-                      <span className="font-semibold">{bulkDeleteStudents.length}</span>{" "}
-                      student{bulkDeleteStudents.length !== 1 ? "s" : ""}?
-                    </p>
-                    <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-sm text-muted-foreground">
-                      {bulkDeleteStudents.slice(0, 20).map((s) => (
-                        <li key={s.id}>
-                          {s.full_name} ({s.email})
-                        </li>
-                      ))}
-                      {bulkDeleteStudents.length > 20 && (
-                        <li className="list-none pl-0 text-muted-foreground/80">
-                          …and {bulkDeleteStudents.length - 20} more
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setIsBulkDeleteDialogOpen(false);
-                      setBulkDeleteStudents(null);
-                    }}
-                    disabled={isBulkDeletingStudents}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="bg-red-600 hover:bg-red-700"
-                    disabled={isBulkDeletingStudents || !bulkDeleteStudents?.length}
-                    onClick={() => void confirmBulkDeleteStudents()}
-                  >
-                    {isBulkDeletingStudents ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Deleting…
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete {bulkDeleteStudents?.length ?? 0} student
-                        {(bulkDeleteStudents?.length ?? 0) !== 1 ? "s" : ""}
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            {/* Bulk move to grade/section */}
-            <Dialog
-              open={!!bulkMoveRows}
-              onOpenChange={(open) => {
-                if (!open) setBulkMoveRows(null);
-              }}
-            >
-              <DialogContent className="bg-white max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Move selected students</DialogTitle>
-                  <DialogDescription>
-                    Updates the grade/section for {bulkMoveRows?.length ?? 0} selected student
-                    {(bulkMoveRows?.length ?? 0) !== 1 ? "s" : ""} within the chosen school.
-                    Students not enrolled in that school are skipped.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                    <Label>School</Label>
-                    <Select value={bulkMoveSchoolId} onValueChange={(v) => { setBulkMoveSchoolId(v); setBulkMoveGrade(""); setBulkMoveSection(""); }}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select school" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {schools.map((s: School) => (
-                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Grade</Label>
-                    <Select value={bulkMoveGrade} onValueChange={(v) => { setBulkMoveGrade(v); setBulkMoveSection(""); }} disabled={!bulkMoveSchoolId}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select grade" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(() => {
-                          const school = schools.find((s: School) => s.id === bulkMoveSchoolId);
-                          const names = (school?.grades ?? []).map((g) => g.name);
-                          return (names.length > 0 ? names : availableGrades).map((g) => (
-                            <SelectItem key={g} value={g}>{g}</SelectItem>
-                          ));
-                        })()}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Section (optional)</Label>
-                    <Select value={bulkMoveSection} onValueChange={setBulkMoveSection} disabled={!bulkMoveGrade}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Keep current section" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(() => {
-                          const school = schools.find((s: School) => s.id === bulkMoveSchoolId);
-                          const gradeObj = (school?.grades ?? []).find((g) => g.name === bulkMoveGrade);
-                          const names = (gradeObj?.sections ?? []).map((s) => s.name);
-                          return (names.length > 0
-                            ? names
-                            : ["A", "B", "C", "D", "E", "F", "G", "H"]
-                          ).map((s) => (
-                            <SelectItem key={s} value={s}>{s}</SelectItem>
-                          ));
-                        })()}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setBulkMoveRows(null)}
-                    disabled={isBulkMoving}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={isBulkMoving || !bulkMoveSchoolId || !bulkMoveGrade}
-                    onClick={() => void confirmBulkMoveStudents()}
-                  >
-                    {isBulkMoving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Moving…
-                      </>
-                    ) : (
-                      <>Move {bulkMoveRows?.length ?? 0} student{(bulkMoveRows?.length ?? 0) !== 1 ? "s" : ""}</>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            {/* View Student Dialog — extracted to components/admin/ViewStudentDialog.tsx */}
-            <ViewStudentDialog
-              open={isViewDialogOpen}
-              onOpenChange={setIsViewDialogOpen}
-              student={viewingStudent}
-            />
+      {/* View Student Dialog — components/admin/ViewStudentDialog.tsx */}
+      <ViewStudentDialog
+        open={isViewDialogOpen}
+        onOpenChange={setIsViewDialogOpen}
+        student={viewingStudent}
+      />
 
             {/* Edit Student Dialog */}
             <Dialog
@@ -3478,543 +3665,6 @@ export default function StudentsManagement() {
               </DialogContent>
             </Dialog>
 
-            {/* Bulk Import Tab */}
-            <TabsContent value="import" className="space-y-6">
-              <Card className="bg-white">
-                <CardHeader>
-                  <CardTitle>Bulk Import Students</CardTitle>
-                  <CardDescription>Select a school, then upload a filled-in template to create students in bulk.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {!bulkImportDone && (
-                  <>
-                  {/* Step 1: Select School */}
-                  <div>
-                    <Label className="font-medium">Step 1: Select School <span className="text-red-500">*</span></Label>
-                    <p className="text-sm text-gray-500 mb-2">All students in this import will be assigned to the selected school.</p>
-                    {schools.length === 0 ? (
-                      <div className="w-full max-w-md p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 text-sm flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading schools...
-                      </div>
-                    ) : (
-                      <Select
-                        value={selectedSchoolForImport}
-                        onValueChange={(value) => {
-                          const selectedSchool = schools.find((s: School) => s.id === value);
-                          setSelectedSchoolGrades(selectedSchool?.grades ?? []);
-                          setSelectedSchoolForImport(value);
-                        }}
-                      >
-                        <SelectTrigger className="w-full max-w-md">
-                          <SelectValue placeholder="Select school for all students" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white">
-                          {schools.map((school) => (
-                            <SelectItem key={school.id} value={school.id}>
-                              {school.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-
-                    <div className="mt-4 max-w-md">
-                      <Label htmlFor="bulk-email-domain" className="text-sm font-medium">
-                        Email domain <span className="font-normal text-gray-500">(optional)</span>
-                      </Label>
-                      <div className={cn(
-                        "mt-1 flex items-center rounded-md border focus-within:ring-2",
-                        bulkEmailDomainInvalid ? "border-red-500 focus-within:ring-red-500/30" : "border-input focus-within:ring-ring/50"
-                      )}>
-                        <span className="pl-3 text-sm text-gray-500 select-none">@</span>
-                        <Input
-                          id="bulk-email-domain"
-                          value={bulkEmailDomain}
-                          onChange={(e) => setBulkEmailDomain(e.target.value)}
-                          placeholder={
-                            (schools.find((s: School) => s.id === selectedSchoolForImport)?.name?.toLowerCase().replace(/\s+/g, '') || 'schoolname') + '.edu'
-                          }
-                          aria-invalid={bulkEmailDomainInvalid}
-                          autoComplete="off"
-                          spellCheck={false}
-                          className="border-0 shadow-none pl-1 focus-visible:ring-0"
-                        />
-                      </div>
-                      {bulkEmailDomainInvalid ? (
-                        <p className="mt-1 text-xs text-red-600">Enter a valid domain like school.edu.in (no spaces or @ in the middle).</p>
-                      ) : (
-                        <p className="mt-1 text-xs text-gray-500">
-                          The part after @ in student emails. Leave blank to use the default from the school name.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Step 2: Upload */}
-                  <div>
-                    <Label className="font-medium">Step 2: Upload File</Label>
-                    <p className="text-sm text-gray-500 mb-2">
-                      CSV or Excel (.xlsx, .xls). Columns: Student Name, Father Name, Phone Number, Grade, Section.
-                    </p>
-                    <div className={`border-2 border-dashed rounded-lg p-6 text-center ${!selectedSchoolForImport ? 'border-gray-200' : 'border-gray-300'}`}>
-                      <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                      <h3 className="text-lg font-medium mb-2">Upload File</h3>
-                      <p className="text-gray-600 mb-4 text-sm">
-                        {selectedSchoolForImport
-                          ? 'Upload a CSV or Excel file with your students.'
-                          : 'Select a school above first.'}
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-3 items-center justify-center">
-                        <input
-                          type="file"
-                          accept=".csv,.xlsx,.xls"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                          id="bulk-file-upload-tab"
-                          disabled={!selectedSchoolForImport}
-                        />
-                        <label
-                          htmlFor="bulk-file-upload-tab"
-                          className={`inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium bg-white ${
-                            selectedSchoolForImport ? 'text-gray-700 hover:bg-gray-50 cursor-pointer' : 'text-gray-400 cursor-not-allowed pointer-events-none'
-                          }`}
-                        >
-                          <Upload className="mr-2 h-4 w-4" />
-                          Choose File
-                        </label>
-                        <Button type="button" variant="outline" onClick={downloadSampleCSV}>
-                          <Download className="mr-2 h-4 w-4" />
-                          Download Template
-                        </Button>
-                      </div>
-                      {uploadFile && (
-                        <div className="mt-3 space-y-2">
-                          <p className="text-sm text-blue-600 font-medium">
-                            ✓ Selected: {uploadFile.name}
-                          </p>
-                          {isParsingFile && (
-                            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              <span>Parsing file...</span>
-                            </div>
-                          )}
-                          {!isParsingFile && bulkData.length > 0 && (
-                            <p className="text-sm text-green-600 font-medium">
-                              ✓ Successfully parsed {bulkData.length} student(s) — emails auto-filled {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {bulkImportError && (
-                    <div className="p-4 bg-red-50 border-2 border-red-300 rounded-lg">
-                      <div className="flex items-start gap-3">
-                        <X className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-red-800 mb-1">Import Error</p>
-                          <p className="text-sm text-red-600 whitespace-pre-line">{bulkImportError}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  </>
-                  )}
-
-                  {bulkData.length > 0 && (
-                    <>
-                      {/* Step 3: Review & Edit */}
-                      {!bulkImportDone && (
-                      <div>
-                        <div className="flex justify-between items-center mb-2">
-                          <div>
-                            <Label className="font-medium">Step 3: Review & Edit ({bulkData.length} students)</Label>
-                            <p className="text-sm text-gray-500">
-                              Emails are auto-filled {normalizedBulkEmailDomain && !bulkEmailDomainInvalid ? `with @${normalizedBulkEmailDomain}` : 'from the school name'}. Passwords are left blank so each student gets a unique auto-generated one — type one only to override.
-                            </p>
-                          </div>
-                            <Button
-                              onClick={handleBulkImport}
-                              disabled={isBulkImporting || !selectedSchoolForImport || bulkEmailDomainInvalid || bulkData.some((item: BulkImportData) => !item.student_name || !item.grade || !item.section || !item.email)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 shrink-0"
-                            >
-                              {isBulkImporting ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Importing Students...
-                                </>
-                              ) : (
-                                <>
-                                  <Upload className="mr-2 h-4 w-4" />
-                                  Import {bulkData.length} Student{bulkData.length !== 1 ? 's' : ''}
-                                </>
-                              )}
-                            </Button>
-                        </div>
-                        {(() => {
-                          const missingPhone = bulkData.filter((s) => !s.phone_number?.trim()).length;
-                          const missingFather = bulkData.filter((s) => !s.father_name?.trim()).length;
-                          const unknownGrade = bulkData.filter(
-                            (s) => s.grade?.trim() && !availableGradesForSchool.includes(s.grade.trim())
-                          ).length;
-                          const notes: string[] = [];
-                          if (missingPhone > 0) notes.push(`${missingPhone} missing phone number`);
-                          if (missingFather > 0) notes.push(`${missingFather} missing father's name`);
-                          if (unknownGrade > 0) notes.push(`${unknownGrade} grade not in this school's list`);
-                          if (notes.length === 0) return null;
-                          return (
-                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 mb-2">
-                              ⚠ {notes.join(' · ')} — these won&apos;t block the import, just double-check them below.
-                            </p>
-                          );
-                        })()}
-                        {availableBulkSections.length > 1 && (
-                          <div className="flex items-center gap-2 mb-2">
-                            <Label className="text-xs text-gray-500 font-normal">Filter by section:</Label>
-                            <Select value={bulkSectionFilter} onValueChange={setBulkSectionFilter}>
-                              <SelectTrigger className="h-8 text-sm w-40">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="bg-white">
-                                <SelectItem value="all">All sections</SelectItem>
-                                {availableBulkSections.map((section) => (
-                                  <SelectItem key={section} value={section}>
-                                    Section {section}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            {bulkSectionFilter !== "all" && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 text-xs text-gray-500"
-                                onClick={() => setBulkSectionFilter("all")}
-                              >
-                                Clear
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                        <div className="max-h-96 overflow-y-auto border rounded-lg">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead className="w-12">#</TableHead>
-                                <TableHead>Student Name</TableHead>
-                                <TableHead>Father Name</TableHead>
-                                <TableHead>Phone</TableHead>
-                                <TableHead>Grade</TableHead>
-                                <TableHead>Section</TableHead>
-                                <TableHead>Email</TableHead>
-                                <TableHead>Password</TableHead>
-                                <TableHead className="w-16">Actions</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            {groupedBulkRows.map((group) => (
-                            <TableBody key={group.key}>
-                              <TableRow className={group.key === REVIEW_GROUP_KEY ? "bg-amber-50 hover:bg-amber-50" : "bg-gray-50 hover:bg-gray-50"}>
-                                <TableCell colSpan={9} className="py-2">
-                                  <span className={`text-xs font-semibold uppercase tracking-wide ${group.key === REVIEW_GROUP_KEY ? "text-amber-700" : "text-gray-500"}`}>
-                                    {group.label} · {group.rows.length} student{group.rows.length !== 1 ? "s" : ""}
-                                  </span>
-                                </TableCell>
-                              </TableRow>
-                              {(group.subgroups ?? [{ section: null, rows: group.rows }]).map((subgroup, sgIdx) => (
-                                <Fragment key={subgroup.section ?? `${group.key}-flat-${sgIdx}`}>
-                                  {subgroup.section && (group.subgroups?.length ?? 0) > 1 && (
-                                    <TableRow className="bg-gray-50/60 hover:bg-gray-50/60">
-                                      <TableCell colSpan={9} className="py-1.5 pl-8">
-                                        <span className="text-[11px] font-medium text-gray-400">
-                                          Section {subgroup.section} · {subgroup.rows.length} student{subgroup.rows.length !== 1 ? "s" : ""}
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                  {subgroup.rows.map(({ student, index }) => {
-                                const gradeUnknown = !!student.grade?.trim() && !availableGradesForSchool.includes(student.grade.trim());
-                                return (
-                                <TableRow key={student.id || index}>
-                                  <TableCell className="font-medium">{index + 1}</TableCell>
-                                  <TableCell>
-                                    <Input
-                                      value={student.student_name}
-                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'student_name', e.target.value)}
-                                      className={`h-8 text-sm ${!student.student_name?.trim() ? 'border-red-300' : ''}`}
-                                      placeholder="Required"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      value={student.father_name || ''}
-                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'father_name', e.target.value)}
-                                      className={`h-8 text-sm ${!student.father_name?.trim() ? 'border-amber-300' : ''}`}
-                                      placeholder="Optional"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      value={student.phone_number || ''}
-                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'phone_number', e.target.value)}
-                                      className={`h-8 text-sm ${!student.phone_number?.trim() ? 'border-amber-300' : ''}`}
-                                      placeholder="Optional"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Select
-                                      value={student.grade || ''}
-                                      onValueChange={(value) => handleEditBulkData(student.id || `temp-${index}`, 'grade', value)}
-                                    >
-                                      <SelectTrigger className={`h-8 text-sm w-full ${!student.grade?.trim() ? 'border-red-300' : gradeUnknown ? 'border-amber-300' : ''}`}>
-                                        <SelectValue placeholder="Select Grade" />
-                                      </SelectTrigger>
-                                      <SelectContent className="bg-white max-h-60">
-                                        {availableGradesForSchool.map((grade) => (
-                                          <SelectItem key={grade} value={grade}>
-                                            {grade}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    {gradeUnknown && (
-                                      <p className="text-xs text-amber-600 mt-1">Not in this school&apos;s grade list — will still be saved as entered</p>
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      value={student.section || ''}
-                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'section', e.target.value)}
-                                      className={`h-8 text-sm ${!student.section?.trim() ? 'border-red-300' : ''}`}
-                                      placeholder="Required (e.g., A, B, C)"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Input
-                                      type="email"
-                                      value={student.email || ''}
-                                      onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'email', e.target.value)}
-                                      className={`h-8 text-sm ${!student.email?.trim() ? 'border-red-300' : ''}`}
-                                      placeholder="Required"
-                                    />
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className="relative">
-                                      <Input
-                                        type={showStudentPasswords[student.id || `temp-${index}`] ? "text" : "password"}
-                                        value={student.password || ''}
-                                        onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'password', e.target.value)}
-                                        className="h-8 text-sm pr-10"
-                                        placeholder="Optional — auto-generated if blank"
-                                      />
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="absolute right-0 top-0 h-full px-2 py-1 hover:bg-transparent"
-                                        onClick={() => {
-                                          const studentId = student.id || `temp-${index}`;
-                                          setShowStudentPasswords({ ...showStudentPasswords, [studentId]: !showStudentPasswords[studentId] });
-                                        }}
-                                        title={showStudentPasswords[student.id || `temp-${index}`] ? "Hide password" : "Show password"}
-                                      >
-                                        {showStudentPasswords[student.id || `temp-${index}`] ? (
-                                          <EyeOff className="h-3 w-3 text-gray-500" />
-                                        ) : (
-                                          <Eye className="h-3 w-3 text-gray-400" />
-                                        )}
-                                      </Button>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleDeleteBulkDataRow(student.id || `temp-${index}`)}
-                                      className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
-                                      title="Remove student"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                                );
-                                  })}
-                                </Fragment>
-                              ))}
-                            </TableBody>
-                            ))}
-                          </Table>
-                        </div>
-                      </div>
-                      )}
-
-                      {/* Import Results */}
-                      {bulkImportResults && (
-                        <div className={bulkImportDone ? "space-y-5" : "space-y-3 rounded-lg border border-red-200 p-4"}>
-                          {bulkImportDone ? (
-                            <div className="flex flex-col items-center text-center pt-2">
-                              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
-                                <CheckCircle2 className="h-8 w-8 text-green-600" />
-                              </div>
-                              <h3 className="mt-3 text-xl font-semibold text-gray-900">Import complete</h3>
-                              <p className="mt-1 text-sm text-gray-600">
-                                {bulkImportResults.success} student{bulkImportResults.success !== 1 ? "s" : ""} added to{" "}
-                                <strong>{schools.find((s: School) => s.id === selectedSchoolForImport)?.name ?? "the school"}</strong>
-                                {uploadFile ? ` from ${uploadFile.name}` : ""}.
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-sm font-medium text-red-800">No students were imported. Fix the rows above and try again.</p>
-                          )}
-                              <div className={cn("grid gap-3", bulkImportDone ? "grid-cols-2 max-w-sm mx-auto" : "grid-cols-2 max-w-xs")}>
-                                <div className="p-3 text-center bg-green-50 border border-green-200 rounded-lg">
-                                  <p className="text-2xl font-bold text-green-600">{bulkImportResults.success}</p>
-                                  <p className="text-xs text-green-700">Imported</p>
-                                </div>
-                                <div className={cn("p-3 text-center rounded-lg border", bulkImportResults.failed > 0 ? "bg-red-50 border-red-200" : "bg-gray-50 border-gray-200")}>
-                                  <p className={cn("text-2xl font-bold", bulkImportResults.failed > 0 ? "text-red-600" : "text-gray-400")}>{bulkImportResults.failed}</p>
-                                  <p className={cn("text-xs", bulkImportResults.failed > 0 ? "text-red-700" : "text-gray-500")}>Failed</p>
-                                </div>
-                              </div>
-                              {bulkImportResults.errors.length > 0 && (
-                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                                  <p className="text-sm font-medium text-red-800 mb-2">
-                                    {bulkImportDone ? "These rows were not imported — add them again in a new import:" : "Errors:"}
-                                  </p>
-                                  <ul className="text-xs text-red-600 space-y-1 max-h-32 overflow-y-auto">
-                                    {bulkImportResults.errors.map((error, idx) => (
-                                      <li key={idx}>• {error}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {bulkImportCredentials && bulkImportCredentials.length > 0 && (() => {
-                                const gradesPresent = Array.from(new Set(bulkImportCredentials.map((c) => c.grade)))
-                                  .sort((a, b) => {
-                                    const ai = availableGradesForSchool.indexOf(a);
-                                    const bi = availableGradesForSchool.indexOf(b);
-                                    return (ai === -1 ? Number.MAX_SAFE_INTEGER : ai) - (bi === -1 ? Number.MAX_SAFE_INTEGER : bi);
-                                  });
-                                const sectionsPresent = Array.from(new Set(
-                                  bulkImportCredentials
-                                    .filter((c) => credentialsGradeFilter === 'all' || c.grade === credentialsGradeFilter)
-                                    .map((c) => c.section)
-                                )).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-                                const filteredCount = getFilteredBulkImportCredentials().length;
-                                return (
-                                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-blue-900">Download login details</p>
-                                    <p className="text-sm text-blue-800">
-                                      {bulkImportCredentials.length} student{bulkImportCredentials.length !== 1 ? 's' : ''} got an auto-generated password. Download them before clicking Done to share with the school.
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Label className="text-xs text-blue-800 font-normal">Grade:</Label>
-                                    <Select
-                                      value={credentialsGradeFilter}
-                                      onValueChange={(value) => {
-                                        setCredentialsGradeFilter(value);
-                                        setCredentialsSectionFilter('all');
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-8 text-sm w-36 bg-white">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="bg-white">
-                                        <SelectItem value="all">All grades</SelectItem>
-                                        {gradesPresent.map((grade) => (
-                                          <SelectItem key={grade} value={grade}>{grade}</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <Label className="text-xs text-blue-800 font-normal">Section:</Label>
-                                    <Select value={credentialsSectionFilter} onValueChange={setCredentialsSectionFilter}>
-                                      <SelectTrigger className="h-8 text-sm w-36 bg-white">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="bg-white">
-                                        <SelectItem value="all">All sections</SelectItem>
-                                        {sectionsPresent.map((section) => (
-                                          <SelectItem key={section} value={section}>Section {section}</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <span className="text-xs text-blue-700">{filteredCount} student{filteredCount !== 1 ? 's' : ''} match</span>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <Button type="button" size="sm" variant="outline" className="bg-white" disabled={filteredCount === 0} onClick={() => downloadBulkImportCredentials('csv')}>
-                                      <Download className="mr-2 h-4 w-4" />
-                                      CSV
-                                    </Button>
-                                    <Button type="button" size="sm" variant="outline" className="bg-white" disabled={filteredCount === 0} onClick={() => downloadBulkImportCredentials('pdf')}>
-                                      <Download className="mr-2 h-4 w-4" />
-                                      PDF
-                                    </Button>
-                                  </div>
-                                </div>
-                                );
-                              })()}
-
-                              {bulkImportDone && (
-                                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t pt-4">
-                                  <Button type="button" variant="outline" onClick={handleGoToStudentsList}>
-                                    <Users className="mr-2 h-4 w-4" />
-                                    View Students
-                                    <ArrowRight className="ml-2 h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    onClick={handleResetAndNewImport}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white sm:min-w-32"
-                                  >
-                                    <RotateCcw className="mr-2 h-4 w-4" />
-                                    Done — Start New Import
-                                  </Button>
-                                </div>
-                              )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Reports Tab */}
-            <TabsContent value="reports" className="space-y-6">
-              <Card className="bg-white">
-                <CardHeader>
-                  <CardTitle>Student Reports</CardTitle>
-                  <CardDescription>Generate and download student reports</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadEnrollmentReport}>
-                      <Download className="h-6 w-6 mb-2" />
-                      <span>Enrollment Report</span>
-                    </Button>
-                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadProgressReport}>
-                      <Download className="h-6 w-6 mb-2" />
-                      <span>Progress Report</span>
-                    </Button>
-                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadGradeWiseReport}>
-                      <Download className="h-6 w-6 mb-2" />
-                      <span>Grade-wise Report</span>
-                    </Button>
-                    <Button variant="outline" className="h-20 flex flex-col" onClick={downloadSchoolWiseReport}>
-                      <Download className="h-6 w-6 mb-2" />
-                      <span>School-wise Report</span>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
     </div>
   );
 }

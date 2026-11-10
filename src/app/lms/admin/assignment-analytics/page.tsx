@@ -1,305 +1,145 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import SchoolRun from "@/components/admin/assignments/SchoolRun";
+import SchoolsTab from "@/components/admin/assignments/SchoolsTab";
+import StudentsTab from "@/components/admin/assignments/StudentsTab";
+import { BANDS, pct, plural, schoolBand, type AnalyticsData, type Band } from "@/components/admin/assignments/types";
 import { adminApi } from "@/lib/api/admin.api";
-import { RankingTable, type RankingRow } from "@/components/ui/ranking-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Trophy,
-  School,
-  Users,
-  TrendingUp,
-  RotateCcw,
-  BookOpen,
-  BarChart2,
-  Star,
-} from "lucide-react";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips
+import "@/components/school-admin/teachers.css"; // tm-bar
+import "@/components/school-admin/analytics/analytics.css"; // aa- rows, podium, track nodes
+import "@/components/admin/assignments/assignments.css";
 
-type SchoolRanking = {
-  rank: number;
-  school_id: string;
-  school_name: string;
-  assignments_created: number;
-  attempts_count: number;
-  average_score_percentage: number;
-  completion_rate: number;
-  retake_usage_percentage: number;
-};
-
-type TopStudent = {
-  rank: number;
-  system_rank?: number;
-  student_id: number;
-  student_name: string;
-  school_name: string;
-  grade: string;
-  section?: string;
-  course_assignment_score: number;
-  daily_assignment_score: number;
-  overall_score: number;
-};
-
-type PlatformSummary = {
-  total_schools: number;
-  total_assignments: number;
-  total_attempts: number;
-  platform_avg_score: number;
-};
-
-type AnalyticsData = {
-  school_rankings: SchoolRanking[];
-  platform_completion_rate: number;
-  retake_usage: number;
-  top_students_platform: TopStudent[];
-  summary: PlatformSummary;
-};
-
-function RankBadge({ rank }: { rank: number }) {
-  if (rank === 1) return <span className="text-lg">🥇</span>;
-  if (rank === 2) return <span className="text-lg">🥈</span>;
-  if (rank === 3) return <span className="text-lg">🥉</span>;
-  return <span className="text-sm font-semibold text-gray-500 min-w-6 shrink-0 text-center">#{rank}</span>;
-}
-
-function ScoreBar({ value, color = "bg-blue-500" }: { value: number; color?: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-        <div
-          className={`h-full rounded-full ${color}`}
-          style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
-        />
-      </div>
-      <span className="text-xs font-medium text-gray-700 w-12 text-right">{value.toFixed(1)}%</span>
-    </div>
-  );
-}
+type Tab = "schools" | "students";
+const PAGE_SIZE = 25;
 
 export default function AdminAssignmentAnalyticsPage() {
-  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const { data } = await adminApi.dashboard.assignmentAnalytics();
-        setAnalytics((data as { analytics?: AnalyticsData }).analytics ?? null);
-      } catch {
-        setAnalytics(null);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const [tab, setTab] = useState<Tab>("schools");
+  const [band, setBand] = useState<Band | "all">("all");
+  const [search, setSearch] = useState("");
+  const [pageState, setPageState] = useState({ key: "", page: 1 });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: res } = await adminApi.dashboard.assignmentAnalytics();
+      setData((res as { analytics?: AnalyticsData }).analytics ?? null);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-4">
-        <div className="h-8 bg-gray-200 rounded w-1/3 animate-pulse" />
-        <div className="grid grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-24 bg-gray-200 rounded-xl animate-pulse" />
-          ))}
-        </div>
-        <div className="h-96 bg-gray-200 rounded-xl animate-pulse" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const summary = analytics?.summary ?? {
-    total_schools: 0,
-    total_assignments: 0,
-    total_attempts: 0,
-    platform_avg_score: 0,
-  };
-  const schoolRankings = analytics?.school_rankings ?? [];
-  const topStudents = analytics?.top_students_platform ?? [];
-  const platformCompletion = analytics?.platform_completion_rate ?? 0;
-  const retakeUsage = analytics?.retake_usage ?? 0;
+  const schools = useMemo(() => data?.school_rankings ?? [], [data]);
+  const students = useMemo(() => data?.top_students_platform ?? [], [data]);
+
+  const counts = useMemo(() => {
+    const c: Record<Band, number> = { none: 0, low: 0, mid: 0, high: 0 };
+    for (const s of schools) c[schoolBand(s)] += 1;
+    return c;
+  }, [schools]);
+
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return schools.filter((s) => (band === "all" || schoolBand(s) === band) && (!q || s.school_name.toLowerCase().includes(q)));
+  }, [schools, band, search]);
+
+  const key = `${band}|${search}`;
+  const page = pageState.key === key ? pageState.page : 1;
+
+  const first = loading && !data && !failed;
+  const dash = failed && !data;
+  const summary = data?.summary;
+  const published = summary?.total_assignments ?? 0;
+  const attempts = summary?.total_attempts ?? 0;
+  const active = BANDS.filter((b) => b !== "none").reduce((n, b) => n + counts[b], 0);
+  const avg = attempts > 0 && summary ? summary.platform_avg_score : null;
+  const clear = () => { setBand("all"); setSearch(""); };
+
+  let status: React.ReactNode;
+  if (dash) status = "The scores did not load. Try again.";
+  else if (first) status = "Loading scores…";
+  else if (published === 0) status = <><strong>No assignments are published yet.</strong> Scores show up here once students hand in work.</>;
+  else if (attempts === 0) status = <><strong>{plural(published, "assignment")}</strong> published, and no one has handed in work yet.</>;
+  else status = <><strong>{pct(avg ?? 0)}</strong> average score across {plural(active, "school")} with work handed in. {pct(data?.platform_completion_rate ?? 0)} of students have handed something in.</>;
+
+  const tiles = [
+    { label: "Schools", value: String(summary?.total_schools ?? schools.length), hint: active > 0 ? `${active} with work handed in` : "None with work yet" },
+    { label: "Assignments", value: String(published), hint: "Published across the platform" },
+    { label: "Handed in", value: pct(data?.platform_completion_rate ?? 0), hint: "Of enrolled students, at least once" },
+    { label: "Retakes", value: pct(data?.retake_usage ?? 0), hint: "Of all attempts were retakes" },
+  ];
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <BarChart2 className="h-6 w-6 text-blue-600" />
-          Platform Assignment Analytics
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">Cross-school performance overview</p>
-      </div>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ap-title">
+        <div className="sd-hero-copy">
+          <h1 id="ap-title" className="mc-hero-title">Assignment analytics</h1>
+          <p className="sd-where">How schools and students do on assignments</p>
+          <p className="sd-status">{status}</p>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        {first ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : (
+          <SchoolRun counts={counts} selected={band} average={avg} onSelect={(b) => { setBand(b); setTab("schools"); }} />
+        )}
+      </section>
 
-      {/* Platform Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Schools", value: String(summary.total_schools), icon: School, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Assignments", value: String(summary.total_assignments), icon: BookOpen, color: "text-purple-600", bg: "bg-purple-50" },
-          { label: "Platform Avg Score", value: `${summary.platform_avg_score.toFixed(1)}%`, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
-          { label: "Retake Usage", value: `${retakeUsage.toFixed(1)}%`, icon: RotateCcw, color: "text-amber-600", bg: "bg-amber-50" },
-        ].map((s) => (
-          <Card key={s.label} className="bg-white border border-gray-100 shadow-sm">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{s.label}</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{s.value}</p>
-                </div>
-                <div className={`h-11 w-11 rounded-xl ${s.bg} flex items-center justify-center`}>
-                  <s.icon className={`h-5 w-5 ${s.color}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="sd-ledger" role="group" aria-label="Platform summary">
+        {tiles.map((m) => (
+          <div key={m.label}>
+            <span className="sd-l">{m.label}</span>
+            {first ? <span className="sd-skel" style={{ height: "2.2rem", width: "4rem" }} /> : <b className="sd-n">{dash ? "–" : m.value}</b>}
+            <small>{dash ? "Not loaded" : m.hint}</small>
+          </div>
         ))}
       </div>
 
-      {/* No-activity hint */}
-      {summary.total_attempts === 0 && (
-        <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
-          <BarChart2 className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <p className="font-medium text-blue-900">No assignment submissions yet</p>
-            <p className="text-blue-700 text-xs mt-0.5">
-              {summary.total_assignments} assignment{summary.total_assignments !== 1 ? "s" : ""} published across {summary.total_schools} school{summary.total_schools !== 1 ? "s" : ""}. Scores and rankings will populate as students submit their work.
-            </p>
+      <div className="mc-tabs" role="tablist" aria-label="Analytics views" style={{ justifySelf: "start" }}>
+        <button role="tab" className="mc-tab" aria-selected={tab === "schools"} onClick={() => setTab("schools")}>Schools{!first && !dash && <b>{schools.length}</b>}</button>
+        <button role="tab" className="mc-tab" aria-selected={tab === "students"} onClick={() => setTab("students")}>Top students{!first && !dash && <b>{students.length}</b>}</button>
+      </div>
+
+      {first ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : dash ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the scores</b>
+            <p>Check your connection, then try again.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void load()}>Try again</button>
           </div>
-        </div>
+        </section>
+      ) : tab === "schools" ? (
+        <>
+          {schools.length > 0 && <p className="aa-note">Schools are ranked by their average score (marks earned out of marks possible, on each student&apos;s counted attempt), then by how many students have handed in work. The platform average is the average of the schools that have work handed in.</p>}
+          <SchoolsTab rows={shown} total={schools.length} band={band} search={search} onSearch={setSearch} onClear={clear} page={page} pageSize={PAGE_SIZE} onPage={(p) => setPageState({ key, page: p })} />
+        </>
+      ) : (
+        <>
+          <p className="aa-note">The 50 best students on the platform, ranked together across every school. Overall is 60% course and 40% daily work, or just one of them when a student only has that kind.</p>
+          <StudentsTab students={students} />
+        </>
       )}
-
-      <Tabs defaultValue="schools">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="schools" className="flex items-center gap-2">
-            <School className="h-4 w-4" />
-            School Rankings ({schoolRankings.length})
-          </TabsTrigger>
-          <TabsTrigger value="students" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Top Students ({topStudents.length})
-          </TabsTrigger>
-        </TabsList>
-
-        {/* School Rankings Tab */}
-        <TabsContent value="schools" className="mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Trophy className="h-4 w-4 text-yellow-500" />
-                School Leaderboard
-              </CardTitle>
-              <p className="text-xs text-gray-500">
-                Platform completion rate: {platformCompletion.toFixed(1)}%
-              </p>
-            </CardHeader>
-            <CardContent>
-              {schoolRankings.length === 0 ? (
-                <div className="text-center py-10 text-gray-400">
-                  <School className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No school data yet</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {schoolRankings.map((school) => (
-                    <div
-                      key={school.school_id}
-                      className={`border rounded-xl p-4 transition-shadow hover:shadow-sm ${
-                        school.rank <= 3 ? "border-yellow-200 bg-yellow-50/30" : "border-gray-200"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <RankBadge rank={school.rank} />
-                          <div>
-                            <p className="font-semibold text-gray-900">{school.school_name}</p>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                              <span>{school.assignments_created} assignments</span>
-                              <span>{school.attempts_count} attempts</span>
-                              <span>Retake {school.retake_usage_percentage.toFixed(0)}%</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p
-                            className={`text-lg font-bold ${
-                              school.average_score_percentage >= 75
-                                ? "text-green-600"
-                                : school.average_score_percentage >= 50
-                                ? "text-yellow-600"
-                                : "text-red-500"
-                            }`}
-                          >
-                            {school.average_score_percentage.toFixed(1)}%
-                          </p>
-                          <p className="text-xs text-gray-400">avg score</p>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                        <div className="space-y-1">
-                          <span className="text-gray-500">Avg Score</span>
-                          <ScoreBar
-                            value={school.average_score_percentage}
-                            color={
-                              school.average_score_percentage >= 75
-                                ? "bg-green-500"
-                                : school.average_score_percentage >= 50
-                                ? "bg-yellow-500"
-                                : "bg-red-400"
-                            }
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <span className="text-gray-500">Completion</span>
-                          <ScoreBar value={school.completion_rate} color="bg-blue-400" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Top Students Tab */}
-        <TabsContent value="students" className="mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Star className="h-4 w-4 text-yellow-500" />
-                Top 50 Students Platform-wide
-              </CardTitle>
-              <p className="text-xs text-gray-500">Overall = Course (60%) + Daily (40%), or just one if the student only has that kind · Ranked system-wide</p>
-            </CardHeader>
-            <CardContent>
-              {topStudents.length === 0 ? (
-                <div className="text-center py-10 text-gray-400">
-                  <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No student data yet</p>
-                </div>
-              ) : (
-                <RankingTable
-                  rows={topStudents.map((s): RankingRow => ({
-                    student_id: s.student_id,
-                    student_name: s.student_name,
-                    grade: s.grade,
-                    section: s.section,
-                    school_name: s.school_name,
-                    course_score: s.course_assignment_score,
-                    daily_score: s.daily_assignment_score,
-                    overall_score: s.overall_score,
-                    rank: s.system_rank ?? s.rank,
-                    system_rank: s.system_rank ?? s.rank,
-                  }))}
-                  showRanks={["system"]}
-                  showSchool
-                  showGrade
-                  showScoreBreakdown
-                />
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }

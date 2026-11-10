@@ -1,12 +1,10 @@
 "use client";
 
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Label } from "../ui/label";
 import { useState } from "react";
 import { Loader2, UserCog } from "lucide-react";
+import Modal from "../portal/Modal";
+import { initialsOf } from "../portal/notifications";
+import { addedOn, classLine, placementsOf } from "./students/utils";
 import { startImpersonation, impersonationLandingPath } from "@/lib/impersonation";
 
 interface StudentSchool {
@@ -72,163 +70,79 @@ export default function ViewStudentDialog({
       const { role } = await startImpersonation(parseInt(student.id, 10));
       window.location.href = impersonationLandingPath(role);
     } catch (e) {
-      setImpersonateError(e instanceof Error ? e.message : "Failed to sign in as student");
+      setImpersonateError(e instanceof Error ? e.message : "Could not sign in as this student.");
       setImpersonating(false);
     }
   };
 
+  const progress = Math.round(student?.progress ?? 0);
+  const places = student ? placementsOf(student) : [];
+  const courses = student?.student_courses ?? [];
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
-        <DialogHeader>
-          <DialogTitle>Student Details</DialogTitle>
-          <DialogDescription>View detailed information about the student</DialogDescription>
-        </DialogHeader>
-        {student && (
-          <div className="space-y-6 py-4">
-            {/* Basic Information */}
-            <Card className="bg-white">
-              <CardHeader>
-                <CardTitle className="text-lg">Basic Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="min-w-0">
-                    <Label className="text-sm font-medium text-gray-500">Full Name</Label>
-                    <p className="text-base font-medium break-words">{student.full_name}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <Label className="text-sm font-medium text-gray-500">Email</Label>
-                    <p className="text-base break-words">{student.email}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <Label className="text-sm font-medium text-gray-500">Student ID</Label>
-                    <p className="text-base font-mono text-sm break-words">{student.id}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <Label className="text-sm font-medium text-gray-500">Role</Label>
-                    <Badge variant="outline">{student.role}</Badge>
-                  </div>
-                  <div className="min-w-0">
-                    <Label className="text-sm font-medium text-gray-500">Created At</Label>
-                    <p className="text-base">{new Date(student.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* School & Grade Information */}
-            {student.student_schools && student.student_schools.length > 0 && (
-              <Card className="bg-white">
-                <CardHeader>
-                  <CardTitle className="text-lg">School & Grade</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {student.student_schools.map((assignment: StudentSchool, index: number) => (
-                      <div key={index} className="p-3 border rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">
-                              {assignment.school_name || assignment.schools?.name || "Unknown School"}
-                            </p>
-                            <div className="flex gap-2 mt-1">
-                              <Badge variant="outline">
-                                {assignment.grade?.toString().trim().toLowerCase().startsWith("grade")
-                                  ? assignment.grade
-                                  : `Grade ${assignment.grade}`}
-                              </Badge>
-                              {assignment.section && <Badge variant="outline">Section {assignment.section}</Badge>}
-                            </div>
-                          </div>
-                          <Badge variant={assignment.is_active ? "default" : "secondary"}>
-                            {assignment.is_active ? "Active" : "Inactive"}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Courses Information */}
-            {student.student_courses && student.student_courses.length > 0 && (
-              <Card className="bg-white">
-                <CardHeader>
-                  <CardTitle className="text-lg">Courses</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {student.student_courses.map((course: StudentCourse, index: number) => (
-                      <div key={index} className="p-2 border rounded">
-                        <p className="font-medium">{course.courses?.course_name || "Unknown Course"}</p>
-                        {course.progress_percentage !== undefined && (
-                          <div className="mt-2">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm text-gray-600">Progress</span>
-                              <span className="text-sm font-medium">{course.progress_percentage}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-blue-600 h-2 rounded-full"
-                                style={{ width: `${course.progress_percentage}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Progress */}
-            <Card className="bg-white">
-              <CardHeader>
-                <CardTitle className="text-lg">Overall Progress</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center space-x-4">
-                  <div className="flex-1">
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div
-                        className="bg-blue-600 h-3 rounded-full"
-                        style={{ width: `${student.progress || 0}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                  <span className="text-lg font-medium">{student.progress || 0}%</span>
-                </div>
-              </CardContent>
-            </Card>
+    <Modal
+      open={open && !!student}
+      onClose={() => onOpenChange(false)}
+      wide
+      title={student?.full_name ?? "Student"}
+      subtitle={student?.email}
+      footer={
+        <>
+          {impersonateError && <span className="ad-view-err" role="alert">{impersonateError}</span>}
+          <button className="sd-btn sd-btn--line" onClick={handleImpersonate} disabled={impersonating || !student}>
+            {impersonating ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UserCog aria-hidden="true" />}
+            Sign in as this student
+          </button>
+          <button className="sd-btn sd-btn--amber" onClick={() => onOpenChange(false)}>Close</button>
+        </>
+      }
+    >
+      {student && (
+        <div className="ad-view">
+          <div className="ad-view-top">
+            <span className="sd-avatar" aria-hidden="true">{initialsOf(student.full_name)}</span>
+            <dl className="ad-facts">
+              <div><dt>Student ID</dt><dd>{student.id}</dd></div>
+              <div><dt>Added</dt><dd>{addedOn(student.created_at) || "Unknown"}</dd></div>
+              {student.parent_name && <div><dt>Parent</dt><dd>{student.parent_name}</dd></div>}
+              {student.parent_phone && <div><dt>Parent phone</dt><dd>{student.parent_phone}</dd></div>}
+            </dl>
           </div>
-        )}
-        <DialogFooter className="flex-col sm:flex-row sm:justify-between gap-2">
-          <div className="flex flex-col gap-1">
-            <Button
-              variant="outline"
-              className="border-amber-500 text-amber-700 hover:bg-amber-50"
-              onClick={handleImpersonate}
-              disabled={impersonating || !student}
-            >
-              {impersonating ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <UserCog className="h-4 w-4 mr-2" />
-              )}
-              Sign in as this student
-            </Button>
-            {impersonateError && (
-              <span className="text-xs text-red-600">{impersonateError}</span>
-            )}
-          </div>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          <section aria-labelledby="ad-view-progress">
+            <h3 id="ad-view-progress">Overall progress</h3>
+            <div className="ad-view-prog">
+              <span className="sd-meter" role="img" aria-label={`${progress}% through their courses`}><i style={{ "--p": `${Math.max(progress, 2)}%` } as React.CSSProperties} /></span>
+              <b>{progress}%</b>
+            </div>
+          </section>
+
+          <section aria-labelledby="ad-view-class">
+            <h3 id="ad-view-class">School and class</h3>
+            {places.length === 0 ? <p className="ad-view-none">Not in a school yet.</p> : places.map((p, i) => (
+              <div key={`${p.schoolId}-${i}`} className="ad-view-row">
+                <span><b>{p.school}</b><small>{classLine(p)}</small></span>
+                {student.student_schools?.[i]?.is_active === false && <span className="sm-chip" data-on="false">Inactive</span>}
+              </div>
+            ))}
+          </section>
+
+          <section aria-labelledby="ad-view-courses">
+            <h3 id="ad-view-courses">Courses</h3>
+            {courses.length === 0 ? <p className="ad-view-none">Not enrolled in any course yet.</p> : courses.map((c: StudentCourse, i: number) => (
+              <div key={c.id ?? i} className="ad-view-row">
+                <span><b>{c.courses?.course_name || "Course"}</b></span>
+                {c.progress_percentage !== undefined && (
+                  <span className="ad-view-cp">
+                    <span className="sd-meter" role="img" aria-label={`${c.progress_percentage}% done`}><i style={{ "--p": `${Math.max(c.progress_percentage, 2)}%` } as React.CSSProperties} /></span>
+                    <b>{Math.round(c.progress_percentage)}%</b>
+                  </span>
+                )}
+              </div>
+            ))}
+          </section>
+        </div>
+      )}
+    </Modal>
   );
 }

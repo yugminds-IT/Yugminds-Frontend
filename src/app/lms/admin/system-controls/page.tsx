@@ -1,316 +1,165 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  SlidersHorizontal,
-  Megaphone,
-  Wrench,
-  Flag,
-  Loader2,
-  Plus,
-  Trash2,
-  AlertTriangle,
-  CheckCircle,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCw, Save, Wrench } from "lucide-react";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import ControlRun from "@/components/admin/controls/ControlRun";
+import MaintenancePanel from "@/components/admin/controls/MaintenancePanel";
+import AnnouncementPanel from "@/components/admin/controls/AnnouncementPanel";
+import FlagsPanel from "@/components/admin/controls/FlagsPanel";
+import { EMPTY, PARTS, plural, type Controls, type Part } from "@/components/admin/controls/utils";
 import { adminApi } from "@/lib/api/admin.api";
-
-interface Announcement {
-  enabled: boolean;
-  text: string;
-  level: "info" | "warning" | "critical";
-}
-
-interface Controls {
-  maintenance_mode: boolean;
-  maintenance_message: string;
-  announcement: Announcement;
-  feature_flags: Record<string, boolean>;
-}
-
-const EMPTY: Controls = {
-  maintenance_mode: false,
-  maintenance_message: "",
-  announcement: { enabled: false, text: "", level: "info" },
-  feature_flags: {},
-};
+import { toast } from "@/components/ui/toast";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips and forms
+import "@/components/school-admin/teachers.css"; // tm- track nodes
+import "@/components/admin/controls/controls.css";
 
 export default function SystemControlsPage() {
   const [controls, setControls] = useState<Controls>(EMPTY);
+  const [saved, setSaved] = useState<Controls>(EMPTY);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [newFlagName, setNewFlagName] = useState("");
+  const [part, setPart] = useState<Part>("maintenance");
+  const [confirmOn, setConfirmOn] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await adminApi.systemControls.get();
-      setControls({ ...EMPTY, ...(data as Controls) });
+      const next = { ...EMPTY, ...(data as Controls) };
+      setControls(next);
+      setSaved(next);
+      setLoadError(false);
     } catch {
-      setMessage({ kind: "err", text: "Failed to load system controls." });
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  const save = async () => {
+  const dirty = JSON.stringify(controls) !== JSON.stringify(saved);
+
+  const persist = async (next: Controls) => {
     setSaving(true);
-    setMessage(null);
     try {
-      const { data } = await adminApi.systemControls.update(controls as unknown as Record<string, unknown>);
-      setControls({ ...EMPTY, ...(data as Controls) });
-      setMessage({ kind: "ok", text: "System controls saved." });
+      const { data } = await adminApi.systemControls.update(next as unknown as Record<string, unknown>);
+      const fresh = { ...EMPTY, ...(data as Controls) };
+      setControls(fresh);
+      setSaved(fresh);
+      setConfirmOn(false);
+      toast.success(fresh.maintenance_mode && !saved.maintenance_mode ? "Maintenance mode is on" : !fresh.maintenance_mode && saved.maintenance_mode ? "Maintenance mode is off" : "System controls saved");
     } catch {
-      setMessage({ kind: "err", text: "Failed to save. Try again." });
+      toast.error("We could not save the changes. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  const addFlag = () => {
-    const name = newFlagName.trim().toLowerCase().replace(/\s+/g, "_");
-    if (!name || !/^[\w.-]{1,64}$/.test(name)) return;
-    setControls((c) => ({
-      ...c,
-      feature_flags: { ...c.feature_flags, [name]: false },
-    }));
-    setNewFlagName("");
+  // Turning maintenance on locks people out, so it asks first. Everything else saves straight away.
+  const save = () => {
+    if (controls.maintenance_mode && !saved.maintenance_mode) setConfirmOn(true);
+    else void persist(controls);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen text-gray-500" style={{ backgroundColor: "#f9fafb" }}>
-        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading system controls…
-      </div>
-    );
-  }
+  const flagsOn = Object.values(saved.feature_flags).filter(Boolean).length;
+  const first = loading && !loadError;
+  const maint = saved.maintenance_mode;
+
+  let statusLine: React.ReactNode;
+  if (loadError) statusLine = "The controls did not load. Try refreshing.";
+  else if (first) statusLine = "Checking the platform…";
+  else if (maint) statusLine = <><strong>Maintenance mode is on.</strong> Students, teachers and school admins cannot sign in.</>;
+  else if (saved.announcement.enabled || flagsOn > 0) statusLine = <><strong>Everything is running normally.</strong>{saved.announcement.enabled && <> An announcement is showing.</>}{flagsOn > 0 && <> {plural(flagsOn, "feature flag")} on.</>}</>;
+  else statusLine = <><strong>Everything is running normally.</strong> No banner, no flags, no maintenance.</>;
+
+  const runCaption = first ? "Loading…" : maint ? "People are locked out" : "Nobody is affected";
 
   return (
-    <div className="p-4 md:p-6 lg:p-8" style={{ minHeight: "100vh", backgroundColor: "#f9fafb" }}>
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <SlidersHorizontal className="h-7 w-7 text-blue-600" />
-            System Controls
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Platform-wide switches: maintenance mode, announcements, and feature flags.
-          </p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ctl-title">
+        <div className="sd-hero-copy">
+          <h1 id="ctl-title" className="mc-hero-title">System controls</h1>
+          <p className="sd-where">Switches that affect everyone on the platform</p>
+          <p className="sd-status">{statusLine}</p>
+          {maint && !dirty && !first && (
+            <div className="sd-hero-actions">
+              <button className="sd-btn sd-btn--amber" onClick={() => void persist({ ...saved, maintenance_mode: false })} disabled={saving}><Wrench aria-hidden="true" />Turn maintenance off</button>
+            </div>
+          )}
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <Button onClick={save} disabled={saving} className="flex items-center gap-2">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-          Save changes
-        </Button>
+        {first ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : (
+          <ControlRun saved={saved} selected={part} onSelect={setPart} caption={runCaption} />
+        )}
+      </section>
+
+      <div className="mc-tabs" role="tablist" aria-label="Platform controls" style={{ justifySelf: "start", maxWidth: "100%" }}>
+        {PARTS.map((p) => (
+          <button key={p.key} role="tab" className="mc-tab" aria-selected={part === p.key} onClick={() => setPart(p.key)}>
+            {p.label}{p.key === "flags" && !first && !loadError && <b>{Object.keys(controls.feature_flags).length}</b>}
+          </button>
+        ))}
       </div>
 
-      {message && (
-        <div
-          className={`mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
-            message.kind === "ok"
-              ? "border-green-200 bg-green-50 text-green-700"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {message.kind === "ok" ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-          {message.text}
+      {first ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : loadError ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the system controls</b>
+            <p>Check your connection, then try again. Nothing was changed.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void load()}>Try again</button>
+          </div>
+        </section>
+      ) : part === "maintenance" ? (
+        <MaintenancePanel value={controls} onChange={setControls} />
+      ) : part === "announcement" ? (
+        <AnnouncementPanel value={controls} onChange={setControls} />
+      ) : (
+        <FlagsPanel value={controls} onChange={setControls} />
+      )}
+
+      {dirty && !loadError && (
+        <div className="ctl-savebar" role="region" aria-label="Unsaved changes">
+          <b>You have unsaved changes</b>
+          <div>
+            <button className="sd-btn sd-btn--line" onClick={() => setControls(saved)} disabled={saving}>Discard</button>
+            <button className="sd-btn sd-btn--amber" onClick={save} disabled={saving}>
+              <Save aria-hidden="true" />{saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Maintenance mode */}
-        <Card className={controls.maintenance_mode ? "border-red-300" : ""}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Wrench className="h-5 w-5 text-red-500" />
-              Maintenance Mode
-              {controls.maintenance_mode && (
-                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Active</Badge>
-              )}
-            </CardTitle>
-            <CardDescription>
-              While active, students, teachers, and school admins cannot sign in. Admin
-              sign-in and already-active sessions keep working.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <Label htmlFor="maintenance-toggle" className="font-medium">
-                Block non-admin sign-ins
-              </Label>
-              <Switch
-                id="maintenance-toggle"
-                checked={controls.maintenance_mode}
-                onCheckedChange={(v: boolean) =>
-                  setControls((c) => ({ ...c, maintenance_mode: v }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="maintenance-message">Message shown at sign-in</Label>
-              <Textarea
-                id="maintenance-message"
-                value={controls.maintenance_message}
-                maxLength={500}
-                onChange={(e) =>
-                  setControls((c) => ({ ...c, maintenance_message: e.target.value }))
-                }
-                placeholder="Yugminds is undergoing scheduled maintenance…"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Announcement */}
-        <Card className={controls.announcement.enabled ? "border-blue-300" : ""}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Megaphone className="h-5 w-5 text-blue-500" />
-              Announcement Banner
-              {controls.announcement.enabled && (
-                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Live</Badge>
-              )}
-            </CardTitle>
-            <CardDescription>
-              Shown as a banner to every signed-in user across all dashboards.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <Label htmlFor="announcement-toggle" className="font-medium">
-                Show announcement
-              </Label>
-              <Switch
-                id="announcement-toggle"
-                checked={controls.announcement.enabled}
-                onCheckedChange={(v: boolean) =>
-                  setControls((c) => ({ ...c, announcement: { ...c.announcement, enabled: v } }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="announcement-text">Announcement text</Label>
-              <Textarea
-                id="announcement-text"
-                value={controls.announcement.text}
-                maxLength={500}
-                onChange={(e) =>
-                  setControls((c) => ({ ...c, announcement: { ...c.announcement, text: e.target.value } }))
-                }
-                placeholder="e.g. Report cards will be published on Friday."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Severity</Label>
-              <Select
-                value={controls.announcement.level}
-                onValueChange={(v) =>
-                  setControls((c) => ({
-                    ...c,
-                    announcement: { ...c.announcement, level: v as Announcement["level"] },
-                  }))
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="info">Info (blue)</SelectItem>
-                  <SelectItem value="warning">Warning (amber)</SelectItem>
-                  <SelectItem value="critical">Critical (red)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Feature flags */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Flag className="h-5 w-5 text-purple-500" />
-              Feature Flags
-            </CardTitle>
-            <CardDescription>
-              Free-form on/off switches your code can read from GET /system-status or
-              /admin/system-controls to gate features without a deploy.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                value={newFlagName}
-                onChange={(e) => setNewFlagName(e.target.value)}
-                placeholder="new_flag_name"
-                className="max-w-xs"
-                onKeyDown={(e) => e.key === "Enter" && addFlag()}
-              />
-              <Button variant="outline" onClick={addFlag} disabled={!newFlagName.trim()}>
-                <Plus className="h-4 w-4 mr-1" /> Add flag
-              </Button>
-            </div>
-            {Object.keys(controls.feature_flags).length === 0 ? (
-              <p className="text-sm text-gray-500">No feature flags defined yet.</p>
-            ) : (
-              <div className="divide-y rounded-lg border">
-                {Object.entries(controls.feature_flags).map(([name, on]) => (
-                  <div key={name} className="flex items-center justify-between px-4 py-2.5">
-                    <code className="text-sm text-gray-800">{name}</code>
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        checked={on}
-                        onCheckedChange={(v: boolean) =>
-                          setControls((c) => ({
-                            ...c,
-                            feature_flags: { ...c.feature_flags, [name]: v },
-                          }))
-                        }
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500 hover:text-red-700"
-                        onClick={() =>
-                          setControls((c) => {
-                            const next = { ...c.feature_flags };
-                            delete next[name];
-                            return { ...c, feature_flags: next };
-                          })
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <ConfirmModal
+        open={confirmOn}
+        onClose={() => { if (!saving) setConfirmOn(false); }}
+        title="Turn on maintenance mode?"
+        subtitle="This locks people out as soon as you confirm."
+        confirmLabel="Turn on maintenance"
+        danger
+        busy={saving}
+        onConfirm={() => void persist(controls)}
+      >
+        <ul className="ctl-who">
+          <li>Students, teachers and school admins cannot sign in.</li>
+          <li>Admins can still sign in, and anyone already signed in stays signed in.</li>
+          <li>They see your message: “{controls.maintenance_message.trim() || "Yugminds is undergoing scheduled maintenance. Please check back shortly."}”</li>
+        </ul>
+      </ConfirmModal>
     </div>
   );
 }

@@ -1,0 +1,84 @@
+/* School-admin student progress. Needs portal.css, students.css (sm- chips) and teachers.css (tm-bar). */
+
+.sp-run .sd-droid { transition: translate 700ms var(--sd-ease); }
+.sp-run .sd-ball { transition: rotate 700ms var(--sd-ease); }
+.sp-node { display: grid; justify-items: center; gap: 0.5rem; width: 100%; padding: 0.15rem 0; border: 0; border-radius: 0.6rem; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.sp-node:focus-visible { outline: 3px solid var(--sd-amber); outline-offset: 2px; }
+.sp-node .sd-node { width: 1.85rem; height: 1.85rem; transition: transform 160ms var(--sd-ease), background-color 0.3s ease; }
+.sp-node:active .sd-node { transform: scale(0.9); }
+@media (hover: hover) { .sp-node:hover .sd-node { transform: scale(1.12); } }
+.sp-run .sd-day span:last-child { font-size: 0.76rem; text-align: center; }
+
+.sp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.sp-bar .sd-field[type="search"] { flex: 1 1 14rem; width: auto; min-width: 0; }
+.sp-bar select.sd-field { width: auto; min-width: 9rem; padding-block: 0.6rem; }
+
+/* Student rows */
+.sp-row { display: grid; grid-template-columns: 2.5rem minmax(0, 1.4fr) 6.5rem minmax(0, 0.8fr) minmax(8rem, 1fr) 8.5rem 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.8rem 1.25rem; }
+.sp-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.sp-item { border-bottom: 1.5px solid var(--sd-line); }
+.sp-item:last-of-type { border-bottom: 0; }
+.sp-item .sp-row { transition: background-color 0.2s ease; }
+@media (hover: hover) { .sp-item .sp-row:hover { background: var(--sd-wash); } }
+.sp-row .sd-avatar { width: 2.5rem; height: 2.5rem; }
+.sp-courses { font-size: 0.93rem; }
+.sp-courses small { display: block; font-size: 0.82rem; color: var(--sd-ink-soft); }
+.sp-prog { display: grid; gap: 0.3rem; }
+.sp-prog b { font: 800 1.05rem/1 var(--sd-display); font-variant-numeric: tabular-nums; }
+.sp-prog[data-stage="done"] .tm-bar u { background: var(--sd-ink); }
+.sp-prog[data-stage="none"] b { color: var(--sd-ink-soft); }
+.sp-active { font-size: 0.88rem; color: var(--sd-ink-soft); }
+.sp-detail { padding: 0.2rem 1.25rem 1rem 4.75rem; }
+.sp-detail ol { display: grid; gap: 0.1rem; list-style: none; border: 1.5px solid var(--sd-line); border-radius: 1rem; overflow: clip; }
+.sp-detail li { display: grid; grid-template-columns: minmax(0, 1.4fr) 9rem minmax(7rem, 1fr) 7.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.65rem 1rem; font-size: 0.92rem; }
+.sp-detail li + li { border-top: 1.5px solid var(--sd-line); }
+.sp-detail li > b { font-weight: 700; overflow-wrap: anywhere; }
+.sp-detail li > span { color: var(--sd-ink-soft); }
+.sp-detail li .sp-prog { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.6rem; }
+.sp-detail li .sp-prog b { font-size: 0.9rem; min-width: 2.5rem; }
+.sp-state { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.86rem; }
+.sp-state svg { width: 1rem; height: 1rem; }
+
+/* Courses and classes */
+.sp-crow { display: grid; grid-template-columns: minmax(0, 1.5fr) 9rem 5rem 5rem 5rem minmax(7rem, 1fr) minmax(7rem, 1fr); align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); }
+.sp-crow:last-child { border-bottom: 0; }
+.sp-crow > b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.sp-nums { display: contents; }
+.sp-num { font: 800 1.1rem/1 var(--sd-display); font-variant-numeric: tabular-nums; text-align: center; }
+.sp-num small { display: block; margin-top: 0.2rem; font: 500 0.78rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.sp-grow { display: grid; grid-template-columns: minmax(0, 1.2fr) 5.5rem 5.5rem 5.5rem minmax(8rem, 1fr) 9rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); }
+.sp-grow:last-child { border-bottom: 0; }
+.sp-grow > b { font: 700 1.05rem/1.3 var(--sd-body); }
+.sp-pct { display: grid; gap: 0.3rem; }
+.sp-pct b { font: 800 1rem/1 var(--sd-display); font-variant-numeric: tabular-nums; }
+.sp-pct small { font-size: 0.8rem; color: var(--sd-ink-soft); }
+
+@media (max-width: 960px) {
+  .sp-head { display: none; }
+  .sp-row { grid-template-columns: 2.5rem minmax(0, 1fr) 2.25rem; grid-template-areas: "av who go" ". chip chip" ". prog prog" ". courses courses" ". active active"; gap: 0.4rem 0.8rem; }
+  .sp-row > .sd-avatar { grid-area: av; }
+  .sp-row > .sm-who { grid-area: who; }
+  .sp-row > .sm-chip { grid-area: chip; justify-self: start; }
+  .sp-row > .sp-prog { grid-area: prog; }
+  .sp-row > .sp-courses { grid-area: courses; }
+  .sp-row > .sp-active { grid-area: active; }
+  .sp-row > .pl-ico { grid-area: go; }
+  .sp-detail { padding: 0.2rem 1rem 1rem; }
+  .sp-detail li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name chap" "prog prog" "state state"; }
+  .sp-detail li > b { grid-area: name; }
+  .sp-detail li > .sp-chap { grid-area: chap; }
+  .sp-detail li > .sp-prog { grid-area: prog; }
+  .sp-detail li > .sp-state { grid-area: state; }
+  .sp-crow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name grade" "nums nums" "avg rate"; }
+  .sp-crow > b { grid-area: name; }
+  .sp-crow > .sm-chip { grid-area: grade; justify-self: end; }
+  .sp-crow > .sp-nums { grid-area: nums; display: flex; gap: 1.5rem; }
+  .sp-crow > .sp-avg { grid-area: avg; }
+  .sp-crow > .sp-rate { grid-area: rate; }
+  .sp-grow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name go" "nums nums" "avg avg"; }
+  .sp-grow > b { grid-area: name; }
+  .sp-grow > .sp-nums { grid-area: nums; display: flex; gap: 1.5rem; }
+  .sp-grow > .sp-pct { grid-area: avg; }
+  .sp-grow > .sd-btn { grid-area: go; }
+}
+@media (prefers-reduced-motion: reduce) { .sp-run .sd-droid, .sp-run .sd-ball, .sp-node .sd-node, .sp-item .sp-row { transition: none; } }

@@ -17,18 +17,18 @@ test.describe('Admin — Dashboard', () => {
     await page.goto('/lms/admin');
     await statsResponse;
 
-    await expect(page.getByRole('heading', { name: 'Admin Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Admin dashboard' })).toBeVisible();
 
     // Platform-wide stat cards are real <a> links to their management tab.
-    await expect(page.getByRole('link', { name: /^Total Schools:/ })).toBeVisible();
-    await expect(page.getByRole('link', { name: /^Total Teachers:/ })).toBeVisible();
-    await expect(page.getByRole('link', { name: /^Total Students:/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^Schools:/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^Teachers:/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^Students:/ })).toBeVisible();
 
-    // Recent Activity / quick-action previews show the fixture entries by
-    // name — "QA Teacher 0" appears in both the Recent Teachers preview card
-    // AND the Recent Activity feed, so scope to .first() to avoid a
-    // strict-mode multi-match error.
+    // "Recently added" lists the newest schools, teachers, students and courses. Pick a kind so the
+    // fixture entries cannot be pushed out of the mixed top eight by newer rows of another kind.
+    await page.getByRole('button', { name: 'Teachers', exact: true }).click();
     await expect(page.getByText('QA Teacher 0').first()).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Students', exact: true }).click();
     await expect(page.getByText('QA Student 0').first()).toBeVisible();
   });
 
@@ -46,7 +46,7 @@ test.describe('Admin — Dashboard', () => {
 
   test('stat card link navigates to the matching tab', async ({ page }) => {
     await page.goto('/lms/admin');
-    await page.getByRole('link', { name: /^Total Students:/ }).click();
+    await page.getByRole('link', { name: /^Students:/ }).click();
     await page.waitForURL(/\/lms\/admin\/students/, { waitUntil: 'commit' });
   });
 

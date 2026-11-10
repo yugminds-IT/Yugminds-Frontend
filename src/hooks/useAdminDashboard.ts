@@ -108,7 +108,9 @@ export function useAdminDashboardStats() {
           activeUsers: (raw.totalTeachers ?? 0) + (raw.totalStudents ?? 0),
         };
       } catch (err) {
+        // The headline numbers are the point of this page. If they fail, say so (the page shows a retry) instead of showing zeros.
         console.error("Error fetching admin stats:", err);
+        throw err;
       }
 
       let monthlyGrowth: MonthlyGrowthPoint[] = [];

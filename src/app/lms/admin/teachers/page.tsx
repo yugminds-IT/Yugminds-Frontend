@@ -7,9 +7,7 @@ import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData } from "@/lib/form-persistence";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { EmergencyApprovalStages } from "@/components/leaves/EmergencyApprovalStages";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -30,9 +28,6 @@ import {
 import { 
   Label 
 } from "@/components/ui/label";
-import { 
-  Textarea 
-} from "@/components/ui/textarea";
 import AddTeacherDialog from "@/components/AddTeacherDialog";
 import CopySchoolAssignmentDialog from "@/components/CopySchoolAssignmentDialog";
 import WeekdayPicker from "@/components/WeekdayPicker";
@@ -41,11 +36,7 @@ import { formatWorkingDays } from "@/lib/weekday-utils";
 import TeacherProfileView from "@/components/TeacherProfileView";
 import { NotificationPanel, useNotifications } from "@/components/NotificationPanel";
 import { 
-  Users, 
   School, 
-  Calendar,
-  Clock,
-  CheckCircle,
   XCircle,
   Eye,
   EyeOff,
@@ -54,8 +45,6 @@ import {
   Shield,
   Plus,
   Briefcase,
-  Trash2,
-  Loader2,
   ChevronDown,
   ChevronRight,
   AlertTriangle,
@@ -64,10 +53,19 @@ import { adminApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
-import {
-  TeacherManagementTable,
-  type TeacherManagementRow,
-} from "@/components/ui/teacher-management-table";
+import type { TeacherManagementRow } from "@/components/ui/teacher-management-table";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import TodayRun from "@/components/admin/teachers/TodayRun";
+import TeachersTab, { type StatusFilter } from "@/components/admin/teachers/TeachersTab";
+import AttendanceTab from "@/components/admin/teachers/AttendanceTab";
+import LeavesTab from "@/components/admin/teachers/LeavesTab";
+import { EmergencyLeaveModal, LeaveDecisionModal } from "@/components/admin/teachers/LeaveModals";
+import { idOf, isActive, plural, todayKey, type TodayKey } from "@/components/admin/teachers/utils";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips and forms
+import "@/components/school-admin/teachers.css"; // tm- track nodes and leave rows
+import "@/components/admin/teachers/teachers.css";
 
 /** Grade with sections (new API shape) */
 interface GradeAssigned {
@@ -262,13 +260,6 @@ interface SchoolAssignmentRow {
   subjects?: string[];
 }
 
-interface Stats {
-  totalTeachers: number;
-  activeTeachers: number;
-  pendingLeaves: number;
-  averageAttendance: number;
-}
-
 type TeacherTableRow = Omit<Teacher, "id"> & TeacherManagementRow;
 
 function buildSchoolsSearchText(teacher: Teacher): string {
@@ -331,111 +322,16 @@ function mapTeacherToTableRow(teacher: Teacher): TeacherTableRow {
   };
 }
 
-function renderTeacherSchoolsCell(teacher: TeacherTableRow) {
-  const rawSchools = teacher.assignedSchools ?? teacher.teacher_schools ?? [];
-  if ((rawSchools?.length ?? 0) === 0) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-gray-400 italic">
-        No schools assigned
-      </span>
-    );
-  }
-  return (
-    <div className="space-y-2">
-      {rawSchools.map((rawSchool, index) => {
-        const school = rawSchool as SchoolAssignmentRow;
-        const schoolKey = school.schoolId ?? school.school_id ?? (school.schools?.id ?? index);
-        const schoolName = school.schoolName ?? school.schools?.name ?? "School";
-        const gradesAssigned: Array<{
-          gradeName?: string; grade?: string;
-          sectionsAssigned?: string[]; sections?: string[];
-        }> =
-          school.gradesAssigned ??
-          (Array.isArray(school.grade_sections_assigned) ? school.grade_sections_assigned : []);
-        const gradeCount = gradesAssigned.length || (Array.isArray(school.grades_assigned) ? school.grades_assigned.length : 0);
-
-        // Collect all sections from all grades
-        const allSections: string[] = [];
-        gradesAssigned.forEach((gs) => {
-          (gs.sectionsAssigned ?? gs.sections ?? []).forEach((s) => allSections.push(s));
-        });
-
-        const subjectsList = school.subjects ?? [];
-        const subjectsStr =
-          Array.isArray(subjectsList) && subjectsList.length > 0
-            ? subjectsList.join(", ")
-            : null;
-
-        // Build tooltip text with full grade/section detail
-        const gradeDetail =
-          gradesAssigned.length > 0
-            ? gradesAssigned
-                .map((gs) => {
-                  const name = gs.gradeName ?? gs.grade ?? "";
-                  const secs = gs.sectionsAssigned ?? gs.sections ?? [];
-                  return secs.length > 0 ? `${name} (${secs.join(", ")})` : name;
-                })
-                .join(" · ")
-            : Array.isArray(school.grades_assigned)
-            ? (school.grades_assigned as string[]).join(", ")
-            : "";
-
-        return (
-          <div key={String(schoolKey)} className="group">
-            {/* School name chip */}
-            <div className="flex items-start gap-1.5">
-              <div className="flex-shrink-0 mt-0.5">
-                <div className="h-5 w-5 rounded bg-indigo-100 flex items-center justify-center">
-                  <School className="h-3 w-3 text-indigo-600" />
-                </div>
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-800 leading-tight">{schoolName}</p>
-                <div className="flex flex-wrap items-center gap-1 mt-1">
-                  {gradeCount > 0 && (
-                    <span
-                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100 cursor-default"
-                      title={gradeDetail || undefined}
-                    >
-                      {gradeCount} grade{gradeCount !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {allSections.length > 0 && (
-                    <span
-                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-100 cursor-default"
-                      title={allSections.join(", ")}
-                    >
-                      {allSections.length} section{allSections.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {subjectsStr && (
-                    <span
-                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-100 cursor-default"
-                      title={subjectsStr}
-                    >
-                      {subjectsList.length} subject{subjectsList.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function TeachersManagement() {
   // State management
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   // Emergency leave filed on behalf of a teacher (admin = stage 2; school admin must still approve)
-  const [emTeacherId, setEmTeacherId] = useState('');
-  const [emSchoolId, setEmSchoolId] = useState('');
-  const [emStart, setEmStart] = useState('');
-  const [emEnd, setEmEnd] = useState('');
-  const [emReason, setEmReason] = useState('');
+  const [emOpen, setEmOpen] = useState(false);
+  const [emKey, setEmKey] = useState(0);
   const [emSaving, setEmSaving] = useState(false);
+  const [deleting, setDeleting] = useState<Teacher | null>(null);
+  const [todayFilter, setTodayFilter] = useState<TodayKey | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const { schools, refetch: refetchSchools } = useAdminSchools();
   const [configuringGradesForSchoolId, setConfiguringGradesForSchoolId] = useState<string | null>(null);
   // Collapsed by default — the grades/sections checklist can be long, and
@@ -457,7 +353,6 @@ export default function TeachersManagement() {
   // a specific school_id scopes every figure to just that school — teachers
   // who work 1-3 schools a week need both views (see attendance calendar plan).
   const [attendanceSchoolFilter, setAttendanceSchoolFilter] = useState<string>('all');
-  const [expandedAttendanceRows, setExpandedAttendanceRows] = useState<Set<string>>(new Set());
   const [markingMissingAttendance, setMarkingMissingAttendance] = useState(false);
   const [activeTab, setActiveTab] = useState<'teachers' | 'attendance' | 'leaves'>('teachers');
   const router = useRouter();
@@ -473,10 +368,10 @@ export default function TeachersManagement() {
     }
   }, [searchParams, router]);
   const [bulkDeleteTeachers, setBulkDeleteTeachers] = useState<TeacherTableRow[] | null>(null);
-  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isBulkDeletingTeachers, setIsBulkDeletingTeachers] = useState(false);
   const [bulkSelectionResetKey, setBulkSelectionResetKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [teachersFailed, setTeachersFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [_lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -597,27 +492,6 @@ export default function TeachersManagement() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [customSubjectInputs, setCustomSubjectInputs] = useState<Record<string, string>>({});
   const availableSubjects = ['Robotics', 'Coding', 'AI/ML', 'Python'];
-  const [stats, setStats] = useState<Stats>({
-    totalTeachers: 0,
-    activeTeachers: 0,
-    pendingLeaves: 0,
-    averageAttendance: 0
-  });
-
-  // Update statistics
-  // IMPORTANT: Use allLeaveRequests (not filtered leaveRequests) for accurate pending count
-  const updateStats = useCallback((teachersData: Teacher[], leavesData: LeaveRequest[] = allLeaveRequests, attendanceData: AttendanceSummary | null = attendanceSummary) => {
-    const active = teachersData.filter((t: Teacher) => (t.status === 'Active' || t.status === 'active')).length;
-    const pendingLeaves = leavesData.filter((leave: LeaveRequest) => leave.status === 'Pending').length;
-    
-    setStats({
-      totalTeachers: teachersData.length,
-      activeTeachers: active,
-      pendingLeaves: pendingLeaves,
-      averageAttendance: attendanceData?.averageAttendanceRate ?? attendanceData?.attendanceRate ?? 0
-    });
-  }, [allLeaveRequests, attendanceSummary]);
-
   // Sync leaveRequests with allLeaveRequests based on current filter
   useEffect(() => {
     if (leaveStatusFilter === 'all') {
@@ -715,6 +589,7 @@ export default function TeachersManagement() {
         action: 'loadTeachers',
       });
 
+      setTeachersFailed(false);
       const { data } = await adminApi.teachers.list();
       const teachersArray = Array.isArray(data?.data)
         ? data.data
@@ -745,8 +620,8 @@ export default function TeachersManagement() {
         action: 'loadTeachers',
       }, error instanceof Error ? error : new Error(String(error)));
       
-      // Set empty array on error to prevent infinite loading
-      setTeachers([]);
+      // Keep any teachers already on screen; the page says "did not load" only when there is nothing to show.
+      setTeachersFailed(true);
     }
   }, []);
 
@@ -1029,12 +904,6 @@ export default function TeachersManagement() {
     },
   });
 
-  // Update stats when data changes
-  useEffect(() => {
-    // Always update stats when data changes, even if arrays are empty
-    updateStats(teachers, allLeaveRequests, attendanceSummary);
-  }, [teachers, allLeaveRequests, attendanceSummary, updateStats]);
-
   // Load monthly attendance when attendance tab is active
   useEffect(() => {
     if (activeTab === 'attendance') {
@@ -1295,15 +1164,11 @@ export default function TeachersManagement() {
     }
   };
 
-  // Handle delete teacher
-  const handleDeleteTeacher = async (teacherId: string) => {
-    if (!(await confirmDialog({
-      title: 'Delete this teacher?',
-      description: 'This action cannot be undone.',
-      confirmText: 'Delete',
-      variant: 'danger',
-    }))) return;
-
+  // Delete one teacher after the confirmation modal
+  const confirmDeleteTeacher = async () => {
+    if (!deleting) return;
+    const teacherId = String(deleting.id);
+    const label = deleting.name ?? deleting.full_name ?? deleting.email;
     try {
       setActionLoading(teacherId);
       await adminApi.teachers.delete(teacherId);
@@ -1312,22 +1177,18 @@ export default function TeachersManagement() {
         prev.filter((t) => String(t.id) !== String(teacherId)),
       );
       await loadAllData();
-      toast.success('Teacher deleted successfully');
+      toast.success(`${label} was deleted.`);
+      setDeleting(null);
     } catch (error) {
-      toast.error('Error deleting teacher');
+      toast.error('Could not delete the teacher. Try again.');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const requestDeleteTeacherRow = (row: TeacherTableRow) => {
-    void handleDeleteTeacher(String(row.id));
-  };
-
   const requestBulkDeleteTeachers = (rows: TeacherTableRow[]) => {
     if (rows.length === 0) return;
     setBulkDeleteTeachers(rows);
-    setIsBulkDeleteDialogOpen(true);
   };
 
   const confirmBulkDeleteTeachers = async () => {
@@ -1369,38 +1230,16 @@ export default function TeachersManagement() {
       toast.error("Bulk delete failed unexpectedly.");
     } finally {
       setIsBulkDeletingTeachers(false);
-      setIsBulkDeleteDialogOpen(false);
       setBulkDeleteTeachers(null);
     }
   };
 
-  const emTeacher = teachers.find((t: Teacher) => String(t.id) === emTeacherId);
-  const emSchoolOptions = (emTeacher?.teacher_schools ?? []).map((ts: TeacherSchool) => ({
-    id: ts.school_id ?? ts.schoolId ?? '',
-    name: ts.schools?.name ?? ts.schoolName ?? ts.school_id ?? '',
-  })).filter((o) => o.id);
-
-  const submitEmergencyLeave = async () => {
-    const schoolId = emSchoolId || (emSchoolOptions.length === 1 ? emSchoolOptions[0].id : '');
-    if (!emTeacherId || !schoolId || !emStart || !emEnd || !emReason.trim()) {
-      toast.warning('Select a teacher (and school), both dates and enter a reason.');
-      return;
-    }
+  const submitEmergencyLeave = async (v: { teacher_id: string; school_id: string; start_date: string; end_date: string; reason: string }) => {
     setEmSaving(true);
     try {
-      await adminApi.leaves.createEmergency({
-        teacher_id: emTeacherId,
-        school_id: schoolId,
-        start_date: emStart,
-        end_date: emEnd,
-        reason: emReason.trim(),
-      });
-      toast.success("Emergency leave recorded (your approval done). It now needs the School Admin's approval before attendance changes.");
-      setEmTeacherId('');
-      setEmSchoolId('');
-      setEmStart('');
-      setEmEnd('');
-      setEmReason('');
+      await adminApi.leaves.createEmergency(v);
+      toast.success("Emergency leave recorded with your approval. The school admin must approve it before attendance changes.");
+      setEmOpen(false);
       await loadLeaveRequests();
     } catch (error) {
       const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -1570,931 +1409,158 @@ export default function TeachersManagement() {
     toast.success('Password copied to clipboard');
   };
 
-  if (loading) {
+  /* ───────── derived ───────── */
+  const todayMap = attendanceSummary?.teacherTodayStatus ?? {};
+  const perSchoolMap = attendanceSummary?.teacherTodaySchoolStatuses ?? {};
+  const activeList = teachers.filter((t) => isActive(t));
+  const todayCounts: Record<TodayKey, number> = { present: 0, leave: 0, absent: 0, off: 0 };
+  activeList.forEach((t) => { todayCounts[todayKey(todayMap[idOf(t)]?.status)] += 1; });
+  const pendingLeaves = allLeaveRequests.filter((l) => l.status === 'Pending');
+  const pendingEmergency = pendingLeaves.filter((l) => l.is_emergency).length;
+  const leaveCounts = {
+    all: allLeaveRequests.length,
+    Pending: pendingLeaves.length,
+    Approved: allLeaveRequests.filter((l) => l.status === 'Approved').length,
+    Rejected: allLeaveRequests.filter((l) => l.status === 'Rejected').length,
+  };
+  const average = attendanceSummary ? (attendanceSummary.averageAttendanceRate ?? attendanceSummary.attendanceRate ?? null) : null;
+  const tabs: { id: 'teachers' | 'attendance' | 'leaves'; label: string; n?: number }[] = [
+    { id: 'teachers', label: 'Teachers', n: teachers.length },
+    { id: 'attendance', label: 'Attendance' },
+    { id: 'leaves', label: 'Leave requests', n: pendingLeaves.length || undefined },
+  ];
+  const findTeacher = (id: string) => teachers.find((t) => String(t.id) === id);
+  const clearFilters = () => { setTodayFilter(null); setStatusFilter('all'); };
+
+  let status: React.ReactNode;
+  if (loading && teachers.length === 0) status = 'Loading teachers…';
+  else if (teachersFailed && teachers.length === 0) status = 'The teachers did not load. Try again.';
+  else if (teachers.length === 0) status = 'No teachers yet. Add the first one to get started.';
+  else if (pendingLeaves.length > 0) {
+    status = <><strong>{plural(pendingLeaves.length, 'leave request')}</strong> {pendingLeaves.length === 1 ? 'is' : 'are'} waiting for a decision{pendingEmergency > 0 ? `, ${pendingEmergency} of them an emergency` : ''}.</>;
+  } else if (activeList.length === 0) status = 'No teacher account is active right now.';
+  else status = <><strong>{todayCounts.present} of {plural(activeList.length, 'active teacher')}</strong> {todayCounts.present === 1 ? 'is' : 'are'} present today.</>;
+
+  const goTab = (id: 'teachers' | 'attendance' | 'leaves') => setActiveTab(id);
+  const openEmergency = () => { setEmKey((k) => k + 1); setEmOpen(true); };
+
+  if (loading && teachers.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="text-center space-y-4">
-          <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-lg font-medium text-gray-700">Loading teachers data...</p>
-          <p className="text-sm text-gray-500">Please wait while we fetch the data</p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setLoading(false);
-              loadAllData(0);
-            }}
-            className="mt-4"
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
-        </div>
+      <div className="sd-page">
+        <div className="sd-skel" style={{ height: '22rem', borderRadius: '1.75rem' }} />
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Teachers Management</h1>
-          <div className="flex items-center gap-4 mt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </Button>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="at-title">
+        <div className="sd-hero-copy">
+          <h1 id="at-title" className="mc-hero-title">Teachers</h1>
+          <p className="sd-where">Every teacher on the platform</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--amber" onClick={() => setShowAddDialog(true)}><Plus aria-hidden="true" />Add teacher</button>
+            {pendingLeaves.length > 0 ? (
+              <button className="sd-btn sd-btn--ghost-dark" onClick={() => goTab('leaves')}>Review {plural(pendingLeaves.length, 'leave request')}</button>
+            ) : (
+              <button className="sd-btn sd-btn--ghost-dark" onClick={openEmergency}>Record emergency leave</button>
+            )}
           </div>
-          <p className="text-muted-foreground">Manage teachers, attendance, and leave requests</p>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={handleRefresh} disabled={refreshing} aria-label={refreshing ? 'Refreshing' : 'Refresh'} title="Refresh">
+              <RefreshCw className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <Button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          Add Teacher
-        </Button>
+        <TodayRun
+          counts={todayCounts}
+          selected={todayFilter}
+          onSelect={(k) => { setTodayFilter(k); if (k) goTab('teachers'); }}
+          caption={attendanceSummary ? 'Today, active teachers only. Pick a stop to filter' : 'Attendance has not loaded'}
+        />
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Teacher numbers">
+        <button type="button" aria-pressed={statusFilter === 'all' && !todayFilter && activeTab === 'teachers'} onClick={() => { clearFilters(); goTab('teachers'); }}>
+          <span className="sd-l">All teachers</span><b className="sd-n">{teachers.length}</b><small>{teachers.length === 0 ? 'None yet' : teachers.length - activeList.length > 0 ? `${teachers.length - activeList.length} inactive` : 'Every account is active'}</small>
+        </button>
+        <button type="button" aria-pressed={statusFilter === 'active'} onClick={() => { setTodayFilter(null); setStatusFilter(statusFilter === 'active' ? 'all' : 'active'); goTab('teachers'); }}>
+          <span className="sd-l">Active accounts</span><b className="sd-n">{activeList.length}</b><small>{teachers.length > 0 ? `${Math.round((activeList.length / teachers.length) * 100)}% of all teachers` : 'None yet'}</small>
+        </button>
+        <button type="button" data-hot={pendingLeaves.length > 0} onClick={() => goTab('leaves')}>
+          <span className="sd-l">Pending leaves</span><b className="sd-n">{pendingLeaves.length}</b><small>{pendingLeaves.length > 0 ? (pendingEmergency > 0 ? `${pendingEmergency} emergency` : 'Waiting for a decision') : 'Nothing waiting'}</small>
+        </button>
+        <button type="button" onClick={() => goTab('attendance')}>
+          <span className="sd-l">Attendance</span><b className="sd-n">{average == null || teachers.length === 0 ? '–' : `${Math.round(average)}%`}</b><small>Month to date, tap for details</small>
+        </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-white border border-gray-100 shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Teachers</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalTeachers}</p>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center">
-                <Users className="h-6 w-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border border-gray-100 shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.activeTeachers}</p>
-                <p className="text-xs text-green-600 mt-0.5">
-                  {stats.totalTeachers > 0 ? Math.round((stats.activeTeachers / stats.totalTeachers) * 100) : 0}% of total
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-green-50 flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border border-gray-100 shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending Leaves</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.pendingLeaves}</p>
-                {stats.pendingLeaves > 0 && (
-                  <p className="text-xs text-amber-600 mt-0.5">
-                    Needs review
-                    {(() => {
-                      const n = allLeaveRequests.filter((l: LeaveRequest) => l.is_emergency && l.status === 'Pending').length;
-                      return n > 0 ? <span className="ml-1 font-semibold text-red-600">· {n} emergency</span> : null;
-                    })()}
-                  </p>
-                )}
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center">
-                <Calendar className="h-6 w-6 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border border-gray-100 shadow-sm">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg Attendance</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.averageAttendance}%</p>
-                <p className="text-xs text-gray-400 mt-1">Month to date</p>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-purple-50 flex items-center justify-center">
-                <Clock className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="mc-tabs" role="tablist" aria-label="Teachers, attendance and leave" style={{ justifySelf: 'start' }}>
+        {tabs.map((t) => (
+          <button key={t.id} role="tab" className="mc-tab" aria-selected={activeTab === t.id} onClick={() => goTab(t.id)}>
+            {t.label}{t.n != null && <b>{t.n}</b>}
+          </button>
+        ))}
       </div>
 
-      {/* Tabs */}
-      <div className="space-y-4">
-        <div className="flex space-x-1 bg-muted p-1 rounded-lg w-fit">
-          <button
-            onClick={() => setActiveTab('teachers')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'teachers'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Teachers
-          </button>
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'attendance'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Attendance
-          </button>
-          <button
-            onClick={() => setActiveTab('leaves')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'leaves'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Leave Requests
-          </button>
-        </div>
+      {activeTab === 'teachers' && teachersFailed && teachers.length === 0 && !loading && (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the teachers</b>
+            <p>Check your connection, then try again. Nothing was changed.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void loadTeachers()}>Try again</button>
+          </div>
+        </section>
+      )}
 
-        {/* Teachers Tab */}
-        {activeTab === 'teachers' && (
-        <Card className="bg-white overflow-visible">
-          <CardHeader>
-            <div>
-              <CardTitle>Teachers ({teachers.length})</CardTitle>
-              <CardDescription>
-                Manage teacher accounts and information — use the table search and column filters to narrow the list.
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {teachers.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No teachers found</h3>
-                <p className="text-muted-foreground mb-4">
-                  Get started by adding your first teacher.
-                </p>
-                <Button onClick={() => setShowAddDialog(true)} className="flex items-center gap-2 mx-auto">
-                  <Plus className="h-4 w-4" />
-                  Add Teacher
-                </Button>
-              </div>
-            ) : (
-              <TeacherManagementTable<TeacherTableRow>
-                rows={teacherTableRows}
-                loading={false}
-                onView={handleViewTeacherProfile}
-                onEdit={handleEditTeacher}
-                onDelete={requestDeleteTeacherRow}
-                onCopyAssignment={handleCopyAssignment}
-                onBulkDeleteSelected={requestBulkDeleteTeachers}
-                resetSelectionKey={bulkSelectionResetKey}
-                renderSchoolsCell={renderTeacherSchoolsCell}
-                searchPlaceholder="Search teachers by name, email, school, qualification…"
-                itemsPerPage={15}
-                emptyMessage="No teachers match your filters or search."
-                className="shadow-sm"
-              />
-            )}
-          </CardContent>
-        </Card>
-        )}
+      {activeTab === 'teachers' && !(teachersFailed && teachers.length === 0 && !loading) && (
+        <TeachersTab
+          teachers={teachers}
+          today={todayMap}
+          perSchool={perSchoolMap}
+          todayFilter={todayFilter}
+          statusFilter={statusFilter}
+          onClearFilters={clearFilters}
+          resetKey={bulkSelectionResetKey}
+          busyId={actionLoading}
+          onAdd={() => setShowAddDialog(true)}
+          onView={(id) => { const t = findTeacher(id); if (t) handleViewTeacherProfile(t); }}
+          onEdit={(id) => { const t = findTeacher(id); if (t) handleEditTeacher(t); }}
+          onCopy={(id) => { const row = teacherTableRows.find((r) => String(r.id) === id); if (row) handleCopyAssignment(row); }}
+          onDelete={(id) => { const t = findTeacher(id); if (t) setDeleting(t); }}
+          onBulkDelete={(ids) => requestBulkDeleteTeachers(teacherTableRows.filter((r) => ids.includes(String(r.id))))}
+        />
+      )}
 
-        {/* Attendance Tab */}
-        {activeTab === 'attendance' && (
-        <Card className="bg-white">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Teacher Attendance</CardTitle>
-                <CardDescription>
-                  View and manage teacher attendance records
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {attendanceSummary ? (
-              <div className="space-y-6">
-                {/* Attendance Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <Card className="bg-blue-50 border-blue-200">
-                    <CardContent className="p-6">
-                      <div className="flex items-center">
-                        <Users className="h-8 w-8 text-blue-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-blue-900">Total Teachers</p>
-                          <p className="text-2xl font-bold text-blue-900">
-                            {attendanceSummary.totalTeachers || teachers.length}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-green-50 border-green-200">
-                    <CardContent className="p-6">
-                      <div className="flex items-center">
-                        <CheckCircle className="h-8 w-8 text-green-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-green-900">Present Today</p>
-                          <p className="text-2xl font-bold text-green-900">
-                            {attendanceSummary.presentToday ?? attendanceSummary.presentDays ?? 0}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-red-50 border-red-200">
-                    <CardContent className="p-6">
-                      <div className="flex items-center">
-                        <XCircle className="h-8 w-8 text-red-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-red-900">Absent / Not marked</p>
-                          <p className="text-2xl font-bold text-red-900">
-                            {attendanceSummary.absentToday ?? 0}
-                          </p>
-                          <p className="text-xs text-red-800/80 mt-1 max-w-[11rem]">
-                            Teachers without a present mark and not on approved leave.
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="bg-yellow-50 border-yellow-200">
-                    <CardContent className="p-6">
-                      <div className="flex items-center">
-                        <Clock className="h-8 w-8 text-yellow-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-yellow-900">Average Attendance</p>
-                          <p className="text-2xl font-bold text-yellow-900">
-                            {attendanceSummary.attendanceRate || 0}%
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-                {(attendanceSummary.onLeaveToday ?? 0) > 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {attendanceSummary.onLeaveToday} teacher
-                    {attendanceSummary.onLeaveToday !== 1 ? 's are' : ' is'} on approved leave today
-                    (counted separately from absent / not marked).
-                  </p>
-                )}
-                {(attendanceSummary.onHolidayToday ?? 0) > 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {attendanceSummary.onHolidayToday} teacher
-                    {attendanceSummary.onHolidayToday !== 1 ? 's are' : ' is'} at a school with a declared holiday
-                    today — excluded from &quot;Absent / Not marked&quot; and from the attendance rate.
-                  </p>
-                )}
+      {activeTab === 'attendance' && (
+        <AttendanceTab
+          rows={monthlyAttendance}
+          loading={monthlyLoading}
+          month={selectedMonth}
+          onMonth={(m) => { setSelectedMonth(m); void loadMonthlyAttendance(m); }}
+          schoolFilter={attendanceSchoolFilter}
+          onSchoolFilter={(v) => { setAttendanceSchoolFilter(v); void loadMonthlyAttendance(undefined, v); }}
+          schoolOptions={(schools ?? []).map((sc: { id: string; name: string }) => ({ id: sc.id, name: sc.name }))}
+          onRefresh={() => void loadMonthlyAttendance()}
+          onMarkMissing={markMissingAttendance}
+          marking={markingMissingAttendance}
+        />
+      )}
 
-                {/* Today's Attendance Table */}
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-3 border-b">
-                    <h3 className="text-sm font-semibold text-gray-900">Today&apos;s Attendance</h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Teacher Name
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Email
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Today&apos;s Status
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Account Status
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Attendance Rate
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {teachers.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
-                              No teachers found
-                            </td>
-                          </tr>
-                        ) : (
-                          teachers.map((teacher) => {
-                            const tid = String(teacher.id ?? (teacher as { teacher_id?: string }).teacher_id ?? '');
-                            const todayStatus =
-                              attendanceSummary.teacherTodayStatus?.[tid] || {
-                                status: 'Not Marked',
-                                isOnLeave: false,
-                              };
-                            const perSchoolToday = attendanceSummary.teacherTodaySchoolStatuses?.[tid];
-                            const statusBadge = (status: string, leaveType?: string) => {
-                              switch (status) {
-                                case 'Present':
-                                  return <Badge className="bg-green-500 text-white">Present</Badge>;
-                                case 'On Leave':
-                                case 'Leave-Approved':
-                                  return <Badge className="bg-blue-500 text-white">On Leave {leaveType ? `(${leaveType})` : ''}</Badge>;
-                                case 'Absent':
-                                  return <Badge className="bg-red-500 text-white">Absent</Badge>;
-                                case 'Holiday':
-                                  return <Badge className="bg-purple-500 text-white">Holiday</Badge>;
-                                case 'Off Today':
-                                  return <Badge variant="outline" className="border-indigo-200 text-indigo-600 bg-indigo-50">Off Today</Badge>;
-                                case 'Not Marked':
-                                  return <Badge variant="outline" className="border-gray-300 text-gray-600">Not Marked</Badge>;
-                                default:
-                                  return <Badge variant="outline" className="border-gray-300 text-gray-600">{status}</Badge>;
-                              }
-                            };
-                            // Scheduled at 2+ schools today (rare) — show each school's own
-                            // status instead of one merged badge, so covering one school but
-                            // missing another isn't hidden behind a single "Present".
-                            const getStatusBadge = () =>
-                              perSchoolToday && perSchoolToday.length > 1 ? (
-                                <div className="flex flex-col gap-1">
-                                  {perSchoolToday.map((s) => (
-                                    <div key={s.school_id} className="flex items-center gap-1.5">
-                                      <span className="text-[11px] text-gray-500 truncate max-w-[100px]" title={s.school_name}>
-                                        {s.school_name}:
-                                      </span>
-                                      {statusBadge(s.status)}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                statusBadge(todayStatus.status, todayStatus.leaveType)
-                              );
-
-                            return (
-                              <tr key={tid || teacher.email} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                  {teacher.name ?? teacher.full_name ?? '—'}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                  {teacher.email}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  {getStatusBadge()}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <Badge className={teacher.status === 'Active' ? 'bg-green-500' : 'bg-gray-500'}>
-                                    {teacher.status || 'Active'}
-                                  </Badge>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                  {todayStatus.attendanceRate !== undefined ? todayStatus.attendanceRate : (attendanceSummary.attendanceRate || 0)}%
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Monthly Attendance Table - Below Today's Attendance */}
-                <div className="border rounded-lg overflow-hidden mt-6">
-                  <div className="bg-gray-50 px-4 py-3 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          Monthly Attendance
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          A teacher is Present only if they submit all of the day&apos;s reports before 8:00 PM IST. A working day with no report by then counts as Absent (today shows as Unreported until 8 PM). Leave days count only once fully approved.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={attendanceSchoolFilter}
-                          onValueChange={(v) => {
-                            setAttendanceSchoolFilter(v);
-                            loadMonthlyAttendance(undefined, v);
-                          }}
-                        >
-                          <SelectTrigger className="w-48" title="Filter working days to one school, or view combined totals across all schools a teacher works at">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white">
-                            <SelectItem value="all">All schools (combined)</SelectItem>
-                            {(schools ?? []).map((s: { id: string; name: string }) => (
-                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          type="month"
-                          value={selectedMonth}
-                          onChange={(e) => {
-                            setSelectedMonth(e.target.value);
-                            loadMonthlyAttendance(e.target.value);
-                          }}
-                          className="w-40"
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => loadMonthlyAttendance()}
-                          disabled={monthlyLoading}
-                          title="Refresh monthly attendance data"
-                        >
-                          <RefreshCw className={`h-4 w-4 ${monthlyLoading ? 'animate-spin' : ''}`} />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={markMissingAttendance}
-                          disabled={markingMissingAttendance || monthlyLoading}
-                          title="Mark missing attendance for teachers with scheduled periods but no reports"
-                          className="text-orange-600 hover:text-orange-700 border-orange-300 hover:border-orange-400"
-                        >
-                          {markingMissingAttendance ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Clock className="h-4 w-4" />
-                          )}
-                          <span className="ml-1 hidden sm:inline">Mark Missing</span>
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    {monthlyAttendance.length > 0 ? (
-                      <table className="w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Teacher Name
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              School
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Total Working Days
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Present Days
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Absent Days
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Leave Days
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Unreported Days
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Attendance %
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {monthlyAttendance.map((monthly, monthlyIndex) => {
-                            const rowKey = monthly.id ?? `${monthly.teacher_id ?? monthly.teacherId ?? monthlyIndex}-${monthly.month ?? monthlyIndex}`;
-                            const hasBySchool = (monthly.by_school?.length ?? 0) > 0;
-                            const isExpanded = expandedAttendanceRows.has(rowKey);
-                            return (
-                              <Fragment key={rowKey}>
-                              <tr className="hover:bg-gray-50">
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {monthly.profiles?.full_name || 'N/A'}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    {monthly.profiles?.email || ''}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                  {hasBySchool ? (
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
-                                      onClick={() =>
-                                        setExpandedAttendanceRows((prev) => {
-                                          const next = new Set(prev);
-                                          if (next.has(rowKey)) next.delete(rowKey);
-                                          else next.add(rowKey);
-                                          return next;
-                                        })
-                                      }
-                                      title="This teacher works at multiple schools — click to see working days per school"
-                                    >
-                                      {isExpanded ? (
-                                        <ChevronDown className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <ChevronRight className="h-3.5 w-3.5" />
-                                      )}
-                                      {monthly.by_school!.length} schools
-                                    </button>
-                                  ) : (
-                                    monthly.schools?.name || 'N/A'
-                                  )}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                                  {monthly.total_working_days ?? monthly.total_days ?? 0}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <span className="text-sm font-medium text-green-600">
-                                      {monthly.present_days ?? 0}
-                                    </span>
-                                    {(monthly.total_working_days ?? monthly.total_days ?? 0) > 0 && (
-                                      <span className="ml-2 text-xs text-gray-500">
-                                        ({(((monthly.present_days ?? 0) / (monthly.total_working_days ?? monthly.total_days ?? 1)) * 100).toFixed(1)}%)
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <span className="text-sm font-medium text-red-600">
-                                      {monthly.absent_days ?? 0}
-                                    </span>
-                                    {(monthly.late_report_days ?? 0) > 0 && (
-                                      <span
-                                        className="ml-2 rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-red-700"
-                                        title="Days marked Absent although a report was submitted — it came in after the 8:00 PM cutoff"
-                                      >
-                                        {monthly.late_report_days} late report{monthly.late_report_days === 1 ? '' : 's'}
-                                      </span>
-                                    )}
-                                    {(monthly.total_working_days ?? monthly.total_days ?? 0) > 0 && (
-                                      <span className="ml-2 text-xs text-gray-500">
-                                        ({(((monthly.absent_days ?? 0) / (monthly.total_working_days ?? monthly.total_days ?? 1)) * 100).toFixed(1)}%)
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <span className="text-sm font-medium text-blue-600">
-                                      {monthly.leave_days ?? 0}
-                                    </span>
-                                    {(monthly.total_working_days ?? monthly.total_days ?? 0) > 0 && (
-                                      <span className="ml-2 text-xs text-gray-500">
-                                        ({(((monthly.leave_days ?? 0) / (monthly.total_working_days ?? monthly.total_days ?? 1)) * 100).toFixed(1)}%)
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <span className="text-sm font-medium text-orange-600">
-                                      {monthly.unreported_days ?? 0}
-                                    </span>
-                                    {(monthly.total_working_days ?? monthly.total_days ?? 0) > 0 && (monthly.unreported_days ?? 0) > 0 && (
-                                      <span className="ml-2 text-xs text-gray-500">
-                                        ({(((monthly.unreported_days ?? 0) / (monthly.total_working_days ?? monthly.total_days ?? 1)) * 100).toFixed(1)}%)
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <Badge className={
-                                    (monthly.attendance_percentage ?? 0) >= 90 ? 'bg-green-500 text-white' :
-                                    (monthly.attendance_percentage ?? 0) >= 75 ? 'bg-yellow-500 text-white' :
-                                    (monthly.attendance_percentage ?? 0) >= 50 ? 'bg-orange-500 text-white' :
-                                    'bg-red-500 text-white'
-                                  }>
-                                    {(typeof monthly.attendance_percentage === 'number'
-                                    ? monthly.attendance_percentage
-                                    : ((monthly.total_days ?? monthly.total_working_days)
-                                      ? Math.round(((monthly.present_days ?? 0) / (monthly.total_days ?? monthly.total_working_days ?? 1)) * 100)
-                                      : 0)).toFixed(1)}%
-                                  </Badge>
-                                </td>
-                              </tr>
-                              {hasBySchool && isExpanded && monthly.by_school!.map((sb) => (
-                                <tr key={`${rowKey}-${sb.school_id}`} className="bg-indigo-50/40">
-                                  <td className="px-4 py-2 pl-8 text-xs text-gray-400 whitespace-nowrap">
-                                    working days
-                                  </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-700">
-                                    <span className="inline-flex items-center gap-1">
-                                      <School className="h-3 w-3 text-indigo-500" />
-                                      {sb.school_name}
-                                    </span>
-                                    <div className="text-[10px] text-gray-400 pl-4">{formatWorkingDays(sb.working_days)}</div>
-                                  </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-700">
-                                    {sb.total_working_days}
-                                  </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-green-600">
-                                    {sb.present_days}
-                                  </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-red-600">
-                                    {sb.absent_days}
-                                    {(sb.late_report_days ?? 0) > 0 && (
-                                      <span className="ml-1 text-red-700" title="Absent days with a report submitted after the 8 PM cutoff">
-                                        ({sb.late_report_days} late)
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-blue-600">
-                                    {sb.leave_days}
-                                  </td>
-                                  <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-orange-600">
-                                    {sb.unreported_days}
-                                  </td>
-                                  <td className="px-4 py-2 whitespace-nowrap">
-                                    <Badge
-                                      variant="outline"
-                                      className={
-                                        sb.attendance_percentage >= 90 ? 'border-green-300 text-green-700' :
-                                        sb.attendance_percentage >= 75 ? 'border-yellow-300 text-yellow-700' :
-                                        sb.attendance_percentage >= 50 ? 'border-orange-300 text-orange-700' :
-                                        'border-red-300 text-red-700'
-                                      }
-                                    >
-                                      {sb.attendance_percentage.toFixed(1)}%
-                                    </Badge>
-                                  </td>
-                                </tr>
-                              ))}
-                              </Fragment>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot className="bg-gray-50">
-                          <tr>
-                            <td colSpan={2} className="px-4 py-3 text-sm font-semibold text-gray-900">
-                              Totals
-                            </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                              {monthlyAttendance.reduce((sum, m) => sum + (m.total_working_days ?? m.total_days ?? 0), 0)}
-                            </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-green-600">
-                              {monthlyAttendance.reduce((sum, m) => sum + (m.present_days ?? 0), 0)}
-                            </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-red-600">
-                              {monthlyAttendance.reduce((sum, m) => sum + (m.absent_days ?? 0), 0)}
-                            </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-blue-600">
-                              {monthlyAttendance.reduce((sum, m) => sum + (m.leave_days ?? 0), 0)}
-                            </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-orange-600">
-                              {monthlyAttendance.reduce((sum, m) => sum + (m.unreported_days ?? 0), 0)}
-                            </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                              {monthlyAttendance.length > 0
-                                ? (monthlyAttendance.reduce((sum, m) => sum + (m.attendance_percentage ?? 0), 0) / monthlyAttendance.length).toFixed(1)
-                                : '0.0'}%
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    ) : (
-                      <div className="px-4 py-8 text-center text-sm text-gray-500">
-                        {monthlyLoading ? (
-                          <div className="flex items-center justify-center">
-                            <RefreshCw className="h-5 w-5 animate-spin text-gray-400 mr-2" />
-                            Loading monthly attendance data...
-                          </div>
-                        ) : (
-                          <div>
-                            <Calendar className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                            <p>No monthly attendance data available for {new Date(`${selectedMonth}-01`).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
-                            <p className="text-xs text-gray-400 mt-1">Select a different month or mark attendance to see data</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <Clock className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No Attendance Data</h3>
-                <p className="text-muted-foreground mb-4">
-                  Attendance records will appear here once teachers start marking attendance.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        )}
-
-        {/* Leave Requests Section */}
-        {activeTab === 'leaves' && (
-        <Card className="bg-white">
-          <CardHeader>
-            <CardTitle>Leave Requests</CardTitle>
-            <CardDescription>
-              Manage teacher leave requests and approvals
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Emergency leave on behalf of a teacher */}
-            <div className="mb-6 rounded-lg border border-red-200 bg-red-50/40 p-4">
-              <p className="text-sm font-semibold">Record emergency leave for a teacher</p>
-              <p className="mb-3 text-xs text-muted-foreground">
-                No time cutoff; can start today or up to 2 days back. Your approval counts as the Admin approval — the School Admin must approve it too before attendance changes.
-              </p>
-              <div className="grid gap-3 md:grid-cols-6">
-                <Select value={emTeacherId} onValueChange={(v) => { setEmTeacherId(v); setEmSchoolId(''); }}>
-                  <SelectTrigger><SelectValue placeholder="Teacher" /></SelectTrigger>
-                  <SelectContent>
-                    {teachers.map((t: Teacher) => (
-                      <SelectItem key={String(t.id)} value={String(t.id)}>{t.full_name || t.name || t.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={emSchoolId || (emSchoolOptions.length === 1 ? emSchoolOptions[0].id : '')}
-                  onValueChange={setEmSchoolId}
-                  disabled={!emTeacherId}
-                >
-                  <SelectTrigger><SelectValue placeholder="School" /></SelectTrigger>
-                  <SelectContent>
-                    {emSchoolOptions.map((o) => (
-                      <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input type="date" value={emStart} onChange={(e) => setEmStart(e.target.value)} aria-label="Start date" />
-                <Input type="date" value={emEnd} min={emStart || undefined} onChange={(e) => setEmEnd(e.target.value)} aria-label="End date" />
-                <Input placeholder="Reason (required)" value={emReason} onChange={(e) => setEmReason(e.target.value)} />
-                <Button onClick={submitEmergencyLeave} disabled={emSaving}>{emSaving ? 'Saving...' : 'Record leave'}</Button>
-              </div>
-            </div>
-
-            {/* Status Count Badges */}
-            <div className="flex gap-4 mb-6">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                  Active ({allLeaveRequests.filter((leave: LeaveRequest) => leave.status === 'Pending').length})
-                </Badge>
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  Approved ({allLeaveRequests.filter((leave: LeaveRequest) => leave.status === 'Approved').length})
-                </Badge>
-                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                  Rejected ({allLeaveRequests.filter((leave: LeaveRequest) => leave.status === 'Rejected').length})
-                </Badge>
-              </div>
-            </div>
-
-            {/* Status Filter Tabs */}
-            <div className="flex gap-2 mb-4">
-              <Button
-                variant={leaveStatusFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => filterLeaveRequests('all')}
-              >
-                All
-              </Button>
-              <Button
-                variant={leaveStatusFilter === 'Pending' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => filterLeaveRequests('Pending')}
-              >
-                Active
-              </Button>
-              <Button
-                variant={leaveStatusFilter === 'Approved' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => filterLeaveRequests('Approved')}
-              >
-                Approved
-              </Button>
-              <Button
-                variant={leaveStatusFilter === 'Rejected' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => filterLeaveRequests('Rejected')}
-              >
-                Rejected
-              </Button>
-            </div>
-
-            {leaveRequests.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Calendar className="mx-auto h-12 w-12 mb-2" />
-                <p>No {leaveStatusFilter === 'all' ? '' : leaveStatusFilter.toLowerCase()} leave requests found</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {leaveRequests.map((request) => (
-                <div key={request.id} className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <div className="font-medium">{request.profiles?.full_name}</div>
-                        <Badge 
-                          variant="outline" 
-                          className={`text-xs ${
-                            request.status === 'Pending' 
-                              ? 'bg-yellow-50 text-yellow-700 border-yellow-200' 
-                              : request.status === 'Approved'
-                              ? 'bg-green-50 text-green-700 border-green-200'
-                              : 'bg-red-50 text-red-700 border-red-200'
-                          }`}
-                        >
-                          {request.status}
-                        </Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {request.start_date} to {request.end_date} ({request.total_days} days)
-                      </div>
-                      <EmergencyApprovalStages leave={request} />
-                      <div className="text-sm">
-                        <span className="font-medium">Type:</span> {request.leave_type}
-                      </div>
-                      <div className="text-sm">
-                        <span className="font-medium">Reason:</span> {request.reason}
-                      </div>
-                      <div className="text-sm">
-                        <span className="font-medium">School:</span> {request.schools?.name}
-                      </div>
-                      {request.substitute_required && (
-                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                          Substitute Required
-                        </Badge>
-                      )}
-                      {request.status === 'Approved' && request.approved_at && (
-                        <div className="text-xs text-green-600">
-                          <span className="font-medium">Approved on:</span> {new Date(request.approved_at).toLocaleDateString()}
-                          {request.reviewer?.full_name && ` by ${request.reviewer.full_name}`}
-                        </div>
-                      )}
-                      {request.status === 'Rejected' && request.rejected_at && (
-                        <div className="text-xs text-red-600">
-                          <span className="font-medium">Rejected on:</span> {new Date(request.rejected_at).toLocaleDateString()}
-                          {request.reviewer?.full_name && ` by ${request.reviewer.full_name}`}
-                        </div>
-                      )}
-                      {request.admin_remarks && (
-                        <div className="text-xs text-muted-foreground">
-                          <span className="font-medium">Admin Remarks:</span> {request.admin_remarks}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      {request.status === 'Pending' && request.is_emergency && request.admin_status === 'approved' ? (
-                        <div className="text-sm text-muted-foreground">Waiting for School Admin approval</div>
-                      ) : request.status === 'Pending' ? (
-                        <>
-                          <Button 
-                            size="sm" 
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => {
-                              setSelectedLeave(request);
-                              setLeaveFormData({ status: 'Approved', admin_remarks: '' });
-                              setShowLeaveDialog(true);
-                            }}
-                            disabled={
-                              actionLoading === request.id ||
-                              (request.is_emergency && request.school_admin_status !== 'approved')
-                            }
-                            title={
-                              request.is_emergency && request.school_admin_status !== 'approved'
-                                ? 'Emergency leave: the school admin must approve first'
-                                : undefined
-                            }
-                          >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Approve
-                        </Button>
-                            <Button 
-                              size="sm" 
-                              variant="destructive"
-                              onClick={() => {
-                                setSelectedLeave(request);
-                                setLeaveFormData({ status: 'Rejected', admin_remarks: '' });
-                                setShowLeaveDialog(true);
-                              }}
-                              disabled={actionLoading === request.id}
-                            >
-                          <XCircle className="h-4 w-4 mr-1" />
-                          Reject
-                        </Button>
-                          </>
-                        ) : (
-                          <div className="text-sm text-muted-foreground">
-                            {request.status === 'Approved' ? '✓ Approved' : request.status === 'Cancelled' ? 'Cancelled by teacher' : '✗ Rejected'}
-                          </div>
-                        )}
-                    </div>
-                  </div>
-                </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        )}
-      </div>
+      {activeTab === 'leaves' && (
+        <LeavesTab
+          leaves={leaveRequests}
+          counts={leaveCounts}
+          filter={leaveStatusFilter}
+          onFilter={filterLeaveRequests}
+          busyId={actionLoading}
+          onApprove={(l) => { setSelectedLeave(allLeaveRequests.find((x) => x.id === l.id) ?? null); setLeaveFormData({ status: 'Approved', admin_remarks: '' }); setShowLeaveDialog(true); }}
+          onReject={(l) => { setSelectedLeave(allLeaveRequests.find((x) => x.id === l.id) ?? null); setLeaveFormData({ status: 'Rejected', admin_remarks: '' }); setShowLeaveDialog(true); }}
+          onRecord={openEmergency}
+        />
+      )}
 
       {/* Add Teacher Dialog */}
       <AddTeacherDialog
@@ -2526,75 +1592,43 @@ export default function TeachersManagement() {
         onConfirm={handleCopyConfirm}
       />
 
-      <Dialog
-        open={isBulkDeleteDialogOpen}
-        onOpenChange={(open) => {
-          setIsBulkDeleteDialogOpen(open);
-          if (!open) setBulkDeleteTeachers(null);
-        }}
+      <ConfirmModal
+        open={bulkDeleteTeachers !== null}
+        onClose={() => setBulkDeleteTeachers(null)}
+        title={`Delete ${plural(bulkDeleteTeachers?.length ?? 0, 'teacher')}?`}
+        confirmLabel="Delete teachers"
+        danger
+        busy={isBulkDeletingTeachers}
+        onConfirm={() => void confirmBulkDeleteTeachers()}
       >
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete selected teachers</DialogTitle>
-            <DialogDescription>
-              This cannot be undone. School assignments and related records for these teachers may be removed or orphaned depending on server policy.
-            </DialogDescription>
-          </DialogHeader>
-          {bulkDeleteTeachers && bulkDeleteTeachers.length > 0 && (
-            <div className="space-y-2 py-2">
-              <p className="text-sm text-gray-700">
-                Delete <span className="font-semibold">{bulkDeleteTeachers.length}</span> teacher
-                {bulkDeleteTeachers.length !== 1 ? "s" : ""}?
-              </p>
-              <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-sm text-muted-foreground">
-                {bulkDeleteTeachers.slice(0, 20).map((t) => (
-                  <li key={t.id}>
-                    {t.nameDisplay} ({t.email})
-                  </li>
-                ))}
-                {bulkDeleteTeachers.length > 20 && (
-                  <li className="list-none pl-0 text-muted-foreground/80">
-                    …and {bulkDeleteTeachers.length - 20} more
-                  </li>
-                )}
-              </ul>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsBulkDeleteDialogOpen(false);
-                setBulkDeleteTeachers(null);
-              }}
-              disabled={isBulkDeletingTeachers}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="bg-red-600 hover:bg-red-700"
-              disabled={isBulkDeletingTeachers || !bulkDeleteTeachers?.length}
-              onClick={() => void confirmBulkDeleteTeachers()}
-            >
-              {isBulkDeletingTeachers ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting…
-                </>
-              ) : (
-                <>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete {bulkDeleteTeachers?.length ?? 0} teacher
-                  {(bulkDeleteTeachers?.length ?? 0) !== 1 ? "s" : ""}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <p>This cannot be undone. Their school assignments and related records may be removed or orphaned, depending on server policy.</p>
+        <ul className="at-names">
+          {(bulkDeleteTeachers ?? []).slice(0, 20).map((t) => <li key={t.id}>{t.nameDisplay} ({t.email})</li>)}
+          {(bulkDeleteTeachers?.length ?? 0) > 20 && <li style={{ listStyle: 'none' }}>…and {(bulkDeleteTeachers?.length ?? 0) - 20} more</li>}
+        </ul>
+      </ConfirmModal>
+
+      <ConfirmModal
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title="Delete this teacher?"
+        subtitle={deleting ? (deleting.name ?? deleting.full_name ?? deleting.email) : undefined}
+        confirmLabel="Delete teacher"
+        danger
+        busy={actionLoading !== null && actionLoading === String(deleting?.id)}
+        onConfirm={() => void confirmDeleteTeacher()}
+      >
+        <p>This cannot be undone. Their school assignments and related records may be removed or orphaned, depending on server policy.</p>
+      </ConfirmModal>
+
+      <EmergencyLeaveModal
+        key={emKey}
+        open={emOpen}
+        teachers={teachers}
+        busy={emSaving}
+        onClose={() => setEmOpen(false)}
+        onSubmit={(v) => void submitEmergencyLeave(v)}
+      />
 
       {/* Edit Teacher Dialog */}
       <Dialog
@@ -3336,48 +2370,15 @@ export default function TeachersManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Leave Action Dialog */}
-      <Dialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {leaveFormData.status === 'Approved' ? 'Approve Leave Request' : 'Reject Leave Request'}
-            </DialogTitle>
-            <DialogDescription>
-              {leaveFormData.status === 'Approved' 
-                ? 'Are you sure you want to approve this leave request?' 
-                : 'Are you sure you want to reject this leave request?'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="admin_remarks">Admin Remarks (Optional)</Label>
-              <Textarea
-                id="admin_remarks"
-                value={leaveFormData.admin_remarks}
-                onChange={(e) => setLeaveFormData(prev => ({ ...prev, admin_remarks: e.target.value }))}
-                placeholder="Enter any remarks about this decision..."
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowLeaveDialog(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={() => {
-                if (selectedLeave) {
-                  handleLeaveAction(selectedLeave.id, leaveFormData.status === 'Approved' ? 'approve' : 'reject');
-                }
-              }}
-              className={leaveFormData.status === 'Approved' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-            >
-              {leaveFormData.status === 'Approved' ? 'Approve' : 'Reject'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <LeaveDecisionModal
+        leave={showLeaveDialog ? selectedLeave : null}
+        action={leaveFormData.status === 'Approved' ? 'approve' : 'reject'}
+        busy={actionLoading !== null && actionLoading === selectedLeave?.id}
+        remarks={leaveFormData.admin_remarks}
+        onRemarks={(v) => setLeaveFormData((prev) => ({ ...prev, admin_remarks: v }))}
+        onClose={() => setShowLeaveDialog(false)}
+        onConfirm={() => { if (selectedLeave) void handleLeaveAction(selectedLeave.id, leaveFormData.status === 'Approved' ? 'approve' : 'reject'); }}
+      />
 
       {/* Notification Panel */}
       <NotificationPanel

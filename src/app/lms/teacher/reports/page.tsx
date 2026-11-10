@@ -1,924 +1,344 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2, RefreshCw, Send } from "lucide-react";
 import { useTeacherSchool } from "../context";
 import { WEEKDAY_NAMES } from "@/lib/weekday-utils";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { 
-  useTeacherClasses, 
-  useTeacherReports, 
+import {
+  useTeacherReports,
   useSubmitReport,
   useTeacherPeriods,
-  useTeacherSchedules,
   useTeacherDayStatus,
-  formatGradeSection,
+  useTodayAttendanceStatus,
 } from "@/hooks/useTeacherData";
-import { FileText, CheckCircle, AlertCircle, RefreshCw, CalendarOff } from "lucide-react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
 import { loadFormData, clearFormData } from "@/lib/form-persistence";
 import { toast } from "@/components/ui/toast";
 import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
+import ReportRun, { type RunSlot } from "@/components/teacher/reports/ReportRun";
+import RecentReports from "@/components/teacher/reports/RecentReports";
+import { errorText, isRejected, periodClass, periodSpan, subjectOf, type PeriodRow, type ReportRow } from "@/components/teacher/reports/utils";
+import "@/components/school-admin/overview.css"; // hero meta, rows
+import "@/components/teacher/overview/overview.css"; // day track, status chips
+import "@/components/teacher/reports/reports.css";
 
-type ScheduleRow = { day_of_week?: string; period_id?: string; start_time?: string; end_time?: string; grade?: string; section?: string | null; subject?: string };
-type PeriodRow = { id: string; period_number?: number; grade?: string; section?: string | null; subject?: string; start_time?: string; end_time?: string; class_name?: string };
-type ReportRow = { id?: string; grade?: string; section?: string | null; date?: string; report_status?: string; topics_taught?: string; classes?: Array<{ grade?: string; section?: string | null }>; period_id?: string };
+const NOTES_MAX = 1000;
+type FormState = {
+  period_id: string;
+  grade: string;
+  section: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  topics_taught: string;
+  activities: string;
+  notes: string;
+  student_count: string;
+};
+const localToday = () => new Date().toLocaleDateString("en-CA"); // local YYYY-MM-DD
+const blank = (date: string): FormState => ({ period_id: "", grade: "", section: "", date, start_time: "", end_time: "", topics_taught: "", activities: "", notes: "", student_count: "" });
 
 /**
- * Submit Daily Teaching Report Page
- * 
- * Allows teachers to submit daily teaching reports.
- * When a report is submitted, attendance is automatically marked as Present
- * (unless there's an existing Leave-Approved status).
+ * Submit report. One report per class per day. Submitting every class before 8 PM IST marks the day present,
+ * and a rejected report can be sent again (the server updates the same one).
  */
 export default function SubmitReportPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { selectedSchool } = useTeacherSchool();
-  
-  const initialFormData = {
-    period_id: '',
-    grade: '', // Use grade instead of class_id
-    section: '',
-    date: new Date().toLocaleDateString('en-CA'), // Local YYYY-MM-DD
-    start_time: '',
-    end_time: '',
-    topics_taught: '',
-    activities: '',
-    notes: '',
-    student_count: ''
-  };
-  
-  // Load saved form data if available
-  const savedFormData = typeof window !== 'undefined' 
-    ? loadFormData<typeof initialFormData>('teacher-report-form') 
-    : null;
-  
-  const [formData, setFormData] = useState(savedFormData || initialFormData);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  
-  // Enhanced auto-save with useAutoSaveForm hook
+  const { selectedSchool, schools, onSchoolChange } = useTeacherSchool();
+
+  // Links from the dashboard and My classes arrive with ?period_id= or ?grade=&section=
+  const paramPeriod = searchParams.get("period_id") ?? "";
+  const gradeParam = searchParams.get("grade");
+  const sectionParam = searchParams.get("section");
+
+  // A draft kept on this device wins over the link, so a half-written report is never lost
+  const [saved] = useState(() => (typeof window !== "undefined" ? loadFormData<FormState>("teacher-report-form") : null));
+  const [formData, setFormData] = useState<FormState>(() => ({ ...blank(localToday()), ...(saved ?? {}), period_id: saved?.period_id || paramPeriod }));
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   const { isDirty: isFormDirty, clearSavedData } = useAutoSaveForm({
-    formId: 'teacher-report-form',
+    formId: "teacher-report-form",
     formData,
     autoSave: true,
     autoSaveInterval: 2000,
     debounceDelay: 500,
     useSession: false,
     onLoad: (data) => {
-      if (data && (!savedFormData || Object.keys(savedFormData).length === 0)) {
-        setFormData(data);
-      }
+      if (data && (!saved || Object.keys(saved).length === 0)) setFormData(data as FormState);
     },
     markDirty: true,
   });
-  
-  // Check if form has unsaved data
-  const hasUnsavedData = () => {
-    return isFormDirty && (
-      formData.period_id !== '' ||
-      formData.topics_taught !== '' ||
-      formData.activities !== '' ||
-      formData.notes !== ''
-    );
-  };
-
-  const reportIsDirty = hasUnsavedData();
+  const hasContent = formData.period_id !== "" || formData.topics_taught !== "" || formData.activities !== "" || formData.notes !== "";
+  const reportIsDirty = isFormDirty && hasContent;
   useBeforeUnloadWhenDirty(reportIsDirty);
 
-  // Prefill the period when arriving via a "Today's Classes" row click on the
-  // dashboard (?period_id=...) — previously this page always opened blank,
-  // forcing the teacher to re-pick the exact period they'd just clicked.
-  // Only applies once, and only when there's no in-progress draft already
-  // selecting a different period (autosave restore takes precedence).
-  useEffect(() => {
-    const periodIdParam = searchParams.get('period_id');
-    if (periodIdParam && !savedFormData?.period_id) {
-      setFormData((prev) => (prev.period_id ? prev : { ...prev, period_id: periodIdParam }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
-
-  const { data: _classes, isLoading: _classesLoading, refetch: refetchClasses } = useTeacherClasses(selectedSchool?.id);
-  const { data: reports, isLoading: _reportsLoading, refetch: refetchReports } = useTeacherReports(
-    selectedSchool?.id,
-    { date: formData.date }
-  );
-  // Separate query for Recent Reports sidebar — no date filter, shows latest across all dates
-  const { data: recentReports, isLoading: recentReportsLoading, refetch: refetchRecentReports } = useTeacherReports(
-    selectedSchool?.id,
-    { limit: 10 }
-  );
-  const submitReport = useSubmitReport();
-
-  // The server's IST date is the only "today" — the device clock (or a stale
-  // autosaved draft) never decides which day a report is for.
+  /* ───────── today, as the server sees it ───────── */
+  // The server's IST date is the only "today"; the device clock or an old draft never decides the day.
   const { data: serverDay } = useTeacherDayStatus();
   const serverToday = serverDay?.date;
+  const today = serverToday ?? formData.date;
+  const staleDraft = !!serverToday && formData.date !== serverToday; // a draft from another day keeps its text but not its class
+
+  const { data: dayStatus } = useTeacherDayStatus(today);
+  const closedRow = selectedSchool?.id ? dayStatus?.schools?.find((s) => s.school_id === selectedSchool.id) : undefined;
+  const closedDay = closedRow?.status === "holiday" ? closedRow.holiday ?? { name: "Holiday", type: "Holiday" } : null;
+  const { data: todayStatus } = useTodayAttendanceStatus(selectedSchool?.id);
+  const cutoffPassed = (todayStatus as { before_cutoff?: boolean } | undefined)?.before_cutoff === false;
+
+  const dayDate = new Date(`${today}T00:00:00`);
+  const dayName = WEEKDAY_NAMES[(Number.isNaN(dayDate.getTime()) ? new Date() : dayDate).getDay()];
+  const dateLabel = Number.isNaN(dayDate.getTime()) ? "" : dayDate.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" });
+
+  const { data: periodData, isLoading: periodsLoading, refetch: refetchPeriods } = useTeacherPeriods(selectedSchool?.id, dayName);
+  const { data: reportData, refetch: refetchReports } = useTeacherReports(selectedSchool?.id, { date: today });
+  const { data: recentData, isLoading: recentLoading, refetch: refetchRecent } = useTeacherReports(selectedSchool?.id, { limit: 10 });
+  const submitReport = useSubmitReport();
+
+  // Fresh periods whenever the school or day changes
   useEffect(() => {
-    if (serverToday && formData.date !== serverToday) {
-      // A stale draft's period no longer applies on a new day, but keep a
-      // period the teacher just clicked from the dashboard (?period_id=...).
-      setFormData((prev) => ({ ...prev, date: serverToday, period_id: searchParams.get('period_id') ?? '' }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverToday, formData.date]);
+    if (selectedSchool?.id && dayName) void refetchPeriods();
+  }, [selectedSchool?.id, dayName, refetchPeriods]);
 
-  const { data: dayStatus } = useTeacherDayStatus(formData.date);
-  const closedDay = useMemo(() => {
-    if (!selectedSchool?.id) return null;
-    const row = dayStatus?.schools.find((s) => s.school_id === selectedSchool.id);
-    return row?.status === 'holiday' ? row.holiday ?? { name: 'Holiday', type: 'Holiday' } : null;
-  }, [dayStatus, selectedSchool?.id]);
+  const periods = useMemo(
+    () => [...((periodData ?? []) as PeriodRow[])].sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? ""))),
+    [periodData],
+  );
+  const reportsToday = useMemo(() => ((reportData ?? []) as ReportRow[]).filter((r) => r.date === today), [reportData, today]);
+  const recent = (recentData ?? []) as ReportRow[];
 
-  // Get today's day name (Monday, Tuesday, etc.)
-  const todayDayName = useMemo(() => {
-    // Parse the date string (format: YYYY-MM-DD)
-    const dateStr = formData.date;
-    const date = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
+  // Uniqueness is class + date. Rejected reports stay open so they can be sent again.
+  const doneIds = useMemo(() => new Set(reportsToday.filter((r) => r.period_id && !isRejected(r)).map((r) => r.period_id as string)), [reportsToday]);
+  const redoIds = useMemo(() => new Set(reportsToday.filter((r) => r.period_id && isRejected(r)).map((r) => r.period_id as string)), [reportsToday]);
 
-    // Validate the date
-    if (isNaN(date.getTime())) {
-      console.error('❌ Invalid date:', dateStr);
-      return WEEKDAY_NAMES[new Date().getDay()]; // Fallback to today
-    }
+  /* ───────── which class the form is for ───────── */
+  const typed = staleDraft ? paramPeriod : formData.period_id;
+  const fromGrade = useMemo(() => {
+    if (typed || !gradeParam || periods.length === 0) return "";
+    const matches = periods.filter((p) => p.grade === gradeParam && (!sectionParam || (p.section ?? "") === sectionParam));
+    return (matches.find((p) => !doneIds.has(p.id)) ?? matches[0])?.id ?? "";
+  }, [typed, gradeParam, sectionParam, periods, doneIds]);
+  const periodId = doneIds.has(typed || fromGrade) ? "" : typed || fromGrade;
+  const selected = periods.find((p) => p.id === periodId) ?? null;
 
-    const dayIndex = date.getDay();
-    const dayName = WEEKDAY_NAMES[dayIndex];
+  const pick = (id: string) => setFormData((prev) => ({ ...prev, period_id: id, date: today }));
+  const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => setFormData((prev) => ({ ...prev, [k]: e.target.value }));
 
-    return dayName;
-  }, [formData.date]);
+  const slots: RunSlot[] = periods.map((p) => ({
+    id: p.id,
+    title: subjectOf(p),
+    detail: periodClass(p),
+    start: p.start_time,
+    state: doneIds.has(p.id) ? "done" : redoIds.has(p.id) ? "redo" : "todo",
+  }));
+  const doneCount = slots.filter((s) => s.state === "done").length;
+  const remaining = periods.length - doneCount;
 
-  const { data: periods, isLoading: periodsLoading, error: _periodsError, refetch: refetchPeriods } = useTeacherPeriods(selectedSchool?.id, todayDayName);
-  
-  // Force refetch periods when school or day changes to ensure fresh data
-  useEffect(() => {
-    if (selectedSchool?.id && todayDayName) {
-      refetchPeriods();
-    }
-  }, [selectedSchool?.id, todayDayName, refetchPeriods]);
-
-  // Prefill from a "My Classes" card click (?grade=&section=) — since a period
-  // (not a bare grade) is the actual selectable field, find one of today's
-  // periods teaching that grade/section and select it. Prefers a period that
-  // hasn't already been reported today — a teacher can teach the same grade
-  // in two different periods the same day, and blindly picking the first
-  // match could select an already-submitted one instead of the one they
-  // actually meant to report. No-op if the grade isn't scheduled today or a
-  // draft is already in progress.
-  useEffect(() => {
-    const gradeParam = searchParams.get('grade');
-    if (!gradeParam || periodsLoading || !periods || savedFormData?.period_id) return;
-    const sectionParam = searchParams.get('section');
-    const candidates = (periods as PeriodRow[]).filter((p) => {
-      if (p.grade !== gradeParam) return false;
-      if (sectionParam == null || sectionParam === '') return true;
-      return (p.section ?? '') === sectionParam;
-    });
-    if (candidates.length === 0) return;
-    const reportedPeriodIds = new Set(
-      (reports as ReportRow[] | undefined ?? [])
-        .filter((r) => r.date === formData.date)
-        .map((r) => r.period_id)
-        .filter(Boolean),
-    );
-    const match = candidates.find((p) => !reportedPeriodIds.has(p.id)) ?? candidates[0];
-    setFormData((prev) => (prev.period_id ? prev : { ...prev, period_id: match.id }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, periods, periodsLoading, reports]);
-
-  const { data: schedules, refetch: refetchSchedules } = useTeacherSchedules(selectedSchool?.id);
-
-  // Refresh function to reload all data
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      // Invalidate and refetch all queries
-      // Note: Using partial query keys to invalidate all related queries
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'periods', selectedSchool?.id, todayDayName] }),
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'schedules', selectedSchool?.id] }),
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'classes', selectedSchool?.id] }),
-        queryClient.invalidateQueries({ queryKey: ['teacher', 'reports', selectedSchool?.id] }),
-        refetchPeriods(),
-        refetchSchedules(),
-        refetchClasses(),
-        refetchReports(),
-        refetchRecentReports()
-      ]);
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  // Use smart refresh hook instead of manual event listeners
-  useSmartRefresh({
-    queryKeys: [
-      ['teacher', 'periods', selectedSchool?.id, todayDayName],
-      ['teacher', 'schedules', selectedSchool?.id],
-      ['teacher', 'reports', selectedSchool?.id]
-    ],
-    hasUnsavedData,
-    minRefreshInterval: 60000, // 1 minute minimum between refreshes
-  });
-
-
-  // Get selected period details for display
-  const selectedPeriod = useMemo<PeriodRow | null>(() => {
-    if (!formData.period_id || !periods) return null;
-     
-    return (periods as PeriodRow[]).find((p) => p.id === formData.period_id) || null;
-  }, [formData.period_id, periods]);
-
-  // When period is selected, auto-populate grade from the period's schedule
-  // Use grade as the primary identifier (same as scheduling)
-  useEffect(() => {
-    if (!formData.period_id) {
-      return; // No period selected
-    }
-    
-    if (periodsLoading) {
-      return; // Wait for periods to load
-    }
-    
-    if (!periods || periods.length === 0) {
-      console.warn('⚠️ Periods list is empty or not loaded yet');
-      return;
-    }
-    
-    // Find the selected period from the periods list
-     
-    const period = (periods as PeriodRow[]).find((p: PeriodRow) => p.id === formData.period_id);
-    
-    if (!period) {
-      return;
-    }
-    
-    // Get grade/section directly from the selected period
-    // The period gets this information from the schedule (as assigned when period was scheduled)
-    const periodGrade = period.grade; // Grade from the schedule
-    const periodSection = period.section ?? '';
-    
-    // Auto-populate form fields from period
-    // IMPORTANT: Use grade as the primary identifier (same as scheduling)
-    if (periodGrade && periodGrade.trim() !== '') {
-      setFormData(prev => {
-        // Only update if the grade/section is different to avoid unnecessary re-renders
-        if (prev.grade !== periodGrade || (prev.section ?? '') !== periodSection) {
-          return {
-            ...prev,
-            grade: periodGrade, // Always set from period
-            section: periodSection,
-            start_time: period.start_time || prev.start_time,
-            end_time: period.end_time || prev.end_time,
-          };
-        }
-        return prev;
-      });
-    } else {
-      // Clear grade if period doesn't have it
-      setFormData(prev => ({
-        ...prev,
-        grade: '', // Clear if period doesn't have grade
-        section: '',
-        start_time: period.start_time || prev.start_time,
-        end_time: period.end_time || prev.end_time,
-      }));
-    }
-  }, [formData.period_id, periods, periodsLoading]);
+  /* ───────── what is still missing ───────── */
+  const missing: string[] = [];
+  if (!selected) missing.push("pick a class");
+  else if (!selected.grade) missing.push("this class has no grade on the timetable, ask your admin");
+  if (!formData.topics_taught.trim()) missing.push("say what you taught");
+  const canSend = missing.length === 0 && !closedDay && !!serverToday && !submitReport.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    
-    if (!selectedSchool) {
-      toast.warning('Please select a school first');
-      return;
-    }
-    if (!serverToday || formData.date !== serverToday) {
-      toast.warning("Syncing today's date with the server — please try again in a moment.");
-      return;
-    }
-
-    if (closedDay) {
-      toast.error(`${selectedSchool.name} is closed on this date (${closedDay.name}). Reports can't be submitted.`);
-      return;
-    }
-
-    if (!formData.period_id) {
-      toast.warning('Please select a period');
-      return;
-    }
-
-    // Use the calculated finalGrade
-    if (!finalGrade) {
-      toast.warning('Please select a period to get the grade information. If the issue persists, please contact support.');
-      console.error('No grade available:', {
-        formData,
-        selectedPeriod,
-        finalGrade
-      });
-      return;
-    }
-
-    // Check if topics_taught has content (not just whitespace)
-    const topicsTrimmed = formData.topics_taught?.trim() || '';
-    if (!topicsTrimmed) {
-      toast.warning('Please enter the topics you taught');
-      return;
-    }
-
-
+    if (!selectedSchool || !selected || !canSend) return;
     try {
       const result = await submitReport.mutateAsync({
         school_id: selectedSchool.id!,
-        period_id: formData.period_id,
-        grade: finalGrade,
-        section: formData.section || selectedPeriod?.section || undefined,
-        date: serverToday ?? formData.date,
-        start_time: formData.start_time || undefined,
-        end_time: formData.end_time || undefined,
-        topics_taught: formData.topics_taught || undefined,
+        period_id: selected.id,
+        grade: selected.grade!,
+        section: selected.section || undefined,
+        date: serverToday!,
+        start_time: selected.start_time || undefined,
+        end_time: selected.end_time || undefined,
+        topics_taught: formData.topics_taught.trim(),
         activities: formData.activities || undefined,
         notes: formData.notes || undefined,
-        student_count: formData.student_count.trim() ? Number(formData.student_count) : undefined
+        student_count: formData.student_count.trim() ? Number(formData.student_count) : undefined,
       });
-
-
-      // Refetch reports to update the UI
-      await Promise.all([refetchReports(), refetchRecentReports()]);
-
-      // Reset form
-      setFormData({
-        period_id: '',
-        grade: '', // Use grade instead of class_id
-        section: '',
-        date: serverToday ?? new Date().toLocaleDateString('en-CA'),
-        start_time: '',
-        end_time: '',
-        topics_taught: '',
-        activities: '',
-        notes: '',
-        student_count: ''
-      });
-      
-      // Clear saved form data
-      clearFormData('teacher-report-form');
+      await Promise.all([refetchReports(), refetchRecent()]);
+      setFormData(blank(serverToday!));
+      clearFormData("teacher-report-form");
       clearSavedData();
-
-      const attendanceMarked = (result as { attendance_marked_present?: boolean })?.attendance_marked_present;
-      toast.success(
-        attendanceMarked
-          ? 'Report submitted successfully! Your attendance has been marked as Present.'
-          : 'Report submitted successfully!',
-      );
-     
-    } catch (error: unknown) {
-      const err = error as { message?: string; response?: { json: () => Promise<{ details?: string; error?: string }> }; data?: { details?: string; error?: string }; details?: string; hint?: string };
-      console.error('❌ Error submitting report:', {
-        error,
-        message: err?.message,
-        response: err?.response,
-        data: err?.data,
-        details: err?.details,
-        hint: err?.hint
-      });
-      let errorMessage = 'Unknown error';
-      if (err?.response) {
-        try {
-          const errorData = await err.response.json();
-          errorMessage = errorData.details || errorData.error || err.message || 'Failed to submit report';
-        } catch {
-          errorMessage = err?.message || 'Failed to submit report';
-        }
-      } else if (err?.message) {
-        errorMessage = err.message;
-      } else if (err?.data?.details) {
-        errorMessage = err.data.details;
-      } else if (err?.data?.error) {
-        errorMessage = err.data.error;
-      }
-      toast.error(`Error submitting report: ${errorMessage}`);
+      const marked = (result as { attendance_marked_present?: boolean })?.attendance_marked_present;
+      toast.success(marked ? "Report submitted. Your attendance is marked present." : "Report submitted.");
+    } catch (error) {
+      toast.error(`The report was not submitted. ${await errorText(error)}`);
     }
   };
 
   const handleCancel = () => {
     void requestClose(reportIsDirty, () => {
       clearSavedData();
-      router.push('/lms/teacher');
+      router.push("/lms/teacher");
     });
   };
 
-  // Calculate final grade from the selected period
-  // Use grade as the primary identifier (same as scheduling)
-  const finalGrade = useMemo(() => {
-    // First, check if we have a period selected
-    if (!formData.period_id) {
-      return null;
-    }
-    
-    // Priority 1: Use grade from form (which should be set from the period)
-    if (formData.grade && formData.grade.trim() !== '') {
-      return formData.grade;
-    }
-
-    // Priority 2: Find period from periods list and get grade
-    if (periods && periods.length > 0) {
-
-      const period = (periods as PeriodRow[]).find((p: PeriodRow) => p.id === formData.period_id);
-      if (period && period.grade) {
-        return period.grade;
-      }
-    }
-
-    // Priority 3: Use selectedPeriod if available
-    if (selectedPeriod && selectedPeriod.grade) {
-      return selectedPeriod.grade;
-    }
-
-    return null;
-  }, [formData.grade, formData.period_id, periods, selectedPeriod]);
-
-  // Uniqueness is period+date (not grade) — grade mismatch used to leave Submit enabled.
-  // Rejected reports are resubmittable (backend updates the row), so they do not block.
-  const existingReport = useMemo(() => {
-    if (!formData.period_id || !reports) return undefined;
-    return (reports as ReportRow[]).find(
-      (r) =>
-        r.date === formData.date &&
-        r.period_id === formData.period_id &&
-        String(r.report_status ?? '').toLowerCase() !== 'rejected',
-    );
-  }, [reports, formData.date, formData.period_id]);
-
-  // Separate periods into available and already submitted
-  const { availablePeriods, submittedPeriods } = useMemo(() => {
-    if (!periods || !reports) {
-      return { availablePeriods: periods || [], submittedPeriods: [] };
-    }
-
-    // Reports for the selected date, keyed by period_id — grade alone isn't
-    // unique (a teacher can teach the same grade in two different periods
-    // the same day), so grouping by grade only used to hide a second,
-    // never-reported period as "Already Submitted" once the first one was.
-    // Rejected reports stay selectable so the teacher can resubmit.
-    const reportsToday = (reports as ReportRow[]).filter((r: ReportRow) => r.date === formData.date);
-    const submittedByPeriodId = new Map(
-      reportsToday
-        .filter(
-          (r) =>
-            r.period_id &&
-            String(r.report_status ?? '').toLowerCase() !== 'rejected',
-        )
-        .map((r) => [r.period_id as string, r]),
-    );
-
-    const available: PeriodRow[] = [];
-    const submitted: (PeriodRow & { report?: ReportRow })[] = [];
-
-    (periods as PeriodRow[]).forEach((period: PeriodRow) => {
-      const report = submittedByPeriodId.get(period.id);
-      if (report) {
-        submitted.push({ ...period, report });
-      } else {
-        available.push(period);
-      }
-    });
-
-    return { availablePeriods: available, submittedPeriods: submitted };
-  }, [periods, reports, formData.date]);
-
-  // Autosave / URL can restore a period_id that was already submitted — clear it
-  // so the Select is not stuck on an orphan value that still enables submit.
-  useEffect(() => {
-    if (!formData.period_id || submittedPeriods.length === 0) return;
-    const alreadySubmitted = submittedPeriods.some((p) => p.id === formData.period_id);
-    if (!alreadySubmitted) return;
-    setFormData((prev) => ({
-      ...prev,
-      period_id: '',
-      grade: '',
-      section: '',
-      start_time: '',
-      end_time: '',
-    }));
-  }, [submittedPeriods, formData.period_id]);
-
+  const refreshing = queryClient.isFetching({ queryKey: ["teacher"] }) > 0;
+  const refresh = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["teacher", "periods", selectedSchool?.id] }),
+    queryClient.invalidateQueries({ queryKey: ["teacher", "schedules", selectedSchool?.id] }),
+    queryClient.invalidateQueries({ queryKey: ["teacher", "reports", selectedSchool?.id] }),
+    queryClient.invalidateQueries({ queryKey: ["teacher", "today-attendance"] }),
+  ]);
+  useSmartRefresh({
+    queryKeys: [["teacher", "periods", selectedSchool?.id, dayName], ["teacher", "schedules", selectedSchool?.id], ["teacher", "reports", selectedSchool?.id]],
+    hasUnsavedData: () => reportIsDirty,
+    minRefreshInterval: 60000,
+  });
 
   if (!selectedSchool) {
     return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="p-8">
-            <div className="text-center py-8">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
-              <p className="text-lg font-medium">Pick a specific school to submit a report</p>
-              <p className="text-sm text-gray-600 mt-2">
-                A report applies to one school at a time — select it from the &quot;Active School&quot; dropdown above (not &quot;All Schools&quot;) to continue.
-              </p>
+      <div className="sd-page">
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>Pick a school to report for</b>
+            <p>A report belongs to one school. Choose where you taught, or use the school menu at the top.</p>
+            <div className="sr-schools">
+              {schools.map((s) => <button key={s.id} className="sd-btn sd-btn--line" onClick={() => onSchoolChange(s)}>{s.name}</button>)}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
     );
   }
 
+  let status: React.ReactNode;
+  if (closedDay) status = <>{selectedSchool.name} is closed today: {closedDay.name}. No reports are due.</>;
+  else if (periodsLoading) status = "Checking today's classes…";
+  else if (periods.length === 0) status = "You have no classes today, so nothing is due.";
+  else if (remaining === 0) status = <><strong>All {periods.length} {periods.length === 1 ? "report is" : "reports are"} in.</strong> You are done for the day.</>;
+  else status = <><strong>{doneCount} of {periods.length}</strong> classes reported. {cutoffPassed ? "The 8 PM cutoff has passed, but please still submit." : "Submit the rest before 8 PM."}</>;
+
+  const caption = selected ? `${subjectOf(selected)} picked` : remaining === 0 && periods.length > 0 ? "All reports are in" : "Pick a class to start";
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 md:items-center">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-3xl font-bold text-gray-900">Submit Daily Report</h1>
-          <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
-            Submit your daily teaching report for {selectedSchool.name}
-          </p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="sr-title">
+        <div className="sd-hero-copy">
+          <h1 id="sr-title" className="mc-hero-title">Submit report</h1>
+          <p className="sd-where">{selectedSchool.name}{dateLabel ? `, ${dateLabel}` : ""}</p>
+          <p className="sd-status">{status}</p>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void refresh()} disabled={refreshing || periodsLoading} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleRefresh}
-          disabled={isRefreshing || periodsLoading}
-          className="flex shrink-0 items-center gap-2 max-sm:h-9 max-sm:px-3"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-        </Button>
-      </div>
+        {periodsLoading ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : (
+          <ReportRun slots={slots} selectedId={periodId} onSelect={pick} caption={caption} />
+        )}
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Submit Report Form */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Daily Teaching Report</CardTitle>
-              <CardDescription>
-                Fill in the details of your teaching session. Your attendance is automatically marked Present once you&apos;ve reported every class scheduled for you that day.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {closedDay && (
-                <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <CalendarOff className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
-                    <div className="flex-1 space-y-3">
-                      <div>
-                        <p className="font-semibold text-red-800">
-                          {selectedSchool.name} is closed on{' '}
-                          {new Date(formData.date + 'T00:00:00').toLocaleDateString('en-IN', {
-                            weekday: 'long',
-                            day: 'numeric',
-                            month: 'short',
-                          })}
-                        </p>
-                        <p className="text-sm text-red-700 mt-1">
-                          {closedDay.type === 'Break' ? 'Break' : 'Holiday'}: {closedDay.name}. No classes are held, so reports can&apos;t be submitted for this date.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <fieldset
-                  disabled={!!closedDay}
-                  className={`space-y-6 ${closedDay ? 'opacity-50 pointer-events-none select-none' : ''}`}
-                >
-                {/* Period Selection */}
-                <div className="space-y-2">
-                  <Label htmlFor="period_id">Period *</Label>
-                  <Select
-                    value={formData.period_id}
-                    onValueChange={(value) => setFormData({ ...formData, period_id: value })}
-                    disabled={periodsLoading}
-                    required
-                  >
-                    <SelectTrigger id="period_id">
-                      <SelectValue placeholder="Select a period" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {periodsLoading ? (
-                        <SelectItem value="loading" disabled>Loading periods...</SelectItem>
-                      ) : availablePeriods && availablePeriods.length > 0 ? (
-                         
-                        (availablePeriods as PeriodRow[]).map((period: PeriodRow) => {
-                          const formatTime = (time: string) => {
-                            if (!time) return '';
-                            const [hours, minutes] = time.split(':');
-                            const hour = parseInt(hours);
-                            const ampm = hour >= 12 ? 'PM' : 'AM';
-                            const displayHour = hour % 12 || 12;
-                            return `${displayHour}:${minutes} ${ampm}`;
-                          };
-                          
-                          // Display period with grade information from schedule
-                          // Grade is the primary identifier
-                          const gradeInfo = period.grade
-                            ? ` [${formatGradeSection(period.grade, period.section)}]`
-                            : '';
-                          const subjectInfo = period.subject ? ` (${period.subject})` : '';
-                          
-                          return (
-                            <SelectItem key={period.id} value={period.id}>
-                              Period {period.period_number} - {formatTime(period.start_time || '')} to {formatTime(period.end_time || '')}{gradeInfo}{subjectInfo}
-                            </SelectItem>
-                          );
-                        })
-                      ) : (
-                        <SelectItem value="no-periods" disabled>No periods available</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {selectedPeriod && (
-                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                      <p className="text-sm text-blue-800 font-medium mb-1">
-                        Period information for {todayDayName} (from schedule):
-                      </p>
-                      {/* Grade from schedule - displayed prominently */}
-                      {selectedPeriod.grade && (
-                        <p className="text-xs text-blue-700 mb-1">
-                          <strong>Grade:</strong> {formatGradeSection(selectedPeriod.grade, selectedPeriod.section)} <span className="text-blue-600">(from schedule)</span>
-                        </p>
-                      )}
-                      <p className="text-xs text-blue-700">
-                        <strong>Class:</strong> {
-                          selectedPeriod.class_name || 
-                          (selectedPeriod.subject && selectedPeriod.grade 
-                            ? `${selectedPeriod.subject} - ${formatGradeSection(selectedPeriod.grade, selectedPeriod.section)}` 
-                            : selectedPeriod.subject || formatGradeSection(selectedPeriod.grade, selectedPeriod.section) || 'N/A')
-                        }
-                      </p>
-                      {selectedPeriod.subject && (
-                        <p className="text-xs text-blue-700">
-                          <strong>Subject:</strong> {selectedPeriod.subject}
-                        </p>
-                      )}
-                      <p className="text-xs text-blue-700">
-                        <strong>Time:</strong> {selectedPeriod.start_time} - {selectedPeriod.end_time}
-                      </p>
-                    </div>
-                  )}
-                  
-                  {/* Show submitted periods */}
-                  {submittedPeriods && submittedPeriods.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <Label className="text-sm font-medium text-gray-700">Already Submitted Periods</Label>
-                      <div className="space-y-2">
-                        {submittedPeriods.map((periodWithReport: PeriodRow & { report?: ReportRow }) => {
-                          const formatTime = (time: string) => {
-                            if (!time) return '';
-                            const [hours, minutes] = time.split(':');
-                            const hour = parseInt(hours);
-                            const ampm = hour >= 12 ? 'PM' : 'AM';
-                            const displayHour = hour % 12 || 12;
-                            return `${displayHour}:${minutes} ${ampm}`;
-                          };
-                          
-                          const gradeInfo = periodWithReport.grade
-                            ? ` [${formatGradeSection(periodWithReport.grade, periodWithReport.section)}]`
-                            : '';
-                          const subjectInfo = periodWithReport.subject ? ` (${periodWithReport.subject})` : '';
-                          
-                          return (
-                            <div 
-                              key={periodWithReport.id} 
-                              className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-2">
-                                <CheckCircle className="h-4 w-4 text-green-600" />
-                                <span className="text-sm text-green-800">
-                                  Period {periodWithReport.period_number} - {formatTime(periodWithReport.start_time || '')} to {formatTime(periodWithReport.end_time || '')}{gradeInfo}{subjectInfo}
-                                </span>
-                              </div>
-                              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
-                                Already Submitted
-                              </Badge>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
+      <div className="sr-grid">
+        <section className="sd-panel sr-formpanel" aria-labelledby="sr-form-title">
+          <form className="sr-form" onSubmit={handleSubmit} noValidate>
+            <div className="sd-panel-head" style={{ margin: 0 }}>
+              <div>
+                <h2 id="sr-form-title">{selected ? `${subjectOf(selected)}${periodClass(selected) ? `, ${periodClass(selected)}` : ""}` : "Daily teaching report"}</h2>
+                <p>{selected ? periodSpan(selected) : "One report for each class you taught today."}</p>
+              </div>
+            </div>
 
-                {/* Class Information (from selected period's schedule) */}
-                {finalGrade && selectedPeriod && (
-                  <div className="space-y-2">
-                    <Label>Class Information (from schedule)</Label>
-                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-md space-y-1">
-                      {/* Display grade prominently - this comes from the schedule form */}
-                      {/* Display grade */}
-                      <p className="text-sm font-medium text-gray-900">
-                        <span className="text-gray-600">Grade:</span> {
-                          formatGradeSection(selectedPeriod.grade, selectedPeriod.section) || 'N/A'
-                        }
-                        {selectedPeriod.subject && selectedPeriod.grade && (
-                          <span className="text-gray-500"> • {selectedPeriod.subject}</span>
-                        )}
-                      </p>
-                      {selectedPeriod.subject && (
-                        <p className="text-sm text-gray-700">
-                          <span className="text-gray-600">Subject:</span> {selectedPeriod.subject}
-                        </p>
-                      )}
-                    </div>
-                    {existingReport && (
-                      <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                        <p className="text-sm text-yellow-800">
-                          <AlertCircle className="h-4 w-4 inline mr-2" />
-                          You have already submitted a report for this class today.
-                        </p>
-                      </div>
-                    )}
+            <p className="sr-note" data-warn={cutoffPassed || !!closedDay}>
+              {closedDay
+                ? `${selectedSchool.name} is closed today (${closedDay.name}). Reports cannot be submitted.`
+                : cutoffPassed
+                ? "The 8 PM IST cutoff has passed, so today is marked absent. Reports are still saved."
+                : "Report every class before 8 PM IST and your attendance is marked present. After that the day is marked absent."}
+            </p>
+
+            <fieldset disabled={!!closedDay}>
+              <div className="sr-step" role="radiogroup" aria-labelledby="sr-which">
+                <h3 id="sr-which">Which class?</h3>
+                {periodsLoading ? (
+                  <><div className="sd-skel" /><div className="sd-skel" /></>
+                ) : periods.length === 0 ? (
+                  <p className="sr-hint">You have no classes scheduled today. Your timetable is under My classes.</p>
+                ) : (
+                  <div className="sr-picks">
+                    {periods.map((p) => {
+                      const st = doneIds.has(p.id) ? "done" : redoIds.has(p.id) ? "redo" : "todo";
+                      return (
+                        <label key={p.id} className="sr-pick">
+                          <input type="radio" name="period" value={p.id} checked={periodId === p.id} disabled={st === "done"} onChange={() => pick(p.id)} />
+                          <span className="sr-dot" aria-hidden="true" />
+                          <span className="sr-pick-time">{periodSpan(p).split(" to ")[0]}</span>
+                          <span className="sr-pick-main">
+                            <b>{subjectOf(p)}</b>
+                            <small>{[periodClass(p), p.period_number ? `Period ${p.period_number}` : ""].filter(Boolean).join(" · ")}</small>
+                          </span>
+                          {st !== "todo" && (
+                            <span className="to-chip" data-s={st === "done" ? "done" : "rejected"}>
+                              {st === "done" && <Check aria-hidden="true" />}
+                              {st === "done" ? "Reported" : "Rejected, send again"}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
+              </div>
 
-                {/* Date */}
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date *</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={formData.date}
-                    disabled // reports can only be submitted for today
-                    required
-                  />
-                  <p className="text-xs text-gray-500">Reports can only be submitted for today. Submit all of today&apos;s reports before 8:00 PM IST to be marked Present — after that the day is marked Absent.</p>
-                </div>
+              <div className="sd-field-wrap">
+                <label htmlFor="topics_taught">What did you teach?</label>
+                <textarea id="topics_taught" className="sd-field" rows={4} maxLength={NOTES_MAX} placeholder="For example: fractions, adding unlike denominators" value={formData.topics_taught} onChange={set("topics_taught")} aria-required="true" />
+              </div>
 
-                {/* Time Display (read-only from period) */}
-                {(formData.start_time || formData.end_time) && (
-                  <div className="space-y-2">
-                    <Label>Time</Label>
-                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
-                      <p className="text-sm font-medium text-gray-900">
-                        {formData.start_time && formData.end_time
-                          ? `${formData.start_time} - ${formData.end_time}`
-                          : formData.start_time
-                          ? `Start: ${formData.start_time}`
-                          : formData.end_time
-                          ? `End: ${formData.end_time}`
-                          : 'Time will be set from selected period'}
-                      </p>
-                    </div>
-                  </div>
-                )}
+              <div className="sd-field-wrap sr-small">
+                <label htmlFor="student_count">Students present <small>(optional)</small></label>
+                <input id="student_count" className="sd-field" type="number" inputMode="numeric" min={0} value={formData.student_count} onChange={set("student_count")} />
+              </div>
 
-                {/* Topics Taught */}
-                <div className="space-y-2">
-                  <Label htmlFor="topics_taught">Topics Taught *</Label>
-                  <Textarea
-                    id="topics_taught"
-                    placeholder="Enter the topics you taught today..."
-                    value={formData.topics_taught}
-                    onChange={(e) => setFormData({ ...formData, topics_taught: e.target.value })}
-                    rows={4}
-                    required
-                  />
-                </div>
+              <div className="sd-field-wrap">
+                <label htmlFor="activities">Activities <small>(optional)</small></label>
+                <textarea id="activities" className="sd-field" rows={3} maxLength={NOTES_MAX} placeholder="Group work, a demo, a quiz" value={formData.activities} onChange={set("activities")} />
+              </div>
 
-                {/* Students Present */}
-                <div className="space-y-2">
-                  <Label htmlFor="student_count">Students Present</Label>
-                  <Input
-                    id="student_count"
-                    type="number"
-                    min={0}
-                    placeholder="Number of students present"
-                    value={formData.student_count}
-                    onChange={(e) => setFormData({ ...formData, student_count: e.target.value })}
-                  />
-                </div>
+              <div className="sd-field-wrap">
+                <label htmlFor="notes">Notes for your admin <small>(optional)</small></label>
+                <textarea id="notes" className="sd-field" rows={3} maxLength={NOTES_MAX} placeholder="Anything worth knowing about this class" value={formData.notes} onChange={set("notes")} />
+              </div>
+            </fieldset>
 
-                {/* Activities */}
-                <div className="space-y-2">
-                  <Label htmlFor="activities">Activities Conducted</Label>
-                  <Textarea
-                    id="activities"
-                    placeholder="Enter the activities conducted..."
-                    value={formData.activities}
-                    onChange={(e) => setFormData({ ...formData, activities: e.target.value })}
-                    rows={4}
-                  />
-                </div>
+            <div className="sr-foot">
+              <p data-warn={missing.length > 0 && hasContent}>
+                {closedDay ? "No reports are due on a holiday." : missing.length > 0 ? `Still needed: ${missing.join(", ")}.` : reportIsDirty ? "Your draft is kept on this device until you submit." : "Ready to submit."}
+              </p>
+              <div className="sr-foot-acts">
+                <button type="button" className="sd-btn sd-btn--line" onClick={handleCancel}>Cancel</button>
+                <button type="submit" className="sd-btn sd-btn--amber" disabled={!canSend}>
+                  {submitReport.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+                  {submitReport.isPending ? "Submitting" : "Submit report"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </section>
 
-                {/* Notes */}
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Additional Notes</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Any additional notes or observations..."
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-
-                {/* Submit Button */}
-                <div className="space-y-2">
-                  {/* Show why button is disabled */}
-                  {(!formData.period_id || !finalGrade || !formData.topics_taught?.trim() || existingReport) && !submitReport.isPending && (
-                    <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-md text-xs text-yellow-800">
-                      <p className="font-medium mb-1">Please complete the following:</p>
-                      <ul className="list-disc list-inside space-y-1">
-                        {!formData.period_id && <li>Select a period</li>}
-                        {!finalGrade && formData.period_id && (
-                          <li>Grade information is missing (try selecting the period again or refresh the page)</li>
-                        )}
-                        {!formData.topics_taught?.trim() && <li>Enter topics taught</li>}
-                        {existingReport && <li>You have already submitted a report for this period today</li>}
-                      </ul>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-4">
-                    <Button
-                      type="submit"
-                      disabled={submitReport.isPending || !formData.period_id || !finalGrade || !formData.topics_taught?.trim() || !!existingReport}
-                      className="flex-1"
-                    >
-                      {submitReport.isPending ? 'Submitting...' : 'Submit Report'}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCancel}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-                </fieldset>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Recent Reports Sidebar */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Reports</CardTitle>
-              <CardDescription>Your latest submitted reports</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {recentReportsLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                </div>
-              ) : recentReports && recentReports.length > 0 ? (
-                <div className="space-y-2 lg:space-y-3">
-                  {(recentReports as ReportRow[]).slice(0, 10).map((report: ReportRow, index: number) => (
-                    <div
-                      key={report.id}
-                      className={`p-2.5 lg:p-3 border rounded-lg hover:bg-gray-50 ${index >= 5 ? 'hidden lg:block' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1.5 lg:mb-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-sm">
-                            {formatGradeSection(
-                              report.grade || report.classes?.[0]?.grade,
-                              report.section ?? report.classes?.[0]?.section,
-                            ) || 'N/A'}
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {report.date ? new Date(report.date + 'T00:00:00').toLocaleDateString() : 'N/A'}
-                          </p>
-                        </div>
-                        <Badge variant={
-                          report.report_status === 'Approved' ? 'default' :
-                          report.report_status === 'Rejected' ? 'destructive' :
-                          'secondary'
-                        }>
-                          {report.report_status}
-                        </Badge>
-                      </div>
-                      {report.topics_taught && (
-                        <p className="text-xs text-gray-500 line-clamp-2">
-                          {report.topics_taught}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                  <p className="text-sm">No reports yet</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <section className="sd-panel" aria-labelledby="sr-recent">
+          <div className="sd-panel-head"><div><h2 id="sr-recent">Recent reports</h2><p>Your latest, and where each one stands</p></div></div>
+          {recentLoading ? (
+            <><div className="sd-skel" /><div className="sd-skel" /></>
+          ) : recent.length === 0 ? (
+            <div className="sd-empty"><b>No reports yet</b><p>Your first report will show up here, with its review status.</p></div>
+          ) : (
+            <RecentReports reports={recent} now={now} todayStr={today} limit={10} />
+          )}
+        </section>
       </div>
     </div>
   );

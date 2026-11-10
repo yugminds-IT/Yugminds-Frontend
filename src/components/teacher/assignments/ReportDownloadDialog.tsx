@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Download, Plus, Trash2, X } from "lucide-react";
+import { useState } from "react";
+import { Download, Loader2, Plus, Trash2 } from "lucide-react";
+import Modal from "../../portal/Modal";
 import type {
   TeacherAssignment,
   StudentRow,
@@ -230,12 +231,6 @@ export default function ReportDownloadDialog({
   const [busy, setBusy] = useState(false);
   const error = mode === "custom" ? scaleError(custom) : null;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const updateRow = (i: number, patch: Partial<ScaleBand>) =>
     setCustom((s) => s.map((b, j) => (j === i ? { ...b, ...patch } : b)));
 
@@ -267,165 +262,68 @@ export default function ReportDownloadDialog({
     }
   };
 
-  const inputCls =
-    "w-full h-8 px-2 text-sm border border-gray-200 rounded-md outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400";
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="report-dialog-title"
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-xl"
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 id="report-dialog-title" className="text-base font-semibold text-gray-900">
-            Download report
-          </h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-700">
-            <X className="h-4 w-4" />
+    <Modal
+      open
+      onClose={() => { if (!busy) onClose(); }}
+      title="Download report"
+      subtitle="Marks for every student, with a grade column if you want one."
+      footer={
+        <>
+          <button type="button" className="sd-btn sd-btn--line" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="button" className="sd-btn sd-btn--amber" onClick={() => void handleDownload()} disabled={!!error || busy}>
+            {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
+            {busy ? "Preparing" : "Download"}
           </button>
-        </div>
+        </>
+      }
+    >
+      <fieldset className="tg-scale">
+        <legend>Grading scale</legend>
+        {(
+          [
+            ["cbse", "CBSE (A1 to D2)", "91-100 A1, 81-90 A2, and so on down to 0-34 D2"],
+            ["custom", "My own scale", "Set your own grades and points"],
+            ["none", "None", "Marks only, no grade columns"],
+          ] as const
+        ).map(([value, label, hint]) => (
+          <label key={value} className="tg-opt">
+            <input type="radio" name="scale" checked={mode === value} onChange={() => setMode(value)} />
+            <span><b>{label}</b><small>{hint}</small></span>
+          </label>
+        ))}
+      </fieldset>
 
-        <div className="px-5 py-4 space-y-4">
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-              Grading scale
-            </legend>
-            {(
-              [
-                ["cbse", "CBSE (A1–D2)", "91–100 A1 · 81–90 A2 · … · 0–34 D2"],
-                ["custom", "My custom scale", "Set your own grades and points"],
-                ["none", "None", "Marks only, no grade columns"],
-              ] as const
-            ).map(([value, label, hint]) => (
-              <label
-                key={value}
-                className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer ${
-                  mode === value ? "border-blue-400 bg-blue-50/50" : "border-gray-200"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="scale"
-                  checked={mode === value}
-                  onChange={() => setMode(value)}
-                  className="mt-0.5"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-gray-900">{label}</span>
-                  <span className="block text-xs text-gray-500">{hint}</span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-
-          {mode !== "none" && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-[11px] text-gray-400 uppercase tracking-wide">
-                    <th className="px-2 py-2 text-left font-semibold">Min %</th>
-                    <th className="px-2 py-2 text-left font-semibold">Grade</th>
-                    <th className="px-2 py-2 text-left font-semibold">Points</th>
-                    {mode === "custom" && <th className="w-8" />}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {mode === "cbse"
-                    ? CBSE_SCALE.map((b, i) => (
-                        <tr key={b.label} className="text-gray-700">
-                          <td className="px-2 py-1.5">{rangeOf(CBSE_SCALE, i)}</td>
-                          <td className="px-2 py-1.5 font-medium">{b.label}</td>
-                          <td className="px-2 py-1.5">{b.points}</td>
-                        </tr>
-                      ))
-                    : custom.map((b, i) => (
-                        <tr key={i}>
-                          <td className="px-2 py-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              aria-label="Minimum percentage"
-                              value={Number.isNaN(b.min) ? "" : b.min}
-                              onChange={(e) => updateRow(i, { min: e.target.valueAsNumber })}
-                              className={inputCls}
-                            />
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <input
-                              aria-label="Grade"
-                              value={b.label}
-                              onChange={(e) => updateRow(i, { label: e.target.value })}
-                              className={inputCls}
-                            />
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <input
-                              type="number"
-                              aria-label="Points"
-                              value={Number.isNaN(b.points) ? "" : b.points}
-                              onChange={(e) => updateRow(i, { points: e.target.valueAsNumber })}
-                              className={inputCls}
-                            />
-                          </td>
-                          <td className="px-1">
-                            <button
-                              type="button"
-                              aria-label="Remove row"
-                              onClick={() => setCustom((s) => s.filter((_, j) => j !== i))}
-                              className="p-1 text-gray-400 hover:text-red-600"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                </tbody>
-              </table>
-              {mode === "custom" && (
-                <div className="flex items-center justify-between px-2 py-2 border-t border-gray-100 bg-gray-50/50">
-                  <button
-                    type="button"
-                    onClick={() => setCustom((s) => [...s, { min: NaN, label: "", points: 0 }])}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Add row
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustom(CBSE_SCALE.map((b) => ({ ...b })))}
-                    className="text-xs text-gray-500 hover:text-gray-800"
-                  >
-                    Start from CBSE
-                  </button>
-                </div>
-              )}
+      {mode !== "none" && (
+        <div className="tg-grade-box" style={{ borderColor: "var(--sd-line)" }}>
+          <table className="tg-scale-table">
+            <thead>
+              <tr><th>Min %</th><th>Grade</th><th>Points</th>{mode === "custom" && <th style={{ width: "2.5rem" }}><span className="sr-only">Remove</span></th>}</tr>
+            </thead>
+            <tbody>
+              {mode === "cbse"
+                ? CBSE_SCALE.map((b, i) => (
+                    <tr key={b.label}><td>{rangeOf(CBSE_SCALE, i)}</td><td><b>{b.label}</b></td><td>{b.points}</td></tr>
+                  ))
+                : custom.map((b, i) => (
+                    <tr key={i}>
+                      <td><input type="number" min={0} max={100} className="sd-field" aria-label="Minimum percentage" value={Number.isNaN(b.min) ? "" : b.min} onChange={(e) => updateRow(i, { min: e.target.valueAsNumber })} /></td>
+                      <td><input className="sd-field" aria-label="Grade" value={b.label} onChange={(e) => updateRow(i, { label: e.target.value })} /></td>
+                      <td><input type="number" className="sd-field" aria-label="Points" value={Number.isNaN(b.points) ? "" : b.points} onChange={(e) => updateRow(i, { points: e.target.valueAsNumber })} /></td>
+                      <td><button type="button" className="tg-icon" aria-label="Remove row" onClick={() => setCustom((s) => s.filter((_, j) => j !== i))}><Trash2 aria-hidden="true" /></button></td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+          {mode === "custom" && (
+            <div className="tg-scale-foot">
+              <button type="button" className="tg-linkbtn" onClick={() => setCustom((s) => [...s, { min: NaN, label: "", points: 0 }])}><Plus aria-hidden="true" style={{ width: "0.9rem", height: "0.9rem", verticalAlign: "-0.15em" }} /> Add a row</button>
+              <button type="button" className="tg-linkbtn" onClick={() => setCustom(CBSE_SCALE.map((b) => ({ ...b })))}>Start from CBSE</button>
             </div>
           )}
-          {error && <p className="text-xs text-red-600">{error}</p>}
         </div>
-
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 px-3 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleDownload()}
-            disabled={!!error || busy}
-            className="h-9 inline-flex items-center gap-1.5 px-3 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            <Download className="h-3.5 w-3.5" /> {busy ? "Preparing…" : "Download"}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+      {error && <p className="tg-formerr" role="alert">{error}</p>}
+    </Modal>
   );
 }

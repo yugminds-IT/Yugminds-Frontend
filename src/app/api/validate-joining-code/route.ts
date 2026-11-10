@@ -11,6 +11,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const result = await backendRequest<unknown>('validate-joining-code', {
       method: 'POST',
+      // Forward the client IP like the login/refresh routes do; without it the
+      // backend throttle sees only this server and every caller shares one bucket.
+      headers: {
+        ...(request.headers.get('x-forwarded-for')
+          ? { 'x-forwarded-for': request.headers.get('x-forwarded-for')! }
+          : {}),
+        ...(request.headers.get('user-agent')
+          ? { 'user-agent': request.headers.get('user-agent')! }
+          : {}),
+      },
       body: JSON.stringify(body),
     });
     return NextResponse.json(result);

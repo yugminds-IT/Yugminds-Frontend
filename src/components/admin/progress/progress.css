@@ -1,0 +1,68 @@
+/* Admin course progress. Needs portal.css, school-admin/overview.css (hero meta), school-admin/students.css (sm- chips, forms),
+   school-admin/teachers.css (tm- track nodes) and teacher/overview/overview.css loaded first. */
+
+.ps-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.ps-bar select.sd-field { width: auto; min-width: 9rem; max-width: 16rem; padding-block: 0.6rem; }
+.ps-hot .sd-n { color: var(--sd-late); }
+.ps-note { margin: 0; font-size: 0.9rem; color: var(--sd-ink-soft); }
+
+.sm-chip[data-s="idle"], .sm-chip[data-s="none"], .sm-chip[data-s="not_started"] { border-style: dashed; }
+
+.ps-list { padding: 0; overflow: hidden; container-type: inline-size; }
+.ps-head, .ps-row { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.3fr) minmax(8rem, 0.9fr) minmax(9rem, 1fr) 6.5rem 1.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.ps-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.ps-item { border-bottom: 1.5px solid var(--sd-line); }
+.ps-item:last-of-type { border-bottom: 0; }
+.ps-row { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color 0.2s ease; }
+.ps-row:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: -3px; }
+@media (hover: hover) { .ps-row:hover { background: var(--sd-wash); } }
+.ps-item[data-open="true"] > .ps-row { background: rgb(251 191 36 / 0.14); }
+.ps-who, .ps-school, .ps-stage, .ps-cname, .ps-cstate { display: grid; gap: 0.1rem; min-width: 0; justify-items: start; }
+.ps-who b, .ps-school b, .ps-cname b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.ps-school b { font-size: 0.95rem; }
+.ps-who small, .ps-school small, .ps-stage small, .ps-cname small, .ps-cstate small, .ps-seen small, .ps-prog small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.ps-stage { gap: 0.25rem; }
+.ps-seen { font-size: 0.93rem; }
+.ps-prog { display: grid; grid-template-columns: minmax(3rem, 1fr) auto; align-items: center; gap: 0.15rem 0.6rem; min-width: 0; }
+.ps-prog b { font: 800 0.95rem/1 var(--sd-body); font-variant-numeric: tabular-nums; }
+.ps-prog small { grid-column: 1 / -1; }
+.ps-chev { width: 1.1rem; height: 1.1rem; color: var(--sd-ink-soft); transition: rotate 0.2s var(--sd-ease); }
+.ps-item[data-open="true"] .ps-chev { rotate: 90deg; }
+
+.ps-detail { padding: 0.25rem 1.25rem 1.1rem; background: rgb(251 191 36 / 0.07); }
+.ps-detail ul { display: grid; margin: 0; padding: 0; list-style: none; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-paper); overflow: hidden; }
+.ps-detail li { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(9rem, 1fr) minmax(8rem, 0.8fr); align-items: center; gap: 0.4rem 1rem; padding: 0.75rem 1rem; border-bottom: 1.5px solid var(--sd-line); }
+.ps-detail li:last-child { border-bottom: 0; }
+.ps-none { margin: 0.5rem 0 0; font-size: 0.95rem; color: var(--sd-ink-soft); }
+
+/* Schools, courses, grades */
+.ps-brow { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(10rem, 1fr) auto; align-items: center; gap: 0.6rem 1.25rem; padding: 0.9rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); }
+.ps-brow:last-child { border-bottom: 0; }
+.ps-brow[data-on="true"] { background: rgb(251 191 36 / 0.14); }
+.ps-bname { display: grid; min-width: 0; }
+.ps-bname b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.ps-bname small { font-size: 0.85rem; color: var(--sd-ink-soft); }
+.ps-facts { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; margin: 0; }
+.ps-facts div { display: grid; gap: 0.05rem; }
+.ps-facts dd { margin: 0; font: 800 1.15rem/1.1 var(--sd-display); font-variant-numeric: tabular-nums; }
+.ps-facts dt { font-size: 0.82rem; color: var(--sd-ink-soft); }
+.ps-go { min-height: 2.25rem; padding-inline: 1rem; }
+
+@container (max-width: 62rem) {
+  .ps-head { display: none; }
+  .ps-row { grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.6fr) 1.5rem; grid-template-areas: "who stage chev" "school prog chev" "seen prog chev"; gap: 0.4rem 1rem; }
+  .ps-row > .ps-who { grid-area: who; }
+  .ps-row > .ps-stage { grid-area: stage; }
+  .ps-row > .ps-school { grid-area: school; }
+  .ps-row > .ps-prog { grid-area: prog; }
+  .ps-row > .ps-seen { grid-area: seen; }
+  .ps-row > .ps-chev { grid-area: chev; }
+  .ps-detail li { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ps-detail li > .ps-cname { grid-column: 1 / -1; }
+  .ps-brow { grid-template-columns: minmax(0, 1fr) auto; }
+  .ps-brow > .ps-facts, .ps-brow > .ps-prog { grid-column: 1 / -1; }
+}
+@container (max-width: 34rem) {
+  .ps-row { grid-template-columns: minmax(0, 1fr) 1.5rem; grid-template-areas: "who chev" "school ." "stage ." "prog ." "seen ."; }
+}
+@media (prefers-reduced-motion: reduce) { .ps-row, .ps-chev { transition: none; } }

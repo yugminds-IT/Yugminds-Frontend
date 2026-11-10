@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import Modal from "@/components/portal/Modal";
 import { teacherApi, setAuthToken } from "@/lib/api";
 import { getSession } from "@/lib/session-utils";
 import { shouldShowPendingReportsPopup, type TodayReportsStatus } from "@/lib/pending-reports-popup";
+import { classLabel, clock, toMin } from "./overview/utils";
 
 const REMIND_AFTER_MS = 30 * 60 * 1000;
 
@@ -52,38 +52,33 @@ export default function PendingReportsPopup() {
   const onReportsPage = pathname?.startsWith("/lms/teacher/reports") ?? false;
   const open = shouldShowPendingReportsPopup(today) && !onReportsPage && now >= snoozedUntil;
   const pending = today?.pendingPeriods ?? [];
+  const snooze = () => setSnoozedUntil(Date.now() + REMIND_AFTER_MS);
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && setSnoozedUntil(Date.now() + REMIND_AFTER_MS)}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-amber-600" />
-            Submit today&apos;s reports
-          </DialogTitle>
-          <DialogDescription>
-            {today?.before_cutoff === false
-              ? "The 8:00 PM IST cutoff has passed, so today is marked Absent. Please still submit your reports."
-              : "You have reports pending for today. Submit all of them before 8:00 PM IST to be marked Present."}
-          </DialogDescription>
-        </DialogHeader>
-        <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
-          {pending.map((p, i) => (
-            <li key={p.period_id ?? i} className="flex justify-between rounded border px-3 py-1.5">
-              <span>
-                {[p.grade, p.section].filter(Boolean).join(" ")} {p.subject ? `· ${p.subject}` : ""}
-              </span>
-              <span className="text-gray-500">{p.start_time ?? ""}</span>
-            </li>
-          ))}
-        </ul>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setSnoozedUntil(Date.now() + REMIND_AFTER_MS)}>
-            Remind me later
-          </Button>
-          <Button onClick={() => router.push("/lms/teacher/reports")}>Submit reports now</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Modal
+      open={open}
+      onClose={snooze}
+      title="Submit today's reports"
+      subtitle={
+        today?.before_cutoff === false
+          ? "The 8 PM IST cutoff has passed, so today is marked absent. Please still submit your reports."
+          : "Submit every report before 8 PM IST to be marked present."
+      }
+      footer={
+        <>
+          <button className="sd-btn sd-btn--line" onClick={snooze}>Remind me later</button>
+          <button className="sd-btn sd-btn--amber" onClick={() => router.push("/lms/teacher/reports")}><FileText aria-hidden="true" />Submit reports now</button>
+        </>
+      }
+    >
+      <ul className="to-due">
+        {pending.map((p, i) => (
+          <li key={p.period_id ?? i}>
+            <time>{Number.isFinite(toMin(p.start_time)) ? clock(toMin(p.start_time)) : ""}</time>
+            <span><b>{p.subject || "Class"}</b>{classLabel(p.grade, p.section) && <small>{classLabel(p.grade, p.section)}</small>}</span>
+          </li>
+        ))}
+      </ul>
+    </Modal>
   );
 }

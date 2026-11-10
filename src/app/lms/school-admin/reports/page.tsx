@@ -1,37 +1,17 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import {
-  Search,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Download,
-  BookOpen,
-  Users,
-  CheckSquare,
-  Square,
-  BarChart2,
-  FileText,
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Clock, Download, SquareCheckBig, Users, X } from "lucide-react";
 import { formatGradeSection } from "@/hooks/useTeacherData";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { toast } from "@/components/ui/toast";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import { initialsOf } from "@/components/portal/notifications";
+import { csvCell, downloadText } from "@/components/school-admin/student-utils";
+import ReportsRun, { type ReportDay } from "@/components/school-admin/reports/ReportsRun";
+import "@/components/school-admin/students.css";
+import "@/components/school-admin/teachers.css";
+import "@/components/school-admin/reports/reports.css";
 
 interface TeacherReport {
   id: string;
@@ -48,55 +28,48 @@ interface TeacherReport {
   created_at: string;
   approved_by?: string;
   approved_at?: string;
-  teacher: {
-    full_name: string;
-    email: string;
-  };
+  teacher: { full_name: string; email: string };
   // 'Reviewed' is set by a platform admin (via /admin/teacher-reports) as an
-  // in-between "looked at, not yet decided" state — still actionable here,
-  // same as 'Pending'.
+  // in-between "looked at, not yet decided" state: still actionable here, same as 'Pending'.
   status: "Pending" | "Reviewed" | "Approved" | "Rejected";
   class_name?: string;
 }
 
-type ReviewView = "inbox" | "history" | "all";
+interface ScheduleRow { teacher_id?: string; is_active?: boolean; period_id?: string }
+interface PeriodRow { id: string; start_time: string; end_time: string }
+interface TeacherRow { id: string; full_name: string; email: string }
 
-function isActionable(status: TeacherReport["status"]) {
-  return status === "Pending" || status === "Reviewed";
-}
+type View = "inbox" | "approved" | "rejected" | "all";
+type BulkAction = "approve" | "reject";
+
+const isActionable = (status: TeacherReport["status"]) => status === "Pending" || status === "Reviewed";
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function dateKey(iso: string): string {
   const m = String(iso).match(/^(\d{4}-\d{2}-\d{2})/);
-  if (m) return m[1];
-  return new Date(iso).toISOString().slice(0, 10);
+  return m ? m[1] : new Date(iso).toISOString().slice(0, 10);
+}
+
+function parseKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function formatDayLabel(key: string): string {
-  const [y, m, d] = key.split("-").map(Number);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  const target = new Date(y, m - 1, d);
-  target.setHours(0, 0, 0, 0);
+  const target = parseKey(key);
   if (target.getTime() === today.getTime()) return "Today";
   if (target.getTime() === yesterday.getTime()) return "Yesterday";
-  return target.toLocaleDateString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return target.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
 function shiftDateKey(key: string, delta: number): string {
-  const [y, m, d] = key.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
+  const date = parseKey(key);
   date.setDate(date.getDate() + delta);
-  const yy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function todayKey(): string {
@@ -104,43 +77,34 @@ function todayKey(): string {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
 }
 
+const hoursBetween = (p?: PeriodRow) => {
+  if (!p) return 0;
+  return (new Date(`2000-01-01T${p.end_time}`).getTime() - new Date(`2000-01-01T${p.start_time}`).getTime()) / 3_600_000;
+};
+
 export default function ReportsManagement() {
   const [reports, setReports] = useState<TeacherReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [reviewView, setReviewView] = useState<ReviewView>("inbox");
+  const [view, setView] = useState<View>("inbox");
+  const [tab, setTab] = useState<"reports" | "workload">("reports");
   const [teacherFilter, setTeacherFilter] = useState("all");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [focusDate, setFocusDate] = useState<string | null>(null);
-  const [selectedReports, setSelectedReports] = useState<string[]>([]);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [isBulkApproveOpen, setIsBulkApproveOpen] = useState(false);
-  const [isBulkRejectOpen, setIsBulkRejectOpen] = useState(false);
-  const [_schoolId, setSchoolId] = useState<string>("");
-  const [schedules, setSchedules] = useState<any[]>([]);
-  const [periods, setPeriods] = useState<any[]>([]);
-  const [teachers, setTeachers] = useState<any[]>([]);
-  const [reportStats, setReportStats] = useState({
-    total: 0,
-    pending: 0,
-    approved: 0,
-    rejected: 0,
-  });
-  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+  const [periods, setPeriods] = useState<PeriodRow[]>([]);
+  const [teachers, setTeachers] = useState<TeacherRow[]>([]);
+  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<TeacherReport | null>(null);
+  const [bulk, setBulk] = useState<BulkAction | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const loadReports = useCallback(async () => {
     try {
       setLoading(true);
-
-      try {
-        const schoolRes = await schoolAdminApi.school.get();
-        const schoolData = schoolRes.data ?? {};
-        const school = (schoolData as { school?: { id?: string } }).school;
-        if (school?.id) setSchoolId(school.id);
-      } catch (err) {
-        console.warn("Could not fetch school info:", err);
-      }
-
       const [reportsRes, schedulesRes, periodsRes, teachersRes] = await Promise.all([
         schoolAdminApi.reports.list({ limit: 500 }),
         schoolAdminApi.schedules.list(),
@@ -149,888 +113,433 @@ export default function ReportsManagement() {
       ]);
 
       const reportsData = reportsRes.data ?? {};
-      const reportsArray =
-        (reportsData as { reports?: unknown[] }).reports ??
-        (Array.isArray(reportsData) ? reportsData : []);
-      setReports(reportsArray as TeacherReport[]);
-      const stats = (
-        reportsData as {
-          stats?: { total: number; pending: number; approved: number; rejected: number };
-        }
-      ).stats;
-      setReportStats(stats ?? { total: 0, pending: 0, approved: 0, rejected: 0 });
+      setReports(((reportsData as { reports?: unknown[] }).reports ?? (Array.isArray(reportsData) ? reportsData : [])) as TeacherReport[]);
+      setStats((reportsData as { stats?: typeof stats }).stats ?? { total: 0, pending: 0, approved: 0, rejected: 0 });
 
       const schedulesData = schedulesRes.data ?? {};
-      setSchedules(
-        (schedulesData as { schedules?: any[] }).schedules ??
-          (Array.isArray(schedulesData) ? schedulesData : []),
-      );
-
+      setSchedules(((schedulesData as { schedules?: ScheduleRow[] }).schedules ?? (Array.isArray(schedulesData) ? schedulesData : [])) as ScheduleRow[]);
       const periodsData = periodsRes.data ?? {};
-      setPeriods(
-        (periodsData as { periods?: any[] }).periods ??
-          (Array.isArray(periodsData) ? periodsData : []),
-      );
+      setPeriods(((periodsData as { periods?: PeriodRow[] }).periods ?? (Array.isArray(periodsData) ? periodsData : [])) as PeriodRow[]);
 
+      type RawTeacher = {
+        id?: string;
+        teacher_id?: string;
+        full_name?: string;
+        email?: string;
+        profile?: { id?: string; full_name?: string; fullName?: string; email?: string };
+        teacher?: { full_name?: string; email?: string; profile_id?: string };
+      };
       const teachersData = teachersRes.data ?? {};
-      const rawTeachers =
-        (teachersData as { teachers?: any[] }).teachers ??
-        (Array.isArray(teachersData) ? teachersData : []);
-
-      const transformedTeachers = rawTeachers
-        .map((t: any) => {
-          const profile = t.profile || {};
-          const teacher = t.teacher || {};
-          return {
-            id: profile.id || t.teacher_id || (teacher as any).profile_id || t.id,
-            full_name:
-              t.full_name ||
-              profile.full_name ||
-              profile.fullName ||
-              teacher.full_name ||
-              "Unknown",
-            email: t.email || profile.email || teacher.email || "",
-          };
-        })
-        .filter((t: any) => t.id);
-
-      setTeachers(transformedTeachers);
+      const raw = ((teachersData as { teachers?: RawTeacher[] }).teachers ?? (Array.isArray(teachersData) ? teachersData : [])) as RawTeacher[];
+      setTeachers(
+        raw
+          .map((t) => {
+            const profile = t.profile ?? {};
+            const teacher = t.teacher ?? {};
+            return {
+              id: String(profile.id || t.teacher_id || teacher.profile_id || t.id || ""),
+              full_name: t.full_name || profile.full_name || profile.fullName || teacher.full_name || "Unknown",
+              email: t.email || profile.email || teacher.email || "",
+            };
+          })
+          .filter((t) => t.id),
+      );
     } catch (error) {
-      console.error("Error loading analytics data:", error);
+      console.error("Error loading reports:", error);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadReports();
+    void loadReports();
   }, [loadReports]);
 
-  const handleApproveReport = async (reportId: string) => {
+  /* ───────── decisions ───────── */
+  const decide = async (id: string, action: "approve" | "reject") => {
     try {
-      setActionBusyId(reportId);
-      await schoolAdminApi.reports.update(reportId, { action: "approve" });
-      setSelectedReports((prev) => prev.filter((id) => id !== reportId));
+      setBusyId(id);
+      await schoolAdminApi.reports.update(id, { action });
+      setSelected((prev) => prev.filter((x) => x !== id));
+      setRejecting(null);
       await loadReports();
-      toast.success("Report approved");
+      toast.success(action === "approve" ? "Report approved." : "Report rejected.");
     } catch (error) {
-      console.error("Error approving report:", error);
-      toast.error(
-        `Failed to approve report: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      toast.error(`Could not ${action} the report: ${error instanceof Error ? error.message : "Try again."}`);
     } finally {
-      setActionBusyId(null);
+      setBusyId(null);
     }
   };
 
-  const handleRejectReport = async (reportId: string) => {
+  const runBulk = async () => {
+    if (!bulk) return;
+    setBulkBusy(true);
     try {
-      setActionBusyId(reportId);
-      await schoolAdminApi.reports.update(reportId, { action: "reject" });
-      setSelectedReports((prev) => prev.filter((id) => id !== reportId));
+      const response = await schoolAdminApi.reports.bulk({ report_ids: selected, action: bulk });
+      const data = (response.data ?? {}) as { approved?: number };
+      const n = data.approved ?? selected.length;
+      toast.success(`${bulk === "approve" ? "Approved" : "Rejected"} ${plural(n, "report")}.`);
+      setSelected([]);
+      setBulk(null);
       await loadReports();
-      toast.success("Report rejected");
     } catch (error) {
-      console.error("Error rejecting report:", error);
-      toast.error(
-        `Failed to reject report: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      toast.error(`Could not ${bulk} the reports: ${error instanceof Error ? error.message : "Try again."}`);
     } finally {
-      setActionBusyId(null);
+      setBulkBusy(false);
     }
   };
 
-  const handleBulkApprove = async () => {
-    try {
-      const response = await schoolAdminApi.reports.bulk({
-        report_ids: selectedReports,
-        action: "approve",
-      });
-      const data = (response.data ?? {}) as { approved?: number };
-      toast.success(
-        `Successfully approved ${data.approved ?? selectedReports.length} report(s)`,
-      );
-      setSelectedReports([]);
-      setIsBulkApproveOpen(false);
-      await loadReports();
-    } catch (error) {
-      console.error("Error bulk approving reports:", error);
-      toast.error(
-        `Failed to approve reports: ${error instanceof Error ? error.message : "Please try again."}`,
-      );
-    }
-  };
-
-  const handleBulkReject = async () => {
-    try {
-      const response = await schoolAdminApi.reports.bulk({
-        report_ids: selectedReports,
-        action: "reject",
-      });
-      const data = (response.data ?? {}) as { approved?: number };
-      toast.success(
-        `Successfully rejected ${data.approved ?? selectedReports.length} report(s)`,
-      );
-      setSelectedReports([]);
-      setIsBulkRejectOpen(false);
-      await loadReports();
-    } catch (error) {
-      console.error("Error bulk rejecting reports:", error);
-      toast.error(
-        `Failed to reject reports: ${error instanceof Error ? error.message : "Please try again."}`,
-      );
-    }
-  };
-
-  const filteredReports = useMemo(() => {
-    return reports.filter((report: TeacherReport) => {
+  /* ───────── filtering ───────── */
+  const filtered = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    return reports.filter((r) => {
       const matchesSearch =
-        report.teacher.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        report.topics_taught.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (report.grade || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (report.section || "").toLowerCase().includes(searchTerm.toLowerCase());
-
+        r.teacher.full_name.toLowerCase().includes(q) ||
+        r.topics_taught.toLowerCase().includes(q) ||
+        (r.grade || "").toLowerCase().includes(q) ||
+        (r.section || "").toLowerCase().includes(q);
       const matchesView =
-        reviewView === "all"
-          ? true
-          : reviewView === "inbox"
-            ? isActionable(report.status)
-            : report.status === "Approved" || report.status === "Rejected";
-
-      const matchesTeacher = teacherFilter === "all" || report.teacher_id === teacherFilter;
-      const classLabel = formatGradeSection(report.grade, report.section);
-      const matchesGrade =
-        gradeFilter === "all" || classLabel === gradeFilter || report.grade === gradeFilter;
-      const matchesFocus = !focusDate || dateKey(report.date) === focusDate;
-
-      return matchesSearch && matchesView && matchesTeacher && matchesGrade && matchesFocus;
+        view === "all" ? true : view === "inbox" ? isActionable(r.status) : view === "approved" ? r.status === "Approved" : r.status === "Rejected";
+      const label = formatGradeSection(r.grade, r.section);
+      return (
+        matchesSearch &&
+        matchesView &&
+        (teacherFilter === "all" || r.teacher_id === teacherFilter) &&
+        (gradeFilter === "all" || label === gradeFilter || r.grade === gradeFilter) &&
+        (!focusDate || dateKey(r.date) === focusDate)
+      );
     });
-  }, [reports, searchTerm, reviewView, teacherFilter, gradeFilter, focusDate]);
+  }, [reports, searchTerm, view, teacherFilter, gradeFilter, focusDate]);
 
   const groupedByDate = useMemo(() => {
     const map = new Map<string, TeacherReport[]>();
-    for (const report of filteredReports) {
-      const key = dateKey(report.date);
+    for (const r of filtered) {
+      const key = dateKey(r.date);
       if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(report);
+      map.get(key)!.push(r);
     }
     for (const list of map.values()) {
-      list.sort((a, b) => {
-        const name = a.teacher.full_name.localeCompare(b.teacher.full_name);
-        if (name !== 0) return name;
-        return (a.grade || "").localeCompare(b.grade || "");
-      });
+      list.sort((a, b) => a.teacher.full_name.localeCompare(b.teacher.full_name) || (a.grade || "").localeCompare(b.grade || ""));
     }
     return [...map.entries()].sort(([a], [b]) => b.localeCompare(a));
-  }, [filteredReports]);
+  }, [filtered]);
 
-  const handleExportCSV = () => {
-    if (filteredReports.length === 0) {
-      toast.warning("No reports to export");
-      return;
-    }
-    const headers = [
-      "Teacher Name",
-      "Teacher Email",
-      "Date",
-      "Class",
-      "Topics Taught",
-      "Activities",
-      "Students",
-      "Duration (Hours)",
-      "Status",
-      "Notes",
-    ];
-    const rows = filteredReports.map((report: TeacherReport) => [
-      report.teacher.full_name || "Unknown",
-      report.teacher.email || "",
-      dateKey(report.date),
-      formatGradeSection(report.grade, report.section) || "N/A",
-      report.topics_taught || "",
-      report.activities || "",
-      report.student_count || 0,
-      report.duration_hours || 0,
-      report.status,
-      report.notes || "",
-    ]);
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((row: (string | number)[]) =>
-        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
-      ),
-    ].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    let filename = "teacher_reports";
-    if (focusDate) filename += `_${focusDate}`;
-    if (gradeFilter !== "all") filename += `_${gradeFilter}`;
-    filename += ".csv";
-    link.setAttribute("download", filename);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const actionable = filtered.filter((r) => isActionable(r.status));
+  const inbox = reports.filter((r) => isActionable(r.status));
+  const teacherOptions = useMemo(
+    () => [...new Map(reports.map((r) => [r.teacher_id, r.teacher.full_name || "Unknown"])).entries()].map(([id, name]) => ({ id, name })),
+    [reports],
+  );
+  const classOptions = useMemo(() => [...new Set(reports.map((r) => formatGradeSection(r.grade, r.section)).filter(Boolean))].sort(), [reports]);
 
-  const actionableInView = filteredReports.filter((r) => isActionable(r.status));
+  /* ───────── the week track ───────── */
+  const week: ReportDay[] = useMemo(() => {
+    const today = todayKey();
+    return Array.from({ length: 7 }, (_, i) => {
+      const key = shiftDateKey(today, i - 6);
+      const day = reports.filter((r) => dateKey(r.date) === key);
+      const d = parseKey(key);
+      return {
+        key,
+        label: `${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getDate()}`,
+        pending: day.filter((r) => isActionable(r.status)).length,
+        total: day.length,
+      };
+    });
+  }, [reports]);
+  const olderWaiting = inbox.filter((r) => dateKey(r.date) < week[0].key).length;
+  const oldestWaiting = inbox.length ? inbox.map((r) => dateKey(r.date)).sort()[0] : null;
 
-  const handleSelectReport = (reportId: string) => {
-    setSelectedReports((prev) =>
-      prev.includes(reportId) ? prev.filter((id: string) => id !== reportId) : [...prev, reportId],
-    );
-  };
-
-  const handleSelectAllVisible = () => {
-    if (
-      selectedReports.length === actionableInView.length &&
-      actionableInView.every((r) => selectedReports.includes(r.id))
-    ) {
-      setSelectedReports([]);
-    } else {
-      setSelectedReports(actionableInView.map((r) => r.id));
-    }
-  };
-
-  const toggleExpanded = (id: string) => {
-    setExpandedIds((prev) => {
+  /* ───────── selection ───────── */
+  const toggleSelect = (id: string) => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const allSelected = actionable.length > 0 && actionable.every((r) => selected.includes(r.id));
+  const toggleAll = () => setSelected(allSelected ? [] : actionable.map((r) => r.id));
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  const changeView = (v: View) => {
+    setView(v);
+    setSelected([]);
   };
 
-  const getTeachers = () => {
-    const ids = [...new Set(reports.map((r: TeacherReport) => r.teacher_id))];
-    return ids.map((teacherId: string) => {
-      const report = reports.find((r: TeacherReport) => r.teacher_id === teacherId);
-      return {
-        id: teacherId,
-        name: report?.teacher.full_name || "Unknown",
-      };
-    });
+  /* ───────── export ───────── */
+  const handleExportCSV = () => {
+    if (filtered.length === 0) {
+      toast.warning("There are no reports to export.");
+      return;
+    }
+    const headers = ["Teacher name", "Teacher email", "Date", "Class", "Topics taught", "Activities", "Students", "Duration (hours)", "Status", "Notes"];
+    const rows = filtered.map((r) => [
+      r.teacher.full_name || "Unknown",
+      r.teacher.email || "",
+      dateKey(r.date),
+      formatGradeSection(r.grade, r.section) || "N/A",
+      r.topics_taught || "",
+      r.activities || "",
+      r.student_count || 0,
+      r.duration_hours || 0,
+      r.status,
+      r.notes || "",
+    ]);
+    let filename = "teacher_reports";
+    if (focusDate) filename += `_${focusDate}`;
+    if (gradeFilter !== "all") filename += `_${gradeFilter}`;
+    downloadText(`${filename}.csv`, [headers.join(","), ...rows.map((row) => row.map(csvCell).join(","))].join("\n"));
   };
 
-  const getGrades = () => {
-    return [
-      ...new Set(
-        reports.map((r: TeacherReport) => formatGradeSection(r.grade, r.section)).filter(Boolean),
-      ),
-    ].sort();
+  /* ───────── workload ───────── */
+  const activeSchedules = schedules.filter((s) => s.is_active);
+  const scheduledHours = activeSchedules.reduce((acc, s) => acc + hoursBetween(periods.find((p) => p.id === s.period_id)), 0);
+  const avgLoad = scheduledHours / (teachers.length || 1);
+  const workloadFor = (teacherId: string) => {
+    const mine = activeSchedules.filter((s) => s.teacher_id === teacherId);
+    const hours = mine.reduce((acc, s) => acc + hoursBetween(periods.find((p) => p.id === s.period_id)), 0);
+    return { hours, periods: mine.length, level: hours > 30 ? "over" : hours > 24 ? "high" : "ok" };
   };
 
-  const calculateDuration = (p: any) => {
-    if (!p) return 0;
-    const s = new Date(`2000-01-01T${p.start_time}`);
-    const e = new Date(`2000-01-01T${p.end_time}`);
-    return (e.getTime() - s.getTime()) / (1000 * 60 * 60);
-  };
-
-  const getTeacherWorkload = (teacherId: string) => {
-    const teacherSchedules = schedules.filter((s) => s.teacher_id === teacherId && s.is_active);
-    const totalHours = teacherSchedules.reduce((acc, s) => {
-      const p = periods.find((per) => per.id === s.period_id);
-      return acc + calculateDuration(p);
-    }, 0);
-
-    return {
-      hours: totalHours,
-      periods: teacherSchedules.length,
-      status: totalHours > 30 ? "Overloaded" : totalHours > 24 ? "High" : "Normal",
-      statusColor:
-        totalHours > 30
-          ? "bg-red-100 text-red-700"
-          : totalHours > 24
-            ? "bg-orange-100 text-orange-700"
-            : "bg-green-100 text-green-700",
-    };
-  };
-
-  const stats = reportStats;
-  const inboxCount = reports.filter((r) => isActionable(r.status)).length;
-
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" />
-        </div>
-      </div>
+  /* ───────── copy ───────── */
+  let status: React.ReactNode;
+  if (loading) status = "Loading reports…";
+  else if (inbox.length === 0) status = reports.length === 0 ? "No teaching reports yet. They show up here when teachers submit them." : "Nothing is waiting for your review.";
+  else {
+    status = (
+      <>
+        <strong>{plural(inbox.length, "report")}</strong> {inbox.length === 1 ? "needs" : "need"} your review.
+        {oldestWaiting ? <> The oldest is from {formatDayLabel(oldestWaiting).toLowerCase() === "today" ? "today" : formatDayLabel(oldestWaiting)}.</> : null}
+      </>
     );
   }
 
+  const ledger: { id: View; label: string; value: number; hint: string }[] = [
+    { id: "inbox", label: "Needs review", value: inbox.length, hint: "Waiting for a decision" },
+    { id: "approved", label: "Approved", value: stats.approved, hint: "Accepted as written" },
+    { id: "rejected", label: "Rejected", value: stats.rejected, hint: "Sent back" },
+    { id: "all", label: "All reports", value: stats.total, hint: "Everything submitted" },
+  ];
+
   return (
-    <div className="p-8 pb-28">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Teacher Reports</h1>
-        <p className="mt-1 text-gray-600">
-          Review daily teaching reports and approve what looks right
-        </p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="rp-title">
+        <div className="sd-hero-copy">
+          <h1 id="rp-title" className="mc-hero-title">Teacher reports</h1>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            {actionable.length > 0 && tab === "reports" && view === "inbox" && (
+              <button className="sd-btn sd-btn--amber" onClick={toggleAll}>
+                <SquareCheckBig aria-hidden="true" />{allSelected ? "Clear selection" : `Select all ${actionable.length}`}
+              </button>
+            )}
+            <button className="sd-btn sd-btn--ghost-dark" onClick={handleExportCSV}><Download aria-hidden="true" />Export</button>
+          </div>
+        </div>
+        <ReportsRun days={week} focus={focusDate} onFocus={(k) => { setFocusDate(k); setTab("reports"); }} waiting={inbox.length} older={olderWaiting} />
+      </section>
+
+      <div className="mc-tabs" role="tablist" aria-label="Reports and workload" style={{ justifySelf: "start" }}>
+        <button role="tab" className="mc-tab" aria-selected={tab === "reports"} onClick={() => setTab("reports")}>Daily reports{inbox.length > 0 && <b>{inbox.length}</b>}</button>
+        <button role="tab" className="mc-tab" aria-selected={tab === "workload"} onClick={() => setTab("workload")}>Workload</button>
       </div>
 
-      <Tabs defaultValue="reports" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="reports">
-            <FileText className="mr-2 h-4 w-4" />
-            Daily Reports
-            {inboxCount > 0 && (
-              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                {inboxCount}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="analytics">
-            <BarChart2 className="mr-2 h-4 w-4" />
-            Workload Analytics
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="reports" className="space-y-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
-              {(
-                [
-                  { id: "inbox" as const, label: "Needs review", count: inboxCount },
-                  {
-                    id: "history" as const,
-                    label: "History",
-                    count: stats.approved + stats.rejected,
-                  },
-                  { id: "all" as const, label: "All", count: stats.total },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setReviewView(tab.id);
-                    setSelectedReports([]);
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    reviewView === tab.id
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600 hover:text-gray-900"
-                  }`}
-                >
-                  {tab.label}
-                  <span
-                    className={`ml-1.5 tabular-nums ${
-                      reviewView === tab.id ? "text-gray-300" : "text-gray-400"
-                    }`}
-                  >
-                    {tab.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() => setFocusDate((prev) => shiftDateKey(prev || todayKey(), -1))}
-                aria-label="Previous day"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Input
-                type="date"
-                value={focusDate || ""}
-                onChange={(e) => setFocusDate(e.target.value || null)}
-                className="h-9 w-[160px]"
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() => setFocusDate((prev) => shiftDateKey(prev || todayKey(), 1))}
-                aria-label="Next day"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              {focusDate ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 text-gray-600"
-                  onClick={() => setFocusDate(null)}
-                >
-                  Clear day
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 text-gray-600"
-                  onClick={() => setFocusDate(todayKey())}
-                >
-                  Today
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:flex-row sm:items-center">
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder="Search teacher, topic, or class…"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-9 border-0 bg-transparent pl-9 shadow-none focus-visible:ring-0"
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={teacherFilter} onValueChange={setTeacherFilter}>
-                <SelectTrigger className="h-9 w-[160px]">
-                  <SelectValue placeholder="Teacher" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All teachers</SelectItem>
-                  {getTeachers().map((teacher: { id: string; name: string }) => (
-                    <SelectItem key={teacher.id} value={teacher.id}>
-                      {teacher.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={gradeFilter} onValueChange={setGradeFilter}>
-                <SelectTrigger className="h-9 w-[150px]">
-                  <SelectValue placeholder="Class" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All classes</SelectItem>
-                  {getGrades().map((grade: string) => (
-                    <SelectItem key={grade} value={grade}>
-                      {grade}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" className="h-9" onClick={handleExportCSV}>
-                <Download className="mr-1.5 h-4 w-4" />
-                Export
-              </Button>
-            </div>
-          </div>
-
-          {groupedByDate.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-200 bg-white py-16 text-center text-gray-500">
-              {reviewView === "inbox" ? (
-                <>
-                  <CheckCircle className="mx-auto mb-3 h-10 w-10 text-green-500" />
-                  <p className="text-lg font-medium text-gray-800">All caught up</p>
-                  <p className="mt-1 text-sm">
-                    {focusDate
-                      ? `No reports need review for ${formatDayLabel(focusDate)}.`
-                      : "No pending teaching reports right now."}
-                  </p>
-                  {(stats.approved > 0 || stats.rejected > 0) && (
-                    <Button
-                      variant="link"
-                      className="mt-2"
-                      onClick={() => setReviewView("history")}
-                    >
-                      View history
-                    </Button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <BookOpen className="mx-auto mb-3 h-10 w-10 text-gray-300" />
-                  <p className="text-lg font-medium text-gray-800">No reports found</p>
-                  <p className="mt-1 text-sm">Try another day or clear filters</p>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-8">
-              {groupedByDate.map(([day, dayReports]) => {
-                const pendingInDay = dayReports.filter((r) => isActionable(r.status)).length;
-                return (
-                  <section key={day} className="space-y-3">
-                    <div className="flex items-baseline justify-between gap-3 border-b border-gray-100 pb-2">
-                      <div>
-                        <h2 className="text-base font-semibold text-gray-900">
-                          {formatDayLabel(day)}
-                        </h2>
-                        <p className="text-xs text-gray-500">
-                          {dayReports.length} report{dayReports.length === 1 ? "" : "s"}
-                          {pendingInDay > 0 ? ` · ${pendingInDay} awaiting approval` : ""}
-                        </p>
-                      </div>
-                      {pendingInDay > 0 && reviewView !== "history" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs text-gray-600"
-                          onClick={() => {
-                            const ids = dayReports
-                              .filter((r) => isActionable(r.status))
-                              .map((r) => r.id);
-                            const allSelected = ids.every((id) => selectedReports.includes(id));
-                            setSelectedReports((prev) =>
-                              allSelected
-                                ? prev.filter((id) => !ids.includes(id))
-                                : [...new Set([...prev, ...ids])],
-                            );
-                          }}
-                        >
-                          Select day
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      {dayReports.map((report) => {
-                        const expanded = expandedIds.has(report.id);
-                        const actionable = isActionable(report.status);
-                        const selected = selectedReports.includes(report.id);
-                        const busy = actionBusyId === report.id;
-                        const classLabel =
-                          formatGradeSection(report.grade, report.section) || "N/A";
-
-                        return (
-                          <div
-                            key={report.id}
-                            className={`rounded-lg border bg-white transition-colors ${
-                              selected
-                                ? "border-blue-300 bg-blue-50/40"
-                                : actionable
-                                  ? "border-amber-200/80"
-                                  : "border-gray-200"
-                            }`}
-                          >
-                            <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                              <div className="flex min-w-0 flex-1 gap-3">
-                                {actionable ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSelectReport(report.id)}
-                                    className="mt-0.5 shrink-0 text-gray-500 hover:text-gray-800"
-                                    aria-label={selected ? "Deselect report" : "Select report"}
-                                  >
-                                    {selected ? (
-                                      <CheckSquare className="h-5 w-5 text-blue-600" />
-                                    ) : (
-                                      <Square className="h-5 w-5" />
-                                    )}
-                                  </button>
-                                ) : (
-                                  <div className="mt-0.5 w-5 shrink-0" />
-                                )}
-
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                    <span className="font-medium text-gray-900">
-                                      {report.teacher.full_name}
-                                    </span>
-                                    <span className="text-gray-300">·</span>
-                                    <span className="text-sm text-gray-600">{classLabel}</span>
-                                    {!actionable && (
-                                      <Badge
-                                        variant={
-                                          report.status === "Rejected" ? "destructive" : "secondary"
-                                        }
-                                        className={
-                                          report.status === "Approved"
-                                            ? "bg-green-50 text-green-800 hover:bg-green-50"
-                                            : undefined
-                                        }
-                                      >
-                                        {report.status}
-                                      </Badge>
-                                    )}
-                                    {report.status === "Reviewed" && (
-                                      <Badge variant="outline" className="text-amber-700">
-                                        Reviewed
-                                      </Badge>
-                                    )}
-                                  </div>
-
-                                  <p
-                                    className={`mt-1 text-sm text-gray-800 ${
-                                      expanded ? "" : "line-clamp-2"
-                                    }`}
-                                  >
-                                    {report.topics_taught || "No topics listed"}
-                                  </p>
-
-                                  {(report.activities || report.notes) && expanded && (
-                                    <div className="mt-2 space-y-1 text-sm text-gray-600">
-                                      {report.activities && (
-                                        <p>
-                                          <span className="font-medium text-gray-700">
-                                            Activities:{" "}
-                                          </span>
-                                          {report.activities}
-                                        </p>
-                                      )}
-                                      {report.notes && (
-                                        <p>
-                                          <span className="font-medium text-gray-700">Notes: </span>
-                                          {report.notes}
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                                    <span className="inline-flex items-center gap-1">
-                                      <Users className="h-3.5 w-3.5" />
-                                      {report.student_count} students
-                                    </span>
-                                    <span className="inline-flex items-center gap-1">
-                                      <Clock className="h-3.5 w-3.5" />
-                                      {Number(report.duration_hours || 0).toFixed(2)}h
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleExpanded(report.id)}
-                                      className="inline-flex items-center gap-0.5 text-gray-600 hover:text-gray-900"
-                                    >
-                                      {expanded ? (
-                                        <>
-                                          Less <ChevronUp className="h-3.5 w-3.5" />
-                                        </>
-                                      ) : (
-                                        <>
-                                          Details <ChevronDown className="h-3.5 w-3.5" />
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {actionable && (
-                                <div className="flex shrink-0 items-center gap-2 sm:pl-2">
-                                  <Button
-                                    size="sm"
-                                    disabled={busy}
-                                    className="bg-green-600 hover:bg-green-700"
-                                    onClick={() => handleApproveReport(report.id)}
-                                  >
-                                    <CheckCircle className="mr-1.5 h-4 w-4" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={busy}
-                                    className="border-red-200 text-red-700 hover:bg-red-50"
-                                    onClick={() => handleRejectReport(report.id)}
-                                  >
-                                    <XCircle className="mr-1.5 h-4 w-4" />
-                                    Reject
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          )}
-
-          {selectedReports.length > 0 && (
-            <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-lg">
-              <button
-                type="button"
-                onClick={handleSelectAllVisible}
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                {selectedReports.length} selected
+      {tab === "reports" ? (
+        <>
+          <div className="sd-ledger" role="group" aria-label="Show reports by status">
+            {ledger.map((b) => (
+              <button key={b.id} type="button" aria-pressed={view === b.id} onClick={() => changeView(b.id)}>
+                <span className="sd-l">{b.label}</span>
+                {loading ? <span className="sd-skel" style={{ height: "2.2rem", width: "3.5rem" }} /> : <b className="sd-n">{b.value}</b>}
+                <small>{b.hint}</small>
               </button>
-              <div className="h-4 w-px bg-gray-200" />
-              <Dialog open={isBulkApproveOpen} onOpenChange={setIsBulkApproveOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                    <CheckSquare className="mr-1.5 h-4 w-4" />
-                    Approve
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Approve selected reports</DialogTitle>
-                    <DialogDescription>
-                      Approve {selectedReports.length} teaching report
-                      {selectedReports.length === 1 ? "" : "s"}?
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsBulkApproveOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleBulkApprove}>Approve all</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-              <Dialog open={isBulkRejectOpen} onOpenChange={setIsBulkRejectOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-red-200 text-red-700 hover:bg-red-50"
-                  >
-                    <XCircle className="mr-1.5 h-4 w-4" />
-                    Reject
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Reject selected reports</DialogTitle>
-                    <DialogDescription>
-                      Reject {selectedReports.length} teaching report
-                      {selectedReports.length === 1 ? "" : "s"}?
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsBulkRejectOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button variant="destructive" onClick={handleBulkReject}>
-                      Reject all
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-              <Button size="sm" variant="ghost" onClick={() => setSelectedReports([])}>
-                Clear
-              </Button>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="analytics" className="space-y-6">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Scheduled Hours</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {schedules
-                    .filter((s) => s.is_active)
-                    .reduce((acc, s) => {
-                      const p = periods.find((per) => per.id === s.period_id);
-                      return acc + calculateDuration(p);
-                    }, 0)
-                    .toFixed(1)}
-                  h
-                </div>
-                <p className="text-xs text-muted-foreground">Total weekly capacity</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Teachers</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{teachers.length}</div>
-                <p className="text-xs text-muted-foreground">Currently assigned</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Average Load</CardTitle>
-                <BarChart2 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {(
-                    schedules
-                      .filter((s) => s.is_active)
-                      .reduce((acc, s) => {
-                        const p = periods.find((per) => per.id === s.period_id);
-                        return acc + calculateDuration(p);
-                      }, 0) / (teachers.length || 1)
-                  ).toFixed(1)}
-                  h
-                </div>
-                <p className="text-xs text-muted-foreground">Per teacher per week</p>
-              </CardContent>
-            </Card>
+            ))}
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Teacher Workload & Capacity</CardTitle>
-              <CardDescription>
-                Live analytics pulled from the weekly class schedule
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Teacher</TableHead>
-                    <TableHead>Total Periods</TableHead>
-                    <TableHead>Weekly Hours</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Schedule Coverage</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {teachers.map((teacher) => {
-                    const workload = getTeacherWorkload(teacher.id);
-                    const coverage = Math.min(
-                      100,
-                      Math.round(
-                        (reports.filter(
-                          (r) => r.teacher_id === teacher.id && r.status === "Approved",
-                        ).length /
-                          Math.max(1, workload.periods)) *
-                          100,
-                      ),
-                    );
+          <div className="rp-bar">
+            <input type="search" className="sd-field" placeholder="Search teacher, topic or class" aria-label="Search reports" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <select className="sd-field" aria-label="Teacher" value={teacherFilter} onChange={(e) => setTeacherFilter(e.target.value)}>
+              <option value="all">All teachers</option>
+              {teacherOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <select className="sd-field" aria-label="Class" value={gradeFilter} onChange={(e) => setGradeFilter(e.target.value)}>
+              <option value="all">All classes</option>
+              {classOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+            <div className="rp-daynav" role="group" aria-label="Pick a day">
+              <button className="pl-ico" onClick={() => setFocusDate((p) => shiftDateKey(p || todayKey(), -1))} aria-label="Previous day"><ChevronLeft /></button>
+              <input type="date" className="sd-field" aria-label="Day" value={focusDate || ""} onChange={(e) => setFocusDate(e.target.value || null)} />
+              <button className="pl-ico" onClick={() => setFocusDate((p) => shiftDateKey(p || todayKey(), 1))} aria-label="Next day"><ChevronRight /></button>
+              {focusDate ? (
+                <button className="sd-btn sd-btn--line" onClick={() => setFocusDate(null)}>All days</button>
+              ) : (
+                <button className="sd-btn sd-btn--line" onClick={() => setFocusDate(todayKey())}>Today</button>
+              )}
+            </div>
+          </div>
 
+          {loading ? (
+            <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : groupedByDate.length === 0 ? (
+            <section className="sd-panel">
+              <div className="sd-empty">
+                <b>{view === "inbox" ? "All caught up" : "No reports found"}</b>
+                <p>
+                  {view === "inbox"
+                    ? focusDate ? `No reports need review for ${formatDayLabel(focusDate)}.` : "No teaching reports are waiting for you right now."
+                    : "Try another day, or clear the filters."}
+                </p>
+                {view === "inbox" && (stats.approved > 0 || stats.rejected > 0) && (
+                  <button className="sd-btn sd-btn--line" onClick={() => changeView("all")}>See all reports</button>
+                )}
+              </div>
+            </section>
+          ) : (
+            groupedByDate.map(([day, list]) => {
+              const waiting = list.filter((r) => isActionable(r.status));
+              const ids = waiting.map((r) => r.id);
+              const daySelected = ids.length > 0 && ids.every((id) => selected.includes(id));
+              return (
+                <section key={day} className="sd-panel as-list mc-swap" aria-label={formatDayLabel(day)}>
+                  <p className="as-group">
+                    {formatDayLabel(day)}
+                    <span>{plural(list.length, "report")}{waiting.length > 0 ? `, ${waiting.length} awaiting approval` : ""}</span>
+                    {waiting.length > 0 && view !== "approved" && view !== "rejected" && (
+                      <button className="sm-reset" style={{ marginLeft: "auto", color: "var(--sd-blue-deep)" }} onClick={() => setSelected((prev) => (daySelected ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]))}>
+                        {daySelected ? "Unselect day" : "Select day"}
+                      </button>
+                    )}
+                  </p>
+                  {list.map((r) => {
+                    const canAct = isActionable(r.status);
+                    const open = expanded.has(r.id);
+                    const isSel = selected.includes(r.id);
+                    const label = formatGradeSection(r.grade, r.section) || "N/A";
+                    const busy = busyId === r.id;
                     return (
-                      <TableRow key={teacher.id}>
-                        <TableCell className="font-medium">{teacher.full_name}</TableCell>
-                        <TableCell>{workload.periods} Periods</TableCell>
-                        <TableCell className="font-mono">{workload.hours.toFixed(1)}h</TableCell>
-                        <TableCell>
-                          <Badge className={workload.statusColor}>{workload.status}</Badge>
-                        </TableCell>
-                        <TableCell className="w-[200px]">
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[10px]">
-                              <span>Report Compliance</span>
-                              <span>{coverage}%</span>
-                            </div>
-                            <Progress value={coverage} className="h-1.5" />
+                      <article key={r.id} className="rp-row" data-pending={canAct} data-selected={isSel}>
+                        {canAct ? (
+                          <input type="checkbox" className="sm-check" checked={isSel} onChange={() => toggleSelect(r.id)} aria-label={`Select ${r.teacher.full_name}, ${label}`} />
+                        ) : <span className="rp-spacer" />}
+                        <span className="sd-avatar" aria-hidden="true">{initialsOf(r.teacher.full_name)}</span>
+                        <div className="rp-main">
+                          <div className="rp-top">
+                            <b>{r.teacher.full_name}</b>
+                            <span className="sm-chip" data-class="true">{label}</span>
+                            {r.status === "Approved" && <span className="sm-chip" data-tone="done">Approved</span>}
+                            {r.status === "Rejected" && <span className="sm-chip" data-tone="red">Rejected</span>}
+                            {r.status === "Reviewed" && <span className="sm-chip">Looked at by the main admin</span>}
                           </div>
-                        </TableCell>
-                      </TableRow>
+                          <p className="rp-topics" data-clamp={!open}>{r.topics_taught || "No topics listed"}</p>
+                          {open && (r.activities || r.notes) && (
+                            <div className="rp-extra">
+                              {r.activities && <p><b>Activities: </b>{r.activities}</p>}
+                              {r.notes && <p><b>Notes: </b>{r.notes}</p>}
+                            </div>
+                          )}
+                          <div className="rp-meta">
+                            <span><Users aria-hidden="true" />{plural(r.student_count, "student")}</span>
+                            <span><Clock aria-hidden="true" />{Number(r.duration_hours || 0).toFixed(2)} hours</span>
+                            {(r.activities || r.notes || (r.topics_taught || "").length > 110) && (
+                              <button className="nt-more" onClick={() => toggleExpanded(r.id)} aria-expanded={open}>{open ? "Show less" : "Show details"}</button>
+                            )}
+                          </div>
+                        </div>
+                        {canAct && (
+                          <div className="rp-acts">
+                            <button className="sd-btn sd-btn--line tm-reject" disabled={busy} onClick={() => setRejecting(r)}><X aria-hidden="true" />Reject</button>
+                            <button className="sd-btn sd-btn--amber" disabled={busy} onClick={() => void decide(r.id, "approve")}><Check aria-hidden="true" />Approve</button>
+                          </div>
+                        )}
+                      </article>
                     );
                   })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          {teachers.length === 0 && (
-            <div className="rounded-lg border-2 border-dashed py-12 text-center">
-              <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-gray-300" />
-              <p className="text-gray-500">
-                No teacher workload data available. Ensure schedules are created.
-              </p>
-            </div>
+                </section>
+              );
+            })
           )}
-        </TabsContent>
-      </Tabs>
+        </>
+      ) : (
+        <>
+          <div className="sd-ledger" data-cols="3">
+            <div><span className="sd-l">Scheduled hours</span><b className="sd-n">{scheduledHours.toFixed(1)}h</b><small>Total weekly teaching</small></div>
+            <div><span className="sd-l">Teachers</span><b className="sd-n">{teachers.length}</b><small>Assigned to your school</small></div>
+            <div><span className="sd-l">Average load</span><b className="sd-n">{avgLoad.toFixed(1)}h</b><small>Per teacher, per week</small></div>
+          </div>
+          {loading ? (
+            <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : teachers.length === 0 ? (
+            <section className="sd-panel"><div className="sd-empty"><b>No workload yet</b><p>Add classes to the timetable and each teacher&apos;s week shows up here.</p></div></section>
+          ) : (
+            <section className="sd-panel as-list mc-swap" aria-label="Teacher workload and report compliance">
+              <div className="rp-wl-head"><span>Teacher</span><span>Classes</span><span>Weekly load</span><span>Report coverage</span></div>
+              {teachers.map((t) => {
+                const w = workloadFor(t.id);
+                const approved = reports.filter((r) => r.teacher_id === t.id && r.status === "Approved").length;
+                const coverage = Math.min(100, Math.round((approved / Math.max(1, w.periods)) * 100));
+                return (
+                  <article key={t.id} className="rp-wl">
+                    <div className="rp-person"><span className="sd-avatar" aria-hidden="true">{initialsOf(t.full_name)}</span><span><b>{t.full_name}</b><small>{t.email}</small></span></div>
+                    <b className="rp-count">{w.periods}<small>{w.periods === 1 ? "class" : "classes"}</small></b>
+                    <div className="rp-load" data-level={w.level}>
+                      <b>{w.hours.toFixed(1)}h</b>
+                      <i className="tm-bar"><u style={{ width: `${Math.min(100, (w.hours / 30) * 100)}%` }} /></i>
+                      <small>{w.level === "over" ? "Over the limit" : w.level === "high" ? "Heavy" : "Fine"}</small>
+                    </div>
+                    <div className="rp-comp">
+                      {w.periods === 0 ? (
+                        <span>No classes scheduled yet</span>
+                      ) : (
+                        <>
+                          <span>{plural(approved, "approved report")} for {plural(w.periods, "weekly class", "weekly classes")}<b>{coverage}%</b></span>
+                          <i className="tm-bar"><u style={{ width: `${coverage}%` }} /></i>
+                        </>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          )}
+        </>
+      )}
+
+      {selected.length > 0 && tab === "reports" && (
+        <div className="rp-bulk" role="region" aria-label="Selected reports">
+          <button className="rp-sel" onClick={toggleAll}><b>{selected.length} selected</b></button>
+          <button className="sd-btn sd-btn--amber" onClick={() => setBulk("approve")}><Check aria-hidden="true" />Approve</button>
+          <button className="sd-btn sd-btn--line" onClick={() => setBulk("reject")}><X aria-hidden="true" />Reject</button>
+          <button className="sd-btn sd-btn--line" onClick={() => setSelected([])}>Clear</button>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={!!rejecting}
+        onClose={() => setRejecting(null)}
+        busy={!!rejecting && busyId === rejecting.id}
+        danger
+        title="Reject this report?"
+        subtitle={rejecting ? `${rejecting.teacher.full_name}'s report for ${formatDayLabel(dateKey(rejecting.date))} will be rejected.` : undefined}
+        confirmLabel="Reject report"
+        onConfirm={() => rejecting && void decide(rejecting.id, "reject")}
+      >
+        <p>The teacher will see that it was rejected.</p>
+      </ConfirmModal>
+
+      <ConfirmModal
+        open={!!bulk}
+        onClose={() => setBulk(null)}
+        busy={bulkBusy}
+        danger={bulk === "reject"}
+        title={`${bulk === "reject" ? "Reject" : "Approve"} ${plural(selected.length, "report")}?`}
+        subtitle={bulk === "reject" ? "The teachers will see that these were rejected." : "These will be marked as approved."}
+        confirmLabel={bulk === "reject" ? "Reject all" : "Approve all"}
+        onConfirm={() => void runBulk()}
+      >
+        <p>
+          From {plural(new Set(reports.filter((r) => selected.includes(r.id)).map((r) => r.teacher_id)).size, "teacher")}, across {plural(new Set(reports.filter((r) => selected.includes(r.id)).map((r) => dateKey(r.date))).size, "day")}.
+        </p>
+      </ConfirmModal>
     </div>
   );
 }

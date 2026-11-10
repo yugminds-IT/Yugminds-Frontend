@@ -1,0 +1,57 @@
+/* Admin school admins. Needs portal.css, school-admin/overview.css (hero meta), school-admin/students.css (sm- chips, forms),
+   school-admin/teachers.css (tm- track nodes) and teacher/overview/overview.css loaded first. */
+
+.sa-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.sa-bar select.sd-field { width: auto; min-width: 10rem; padding-block: 0.6rem; }
+.sa-hot .sd-n { color: var(--sd-late); }
+
+.sa-list { padding: 0; overflow: hidden; }
+.sa-head, .sa-row { display: grid; grid-template-columns: 1.5rem 2.5rem minmax(0, 1.5fr) minmax(0, 1.2fr) 8.5rem minmax(7.5rem, 0.8fr) 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.sa-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.sa-row { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
+.sa-row:last-of-type { border-bottom: 0; }
+@media (hover: hover) { .sa-row:hover { background: var(--sd-wash); } }
+.sa-row[data-picked="true"] { background: rgb(251 191 36 / 0.14); }
+.sa-row[data-off="true"] .sa-who b { color: var(--sd-ink-soft); }
+.sa-row .sd-avatar { width: 2.5rem; height: 2.5rem; }
+.sa-check { width: 1.15rem; height: 1.15rem; accent-color: var(--sd-ink); cursor: pointer; }
+.sa-who, .sa-school { display: grid; min-width: 0; }
+.sa-who b, .sa-school b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.sa-who small, .sa-school small, .sa-seen small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.sa-school b { font-size: 0.95rem; }
+.sa-status { display: flex; align-items: center; gap: 0.6rem; font: 600 0.9rem/1.2 var(--sd-body); }
+.sa-status .st-switch { width: 2.7rem; height: 1.6rem; }
+.sa-status .st-switch::after { width: 1rem; height: 1rem; }
+.sa-status .st-switch[aria-checked="true"]::after { translate: 1.1rem -50%; }
+.sa-seen { display: grid; min-width: 0; justify-items: start; gap: 0.15rem; font-size: 0.93rem; }
+
+.sa-gaps { display: grid; }
+.sa-gap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.9rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); }
+.sa-gap:last-child { border-bottom: 0; }
+.sa-gap > span { display: grid; min-width: 0; }
+.sa-gap b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.sa-gap small { font-size: 0.85rem; color: var(--sd-ink-soft); }
+
+.sa-selbar { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; padding: 0.7rem 1rem; border: 1.5px solid var(--sd-ink); border-radius: 1.1rem; background: var(--sd-paper); box-shadow: 0 0.75rem 2rem rgb(11 27 58 / 0.18); }
+.sa-selbar b { font: 800 1.05rem/1 var(--sd-display); }
+.sa-selbar > div { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.sa-selbar .sd-btn { min-height: 2.25rem; padding-inline: 1rem; }
+.sa-names { max-height: 10rem; margin: 0.5rem 0 0; padding-left: 1.2rem; overflow-y: auto; font-size: 0.95rem; color: var(--sd-ink-soft); }
+
+/* Forms in modals */
+.sa-pwrow { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.sa-pwrow .sd-btn { min-height: 2.25rem; padding-inline: 1rem; }
+.sa-form-note { font-size: 0.9rem; color: var(--sd-ink-soft); }
+
+@media (max-width: 1100px) {
+  .sa-head { display: none; }
+  .sa-row { grid-template-columns: 1.5rem 2.5rem minmax(0, 1fr) 2.25rem; grid-template-areas: "ck av who go" ". . school school" ". . status status" ". . seen seen"; gap: 0.4rem 0.8rem; }
+  .sa-row > .sa-check { grid-area: ck; }
+  .sa-row > .sd-avatar { grid-area: av; }
+  .sa-row > .sa-who { grid-area: who; }
+  .sa-row > .sa-school { grid-area: school; }
+  .sa-row > .sa-status { grid-area: status; }
+  .sa-row > .sa-seen { grid-area: seen; }
+  .sa-row > .sa-menu { grid-area: go; }
+}
+@media (prefers-reduced-motion: reduce) { .sa-row { transition: none; } }

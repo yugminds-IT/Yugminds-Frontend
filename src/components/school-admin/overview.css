@@ -1,0 +1,83 @@
+/* School-admin overview. Needs portal.css (tokens + primitives) loaded first. */
+
+.so-live { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: var(--sd-navy-soft); }
+.so-live i { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--sd-navy-line); }
+.so-live[data-on="true"] i { background: var(--sd-amber); }
+.so-meta { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.25rem; }
+.so-refresh { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 1.5px solid var(--sd-navy-line); border-radius: 50%; background: transparent; color: var(--sd-paper); cursor: pointer; transition: background-color 0.2s ease, transform 160ms var(--sd-ease); }
+.so-refresh:active { transform: scale(0.94); }
+.so-refresh svg { width: 1.05rem; height: 1.05rem; }
+.so-refresh:disabled { cursor: progress; opacity: 0.7; }
+@media (hover: hover) { .so-refresh:hover:not(:disabled) { background: rgb(255 255 255 / 0.1); } }
+.so-refresh:focus-visible { outline: 3px solid var(--sd-amber); outline-offset: 3px; }
+
+.so-run-empty { align-content: center; justify-items: start; gap: 0.6rem; min-height: 11rem; }
+.so-run-empty b { font: 700 1.25rem/1.2 var(--sd-display); }
+.so-run-empty span { color: var(--sd-navy-soft); max-width: 22rem; }
+.so-run .sd-droid { transition: translate 700ms var(--sd-ease); }
+.so-run .sd-node { width: 1.65rem; height: 1.65rem; }
+
+.so-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(1rem, 2vw, 1.5rem); align-items: start; }
+.so-col { display: grid; gap: clamp(1rem, 2vw, 1.5rem); min-width: 0; align-content: start; }
+
+/* What is waiting for you */
+.so-todo { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.9rem; padding: 0.85rem 1rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; color: inherit; text-decoration: none; transition: border-color 0.2s ease, background-color 0.2s ease, transform 160ms var(--sd-ease); }
+.so-todo + .so-todo { margin-top: 0.6rem; }
+.so-todo:active { transform: scale(0.99); }
+.so-todo:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+@media (hover: hover) { .so-todo:hover { border-color: var(--sd-ink); background: var(--sd-wash); } }
+.so-todo-ico { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 50%; background: var(--sd-ink); color: var(--sd-amber); }
+.so-todo-ico svg { width: 1.25rem; height: 1.25rem; }
+.so-todo[data-tone="red"] { border-color: #e8b4ab; background: #fff7f5; }
+.so-todo[data-tone="red"] .so-todo-ico { background: var(--sd-late); color: #fff; }
+.so-todo-text { display: grid; gap: 0.15rem; min-width: 0; }
+.so-todo-text b { font: 700 1.02rem/1.3 var(--sd-body); }
+.so-todo-text small { font-size: 0.88rem; color: var(--sd-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.so-todo-text small[data-hot="true"] { color: var(--sd-late); font-weight: 600; }
+.so-count { font: 800 1.6rem/1 var(--sd-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.so-todo > svg { width: 1.2rem; height: 1.2rem; color: var(--sd-ink-soft); }
+
+.so-clear { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 1rem; }
+.so-clear-droid { width: 3rem; height: 3.6rem; }
+.so-clear-droid svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.so-clear b { font: 700 1.1rem/1.3 var(--sd-display); }
+.so-clear p { margin-top: 0.15rem; color: var(--sd-ink-soft); }
+
+/* Today's classes */
+.so-class { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem 1rem; position: relative; padding: 0.8rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); }
+.so-class:last-of-type { border-bottom: 0; }
+.so-class-time { font: 700 0.95rem/1.3 var(--sd-display); font-variant-numeric: tabular-nums; }
+.so-class-time small { display: block; font: 500 0.82rem/1.3 var(--sd-body); color: var(--sd-ink-soft); }
+.so-class-main { display: grid; gap: 0.1rem; min-width: 0; }
+.so-class-main b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.so-class-main small { font-size: 0.88rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.so-class[data-state="past"] { opacity: 0.55; }
+.so-class[data-state="now"] { background: rgb(251 191 36 / 0.14); }
+.so-class[data-state="now"]::before { content: ""; position: absolute; left: 0; top: 0.7rem; bottom: 0.7rem; width: 4px; border-radius: 0 4px 4px 0; background: var(--sd-amber); }
+.so-chip { padding: 0.05rem 0.65rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.75rem/1.5 var(--sd-body); color: var(--sd-ink-soft); text-transform: capitalize; white-space: nowrap; }
+.so-chip[data-now="true"] { text-transform: none; border-color: var(--sd-ink); background: var(--sd-ink); color: var(--sd-amber); }
+.so-more { padding: 0.8rem 1.25rem; border-top: 1.5px solid var(--sd-line); background: var(--sd-wash); font-size: 0.92rem; }
+
+/* People and courses */
+.so-row { display: flex; align-items: center; gap: 0.8rem; padding: 0.7rem 0; border-bottom: 1.5px solid var(--sd-line); }
+.so-row:first-child { padding-top: 0; }
+.so-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.so-row-text { display: grid; min-width: 0; flex: 1; }
+.so-row-text b { font: 700 0.98rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.so-row-text small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.so-row time { flex: none; font-size: 0.85rem; color: var(--sd-ink-soft); }
+.so-panel-links { display: flex; gap: 1rem; }
+
+@media (max-width: 1024px) {
+  .so-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .so-todo { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .so-todo > svg { display: none; }
+  .so-class { grid-template-columns: 4.75rem minmax(0, 1fr); }
+  .so-class .so-chip { grid-column: 2; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .so-run .sd-droid { transition: none; }
+  .so-todo, .so-refresh { transition: none; }
+}

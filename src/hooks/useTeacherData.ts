@@ -350,10 +350,11 @@ export function useTeacherAttendance(schoolId?: string, month?: string) {
       let to: string | undefined;
       if (month) {
         const [year, monthNum] = month.split('-').map(Number);
-        const startDate = new Date(year, monthNum - 1, 1);
-        const endDate = new Date(year, monthNum, 0);
-        from = startDate.toISOString().split('T')[0];
-        to = endDate.toISOString().split('T')[0];
+        // Built as plain strings: toISOString() converts local midnight to UTC, which in
+        // timezones ahead of UTC (IST) shifted the range back a day and dropped the last day.
+        const mm = String(monthNum).padStart(2, '0');
+        from = `${year}-${mm}-01`;
+        to = `${year}-${mm}-${String(new Date(year, monthNum, 0).getDate()).padStart(2, '0')}`;
       }
 
       const { data } = await teacherApi.attendance.list({ school_id: schoolId, from, to });

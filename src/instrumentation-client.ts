@@ -5,6 +5,7 @@
 import * as Sentry from "@sentry/nextjs";
 // Suppress Next.js warnings about Promise params/searchParams during Sentry serialization
 import '@/lib/suppress-nextjs-promise-warnings';
+import { scrubSentryRequest } from '@/lib/sentry-scrub';
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -38,6 +39,7 @@ Sentry.init({
   // Filter out sensitive data and Promise props
   beforeSend(event) {
     // Remove sensitive information
+    scrubSentryRequest(event);
     if (event.request) {
       // Don't send full URLs in production
       if (process.env.NODE_ENV === 'production') {

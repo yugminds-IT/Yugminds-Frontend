@@ -137,17 +137,17 @@ export default function BulkDeleteStudentsButton({
 
   return (
     <>
-      <Button
-        variant="outline"
-        className="border-red-500 text-red-600 hover:bg-red-50 hover:text-red-700"
+      <button
+        type="button"
+        className="sd-btn sd-btn--line"
         onClick={() => {
           reset();
           setOpen(true);
         }}
       >
-        <Trash2 className="mr-2 h-4 w-4" />
-        Bulk Delete
-      </Button>
+        <Trash2 aria-hidden="true" />
+        Delete a class
+      </button>
 
       <Dialog open={open} onOpenChange={(o) => !deleting && setOpen(o)}>
         <DialogContent className="bg-white sm:max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">

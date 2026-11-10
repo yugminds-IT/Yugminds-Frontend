@@ -73,7 +73,7 @@ export function ChapterBuilderCard({
 }: ChapterBuilderCardProps) {
   const [pendingDelete, setPendingDelete] = useState(false);
   const hasAssignment = !!assignment;
-  const chapterName = chapter.name.trim() || `Chapter ${index + 1}`;
+  const chapterName = (chapter.name ?? "").trim() || `Chapter ${index + 1}`;
   const questionCount = Array.isArray(assignment?.questions) ? assignment.questions.length : 0;
 
   return (

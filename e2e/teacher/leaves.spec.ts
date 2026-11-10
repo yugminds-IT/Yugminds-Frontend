@@ -7,9 +7,10 @@ function isoDate(daysFromToday: number): string {
 }
 
 test.describe('Teacher — Leaves', () => {
-  test('submitting a leave request through the real form shows it in Leave History', async ({ page }) => {
+  test('sending a leave request through the form shows it in Your requests', async ({ page }) => {
     await page.goto('/lms/teacher/leaves');
-    await expect(page.getByRole('heading', { name: 'Leave Requests' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Leave requests' })).toBeVisible();
+    await page.getByRole('button', { name: 'Apply for leave' }).first().click();
 
     const uniqueReason = `QA e2e leave reason ${Date.now()}`;
     await page.locator('#start_date').fill(isoDate(1));
@@ -19,12 +20,12 @@ test.describe('Teacher — Leaves', () => {
     const createResponse = page.waitForResponse(
       (res) => res.url().endsWith('/teacher/leaves') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Submit Leave Request' }).click();
+    await page.getByRole('button', { name: 'Send request' }).click();
     const createRes = await createResponse;
     expect(createRes.ok(), await createRes.text()).toBeTruthy();
 
-    const leaveCard = page.locator('.border.rounded-lg', { hasText: uniqueReason });
+    const leaveCard = page.getByRole('article').filter({ hasText: uniqueReason });
     await expect(leaveCard).toBeVisible({ timeout: 10000 });
-    await expect(leaveCard.getByText('Pending')).toBeVisible();
+    await expect(leaveCard.getByText('Waiting', { exact: true })).toBeVisible();
   });
 });

@@ -72,20 +72,19 @@ test.describe('Teacher — Reports', () => {
     await seedTodaysPeriod(request);
 
     await page.goto('/lms/teacher/reports');
-    await expect(page.getByRole('heading', { name: 'Submit Daily Report' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Submit report' })).toBeVisible();
 
     const uniqueTopic = `QA e2e teaching topic ${Date.now()}`;
 
-    // Select the period — its label embeds the grade in brackets, e.g. "... [Grade 1 R2]".
-    await page.locator('#period_id').click();
-    await page.getByRole('option', { name: new RegExp(`\\[${reportGrade}\\]`) }).click();
+    // Pick the class — each row is a radio whose label embeds the grade, e.g. "... Grade 1 R2 · Period 2".
+    await page.getByRole('radio', { name: new RegExp(reportGrade) }).check();
 
     await page.locator('#topics_taught').fill(uniqueTopic);
 
     const submitResponse = page.waitForResponse(
       (res) => res.url().endsWith('/teacher/reports') && res.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Submit Report' }).click();
+    await page.getByRole('button', { name: 'Submit report' }).click();
     const submitRes = await submitResponse;
     expect(submitRes.ok(), await submitRes.text()).toBeTruthy();
 

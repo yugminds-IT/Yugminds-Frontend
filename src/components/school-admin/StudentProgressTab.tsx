@@ -1,45 +1,61 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Fragment, useState, useMemo } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import {
-  Users, BookOpen, TrendingUp, CheckCircle2, AlertCircle, School, GraduationCap,
-  Search, ChevronUp, ChevronDown, ChevronRight,
-  CheckCircle, Clock, PlayCircle, RefreshCw,
-} from "lucide-react";
-import { useSchoolAdminStudentProgress, type SchoolAdminProgressResponse } from "../../hooks/useStudentProgress";
-
-type StudentSortKey = "full_name" | "grade" | "section" | "total_courses" | "completed_courses" | "in_progress_courses" | "average_progress" | "last_activity";
-type SortDir = "asc" | "desc";
+import { useMemo, useState } from "react";
+import { CheckCircle, ChevronDown, Clock, PlayCircle, RefreshCw } from "lucide-react";
+import { useSchoolAdminStudentProgress, type SchoolAdminProgressResponse, type StudentProgressData } from "../../hooks/useStudentProgress";
+import { ChipGroup, Pager, initialsOf } from "../portal/notifications";
+import ProgressRun, { STAGE_LABEL, stageOf, type Stage } from "./progress/ProgressRun";
+import "./students.css";
+import "./teachers.css";
+import "./progress/progress.css";
 
 const PAGE_SIZE = 25;
 type CourseFromAPI = SchoolAdminProgressResponse["courses"][number];
+type Tab = "students" | "courses" | "classes";
+type Sort = "name" | "high" | "low" | "recent" | "stale";
 
-function ProgressBar({ value, barColor = "bg-blue-500" }: { value: number; barColor?: string }) {
-  return (
-    <div className="flex items-center gap-2 min-w-[110px]">
-      <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${value}%` }} />
-      </div>
-      <span className="text-xs font-semibold text-gray-700 w-9 text-right shrink-0">{value}%</span>
-    </div>
-  );
+const SORTS: Record<Sort, { label: string; key: keyof StudentProgressData; dir: 1 | -1 }> = {
+  name: { label: "Name, A to Z", key: "full_name", dir: 1 },
+  high: { label: "Progress, highest first", key: "average_progress", dir: -1 },
+  low: { label: "Progress, lowest first", key: "average_progress", dir: 1 },
+  recent: { label: "Most recently active", key: "last_activity", dir: -1 },
+  stale: { label: "Least recently active", key: "last_activity", dir: 1 },
+};
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const merge = (prev: string[], next: string[]) => {
+  const all = [...new Set([...prev, ...next])];
+  return all.length === prev.length ? prev : all.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+};
+
+function activeLabel(value: Date | string | null | undefined): string {
+  if (!value) return "Not active yet";
+  const d = new Date(value);
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (!Number.isFinite(days)) return "Not active yet";
+  if (days <= 0) return "Active today";
+  if (days === 1) return "Active yesterday";
+  if (days < 7) return `Active ${days} days ago`;
+  return `Active ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;
 }
 
-export default function StudentProgressTab() {
-  const [search, setSearch] = useState("");
-  const [section, setSection] = useState("all");
-  const [grade, setGrade] = useState("all");
-  const [course, setCourse] = useState("all");
-  const [sortKey, setSortKey] = useState<StudentSortKey>("full_name");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [expanded, setExpanded] = useState<string | null>(null);
+const courseState = (status: string) =>
+  status === "completed" ? { Icon: CheckCircle, text: "Finished" } : status === "in_progress" ? { Icon: PlayCircle, text: "In progress" } : { Icon: Clock, text: "Not started" };
 
-  const { data, isLoading, error, refetch } = useSchoolAdminStudentProgress({
+export default function StudentProgressTab() {
+  const [tab, setTab] = useState<Tab>("students");
+  const [search, setSearch] = useState("");
+  const [grade, setGrade] = useState("all");
+  const [section, setSection] = useState("all");
+  const [course, setCourse] = useState("all");
+  const [stage, setStage] = useState<Stage | "all">("all");
+  const [sort, setSort] = useState<Sort>("name");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [pageState, setPageState] = useState({ key: "", page: 1 });
+  // The server narrows the list as you filter, so the choices are remembered from everything seen.
+  const [known, setKnown] = useState<{ grades: string[]; sections: string[]; courses: CourseFromAPI[] }>({ grades: [], sections: [], courses: [] });
+
+  const { data, isLoading, isFetching, error, refetch } = useSchoolAdminStudentProgress({
     courseId: course !== "all" ? course : undefined,
     grade: grade !== "all" ? grade : undefined,
     section: section !== "all" ? section : undefined,
@@ -47,419 +63,247 @@ export default function StudentProgressTab() {
 
   const students = useMemo(() => data?.students ?? [], [data]);
   const summary = data?.summary;
-
   const courses = useMemo(() => {
     const map = new Map<string, CourseFromAPI>();
-    (data?.courses ?? []).forEach((c: CourseFromAPI) => { if (!map.has(c.course_id)) map.set(c.course_id, c); });
-    return Array.from(map.values());
+    (data?.courses ?? []).forEach((c) => { if (!map.has(c.course_id)) map.set(c.course_id, c); });
+    return [...map.values()];
   }, [data?.courses]);
 
-  const sections = useMemo(
-    () => [...new Set(students.map((s: any) => s.section).filter(Boolean))].sort() as string[],
-    [students]
-  );
-  const grades = useMemo(
-    () => [...new Set(students.map((s: any) => s.grade).filter(Boolean))].sort() as string[],
-    [students]
-  );
-
-  const studentRows = useMemo(() => {
-    const filtered = students.filter((s: any) => {
-      const q = search.toLowerCase();
-      return (
-        (!q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q)) &&
-        (section === "all" || s.section === section)
-      );
+  // Remember the choices when new data arrives (done while rendering, which React allows for derived state).
+  const [seenData, setSeenData] = useState<typeof data>(undefined);
+  if (data !== seenData) {
+    setSeenData(data);
+    setKnown((prev) => {
+      const grades = merge(prev.grades, students.map((s) => s.grade).filter(Boolean));
+      const sections = merge(prev.sections, students.map((s) => s.section ?? "").filter(Boolean));
+      const seen = new Map(prev.courses.map((c) => [c.course_id, c]));
+      courses.forEach((c) => { if (!seen.has(c.course_id)) seen.set(c.course_id, c); });
+      return grades === prev.grades && sections === prev.sections && seen.size === prev.courses.length ? prev : { grades, sections, courses: [...seen.values()] };
     });
-    return [...filtered].sort((a: any, b: any) => {
-      let av: any = a[sortKey] ?? "";
-      let bv: any = b[sortKey] ?? "";
-      if (sortKey === "last_activity") {
-        av = av ? +new Date(av) : 0;
-        bv = bv ? +new Date(bv) : 0;
-      } else if (typeof av === "string") {
-        av = av.toLowerCase();
-        bv = String(bv).toLowerCase();
-      }
-      return sortDir === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
-    });
-  }, [students, search, section, sortKey, sortDir]);
+  }
 
-  const filterKey = `${search}|${section}|${grade}|${course}|${sortKey}|${sortDir}`;
-  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
-  const totalPages = Math.max(1, Math.ceil(studentRows.length / PAGE_SIZE));
-  const page = pageState.key === filterKey ? Math.min(pageState.page, totalPages) : 1;
-  const setPage = (p: number) => setPageState({ key: filterKey, page: p });
-  const pagedStudentRows = studentRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const gradeRows = useMemo(() => {
-    type Acc = { grade: string; section: string; students: number; completed: number; sum: number };
-    const map = new Map<string, Acc>();
-    for (const s of students as Array<{ grade?: string; section?: string; average_progress?: number }>) {
-      if (!s.grade) continue;
-      const section = s.section ?? '';
-      const key = `${s.grade}\0${section}`;
-      const row = map.get(key) ?? { grade: s.grade, section, students: 0, completed: 0, sum: 0 };
-      row.students += 1;
-      row.sum += s.average_progress ?? 0;
-      if (s.average_progress === 100) row.completed += 1;
-      map.set(key, row);
-    }
-    return [...map.values()]
-      .map((r) => ({
-        grade: r.grade,
-        section: r.section,
-        label: r.section ? `${r.grade}-${r.section}` : r.grade,
-        students: r.students,
-        completed: r.completed,
-        avgProgress: r.students ? Math.round(r.sum / r.students) : 0,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+  const counts = useMemo(() => {
+    const c: Record<Stage, number> = { none: 0, started: 0, half: 0, done: 0 };
+    students.forEach((s) => { c[stageOf(s.average_progress ?? 0)] += 1; });
+    return c;
   }, [students]);
 
-  const sort = (key: StudentSortKey) => {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("asc"); }
-  };
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const { key, dir } = SORTS[sort];
+    return students
+      .filter((s) => (!q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q)) && (stage === "all" || stageOf(s.average_progress ?? 0) === stage))
+      .sort((a, b) => {
+        let av: string | number = (a[key] as string | number | Date | null | undefined) instanceof Date ? 0 : ((a[key] as string | number | null | undefined) ?? "");
+        let bv: string | number = (b[key] as string | number | Date | null | undefined) instanceof Date ? 0 : ((b[key] as string | number | null | undefined) ?? "");
+        if (key === "last_activity") {
+          av = a.last_activity ? +new Date(a.last_activity) : 0;
+          bv = b.last_activity ? +new Date(b.last_activity) : 0;
+        } else if (typeof av === "string") {
+          av = av.toLowerCase();
+          bv = String(bv).toLowerCase();
+        }
+        return av === bv ? 0 : av > bv ? dir : -dir;
+      });
+  }, [students, search, stage, sort]);
 
-  const SortIcon = ({ col }: { col: StudentSortKey }) =>
-    sortKey === col
-      ? sortDir === "asc"
-        ? <ChevronUp className="h-3 w-3 text-blue-600" />
-        : <ChevronDown className="h-3 w-3 text-blue-600" />
-      : <ChevronUp className="h-3 w-3 text-gray-300" />;
+  // Changing any filter or the sort goes back to page 1.
+  const filterKey = `${search}|${stage}|${sort}|${grade}|${section}|${course}`;
+  const page = pageState.key === filterKey ? pageState.page : 1;
+  const setPage = (p: number) => setPageState({ key: filterKey, page: p });
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const statusMeta = (p: number) =>
-    p === 100
-      ? { label: "Completed", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", bar: "bg-emerald-500" }
-      : p > 0
-      ? { label: "In Progress", cls: "bg-blue-50 text-blue-700 border border-blue-200", bar: "bg-blue-500" }
-      : { label: "Not Started", cls: "bg-gray-50 text-gray-500 border border-gray-200", bar: "bg-gray-300" };
+  const classRows = useMemo(() => {
+    const map = new Map<string, { grade: string; section: string; students: number; finished: number; sum: number }>();
+    for (const s of students) {
+      if (!s.grade) continue;
+      const sec = s.section ?? "";
+      const key = `${s.grade}\0${sec}`;
+      const r = map.get(key) ?? { grade: s.grade, section: sec, students: 0, finished: 0, sum: 0 };
+      r.students += 1;
+      r.sum += s.average_progress ?? 0;
+      if ((s.average_progress ?? 0) === 100) r.finished += 1;
+      map.set(key, r);
+    }
+    return [...map.values()]
+      .map((r) => ({ ...r, label: r.section ? `${r.grade}-${r.section}` : r.grade, avg: r.students ? Math.round(r.sum / r.students) : 0 }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  }, [students]);
 
-  const courseIcon = (status: string) =>
-    status === "completed" ? <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
-    : status === "in_progress" ? <PlayCircle className="h-3.5 w-3.5 text-blue-500" />
-    : <Clock className="h-3.5 w-3.5 text-gray-400" />;
+  const hasFilters = !!search || grade !== "all" || section !== "all" || course !== "all" || stage !== "all";
+  const clearFilters = () => { setSearch(""); setGrade("all"); setSection("all"); setCourse("all"); setStage("all"); };
+  const avg = summary?.average_school_progress ?? null;
+  const total = summary?.total_students ?? 0;
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-gray-100" />)}
-        </div>
-        <div className="h-12 rounded-xl bg-gray-100" />
-        <div className="h-64 rounded-xl bg-gray-100" />
-      </div>
-    );
-  }
+  let status: React.ReactNode;
+  if (error) status = "The progress numbers did not load. Try again.";
+  else if (isLoading) status = "Loading progress…";
+  else if (total === 0) status = "No students are enrolled yet. Progress shows up once they start a course.";
+  else status = <><strong>{avg ?? 0}%</strong> is the school average. {plural(summary?.students_completed ?? 0, "student")} of {total} {(summary?.students_completed ?? 0) === 1 ? "has" : "have"} finished everything{counts.none > 0 ? <>, and {counts.none} {counts.none === 1 ? "has" : "have"} not started</> : null}.</>;
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-40 rounded-xl border border-red-100 bg-red-50">
-        <div className="text-center">
-          <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-400" />
-          <p className="text-sm font-medium text-red-700">Failed to load student progress</p>
-          <Button size="sm" variant="outline" onClick={() => refetch()} className="mt-3 gap-1.5">
-            <RefreshCw className="h-3.5 w-3.5" /> Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const kpis = [
-    { label: "Total Students", value: summary?.total_students ?? 0, icon: Users, color: "text-violet-600", bg: "bg-violet-50" },
-    { label: "Active Students", value: summary?.students_with_progress ?? 0, icon: TrendingUp, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Completed", value: summary?.students_completed ?? 0, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "School Average", value: `${summary?.average_school_progress ?? 0}%`, icon: School, color: "text-amber-600", bg: "bg-amber-50" },
-    { label: "Active Courses", value: summary?.total_courses ?? 0, icon: BookOpen, color: "text-pink-600", bg: "bg-pink-50" },
-  ];
-
-  const studentCols: { key?: StudentSortKey; label: string; center?: boolean }[] = [
-    { label: "" },
-    { key: "full_name", label: "Student" },
-    { key: "grade", label: "Grade" },
-    { key: "section", label: "Section" },
-    { key: "total_courses", label: "Courses", center: true },
-    { key: "completed_courses", label: "Completed", center: true },
-    { key: "in_progress_courses", label: "In Progress", center: true },
-    { key: "average_progress", label: "Progress" },
-    { key: "last_activity", label: "Last Active" },
-    { label: "Status" },
+  const tiles = [
+    { label: "Students", value: total, hint: "In your school" },
+    { label: "Started", value: summary?.students_with_progress ?? 0, hint: "Opened at least one course" },
+    { label: "Finished", value: summary?.students_completed ?? 0, hint: "Completed every course" },
+    { label: "Courses", value: summary?.total_courses ?? 0, hint: "Live for students" },
   ];
 
   return (
-    <div className="space-y-5">
-      {/* KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 [&>*:last-child]:max-sm:col-span-2">
-        {kpis.map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="flex items-center gap-2.5 rounded-xl border border-gray-100 bg-white p-3 shadow-sm sm:gap-3 sm:p-4">
-            <div className={`${bg} ${color} p-2 rounded-lg shrink-0 sm:p-2.5`}>
-              <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xl font-bold text-gray-900 sm:text-2xl">{value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-            </div>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="sp-title">
+        <div className="sd-hero-copy">
+          <h1 id="sp-title" className="mc-hero-title">Student progress</h1>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--ghost-dark" onClick={() => void refetch()} disabled={isFetching}>
+              <RefreshCw className={isFetching ? "animate-spin" : ""} aria-hidden="true" />{isFetching ? "Refreshing" : "Refresh"}
+            </button>
+          </div>
+        </div>
+        <ProgressRun counts={counts} selected={stage} onSelect={(s) => { setStage(s); setTab("students"); }} average={avg} />
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Progress summary">
+        {tiles.map((m) => (
+          <div key={m.label}>
+            <span className="sd-l">{m.label}</span>
+            {isLoading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4rem" }} /> : <b className="sd-n">{m.value.toLocaleString("en-IN")}</b>}
+            <small>{m.hint}</small>
           </div>
         ))}
       </div>
 
-      <Tabs defaultValue="students" className="space-y-4">
-        <TabsList className="border border-gray-200 bg-gray-50 p-1 rounded-lg h-auto">
-          <TabsTrigger value="students" className="gap-1.5 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <Users className="h-3.5 w-3.5" /> Students
-          </TabsTrigger>
-          <TabsTrigger value="courses" className="gap-1.5 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <BookOpen className="h-3.5 w-3.5" /> Courses
-          </TabsTrigger>
-          <TabsTrigger value="grades" className="gap-1.5 text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <GraduationCap className="h-3.5 w-3.5" /> Grades
-          </TabsTrigger>
-        </TabsList>
+      <div className="mc-tabs" role="tablist" aria-label="Progress views" style={{ justifySelf: "start" }}>
+        {([["students", "Students", rows.length], ["courses", "Courses", courses.length], ["classes", "Classes", classRows.length]] as const).map(([id, label, n]) => (
+          <button key={id} role="tab" className="mc-tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}<b>{n}</b></button>
+        ))}
+      </div>
 
-        {/* ── Students ── */}
-        <TabsContent value="students" className="space-y-4">
-          {/* Toolbar */}
-          <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
-            <div className="relative basis-full sm:basis-auto sm:flex-1 sm:min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search by name or email…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-            <Select value={grade} onValueChange={setGrade}>
-              <SelectTrigger className="w-[calc(33.333%-0.5rem)] max-sm:px-2.5 max-sm:text-xs sm:w-[130px] h-9"><SelectValue placeholder="All Grades" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Grades</SelectItem>
-                {grades.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={section} onValueChange={setSection}>
-              <SelectTrigger className="w-[calc(33.333%-0.5rem)] max-sm:px-2.5 max-sm:text-xs sm:w-[140px] h-9"><SelectValue placeholder="All Sections" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Sections</SelectItem>
-                {sections.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={course} onValueChange={setCourse}>
-              <SelectTrigger className="w-[calc(33.333%-0.5rem)] max-sm:px-2.5 max-sm:text-xs sm:w-[170px] h-9"><SelectValue placeholder="All Courses" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Courses</SelectItem>
-                {courses.map((c: CourseFromAPI) => (
-                  <SelectItem key={c.course_id} value={c.course_id}>{c.course_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">
-              {studentRows.length} student{studentRows.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-
-          {/* Student Table */}
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/80">
-                    {studentCols.map((col) => (
-                      <th
-                        key={col.label}
-                        onClick={() => col.key && sort(col.key)}
-                        className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${col.center ? "text-center" : "text-left"} ${col.key ? "cursor-pointer hover:text-gray-800 select-none" : ""}`}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          {col.key && <SortIcon col={col.key} />}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {studentRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="py-16 text-center">
-                        <Users className="h-10 w-10 mx-auto mb-3 text-gray-200" />
-                        <p className="text-sm text-gray-400">
-                          {search ? "No students match your search" : "No students enrolled yet"}
-                        </p>
-                      </td>
-                    </tr>
-                  ) : pagedStudentRows.map((s: any, idx: number) => {
-                    const meta = statusMeta(s.average_progress ?? 0);
-                    const isOpen = expanded === s.student_id;
-                    return (
-                      <Fragment key={s.student_id}>
-                        <tr
-                          onClick={() => setExpanded(isOpen ? null : s.student_id)}
-                          className={`border-b border-gray-50 cursor-pointer hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
-                        >
-                          <td className="pl-4 pr-2 py-3 w-8 max-md:!hidden">
-                            <ChevronRight className={`h-4 w-4 text-gray-300 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`} />
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-gray-900 leading-tight">{s.full_name}</div>
-                            <div className="text-xs text-gray-400 mt-0.5">{s.email}</div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">{s.grade || "—"}</td>
-                          <td className="px-4 py-3 text-gray-600">{s.section || "—"}</td>
-                          <td className="px-4 py-3 text-center font-medium text-gray-700">{s.total_courses ?? 0}</td>
-                          <td className="px-4 py-3 text-center font-semibold text-emerald-600">{s.completed_courses ?? 0}</td>
-                          <td className="px-4 py-3 text-center font-semibold text-blue-600 max-md:!hidden">{s.in_progress_courses ?? 0}</td>
-                          <td className="px-4 py-3">
-                            <ProgressBar value={s.average_progress ?? 0} barColor={meta.bar} />
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap max-md:!hidden">
-                            {s.last_activity
-                              ? new Date(s.last_activity).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-                              : "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${meta.cls}`}>
-                              {meta.label}
-                            </span>
-                          </td>
-                        </tr>
-                        {isOpen && (
-                          <tr className="bg-slate-50/60 border-b border-gray-100">
-                            <td colSpan={10} className="px-8 py-4">
-                              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                                Course Breakdown
-                              </p>
-                              {s.courses?.length > 0 ? (
-                                <table className="w-full text-sm border border-gray-100 rounded-lg overflow-hidden">
-                                  <thead>
-                                    <tr className="bg-white border-b border-gray-100">
-                                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Course</th>
-                                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Chapters</th>
-                                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Progress</th>
-                                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {s.courses.map((c: any) => (
-                                      <tr key={c.course_id} className="border-t border-gray-50 bg-white hover:bg-gray-50/50">
-                                        <td className="px-4 py-2.5 font-medium text-gray-800">{c.course_name}</td>
-                                        <td className="px-4 py-2.5 text-gray-500">{c.completed_chapters}/{c.total_chapters}</td>
-                                        <td className="px-4 py-2.5">
-                                          <ProgressBar value={c.progress_percentage} barColor="bg-blue-400" />
-                                        </td>
-                                        <td className="px-4 py-2.5">
-                                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
-                                            {courseIcon(c.status)}
-                                            <span className="capitalize">{c.status?.replace("_", " ") || "—"}</span>
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              ) : (
-                                <p className="text-xs text-gray-400 italic">No course data available</p>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-4 py-3 text-xs text-gray-500">
-                <span>
-                  {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, studentRows.length)} of {studentRows.length}
-                </span>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                    Previous
-                  </Button>
-                  <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
-                    Next
-                  </Button>
-                </div>
-              </div>
+      {error ? (
+        <section className="sd-panel">
+          <div className="sd-empty"><b>We could not load student progress</b><p>Check your connection, then try again.</p><button className="sd-btn sd-btn--amber" onClick={() => void refetch()}>Try again</button></div>
+        </section>
+      ) : isLoading ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : tab === "students" ? (
+        <>
+          <div className="sp-bar">
+            <input type="search" className="sd-field" placeholder="Search by name or email" aria-label="Search students" value={search} onChange={(e) => setSearch(e.target.value)} />
+            {known.grades.length > 0 && <ChipGroup label="Grade" value={grade} options={[["all", "All grades"] as const, ...known.grades.map((g) => [g, g] as const)]} onChange={(g) => { setGrade(g); setSection("all"); }} />}
+            {known.sections.length > 0 && <ChipGroup label="Section" value={section} options={[["all", "All sections"] as const, ...known.sections.map((s) => [s, s] as const)]} onChange={setSection} />}
+            {known.courses.length > 1 && (
+              <select className="sd-field" aria-label="Course" value={course} onChange={(e) => setCourse(e.target.value)}>
+                <option value="all">All courses</option>
+                {known.courses.map((c) => <option key={c.course_id} value={c.course_id}>{c.course_name}</option>)}
+              </select>
             )}
+            <select className="sd-field" aria-label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+              {(Object.keys(SORTS) as Sort[]).map((k) => <option key={k} value={k}>{SORTS[k].label}</option>)}
+            </select>
+            {hasFilters && <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>}
           </div>
-        </TabsContent>
 
-        {/* ── Courses ── */}
-        <TabsContent value="courses">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/80">
-                    {["Course", "Grade", "Chapters", "Enrolled", "Completed", "Avg Progress", "Completion Rate"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {courses.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-16 text-center">
-                        <BookOpen className="h-10 w-10 mx-auto mb-3 text-gray-200" />
-                        <p className="text-sm text-gray-400">No courses found</p>
-                      </td>
-                    </tr>
-                  ) : courses.map((c: CourseFromAPI, idx: number) => (
-                    <tr key={c.course_id} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
-                      <td className="px-4 py-3 font-medium text-gray-900">{c.course_name}</td>
-                      <td className="px-4 py-3 text-gray-600">{c.grade}</td>
-                      <td className="px-4 py-3 text-gray-600 text-center">{c.total_chapters}</td>
-                      <td className="px-4 py-3 text-gray-700 font-medium text-center">{c.enrolled_students}</td>
-                      <td className="px-4 py-3 text-emerald-600 font-semibold text-center">{c.completed_students}</td>
-                      <td className="px-4 py-3"><ProgressBar value={c.average_progress} barColor="bg-blue-500" /></td>
-                      <td className="px-4 py-3"><ProgressBar value={c.completion_rate} barColor="bg-emerald-500" /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* ── Grades ── */}
-        <TabsContent value="grades">
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/80">
-                    {["Class", "Total Students", "Completed", "Remaining", "Avg Progress"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {gradeRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-16 text-center">
-                        <GraduationCap className="h-10 w-10 mx-auto mb-3 text-gray-200" />
-                        <p className="text-sm text-gray-400">No grade data available</p>
-                      </td>
-                    </tr>
-                  ) : gradeRows.map((g, idx) => (
-                    <tr key={g.label} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
-                      <td className="px-4 py-3 font-semibold text-gray-900">{g.label}</td>
-                      <td className="px-4 py-3 text-gray-700 font-medium">{g.students}</td>
-                      <td className="px-4 py-3 text-emerald-600 font-semibold">{g.completed}</td>
-                      <td className="px-4 py-3 text-gray-500">{g.students - g.completed}</td>
-                      <td className="px-4 py-3"><ProgressBar value={g.avgProgress} barColor="bg-violet-500" /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+          {rows.length === 0 ? (
+            <section className="sd-panel">
+              <div className="sd-empty">
+                <b>{hasFilters ? "No students match" : "No students enrolled yet"}</b>
+                <p>{hasFilters ? "Try a different search, or clear the filters." : "Students show up here once they are enrolled in a course."}</p>
+                {hasFilters && <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>}
+              </div>
+            </section>
+          ) : (
+            <section className="sd-panel as-list mc-swap" aria-label="Students">
+              <div className="sp-row sp-head">
+                <span /><span>Student</span><span>Class</span><span>Courses</span><span>Progress</span><span>Last active</span><span />
+              </div>
+              {pageRows.map((s) => {
+                const open = expanded === s.student_id;
+                const pct = Math.round(s.average_progress ?? 0);
+                const cls = [s.grade, s.section].filter(Boolean).join(" ");
+                return (
+                  <div key={s.student_id} className="sp-item">
+                    <article className="sp-row">
+                      <span className="sd-avatar" aria-hidden="true">{initialsOf(s.full_name || s.email)}</span>
+                      <button className="sm-who" onClick={() => setExpanded(open ? null : s.student_id)} aria-expanded={open}>
+                        <b>{s.full_name || "Unnamed student"}</b>
+                        <small>{s.email}</small>
+                      </button>
+                      <span className="sm-chip" data-class={cls ? "true" : undefined}>{cls || "No class"}</span>
+                      <span className="sp-courses">{s.completed_courses ?? 0} of {s.total_courses ?? 0} finished{(s.in_progress_courses ?? 0) > 0 && <small>{s.in_progress_courses} in progress</small>}</span>
+                      <span className="sp-prog" data-stage={stageOf(pct)}>
+                        <b>{pct}% <small className="sm-muted" style={{ fontFamily: "var(--sd-body)", fontWeight: 600, fontSize: "0.8rem" }}>{STAGE_LABEL[stageOf(pct)].toLowerCase()}</small></b>
+                        <i className="tm-bar" aria-hidden="true"><u style={{ width: `${pct}%` }} /></i>
+                      </span>
+                      <span className="sp-active">{activeLabel(s.last_activity)}</span>
+                      <button className="pl-ico" onClick={() => setExpanded(open ? null : s.student_id)} aria-label={`${open ? "Hide" : "Show"} courses for ${s.full_name}`} aria-expanded={open}>
+                        <ChevronDown style={{ transition: "rotate 0.2s ease", rotate: open ? "180deg" : "0deg" }} />
+                      </button>
+                    </article>
+                    {open && (
+                      <div className="sp-detail">
+                        {s.courses?.length ? (
+                          <ol aria-label={`Courses for ${s.full_name}`}>
+                            {s.courses.map((c) => {
+                              const st = courseState(c.status);
+                              const cp = Math.round(c.progress_percentage ?? 0);
+                              return (
+                                <li key={c.course_id}>
+                                  <b>{c.course_name}</b>
+                                  <span className="sp-chap">{c.completed_chapters} of {c.total_chapters} chapters</span>
+                                  <span className="sp-prog" data-stage={stageOf(cp)}><b>{cp}%</b><i className="tm-bar" aria-hidden="true"><u style={{ width: `${cp}%` }} /></i></span>
+                                  <span className="sp-state"><st.Icon aria-hidden="true" />{st.text}</span>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        ) : <p className="sm-muted">No course data for this student yet.</p>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <Pager offset={(page - 1) * PAGE_SIZE} count={pageRows.length} total={rows.length} pageSize={PAGE_SIZE} onPrev={() => setPage(Math.max(1, page - 1))} onNext={() => setPage(page + 1)} />
+            </section>
+          )}
+        </>
+      ) : tab === "courses" ? (
+        courses.length === 0 ? (
+          <section className="sd-panel"><div className="sd-empty"><b>No courses found</b><p>Courses open to your school show up here with how far students have got.</p></div></section>
+        ) : (
+          <section className="sd-panel as-list mc-swap" aria-label="Progress by course">
+            {courses.map((c) => (
+              <article key={c.course_id} className="sp-crow">
+                <b>{c.course_name}</b>
+                <span className="sm-chip" data-class="true">{c.grade || "No grade"}</span>
+                <span className="sp-nums">
+                  <span className="sp-num">{c.total_chapters}<small>chapters</small></span>
+                  <span className="sp-num">{c.enrolled_students}<small>enrolled</small></span>
+                  <span className="sp-num">{c.completed_students}<small>finished</small></span>
+                </span>
+                <span className="sp-pct sp-avg"><b>{Math.round(c.average_progress)}%</b><i className="tm-bar" aria-hidden="true"><u style={{ width: `${Math.round(c.average_progress)}%` }} /></i><small>average progress</small></span>
+                <span className="sp-pct sp-rate"><b>{Math.round(c.completion_rate)}%</b><i className="tm-bar" aria-hidden="true"><u style={{ width: `${Math.round(c.completion_rate)}%` }} /></i><small>finished the course</small></span>
+              </article>
+            ))}
+          </section>
+        )
+      ) : classRows.length === 0 ? (
+        <section className="sd-panel"><div className="sd-empty"><b>No class data yet</b><p>Once students are in a class, you will see how each class is doing here.</p></div></section>
+      ) : (
+        <section className="sd-panel as-list mc-swap" aria-label="Progress by class">
+          {classRows.map((g) => (
+            <article key={g.label} className="sp-grow">
+              <b>{g.label}</b>
+              <span className="sp-nums">
+                <span className="sp-num">{g.students}<small>students</small></span>
+                <span className="sp-num">{g.finished}<small>finished</small></span>
+                <span className="sp-num">{g.students - g.finished}<small>still going</small></span>
+              </span>
+              <span className="sp-pct"><b>{g.avg}%</b><i className="tm-bar" aria-hidden="true"><u style={{ width: `${g.avg}%` }} /></i><small>average progress</small></span>
+              <button className="sd-btn sd-btn--line" onClick={() => { setGrade(g.grade); setSection(g.section || "all"); setTab("students"); }} aria-label={`See the students in ${g.label}`}>See students</button>
+            </article>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

@@ -1,0 +1,63 @@
+/* Teacher "My classes". Needs portal.css, school-admin/{overview,students}.css and school-admin/schedule/schedule.css
+   (week track, timetable grid, subject hues). */
+
+.cl-run-empty { display: grid; align-content: center; justify-items: start; gap: 0.75rem; min-height: 11rem; margin-top: 0; }
+.cl-run-empty b { font: 700 1.25rem/1.2 var(--sd-display); }
+.cl-updated { font-size: 0.88rem; color: var(--sd-navy-soft); }
+
+.cl-ledger > div b { font: 800 clamp(2rem, 3vw, 2.75rem)/1 var(--sd-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.cl-ledger > div b.cl-text { font-size: clamp(1.35rem, 2vw, 1.75rem); line-height: 1.15; letter-spacing: -0.02em; }
+
+/* Tabs on the left, narrowing choices on the right */
+.cl-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; min-width: 0; }
+.cl-bar .mc-tabs { min-width: 0; }
+.cl-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
+.cl-filters .mc-select { max-width: 100%; text-overflow: ellipsis; }
+.cl-clear { padding: 0.25rem 0.5rem; border: 0; border-radius: 0.5rem; background: none; color: var(--sd-blue-deep); font: 700 0.92rem/1.2 var(--sd-body); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; cursor: pointer; }
+.cl-clear:hover { color: var(--sd-ink); }
+.cl-clear:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+
+.cl-gridwrap { padding: 0; overflow: hidden; }
+.cl-gridwrap .sd-panel-head { margin: 0; padding: 1.25rem 1.25rem 0.9rem; }
+.ts-grid thead th[data-today="true"] { background: rgb(251 191 36 / 0.22); }
+.ts-grid td[data-today="true"] { background: rgb(251 191 36 / 0.07); }
+
+/* A class in the grid. Same look as the school-admin card, but nothing to edit. */
+.cl-card { display: block; }
+.cl-body { display: grid; gap: 0.1rem; padding: 0.5rem 0.65rem; border-radius: 0.6rem; color: inherit; text-decoration: none; }
+.cl-body b { font: 700 0.92rem/1.25 var(--sd-body); overflow-wrap: anywhere; }
+.cl-body span { font-size: 0.82rem; font-weight: 600; }
+.cl-body small { font-size: 0.78rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+a.cl-body:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 1px; }
+@media (hover: hover) { a.cl-body:hover b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; } }
+.cl-card[data-live="true"] { box-shadow: 0 0 0 2.5px var(--sd-amber); }
+
+/* Day list, phones only */
+.cl-narrow { display: none; }
+.as-group .sm-chip { margin-left: auto; }
+.cl-ag { display: grid; grid-template-columns: 4.75rem minmax(0, 1fr); align-items: start; gap: 0.5rem 0.9rem; padding: 0.7rem 1rem; border-bottom: 1.5px solid var(--sd-line); }
+.cl-ag-time { padding-top: 0.55rem; font: 700 0.92rem/1.3 var(--sd-display); font-variant-numeric: tabular-nums; }
+.cl-ag-time small { display: block; font: 500 0.78rem/1.3 var(--sd-body); color: var(--sd-ink-soft); }
+@media (max-width: 720px) {
+  .cl-wide { display: none; }
+  .cl-narrow { display: block; }
+}
+
+/* Class list */
+.cl-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 11rem auto; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); }
+.cl-row:last-child { border-bottom: 0; }
+@media (hover: hover) { .cl-row:hover { background: var(--sd-wash); } }
+.cl-row[data-active="false"] .cl-row-name b { color: var(--sd-ink-soft); }
+.cl-row-name { display: grid; min-width: 0; }
+.cl-row-name b { font: 700 1.05rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.cl-row-name small, .cl-row-subjects small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.cl-row-subjects { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cl-row-load { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.92rem; color: var(--sd-ink-soft); }
+.cl-row-acts { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.cl-row-acts .sd-btn { min-height: 2.5rem; padding-inline: 1.1rem; }
+@media (max-width: 1000px) {
+  .cl-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cl-row-subjects, .cl-row-load { grid-column: 1 / -1; }
+  .cl-row-acts { grid-column: 1 / -1; justify-content: flex-start; }
+  .cl-row-acts .sd-btn { flex: 1; }
+}

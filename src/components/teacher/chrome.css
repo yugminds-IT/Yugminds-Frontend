@@ -1,0 +1,25 @@
+/* Teacher layout chrome: school switcher, holiday notice, "submit your reports" dialog. Needs portal.css loaded first. */
+
+.to-school { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; padding: 0.7rem clamp(0.75rem, 2vw, 1.5rem); background: var(--sd-paper); border-bottom: 1.5px solid var(--sd-line); font-family: var(--sd-body); color: var(--sd-ink); }
+.to-school label { font: 700 0.95rem/1 var(--sd-body); }
+.to-school .mc-select { min-width: 0; max-width: 100%; flex: 0 1 26rem; text-overflow: ellipsis; }
+.to-school .mc-select:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+.to-pill { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; padding: 0.3rem 0.9rem; border: 1.5px solid var(--sd-line); border-radius: 999px; background: var(--sd-wash); font-size: 0.88rem; }
+.to-pill[data-tone="warn"] { border-color: var(--sd-amber-deep); background: rgb(251 191 36 / 0.16); }
+.to-pill button { padding: 0; border: 0; background: transparent; color: var(--sd-blue-deep); font: 700 0.88rem/1.3 var(--sd-body); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; cursor: pointer; text-align: left; }
+.to-pill button:hover { color: var(--sd-ink); }
+.to-pill button:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+@media (max-width: 640px) { .to-school .mc-select { flex: 1 1 100%; } .to-school label { flex: none; } }
+
+.to-notice { display: flex; align-items: flex-start; gap: 0.9rem; margin: clamp(0.75rem, 2vw, 1.5rem) clamp(0.75rem, 2vw, 1.5rem) 0; padding: 0.9rem 1.1rem; border: 1.5px solid var(--sd-late); border-radius: 1.25rem; background: #fff7f5; font-family: var(--sd-body); color: var(--sd-ink); }
+.to-notice > svg { flex: none; width: 1.4rem; height: 1.4rem; margin-top: 0.1rem; color: var(--sd-late); }
+.to-notice b { display: block; font: 700 1.02rem/1.35 var(--sd-body); overflow-wrap: anywhere; }
+.to-notice p, .to-notice ul { margin: 0.2rem 0 0; padding: 0; font-size: 0.92rem; color: var(--sd-ink-soft); list-style: none; }
+.to-notice li { overflow-wrap: anywhere; }
+
+.to-due { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.to-due li { display: flex; align-items: center; gap: 0.9rem; padding: 0.6rem 0.9rem; border: 1.5px solid var(--sd-line); border-radius: 0.9rem; }
+.to-due time { flex: none; min-width: 4.5rem; font: 700 0.92rem/1.3 var(--sd-display); font-variant-numeric: tabular-nums; }
+.to-due span { display: grid; min-width: 0; }
+.to-due b { font: 700 0.98rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.to-due small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }

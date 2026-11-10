@@ -24,36 +24,33 @@ test.describe('Teacher — Student Progress', () => {
     const res = await progressResponse;
     expect(res.ok()).toBeTruthy();
 
-    await expect(page.getByRole('heading', { name: 'Student Progress' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Student progress' })).toBeVisible();
 
-    await expect(page.getByText('Total Students')).toBeVisible();
-    const totalStudentsCard = page.getByText('Total Students').locator('..');
-    await expect(totalStudentsCard.getByText('3', { exact: true })).toBeVisible();
-
-    // Toolbar's live row count reflects exactly the 3 fixture students.
-    await expect(page.getByText('3 students', { exact: true })).toBeVisible();
+    // The first number under the hero is the student count; the Students tab carries it too.
+    const summary = page.getByRole('group', { name: 'Progress summary' });
+    await expect(summary.locator('.sd-n').first()).toHaveText('3');
+    await expect(page.getByRole('tab', { name: /Students\s*3/ })).toBeVisible();
 
     await expect(page.getByText('QA Student 0')).toBeVisible();
     await expect(page.getByText('QA Student 1')).toBeVisible();
     await expect(page.getByText('QA Student 2')).toBeVisible();
 
-    await expect(page.getByText('No students enrolled yet')).not.toBeVisible();
+    await expect(page.getByText('No students in your sections yet')).not.toBeVisible();
 
     // Fixture course has no chapters authored, so every row's progress genuinely reads 0%.
-    const rows = page.locator('table').first().locator('tbody tr');
-    await expect(rows.filter({ hasText: 'QA Student 0' }).getByText('0%')).toBeVisible();
-    await expect(rows.filter({ hasText: 'QA Student 0' }).getByText('Not Started')).toBeVisible();
+    const row = page.getByRole('article').filter({ hasText: 'QA Student 0' });
+    await expect(row.getByText('0%')).toBeVisible();
+    await expect(row.getByText('not started')).toBeVisible();
   });
 
-  test('section filter narrows results to the teacher\'s assigned section', async ({ page }) => {
+  test("sections tab shows the teacher's assigned section with its students", async ({ page }) => {
     await page.goto('/lms/teacher/student-progress');
     await page.waitForResponse(
       (res) => res.url().includes('/teacher/student-progress') && res.request().method() === 'GET',
     );
 
-    await page.getByText('All Sections', { exact: true }).click();
-    await page.getByRole('option', { name: fixture.section, exact: true }).click();
-
-    await expect(page.getByText('3 students', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: /Sections/ }).click();
+    const section = page.getByRole('article').filter({ hasText: fixture.section });
+    await expect(section.getByText('3', { exact: true }).first()).toBeVisible();
   });
 });

@@ -139,17 +139,18 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         }}
       >
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Overlay className="ui-cf-overlay fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content
             onEscapeKeyDown={() => handleClose(false)}
-            className="fixed left-[50%] top-[50%] z-[101] w-full max-w-sm translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl duration-200 focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+            className="ui-cf fixed left-[50%] top-[50%] z-[101] w-full max-w-sm translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl duration-200 focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
           >
             <div className="flex flex-col items-center text-center">
               <div
                 className={cn(
-                  'flex h-12 w-12 items-center justify-center rounded-full',
+                  'ui-cf-ico flex h-12 w-12 items-center justify-center rounded-full',
                   isDanger ? 'bg-red-100' : 'bg-blue-100'
                 )}
+                data-danger={isDanger}
               >
                 <Icon
                   className={cn('h-6 w-6', isDanger ? 'text-red-600' : 'text-blue-600')}
@@ -157,12 +158,12 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                 />
               </div>
 
-              <DialogPrimitive.Title className="mt-4 text-lg font-semibold text-gray-900">
+              <DialogPrimitive.Title className="ui-cf-title mt-4 text-lg font-semibold text-gray-900">
                 {state.title}
               </DialogPrimitive.Title>
 
               {state.description ? (
-                <DialogPrimitive.Description className="mt-2 whitespace-pre-line text-sm text-gray-500">
+                <DialogPrimitive.Description className="ui-cf-desc mt-2 whitespace-pre-line text-sm text-gray-500">
                   {state.description}
                 </DialogPrimitive.Description>
               ) : (
@@ -172,11 +173,12 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
-            <div className="mt-6 flex gap-3">
+            <div className="ui-cf-acts mt-6 flex gap-3">
               <button
                 type="button"
                 onClick={() => handleClose(false)}
-                className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                data-kind="cancel"
+                className="ui-cf-btn flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
               >
                 {state.cancelText ?? 'Cancel'}
               </button>
@@ -184,8 +186,9 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                 type="button"
                 autoFocus
                 onClick={() => handleClose(true)}
+                data-kind={isDanger ? 'danger' : 'ok'}
                 className={cn(
-                  'flex-1 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2',
+                  'ui-cf-btn flex-1 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2',
                   isDanger
                     ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
                     : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
@@ -205,20 +208,20 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         }}
       >
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Overlay className="ui-cf-overlay fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content
             onEscapeKeyDown={() => handleChoiceClose('cancel')}
-            className="fixed left-[50%] top-[50%] z-[101] w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl duration-200 focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+            className="ui-cf fixed left-[50%] top-[50%] z-[101] w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-gray-100 bg-white p-6 shadow-2xl duration-200 focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
           >
             <div className="flex flex-col text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+              <div className="ui-cf-ico flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                 <HelpCircle className="h-5 w-5 text-blue-600" aria-hidden="true" />
               </div>
-              <DialogPrimitive.Title className="mt-3 text-lg font-semibold text-gray-900">
+              <DialogPrimitive.Title className="ui-cf-title mt-3 text-lg font-semibold text-gray-900">
                 {choiceState.title}
               </DialogPrimitive.Title>
               {choiceState.description ? (
-                <DialogPrimitive.Description className="mt-2 whitespace-pre-line text-sm text-gray-500">
+                <DialogPrimitive.Description className="ui-cf-desc mt-2 whitespace-pre-line text-sm text-gray-500">
                   {choiceState.description}
                 </DialogPrimitive.Description>
               ) : (
@@ -228,26 +231,29 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
-            <div className="mt-6 flex flex-col gap-2">
+            <div className="ui-cf-acts mt-6 flex flex-col gap-2">
               <button
                 type="button"
                 autoFocus
                 onClick={() => handleChoiceClose('primary')}
-                className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                data-kind="ok"
+                className="ui-cf-btn w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 {choiceState.primaryText}
               </button>
               <button
                 type="button"
                 onClick={() => handleChoiceClose('secondary')}
-                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
+                data-kind="cancel"
+                className="ui-cf-btn w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-200"
               >
                 {choiceState.secondaryText}
               </button>
               <button
                 type="button"
                 onClick={() => handleChoiceClose('cancel')}
-                className="w-full rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 focus:outline-none"
+                data-kind="ghost"
+                className="ui-cf-btn w-full rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 focus:outline-none"
               >
                 {choiceState.cancelText ?? 'Cancel'}
               </button>

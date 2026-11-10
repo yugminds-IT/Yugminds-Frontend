@@ -1,606 +1,192 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useTeacherSchool } from "../context";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTeacherAttendance, useTeacherMonthlyAttendance, useTeacherMonthlyAttendanceLog, useTodayAttendanceStatus, currentMonthKey, formatGradeSection, type TeacherMonthlyLog } from "@/hooks/useTeacherData";
-import { Calendar, CheckCircle, XCircle, Clock, AlertCircle, FileText } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Progress as ProgressBar } from "@/components/ui/progress";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+import { CalendarOff, FileText, RefreshCw } from "lucide-react";
+import { useTeacherSchool } from "../context";
+import { useTeacherAttendance, useTeacherMonthlyAttendance, useTodayAttendanceStatus } from "@/hooks/useTeacherData";
+import { useSmartRefresh } from "@/hooks/useSmartRefresh";
+import AttendanceRun from "@/components/teacher/attendance/AttendanceRun";
+import MonthGrid from "@/components/teacher/attendance/MonthGrid";
+import TodayPanel, { type TodayStatus } from "@/components/teacher/attendance/TodayPanel";
+import { dayStatus, lastMonths, monthName, rollUp, STATUS_LABEL, type DayRecord, type MonthRow } from "@/components/teacher/attendance/utils";
+import { plural } from "@/components/teacher/overview/utils";
+import "@/components/school-admin/overview.css"; // hero meta, rows, two-column grid
+import "@/components/teacher/overview/overview.css"; // day track
+import "@/components/teacher/attendance/attendance.css";
 
-interface Period {
-  period_id?: string;
-  grade?: string;
-  section?: string | null;
-  subject?: string;
-  start_time?: string;
-  end_time?: string;
-}
-
-type MonthlyLog = TeacherMonthlyLog;
-
-function sortPeriodsByStartTime(periods: Period[] | undefined): Period[] {
-  if (!periods?.length) return [];
-  return [...periods].sort((a, b) =>
-    String(a.start_time ?? '').localeCompare(String(b.start_time ?? '')),
-  );
-}
-
-function formatPeriodTime(time?: string) {
-  if (!time) return '';
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours, 10);
-  if (Number.isNaN(hour)) return time;
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${(minutes || '00').slice(0, 2)} ${ampm}`;
-}
+const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /**
- * Attendance Page
- * 
- * Shows teacher's monthly attendance data, calendar view, and statistics
+ * Attendance. There is no "mark attendance" button: a day is marked present when every scheduled class has a
+ * report before 8 PM IST, absent after that, and approved leave stays as leave.
  */
 export default function AttendancePage() {
   const { selectedSchool, schools } = useTeacherSchool();
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  const queryClient = useQueryClient();
+  const [now] = useState(() => new Date());
+  const keys = useMemo(() => lastMonths(now, 6), [now]);
+  const [ym, setYm] = useState(keys[keys.length - 1]);
 
-  const { data: monthlyAttendance, isLoading: _monthlyLoading } = useTeacherMonthlyAttendance(
-    selectedSchool?.id,
-    6
-  );
-  const { data: monthlyLogData, isLoading: monthlyLogLoading } = useTeacherMonthlyAttendanceLog(
-    selectedSchool?.id,
-    selectedMonth
-  );
-  const { data: dailyAttendance, isLoading: _dailyLoading } = useTeacherAttendance(
-    selectedSchool?.id,
-    selectedMonth
-  );
+  const school = selectedSchool?.id;
+  const monthlyQ = useTeacherMonthlyAttendance(school, 12);
+  const dailyQ = useTeacherAttendance(school, ym);
+  const todayQ = useTodayAttendanceStatus(school);
 
-  // Use local calendar date to avoid UTC-midnight timezone mismatch (e.g. IST vs UTC).
-  const today = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
-  const { data: todayStatus, isLoading: _todayLoading } = useTodayAttendanceStatus(
-    selectedSchool?.id,
-    today
+  const months = useMemo(() => rollUp(monthlyQ.data as MonthRow[] | undefined), [monthlyQ.data]);
+  const cur = months.get(ym);
+  const records = useMemo(
+    () => ((dailyQ.data ?? []) as DayRecord[]).filter((r) => r.date?.startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date)),
+    [dailyQ.data, ym],
   );
+  const today = todayQ.data as TodayStatus | undefined;
+  const todayKey = today?.date ?? localKey(now);
 
-  const submittedPeriods = useMemo(
-    () => sortPeriodsByStartTime(todayStatus?.submittedPeriods as Period[] | undefined),
-    [todayStatus?.submittedPeriods],
-  );
-  const pendingPeriods = useMemo(
-    () => sortPeriodsByStartTime(todayStatus?.pendingPeriods as Period[] | undefined),
-    [todayStatus?.pendingPeriods],
-  );
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Present':
-        return <Badge className="bg-green-100 text-green-800">Present</Badge>;
-      case 'Absent':
-        return <Badge className="bg-red-100 text-red-800">Absent</Badge>;
-      case 'Leave-Approved':
-        return <Badge className="bg-yellow-100 text-yellow-800">Leave Approved</Badge>;
-      case 'Leave-Rejected':
-        return <Badge className="bg-red-100 text-red-800">Leave Rejected</Badge>;
-      case 'Unreported':
-        return <Badge className="bg-gray-100 text-gray-800">Unreported</Badge>;
-      case 'Pending':
-        return <Badge className="bg-blue-100 text-blue-800">Pending</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["teacher", "monthly-attendance"] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "attendance"] }),
+      queryClient.invalidateQueries({ queryKey: ["teacher", "today-attendance"] }),
+    ]);
   };
+  useSmartRefresh({ customRefresh: refresh, minRefreshInterval: 60000 });
+  const refreshing = monthlyQ.isFetching || dailyQ.isFetching || todayQ.isFetching;
 
-  // Only the entry for the ACTUAL current month — [0] is merely the most
-  // recent logged month and could silently show last month's numbers.
-  const currentMonthData = monthlyAttendance?.find(
-    (m) => String(m.month).slice(0, 7) === currentMonthKey(),
-  );
-  const attendancePercentage = currentMonthData && currentMonthData.total_days > 0
-    ? Math.round((currentMonthData.present_count / currentMonthData.total_days) * 100)
-    : 0;
+  /* ───────── what the hero says about today ───────── */
+  const st = dayStatus(today?.attendance?.status);
+  const total = today?.totalPeriods ?? 0;
+  const left = total - (today?.periodsWithReports ?? 0);
+  const off = !!today && (today.notScheduledToday || today.attendance?.status === "Holiday" || today.attendance?.status === "Not-Scheduled");
+  const failed = monthlyQ.isError || todayQ.isError;
+
+  let status: React.ReactNode;
+  if (failed) status = "Your attendance did not load. Try again.";
+  else if (todayQ.isLoading || !today) status = "Checking today…";
+  else if (st === "leave") status = <><strong>You are on approved leave today.</strong> Reports will not change that.</>;
+  else if (off) status = "No school for you today, so no reports are due.";
+  else if (st === "present") status = <><strong>You are marked present today.</strong> Every report is in.</>;
+  else if (total === 0) status = "You have no classes today, so nothing is due.";
+  else if (today.attendance?.late_report) status = <><strong>Marked absent today.</strong> Your reports came in after 8 PM.</>;
+  else if (st === "absent") status = <><strong>Marked absent today.</strong> The 8 PM cutoff has passed.</>;
+  else status = <><strong>{plural(left, "report")}</strong> still decide{left === 1 ? "s" : ""} today. Submit {left === 1 ? "it" : "them"} before 8 PM to be marked present.</>;
+
+  const pct = (n: number) => (cur && cur.total > 0 ? `${Math.round((n / cur.total) * 100)}% of working days` : "No working days logged");
+  const ledger = [
+    { label: "Present", value: cur?.present, hint: pct(cur?.present ?? 0) },
+    { label: "Absent", value: cur?.absent, hint: pct(cur?.absent ?? 0) },
+    { label: "On leave", value: cur?.leave, hint: pct(cur?.leave ?? 0) },
+    { label: "Not reported", value: cur?.unreported, hint: cur && cur.unreported > 0 ? "Days with no report" : "None missed" },
+  ];
+
+  if (schools.length === 0) {
+    return (
+      <div className="sd-page">
+        <section className="sd-panel"><div className="sd-empty"><b>No school assigned</b><p>You are not assigned to any school yet. Ask your admin to add you to one.</p></div></section>
+      </div>
+    );
+  }
+
+  const loadingMonths = monthlyQ.isLoading;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Attendance</h1>
-        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
-          View your attendance records and statistics {selectedSchool ? `for ${selectedSchool.name}` : ''}
-        </p>
-        <p className="text-xs md:text-sm text-blue-600 mt-2 bg-blue-50 border border-blue-200 rounded-md p-2.5 md:p-3 inline-block">
-          <strong>Note:</strong> Your attendance is automatically marked as &quot;Present&quot; when you submit reports for all scheduled periods for the day <strong>before 8:00 PM IST</strong>. After that the day is marked Absent, even if you submit later.
-        </p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="at-title">
+        <div className="sd-hero-copy">
+          <h1 id="at-title" className="mc-hero-title">Attendance</h1>
+          <p className="sd-where">{selectedSchool?.name ?? "All your schools"}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            {left > 0 && !off && st !== "leave" && !failed && today ? (
+              <Link href="/lms/teacher/reports" className="sd-btn sd-btn--amber"><FileText aria-hidden="true" />Submit {plural(left, "report")}</Link>
+            ) : null}
+            <Link href="/lms/teacher/leaves" className={`sd-btn ${left > 0 && !off && st !== "leave" && today ? "sd-btn--ghost-dark" : "sd-btn--amber"}`}><CalendarOff aria-hidden="true" />Leave requests</Link>
+          </div>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void refresh()} disabled={refreshing} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        {loadingMonths ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : monthlyQ.isError ? (
+          <div className="sd-run-card to-run-empty">
+            <b>Your months did not load</b>
+            <button className="sd-btn sd-btn--amber" onClick={() => void monthlyQ.refetch()}>Try again</button>
+          </div>
+        ) : (
+          <AttendanceRun keys={keys} data={months} selected={ym} onSelect={setYm} />
+        )}
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label={`Attendance in ${monthName(ym)}`}>
+        {ledger.map((m) => (
+          <div key={m.label}>
+            <span className="sd-l">{m.label}</span>
+            {loadingMonths ? <span className="sd-skel" style={{ height: "2.2rem", width: "4.5rem" }} /> : <b className="sd-n">{m.value ?? "–"}</b>}
+            <small>{m.hint}</small>
+          </div>
+        ))}
       </div>
 
-      {/* Current Month Stats */}
-      {_monthlyLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 w-16 bg-gray-200 rounded animate-pulse mt-1" />
-                <div className="h-3 w-20 bg-gray-100 rounded animate-pulse mt-2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : currentMonthData ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Present</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{currentMonthData.present_count}</div>
-              <p className="text-xs text-muted-foreground">Days present</p>
-            </CardContent>
-          </Card>
+      <div className="so-grid">
+        <div className="so-col">
+          <TodayPanel today={todayQ.isLoading ? undefined : today} />
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Absent</CardTitle>
-              <XCircle className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{currentMonthData.absent_count}</div>
-              <p className="text-xs text-muted-foreground">Days absent</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Leave</CardTitle>
-              <Clock className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{currentMonthData.leave_count}</div>
-              <p className="text-xs text-muted-foreground">Days on leave</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Attendance %</CardTitle>
-              <Calendar className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{attendancePercentage}%</div>
-              <p className="text-xs text-muted-foreground">This month</p>
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-          {[
-            { label: 'Present', icon: <CheckCircle className="h-4 w-4 text-green-600" />, color: 'text-green-600', sub: 'Days present' },
-            { label: 'Absent', icon: <XCircle className="h-4 w-4 text-red-600" />, color: 'text-red-600', sub: 'Days absent' },
-            { label: 'Leave', icon: <Clock className="h-4 w-4 text-yellow-600" />, color: 'text-yellow-600', sub: 'Days on leave' },
-            { label: 'Attendance %', icon: <Calendar className="h-4 w-4 text-blue-600" />, color: 'text-blue-600', sub: 'This month' },
-          ].map(({ label, icon, color, sub }) => (
-            <Card key={label}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{label}</CardTitle>
-                {icon}
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${color}`}>—</div>
-                <p className="text-xs text-muted-foreground">{sub}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Today's Attendance Status Card */}
-      {todayStatus && (
-        <Card className="border-2 border-blue-200 bg-blue-50/50">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-blue-600" />
-                  Today&apos;s Attendance Status
-                </CardTitle>
-                <CardDescription>
-                  {new Date(todayStatus.date + 'T12:00:00').toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })} ({todayStatus.dayOfWeek})
-                </CardDescription>
-              </div>
-              {todayStatus.attendance?.status && (
-                <div>
-                  {getStatusBadge(todayStatus.attendance.status)}
-                  {(todayStatus.attendance as { late_report?: boolean }).late_report && (
-                    <span className="ml-2 text-xs text-red-700">Absent (late report) — submitted after 8:00 PM</span>
-                  )}
-                </div>
-              )}
+          <section className="sd-panel as-list" aria-labelledby="at-days">
+            <div className="sd-panel-head" style={{ margin: 0, padding: "1.25rem 1.25rem 0.9rem" }}>
+              <div><h2 id="at-days">Day by day</h2><p>{monthName(ym)}, newest first</p></div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {todayStatus.totalPeriods > 0 ? (
-              <>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-gray-700">Report Progress</span>
-                    <span className="text-gray-600">
-                      {todayStatus.periodsWithReports} of {todayStatus.totalPeriods} periods
-                    </span>
-                  </div>
-                  <ProgressBar 
-                    value={todayStatus.progress} 
-                    className="h-3"
-                  />
-                  <div className="flex items-center justify-between text-xs text-gray-600">
-                    <span>{todayStatus.progress}% complete</span>
-                    <span>{todayStatus.totalPeriods - todayStatus.periodsWithReports} period(s) remaining</span>
-                  </div>
-                </div>
-
-                {/* Submitted Periods List */}
-                {submittedPeriods.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-700">
-                      Submitted Reports ({submittedPeriods.length})
-                    </p>
-                    <div className="space-y-1">
-                      {submittedPeriods.map((period: Period, index: number) => (
-                          <div key={period.period_id || index} className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded-md">
-                            <div className="flex items-center gap-2">
-                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                              <span className="text-sm text-green-800">
-                                {period.grade && formatGradeSection(period.grade, period.section)}
-                                {period.subject && ` - ${period.subject}`}
-                                {period.start_time && period.end_time && ` (${formatPeriodTime(period.start_time)} - ${formatPeriodTime(period.end_time)})`}
-                              </span>
-                            </div>
-                            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 text-xs">
-                              Submitted
-                            </Badge>
-                          </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Pending Periods List */}
-                {pendingPeriods.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-700">
-                      Pending Reports ({pendingPeriods.length})
-                    </p>
-                    <div className="space-y-1">
-                      {pendingPeriods.map((period: Period, index: number) => (
-                          <div key={period.period_id || index} className="flex items-center justify-between p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                            <div className="flex items-center gap-2">
-                              <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-                              <span className="text-sm text-yellow-800">
-                                {period.grade && formatGradeSection(period.grade, period.section)}
-                                {period.subject && ` - ${period.subject}`}
-                                {period.start_time && period.end_time && ` (${formatPeriodTime(period.start_time)} - ${formatPeriodTime(period.end_time)})`}
-                              </span>
-                            </div>
-                            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300 text-xs">
-                              Pending
-                            </Badge>
-                          </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {todayStatus.periodsWithReports >= todayStatus.totalPeriods && todayStatus.totalPeriods > 0 ? (
-                  <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-green-900">
-                        All period reports submitted!
-                      </p>
-                      <p className="text-xs text-green-700 mt-1">
-                        Your attendance will be marked as &quot;Present&quot; automatically.
-                        {todayStatus.attendance?.status === 'Present' && ' ✓ Already marked as Present'}
-                      </p>
-                    </div>
-                  </div>
-                ) : todayStatus.totalPeriods > 0 ? (
-                  <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                    <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-yellow-900">
-                        Submit reports for all periods to mark attendance
-                      </p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        You have submitted reports for {todayStatus.periodsWithReports} out of {todayStatus.totalPeriods} scheduled periods.
-                        {todayStatus.totalPeriods - todayStatus.periodsWithReports > 0 && (
-                          <> Submit {todayStatus.totalPeriods - todayStatus.periodsWithReports} more report(s) to mark your attendance as &quot;Present&quot;.</>
-                        )}
-                      </p>
-                      <Link href="/lms/teacher/reports">
-                        <Button variant="outline" size="sm" className="mt-3">
-                          <FileText className="h-4 w-4 mr-2" />
-                          Submit Report
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ) : null}
-              </>
+            {dailyQ.isLoading ? (
+              <div style={{ padding: "0 1.25rem 1.25rem" }}><div className="sd-skel" /><div className="sd-skel" /></div>
+            ) : dailyQ.isError ? (
+              <div className="sd-empty" style={{ padding: "0 1.25rem 1.25rem" }}>
+                <b>Could not load these days</b>
+                <p>Check your connection and try again.</p>
+                <button className="sd-btn sd-btn--ink" onClick={() => void dailyQ.refetch()}>Try again</button>
+              </div>
+            ) : records.length === 0 ? (
+              <div className="sd-empty" style={{ padding: "0 1.25rem 1.25rem" }}>
+                <b>Nothing recorded in {monthName(ym)}</b>
+                <p>Days appear here once you report your classes. Pick another month above to look back.</p>
+              </div>
             ) : (
-              <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-md">
-                <AlertCircle className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-gray-700">
-                    No scheduled periods for today
-                  </p>
-                  <p className="text-xs text-gray-600 mt-1">
-                    {todayStatus.submittedReports > 0 
-                      ? `You have submitted ${todayStatus.submittedReports} report(s) today.`
-                      : 'Submit a report to mark your attendance.'}
-                  </p>
-                </div>
-              </div>
+              records.map((r) => {
+                const s = dayStatus(r.status);
+                return (
+                  <div key={r.id} className="so-row at-rec">
+                    <span className="so-row-text">
+                      <b>{new Date(`${r.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}</b>
+                      <small>
+                        {r.late_report ? <span className="at-late">Reports came in after 8 PM. </span> : null}
+                        {r.recorded_at ? `Recorded ${new Date(r.recorded_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}
+                      </small>
+                    </span>
+                    <span className="at-chip" data-s={s ?? undefined}>{s ? STATUS_LABEL[s] : r.status}</span>
+                  </div>
+                );
+              })
             )}
+          </section>
+        </div>
 
-            {todayStatus.attendance?.status === 'Leave-Approved' && (
-              <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <Clock className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-yellow-900">
-                    Leave Approved
-                  </p>
-                  <p className="text-xs text-yellow-700 mt-1">
-                    Your leave request has been approved. This status will not be overridden by report submissions.
-                  </p>
-                  <Link href="/lms/teacher/leaves">
-                    <Button variant="outline" size="sm" className="mt-2 text-yellow-800 border-yellow-400 hover:bg-yellow-100">
-                      View Leave Requests
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            )}
+        <div className="so-col">
+          <section className="sd-panel" aria-labelledby="at-cal">
+            <div className="sd-panel-head"><div><h2 id="at-cal">{monthName(ym)}</h2><p>How each day was marked</p></div></div>
+            <MonthGrid ym={ym} records={records} todayKey={todayKey} />
+          </section>
 
-            {todayStatus.attendance?.status === 'Leave-Rejected' && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md">
-                <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-red-900">
-                    Leave Rejected
-                  </p>
-                  <p className="text-xs text-red-700 mt-1">
-                    Your leave request has been rejected. Submit reports for all periods to mark your attendance as &quot;Present&quot;.
-                  </p>
-                  <Link href="/lms/teacher/leaves">
-                    <Button variant="outline" size="sm" className="mt-2 text-red-800 border-red-400 hover:bg-red-100">
-                      View Leave Requests
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Monthly Attendance Log Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Monthly Attendance Log</CardTitle>
-              <CardDescription>
-                Detailed monthly attendance breakdown
-              </CardDescription>
-            </div>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {monthlyLogLoading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-sm text-gray-500 mt-4">Loading monthly attendance data...</p>
-            </div>
-          ) : monthlyLogData?.monthlyData && monthlyLogData.monthlyData.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Month
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      School
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total Working Days
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Present Days
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Absent Days
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Leave Days
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Unreported Days
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Attendance %
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {monthlyLogData.monthlyData
-                    .filter((log: MonthlyLog) => {
-                      if (!log.month) return false;
-                      const monthDate = new Date(log.month);
-                      return !isNaN(monthDate.getTime());
-                    })
-                    .map((log: MonthlyLog) => (
-                    <tr key={log.month} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.month ? new Date(log.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'N/A'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {schools.find((s) => s.id === log.school_id)?.name
-                          ?? selectedSchool?.name
-                          ?? 'N/A'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.total_working_days ?? 0}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium text-green-600">
-                            {log.present_days ?? 0}
-                          </span>
-                          {(log.total_working_days ?? 0) > 0 && (
-                            <span className="ml-2 text-xs text-gray-500">
-                              ({(((log.present_days ?? 0) / (log.total_working_days ?? 0)) * 100).toFixed(1)}%)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium text-red-600">
-                            {log.absent_days ?? 0}
-                          </span>
-                          {(log.total_working_days ?? 0) > 0 && (
-                            <span className="ml-2 text-xs text-gray-500">
-                              ({(((log.absent_days ?? 0) / (log.total_working_days ?? 0)) * 100).toFixed(1)}%)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium text-blue-600">
-                            {log.leave_days ?? 0}
-                          </span>
-                          {(log.total_working_days ?? 0) > 0 && (
-                            <span className="ml-2 text-xs text-gray-500">
-                              ({(((log.leave_days ?? 0) / (log.total_working_days ?? 0)) * 100).toFixed(1)}%)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium text-orange-600">
-                            {log.unreported_days ?? 0}
-                          </span>
-                          {(log.total_working_days ?? 0) > 0 && (log.unreported_days ?? 0) > 0 && (
-                            <span className="ml-2 text-xs text-gray-500">
-                              ({(((log.unreported_days ?? 0) / (log.total_working_days ?? 0)) * 100).toFixed(1)}%)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <Badge className={
-                          (log.attendance_percentage ?? 0) >= 90 ? 'bg-green-500 text-white' :
-                          (log.attendance_percentage ?? 0) >= 75 ? 'bg-yellow-500 text-white' :
-                          (log.attendance_percentage ?? 0) >= 50 ? 'bg-orange-500 text-white' :
-                          'bg-red-500 text-white'
-                        }>
-                          {(log.attendance_percentage ?? 0).toFixed(1)}%
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-gray-500">
-              <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No monthly attendance data available for {new Date(`${selectedMonth}-01`).toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
-              <p className="text-sm mt-2 text-gray-400">
-                Submit reports for all scheduled periods each day to track your attendance
-              </p>
-              <Link href="/lms/teacher/reports">
-                <Button variant="outline" size="sm" className="mt-4">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Submit Report
-                </Button>
-              </Link>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Attendance Details Table */}
-      {dailyAttendance && dailyAttendance.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Attendance Details</CardTitle>
-            <CardDescription>Detailed attendance records for the selected month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-3 text-sm font-medium">Date</th>
-                    <th className="text-left p-3 text-sm font-medium">Status</th>
-                    <th className="text-left p-3 text-sm font-medium">Recorded At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailyAttendance.map((record: { id: string; date: string; status: string; recorded_at?: string; late_report?: boolean }) => (
-                    <tr key={record.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 text-sm">
-                        {new Date(record.date + 'T12:00:00').toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </td>
-                      <td className="p-3">
-                        {getStatusBadge(record.status)}
-                        {record.late_report && (
-                          <span className="ml-2 text-xs text-red-700">late report (after 8:00 PM)</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-sm text-gray-600">
-                        {record.recorded_at ? new Date(record.recorded_at).toLocaleString() : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          <section className="sd-panel" aria-labelledby="at-how">
+            <div className="sd-panel-head"><div><h2 id="at-how">How a day is marked</h2></div></div>
+            <ul className="at-how">
+              <li>Report every class you teach before 8 PM IST and the day is marked present.</li>
+              <li>After 8 PM an unreported day is marked absent, even if you report later.</li>
+              <li>Approved leave stays as leave, whatever you report.</li>
+            </ul>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

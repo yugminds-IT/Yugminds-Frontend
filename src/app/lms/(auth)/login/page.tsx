@@ -11,7 +11,7 @@ import { brandHref } from "@/lib/brand-host";
 import { markFreshLogin } from "@/hooks/useSessionValidation";
 import { shortenUserId } from "@/lib/utils";
 import { setStoredSession, waitForSession, consumeLogoutReason, safeNextPath } from "@/lib/session-utils";
-import { authApi, commonApi } from "@/lib/api";
+import { authApi } from "@/lib/api";
 
 const LOGOUT_ICONS = {
   logged_out: <Info size={18} aria-hidden="true" />,
@@ -77,16 +77,6 @@ export default function LoginPage() {
         },
       });
 
-      commonApi.auth
-        .trackLogin({
-          user_id: String(authRes.user.id),
-          email,
-          success: true,
-          ip_address: null,
-          user_agent: typeof window !== "undefined" ? window.navigator.userAgent : null,
-        })
-        .catch(() => {});
-
       await waitForSession(3, 300);
       markFreshLogin();
 
@@ -128,23 +118,6 @@ export default function LoginPage() {
         : rawMsg || "Login failed. Please try again.";
 
       setError(msg);
-
-      commonApi.auth
-        .trackLogin({
-          email: (() => {
-            try {
-              const fd = new FormData(event.currentTarget);
-              return String(fd.get("email") || "").trim();
-            } catch {
-              return "";
-            }
-          })(),
-          success: false,
-          failure_reason: rawMsg,
-          ip_address: null,
-          user_agent: typeof window !== "undefined" ? window.navigator.userAgent : null,
-        })
-        .catch(() => {});
     } finally {
       setLoading(false);
     }

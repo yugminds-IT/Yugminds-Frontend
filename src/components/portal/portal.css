@@ -22,6 +22,8 @@
   --sd-body: var(--font-sd-body), "Figtree", "Segoe UI", sans-serif;
 }
 /* ---------- Sidebar ---------- */
+/* Fixed banners (announcement on top, "viewing as" at the bottom) reserve their own height; see hooks/useBannerSpace */
+.sd { padding-top: var(--sd-banner-top, 0px); padding-bottom: var(--sd-banner-bottom, 0px); }
 .sd-nav, .sd-page, .sd-topbar { font-family: var(--sd-body); color: var(--sd-ink); -webkit-font-smoothing: antialiased; }
 .sd-nav *, .sd-page *, .sd-topbar * { box-sizing: border-box; }
 .sd-nav a, .sd-nav button, .sd-page a, .sd-page button { -webkit-tap-highlight-color: transparent; }
@@ -94,14 +96,14 @@
   }
   .sd-topbar-btn { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border: 0; border-radius: 50%; background: transparent; color: var(--sd-ink); cursor: pointer; }
   .sd-topbar-btn:active { background: var(--sd-wash); }
-  .sd-nav { position: fixed; top: 3.5rem; left: 0; bottom: 0; height: auto; width: 17rem; transform: translateX(-100%); transition: transform 300ms var(--sd-ease-drawer); }
+  .sd-nav { position: fixed; top: calc(3.5rem + var(--sd-banner-top, 0px)); left: 0; bottom: var(--sd-banner-bottom, 0px); height: auto; width: 17rem; transform: translateX(-100%); transition: transform 300ms var(--sd-ease-drawer); }
   .sd-nav[data-open="true"] { transform: none; box-shadow: 0 0 3rem rgb(11 27 58 / 0.25); }
   .sd-nav[data-collapsed="true"] { width: 17rem; }
   .sd-nav[data-collapsed="true"] .sd-brand-text, .sd-nav[data-collapsed="true"] .sd-item-label, .sd-nav[data-collapsed="true"] .sd-who-text { display: revert; }
   .sd-nav[data-collapsed="true"] .sd-brand { flex-direction: row; }
   .sd-collapse { display: none; }
   .sd-brand { display: none; }
-  .sd-scrim { position: fixed; inset: 3.5rem 0 0 0; z-index: 30; background: rgb(11 27 58 / 0.4); opacity: 0; visibility: hidden; transition: opacity 250ms ease, visibility 0s linear 250ms; }
+  .sd-scrim { position: fixed; inset: calc(3.5rem + var(--sd-banner-top, 0px)) 0 var(--sd-banner-bottom, 0px) 0; z-index: 30; background: rgb(11 27 58 / 0.4); opacity: 0; visibility: hidden; transition: opacity 250ms ease, visibility 0s linear 250ms; }
   .sd-scrim[data-open="true"] { display: block; opacity: 1; visibility: visible; transition: opacity 250ms ease; }
 }
 /* ---------- Page ---------- */
@@ -582,18 +584,6 @@ textarea.sd-field { resize: none; }
 .pw-list li[data-ok="true"] { color: var(--sd-ink); font-weight: 600; }
 .pw-list li[data-ok="true"] i { background: var(--sd-amber); border-color: var(--sd-amber); }
 .pw-list li[data-ok="true"] i svg { opacity: 1; }
-/* The student skin for confirm dialogs, which render in a portal outside the portal's own styles */
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl { border: 1.5px solid var(--sd-line); border-radius: 1.5rem; background: var(--sd-paper); font-family: var(--sd-body); color: var(--sd-ink); box-shadow: 0 2rem 4rem rgb(0 0 0 / 0.35); }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl h2 { font-family: var(--sd-display); font-weight: 700; letter-spacing: -0.02em; color: var(--sd-ink); font-size: 1.3rem; }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl p { color: var(--sd-ink-soft); font-size: 0.98rem; }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl button { border-radius: 999px; font-family: var(--sd-body); font-weight: 700; min-height: 2.75rem; }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl .bg-blue-100 { background: var(--sd-wash); }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl .text-blue-600 { color: var(--sd-ink); }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl .bg-red-100 { background: rgb(194 50 31 / 0.12); }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl .border-gray-200 { border-color: var(--sd-line); }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl button.bg-blue-600 { background: var(--sd-amber); color: var(--sd-ink); }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl button.bg-blue-600:hover { background: var(--sd-amber-deep); }
-body.sd-skin [role="dialog"][data-state="open"].rounded-2xl button.bg-red-600 { background: var(--sd-late); }
 @media (max-width: 900px) {
   .st-grid { grid-template-columns: minmax(0, 1fr); }
   .pw-list { grid-template-columns: minmax(0, 1fr); }
@@ -617,3 +607,168 @@ body.sd-skin [role="dialog"][data-state="open"].rounded-2xl button.bg-red-600 { 
 /* Long sidebars (admin has two dozen pages) scroll inside the sidebar instead of pushing the profile off screen */
 .sd-nav > nav { min-height: 0; overflow-y: auto; margin-inline: -0.25rem; padding-inline: 0.25rem; }
 .sd-list > li { min-width: 0; }
+
+/* Danger button and row menu (shared) */
+.sd-btn--danger { background: var(--sd-late); color: #fff; }
+@media (hover: hover) { .sd-btn--danger:hover:not(:disabled) { background: #a02717; } }
+.sd-menu { position: fixed; z-index: 80; width: 13rem; padding: 0.4rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-paper); box-shadow: 0 1rem 2.5rem rgb(11 27 58 / 0.18); font-family: var(--sd-body); animation: sd-rise 160ms var(--sd-ease) both; }
+.sd-menu hr { margin: 0.3rem 0.2rem; border: 0; border-top: 1.5px solid var(--sd-line); }
+.sd-menu button { display: flex; align-items: center; gap: 0.65rem; width: 100%; min-height: 2.5rem; padding: 0.45rem 0.7rem; border: 0; border-radius: 0.65rem; background: transparent; color: var(--sd-ink); font: 600 0.95rem/1.25 var(--sd-body); text-align: left; cursor: pointer; }
+.sd-menu button svg { width: 1.1rem; height: 1.1rem; color: var(--sd-ink-soft); }
+.sd-menu button:hover, .sd-menu button:focus-visible { background: var(--sd-wash); outline: none; }
+.sd-menu button[data-danger="true"] { color: var(--sd-late); }
+.sd-menu button[data-danger="true"] svg { color: var(--sd-late); }
+@media (prefers-reduced-motion: reduce) { .sd-menu { animation: none; } }
+.nt-pager select { min-height: 2.25rem; padding: 0 0.6rem; border: 1.5px solid var(--sd-line); border-radius: 0.7rem; background: var(--sd-paper); color: var(--sd-ink); font: 600 0.9rem/1 var(--sd-body); }
+.nt-pager .nt-size { display: inline-flex; align-items: center; gap: 0.5rem; }
+
+/* Native select styled like the other fields */
+select.sd-field { appearance: none; padding-right: 2.75rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235a6b8c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 1rem center; cursor: pointer; }
+input[type="date"].sd-field { min-height: 3rem; }
+
+/* ---------- Toasts and confirm boxes (shared components/ui, skinned only inside a portal) ---------- */
+/* Above the dialogs (portal modal z 60, confirm box z 100), so an error toast is never hidden behind the box that caused it. */
+.sd-skin .ui-toasts { z-index: 120; max-width: min(24rem, calc(100vw - 2rem)); font-family: var(--sd-body); }
+.sd-skin .ui-toast { position: relative; gap: 0.75rem; padding: 0.9rem 1rem 0.9rem 1.25rem; border: 0; border-radius: 1rem; background: var(--sd-ink); color: var(--sd-paper); box-shadow: 0 1rem 2.5rem rgb(11 27 58 / 0.35); overflow: hidden; }
+.sd-skin .ui-toast::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--sd-amber); }
+.sd-skin .ui-toast[data-type="error"]::before { background: #ff8a7a; }
+.sd-skin .ui-toast[data-type="info"]::before { background: var(--sd-navy-line); }
+.sd-skin .ui-toast > svg { color: var(--sd-amber); }
+.sd-skin .ui-toast[data-type="error"] > svg { color: #ff8a7a; }
+.sd-skin .ui-toast[data-type="info"] > svg { color: var(--sd-paper); }
+.sd-skin .ui-toast p { font: 600 0.95rem/1.45 var(--sd-body); overflow-wrap: anywhere; }
+.sd-skin .ui-toast-x { color: var(--sd-paper); opacity: 0.7; border-radius: 50%; }
+.sd-skin .ui-toast-x:hover { background: rgb(255 255 255 / 0.12); opacity: 1; }
+.sd-skin .ui-toast-x:focus-visible { outline: 3px solid var(--sd-amber); outline-offset: 2px; }
+
+.sd-skin .ui-cf-overlay { background: rgb(11 27 58 / 0.72); backdrop-filter: none; }
+.sd-skin .ui-cf { width: min(calc(100% - 2rem), 26rem); max-width: none; padding: 1.5rem; border: 0; border-radius: 1.5rem; background: var(--sd-paper); color: var(--sd-ink); font-family: var(--sd-body); box-shadow: 0 2rem 4rem rgb(0 0 0 / 0.4); }
+.sd-skin .ui-cf-ico { width: 3rem; height: 3rem; background: var(--sd-ink); }
+.sd-skin .ui-cf-ico svg { color: var(--sd-amber); }
+.sd-skin .ui-cf-ico[data-danger="true"] { background: var(--sd-late); }
+.sd-skin .ui-cf-ico[data-danger="true"] svg { color: #fff; }
+.sd-skin .ui-cf-title { margin-top: 1rem; font: 700 1.3rem/1.25 var(--sd-display); letter-spacing: -0.02em; color: var(--sd-ink); }
+.sd-skin .ui-cf-desc { margin-top: 0.5rem; font-size: 0.97rem; line-height: 1.5; color: var(--sd-ink-soft); }
+.sd-skin .ui-cf-btn { min-height: 2.75rem; padding: 0.55rem 1.2rem; border: 2px solid transparent; border-radius: 999px; font: 700 0.975rem/1 var(--sd-body); transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 160ms var(--sd-ease); }
+.sd-skin .ui-cf-btn:active { transform: scale(0.97); }
+.sd-skin .ui-cf-btn:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; box-shadow: none; }
+.sd-skin .ui-cf-btn[data-kind="ok"] { background: var(--sd-amber); color: var(--sd-ink); }
+.sd-skin .ui-cf-btn[data-kind="danger"] { background: var(--sd-late); color: #fff; }
+.sd-skin .ui-cf-btn[data-kind="cancel"] { background: transparent; color: var(--sd-ink); border-color: var(--sd-line); }
+.sd-skin .ui-cf-btn[data-kind="ghost"] { background: transparent; color: var(--sd-ink-soft); }
+@media (hover: hover) and (pointer: fine) {
+  .sd-skin .ui-cf-btn[data-kind="ok"]:hover { background: var(--sd-amber-deep); }
+  .sd-skin .ui-cf-btn[data-kind="danger"]:hover { filter: brightness(0.92); }
+  .sd-skin .ui-cf-btn[data-kind="cancel"]:hover { border-color: var(--sd-ink); }
+  .sd-skin .ui-cf-btn[data-kind="ghost"]:hover { color: var(--sd-ink); }
+}
+@media (prefers-reduced-motion: reduce) { .sd-skin .ui-cf-btn { transition: none; } }
+
+/* ---------- Banners ---------- */
+.sd-banner { position: fixed; left: 0; right: 0; z-index: 55; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.35rem 0.75rem; padding: 0.55rem 1rem; font: 600 0.95rem/1.4 var(--sd-body); text-align: center; }
+.sd-banner[data-edge="top"] { top: 0; }
+.sd-banner[data-edge="bottom"] { bottom: 0; }
+.sd-banner > svg { flex: none; width: 1.1rem; height: 1.1rem; }
+.sd-banner[data-tone="info"] { background: var(--sd-ink); color: var(--sd-paper); }
+.sd-banner[data-tone="info"] > svg { color: var(--sd-amber); }
+.sd-banner[data-tone="warning"], .sd-banner[data-tone="amber"] { background: var(--sd-amber); color: var(--sd-ink); }
+.sd-banner[data-tone="critical"] { background: var(--sd-late); color: #fff; }
+.sd-banner-x { display: inline-grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; opacity: 0.85; }
+.sd-banner-x svg { width: 1.1rem; height: 1.1rem; }
+.sd-banner-x:hover { background: rgb(255 255 255 / 0.15); opacity: 1; }
+.sd-banner[data-tone="warning"] .sd-banner-x:hover, .sd-banner[data-tone="amber"] .sd-banner-x:hover { background: rgb(11 27 58 / 0.12); }
+.sd-banner-x:focus-visible, .sd-banner-btn:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+.sd-banner-btn { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; padding: 0.35rem 1rem; border: 0; border-radius: 999px; background: var(--sd-ink); color: var(--sd-paper); font: 700 0.9rem/1 var(--sd-body); cursor: pointer; transition: background-color 0.18s ease, transform 160ms var(--sd-ease); }
+.sd-banner-btn svg { width: 1rem; height: 1rem; }
+.sd-banner-btn:active { transform: scale(0.97); }
+.sd-banner-btn:disabled { opacity: 0.6; cursor: progress; }
+@media (hover: hover) and (pointer: fine) { .sd-banner-btn:hover:not(:disabled) { background: var(--sd-blue-deep); } }
+.sd-banner-err { font-weight: 700; text-decoration: underline; }
+
+/* Legacy shadcn dialogs (Add/Edit school, Joining codes, ...) on portal pages: same frame as the portal Modal.
+   Only the chrome is skinned here; the forms inside keep their own layout. */
+.sd-skin .ui-dialog-overlay { background: rgb(11 27 58 / 0.6); z-index: 60; }
+.sd-skin .ui-dialog { z-index: 61; border: 1.5px solid var(--sd-line); border-radius: 1.5rem; background: var(--sd-paper); color: var(--sd-ink); font-family: var(--sd-body); box-shadow: 0 2rem 4rem rgb(11 27 58 / 0.3); }
+.sd-skin .ui-dialog-title { font-family: var(--sd-display); font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+.sd-skin .ui-dialog-desc { color: var(--sd-ink-soft); }
+.sd-skin .ui-dialog-close { display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 50%; }
+.sd-skin .ui-dialog-close:hover { background: var(--sd-wash); }
+.sd-skin .ui-dialog-close svg { width: 1.1rem; height: 1.1rem; color: var(--sd-ink); }
+.sd-skin .ui-dialog-close:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; box-shadow: none; }
+/* Legacy dialogs: their blue primary buttons take the portal's amber */
+.sd-skin .ui-dialog [class*="bg-blue-600"]:hover:not(:disabled), .sd-skin .ui-dialog [class~="bg-gray-900"]:hover:not(:disabled), .sd-skin .ui-dialog [class~="bg-black"]:hover:not(:disabled) { background: var(--sd-amber-deep); }
+
+/* ── shadcn controls inside dialogs and menus ───────────────────────────────────────────────
+   Older dialog bodies (add school, add teacher, create account, course wizard…) still build their forms from the shared
+   shadcn parts. These rules give those parts the portal's own look wherever they appear inside a dialog, so every form
+   matches without each one being rewritten. They use a few classes of specificity on purpose: the dialogs also pass their
+   own Tailwind colours (border-gray-200, focus:border-blue-500) and those must lose. Sizes and icon padding are left alone. */
+.sd-skin .ui-dialog .ui-input, .sd-skin .ui-dialog .ui-textarea, .sd-skin .ui-dialog .ui-select {
+  min-height: 2.75rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; background-color: var(--sd-paper); color: var(--sd-ink);
+  font: 500 1rem/1.5 var(--sd-body); box-shadow: none; transition: border-color 0.18s ease;
+}
+.sd-skin .ui-dialog .ui-input:not([type="file"]), .sd-skin .ui-dialog .ui-textarea, .sd-skin .ui-dialog .ui-select { padding-block: 0.55rem; }
+.sd-skin .ui-dialog .ui-textarea { min-height: 6rem; resize: vertical; }
+.sd-skin .ui-dialog .ui-input::placeholder, .sd-skin .ui-dialog .ui-textarea::placeholder { color: var(--sd-ink-soft); opacity: 0.8; }
+.sd-skin .ui-dialog .ui-input:hover, .sd-skin .ui-dialog .ui-textarea:hover, .sd-skin .ui-dialog .ui-select:hover { border-color: var(--sd-ink-soft); }
+.sd-skin .ui-dialog .ui-input:focus-visible, .sd-skin .ui-dialog .ui-textarea:focus-visible, .sd-skin .ui-dialog .ui-select:focus, .sd-skin .ui-dialog .ui-select:focus-visible {
+  border-color: var(--sd-blue); outline: 3px solid var(--sd-blue); outline-offset: 2px; box-shadow: none;
+}
+.sd-skin .ui-dialog .ui-input:disabled, .sd-skin .ui-dialog .ui-textarea:disabled, .sd-skin .ui-dialog .ui-select:disabled { background-color: var(--sd-wash); cursor: not-allowed; }
+.sd-skin .ui-dialog .ui-input[aria-invalid="true"] { border-color: var(--sd-late); }
+.sd-skin .ui-dialog .ui-label { font: 700 0.95rem/1.3 var(--sd-body); color: var(--sd-ink); }
+
+.sd-skin .ui-dialog .ui-btn { min-height: 2.25rem; border-radius: 999px; font-weight: 700; font-family: var(--sd-body); transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 160ms var(--sd-ease); }
+.sd-skin .ui-dialog .ui-btn:active:not(:disabled) { transform: scale(0.97); }
+.sd-skin .ui-dialog .ui-btn:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; box-shadow: none; border-color: transparent; }
+.sd-skin .ui-dialog .ui-btn[data-variant="default"]:not([class*="bg-red"]):not([class*="bg-green"]):not([class*="bg-emerald"]):not([class*="bg-orange"]):not([class*="bg-purple"]):not([class*="bg-yellow"]):not([class*="bg-amber"]) { background: var(--sd-amber); color: var(--sd-ink); }
+.sd-skin .ui-dialog .ui-btn[data-variant="outline"] { background: transparent; box-shadow: none; color: var(--sd-ink); }
+.sd-skin .ui-dialog .ui-btn[data-variant="outline"]:not([class*="border-green"]):not([class*="border-red"]):not([class*="border-amber"]):not([class*="border-orange"]):not([class*="border-blue"]) { border: 2px solid var(--sd-line); }
+.sd-skin .ui-dialog .ui-btn[data-variant="secondary"] { background: var(--sd-wash); color: var(--sd-ink); }
+.sd-skin .ui-dialog .ui-btn[data-variant="destructive"]:not([class*="bg-red"]) { background: var(--sd-late); color: #fff; }
+.sd-skin .ui-dialog .ui-btn[data-variant="ghost"] { color: var(--sd-ink); }
+@media (hover: hover) {
+  .sd-skin .ui-dialog .ui-btn[data-variant="default"]:not([class*="bg-red"]):not([class*="bg-green"]):not([class*="bg-emerald"]):not([class*="bg-orange"]):not([class*="bg-purple"]):not([class*="bg-yellow"]):not([class*="bg-amber"]):hover:not(:disabled) { background: var(--sd-amber-deep); }
+  .sd-skin .ui-dialog .ui-btn[data-variant="outline"]:hover:not(:disabled) { border-color: var(--sd-ink); background: var(--sd-wash); color: var(--sd-ink); }
+  .sd-skin .ui-dialog .ui-btn[data-variant="secondary"]:hover:not(:disabled), .sd-skin .ui-dialog .ui-btn[data-variant="ghost"]:hover:not(:disabled) { background: var(--sd-wash); color: var(--sd-ink); }
+}
+
+.sd-skin .ui-dialog .ui-tabs { height: auto; padding: 0.25rem; border: 1.5px solid var(--sd-line); border-radius: 999px; background: var(--sd-paper); }
+.sd-skin .ui-dialog .ui-tab { min-height: 2.25rem; padding: 0.35rem 1rem; border: 0; border-radius: 999px; background: transparent; color: var(--sd-ink-soft); font: 600 0.92rem/1.2 var(--sd-body); box-shadow: none; }
+.sd-skin .ui-dialog .ui-tab[data-state="active"] { background: var(--sd-ink); color: var(--sd-paper); box-shadow: none; }
+.sd-skin .ui-dialog .ui-tab:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; box-shadow: none; }
+
+.sd-skin .ui-dialog .ui-badge { padding: 0.05rem 0.7rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.78rem/1.6 var(--sd-body); }
+.sd-skin .ui-dialog .ui-badge:not([class*="bg-"]):not([class*="border-"]) { background: var(--sd-wash); color: var(--sd-ink); }
+
+.sd-skin .ui-dialog .ui-check { width: 1.2rem; height: 1.2rem; border: 1.5px solid var(--sd-ink); border-radius: 0.35rem; background: var(--sd-paper); color: var(--sd-ink); }
+.sd-skin .ui-dialog .ui-check[data-state="checked"] { background: var(--sd-ink); color: var(--sd-amber); }
+.sd-skin .ui-dialog .ui-check:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; box-shadow: none; }
+.sd-skin .ui-dialog .ui-switch { width: 2.9rem; height: 1.7rem; border: 2px solid var(--sd-line); background: var(--sd-wash); }
+.sd-skin .ui-dialog .ui-switch[data-state="checked"] { border-color: var(--sd-amber); background: var(--sd-amber); }
+.sd-skin .ui-dialog .ui-switch:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; box-shadow: none; }
+
+.sd-skin .ui-dialog [data-slot="card"] { gap: 1rem; border: 1.5px solid var(--sd-line); border-radius: 1.25rem; background: var(--sd-paper); color: var(--sd-ink); box-shadow: none; }
+.sd-skin .ui-dialog [data-slot="card-title"] { font: 700 1.1rem/1.3 var(--sd-display); letter-spacing: -0.01em; }
+.sd-skin .ui-dialog [data-slot="card-description"] { color: var(--sd-ink-soft); font-size: 0.93rem; }
+
+/* Drop-downs, menus and tooltips open above the dialogs (60-61) and the confirm box (100-101), and share the portal look. */
+.sd-skin .ui-pop { z-index: 110; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-paper); color: var(--sd-ink); font-family: var(--sd-body); box-shadow: 0 1rem 2.5rem rgb(11 27 58 / 0.22); }
+.sd-skin .ui-select-pop { padding: 0.25rem; }
+.sd-skin .ui-select-item { min-height: 2.4rem; border-radius: 0.7rem; font: 500 0.98rem/1.3 var(--sd-body); }
+.sd-skin .ui-select-item[data-highlighted], .sd-skin .ui-select-item:focus { background: var(--sd-wash); color: var(--sd-ink); }
+.sd-skin .ui-select-item[data-state="checked"] { font-weight: 700; }
+
+/* Older dialog bodies colour things with Tailwind blue and grey. Inside a dialog those map onto the portal's own colours.
+   `~=` matches a whole class, so "hover:bg-gray-100" is left to do its job on hover and is not applied all the time. */
+.sd-skin .ui-dialog [class~="text-blue-500"], .sd-skin .ui-dialog [class~="text-blue-600"], .sd-skin .ui-dialog [class~="text-blue-700"], .sd-skin .ui-dialog [class~="text-blue-800"], .sd-skin .ui-dialog [class~="text-blue-900"] { color: var(--sd-ink); }
+.sd-skin .ui-dialog [class~="bg-blue-50"], .sd-skin .ui-dialog [class~="bg-blue-100"] { background-color: rgb(251 191 36 / 0.16); }
+.sd-skin .ui-dialog [class~="border-blue-200"], .sd-skin .ui-dialog [class~="border-blue-300"], .sd-skin .ui-dialog [class~="border-blue-500"], .sd-skin .ui-dialog [class~="border-blue-600"] { border-color: var(--sd-ink); }
+.sd-skin .ui-dialog [class~="bg-blue-600"], .sd-skin .ui-dialog [class~="bg-blue-700"], .sd-skin .ui-dialog [class~="bg-gray-900"], .sd-skin .ui-dialog [class~="bg-slate-900"], .sd-skin .ui-dialog [class~="bg-black"], .sd-skin .ui-dialog [class~="bg-indigo-600"] { background: var(--sd-amber); color: var(--sd-ink); font-weight: 700; }
+.sd-skin .ui-dialog [class~="text-gray-400"], .sd-skin .ui-dialog [class~="text-gray-500"], .sd-skin .ui-dialog [class~="text-gray-600"], .sd-skin .ui-dialog [class~="text-slate-500"], .sd-skin .ui-dialog [class~="text-slate-600"], .sd-skin .ui-dialog [class~="text-muted-foreground"] { color: var(--sd-ink-soft); }
+.sd-skin .ui-dialog [class~="text-gray-700"], .sd-skin .ui-dialog [class~="text-gray-800"], .sd-skin .ui-dialog [class~="text-gray-900"], .sd-skin .ui-dialog [class~="text-slate-700"], .sd-skin .ui-dialog [class~="text-slate-900"] { color: var(--sd-ink); }
+.sd-skin .ui-dialog [class~="bg-gray-50"], .sd-skin .ui-dialog [class~="bg-gray-100"], .sd-skin .ui-dialog [class~="bg-slate-50"], .sd-skin .ui-dialog [class~="bg-slate-100"] { background-color: var(--sd-wash); }
+.sd-skin .ui-dialog [class~="border-gray-100"], .sd-skin .ui-dialog [class~="border-gray-200"], .sd-skin .ui-dialog [class~="border-gray-300"], .sd-skin .ui-dialog [class~="border-slate-200"] { border-color: var(--sd-line); }
+.sd-skin .ui-dialog [class~="bg-gray-200"] { background-color: var(--sd-line); }
+
+.sd-skin .ui-dialog [class~="ring-blue-600"], .sd-skin .ui-dialog [class~="ring-blue-500"] { --tw-ring-color: var(--sd-ink); }

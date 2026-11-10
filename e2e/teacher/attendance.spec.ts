@@ -86,24 +86,24 @@ test.describe('Teacher — Attendance', () => {
     const todayRes = await todayResponse;
     expect(todayRes.ok()).toBeTruthy();
 
-    await expect(page.getByRole('heading', { name: "Today's Attendance Status" })).toBeVisible();
-    await expect(page.getByText('All period reports submitted!')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Present', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
+    await expect(page.getByText('Every report is in and you are marked present.')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('You are marked present today.')).toBeVisible();
   });
 
-  test('monthly attendance log reflects the present day for the current month', async ({ page }) => {
+  test('this month shows the present day in the numbers and the calendar', async ({ page }) => {
     const monthlyResponse = page.waitForResponse(
       (res) => res.url().includes('/teacher/attendance/monthly') && res.request().method() === 'GET',
     );
     await page.goto('/lms/teacher/attendance');
     await monthlyResponse;
 
-    // Current-month stat card: at least 1 day present from the report seeded above.
-    const presentCard = page.getByText('Present', { exact: true }).locator('..').locator('..');
-    await expect(presentCard.getByText(/^[1-9]\d*$/)).toBeVisible({ timeout: 10000 });
+    // The numbers under the hero cover the picked month (this month by default): at least 1 day present.
+    const ledger = page.getByRole('group', { name: /^Attendance in / });
+    await expect(ledger.getByText(/^[1-9]\d*$/).first()).toBeVisible({ timeout: 10000 });
 
     const now = new Date();
     const monthLabel = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    await expect(page.getByRole('cell', { name: monthLabel })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: monthLabel })).toBeVisible({ timeout: 10000 });
   });
 });

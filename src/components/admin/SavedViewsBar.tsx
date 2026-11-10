@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Bookmark, BookmarkPlus, X, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Bookmark, BookmarkPlus, Loader2, X } from "lucide-react";
 import { adminApi } from "@/lib/api/admin.api";
+import { toast } from "@/components/ui/toast";
 
 interface SavedView {
   id: string;
@@ -15,8 +13,8 @@ interface SavedView {
 }
 
 /**
- * Generic saved-views strip for an admin table/page. The page owns what
- * `state` means: pass the current filter state and apply it back on click.
+ * A strip of saved filter sets for an admin table. The page owns what `state` means:
+ * pass the current filters in, and apply a saved set back when it is picked. Needs audit.css (aud-view classes).
  */
 export default function SavedViewsBar({
   tableKey,
@@ -37,12 +35,12 @@ export default function SavedViewsBar({
       const { data } = await adminApi.savedViews.list(tableKey);
       setViews(Array.isArray(data) ? (data as SavedView[]) : []);
     } catch {
-      // Non-fatal — the strip just stays empty.
+      /* the strip just stays empty */
     }
   }, [tableKey]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const save = async () => {
@@ -50,77 +48,59 @@ export default function SavedViewsBar({
     if (!trimmed) return;
     setSaving(true);
     try {
-      await adminApi.savedViews.create({
-        table_key: tableKey,
-        name: trimmed,
-        state: currentState,
-      });
+      await adminApi.savedViews.create({ table_key: tableKey, name: trimmed, state: currentState });
+      toast.success(`Saved the view “${trimmed}”`);
       setName("");
       setNaming(false);
       await load();
+    } catch {
+      toast.error("We could not save this view. Try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  const remove = async (id: string) => {
-    await adminApi.savedViews.delete(id).catch(() => {});
-    setViews((v) => v.filter((x) => x.id !== id));
+  const remove = async (v: SavedView) => {
+    try {
+      await adminApi.savedViews.delete(v.id);
+      setViews((all) => all.filter((x) => x.id !== v.id));
+    } catch {
+      toast.error(`We could not delete “${v.name}”. Try again.`);
+    }
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="aud-views" role="group" aria-label="Saved views">
       {views.map((v) => (
-        <Badge
-          key={v.id}
-          variant="outline"
-          className="cursor-pointer gap-1 border-blue-200 bg-blue-50 py-1 pl-2 pr-1 text-blue-700 hover:bg-blue-100"
-          onClick={() => onApply(v.state)}
-        >
-          <Bookmark className="h-3 w-3" />
-          {v.name}
-          <button
-            aria-label={`Delete view ${v.name}`}
-            className="ml-1 rounded p-0.5 opacity-60 hover:bg-blue-200 hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              remove(v.id);
-            }}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </Badge>
+        <span key={v.id} className="aud-view">
+          <button type="button" className="aud-apply" onClick={() => onApply(v.state)}><Bookmark aria-hidden="true" />{v.name}</button>
+          <button type="button" className="aud-del" aria-label={`Delete the view ${v.name}`} onClick={() => void remove(v)}><X aria-hidden="true" /></button>
+        </span>
       ))}
       {naming ? (
-        <div className="flex items-center gap-1">
-          <Input
+        <span className="aud-name">
+          <input
             autoFocus
+            className="sd-field"
+            aria-label="Name for this view"
             value={name}
+            maxLength={60}
+            placeholder="Name this view"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") save();
+              if (e.key === "Enter") void save();
               if (e.key === "Escape") setNaming(false);
             }}
-            placeholder="View name…"
-            className="h-7 w-40 text-xs"
           />
-          <Button size="sm" className="h-7 px-2 text-xs" onClick={save} disabled={saving || !name.trim()}>
-            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setNaming(false)}>
-            Cancel
-          </Button>
-        </div>
+          <button className="sd-btn sd-btn--amber" onClick={() => void save()} disabled={saving || !name.trim()}>
+            {saving && <Loader2 className="animate-spin" aria-hidden="true" />}Save
+          </button>
+          <button className="sd-btn sd-btn--line" onClick={() => setNaming(false)} disabled={saving}>Cancel</button>
+        </span>
       ) : (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 gap-1 px-2 text-xs text-gray-500 hover:text-gray-800"
-          onClick={() => setNaming(true)}
-        >
-          <BookmarkPlus className="h-3.5 w-3.5" />
-          Save current view
-        </Button>
+        <button type="button" className="sm-reset" style={{ color: "var(--sd-ink)", display: "inline-flex", alignItems: "center", gap: "0.35rem" }} onClick={() => setNaming(true)}>
+          <BookmarkPlus width={16} height={16} aria-hidden="true" />Save these filters as a view
+        </button>
       )}
     </div>
   );

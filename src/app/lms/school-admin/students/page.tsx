@@ -1,133 +1,56 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, KeyRound, Loader2, Pencil, Plus, Power, Trash2, Upload, Eye as EyeIcon } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { toast } from "@/components/ui/toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import RowMenu from "@/components/portal/RowMenu";
+import { ChipGroup, Pager, initialsOf } from "@/components/portal/notifications";
+import GradeRun from "@/components/school-admin/GradeRun";
+import StudentFormModal from "@/components/school-admin/StudentFormModal";
+import StudentDetailModal from "@/components/school-admin/StudentDetailModal";
+import StudentImportModal from "@/components/school-admin/StudentImportModal";
+import StudentPasswordModal from "@/components/school-admin/StudentPasswordModal";
 import {
-  SchoolAdminStudentManagementTable,
-  type SchoolAdminStudentTableRow,
-} from "@/components/ui/school-admin-student-management-table";
-import {
-  Plus,
-  Search,
-  Download,
-  Upload,
-  Eye,
-  EyeOff,
-  RefreshCw,
-  Copy,
-  Shield,
-  Loader2,
-  Trash2,
-} from "lucide-react";
+  csvCell,
+  displayStudentName,
+  downloadText,
+  emptyStudentForm,
+  enrollmentMissingClassOrCode,
+  formatGradeBadge,
+  formatSectionLabel,
+  selectChoicesFrom,
+  type Student,
+  type StudentForm,
+} from "@/components/school-admin/student-utils";
+import "@/components/school-admin/students.css";
 
-interface Student {
-  id: string;
-  profile_id: string;
-  student_id?: string;
-  school_id: string;
-  grade: string;
-  section?: string;
-  joining_code: string;
-  enrolled_at: string;
-  is_active: boolean;
-  profile: {
-    full_name: string;
-    email: string;
-    created_at: string;
-    parent_name?: string;
-    parent_phone?: string;
-  };
-  last_login?: string;
-}
+type SchoolGrade = { id: string; name: string; sections: Array<{ id: string; name: string }> };
+type Confirm =
+  | { kind: "delete"; student: Student }
+  | { kind: "toggle"; student: Student; next: boolean }
+  | { kind: "bulk"; students: Student[] };
 
-/** True when class/enrollment columns are empty in the API payload (persisted DB nulls). */
-function enrollmentMissingClassOrCode(student: Pick<Student, "grade" | "section" | "joining_code">): boolean {
-  const gradeEmpty = !String(student.grade ?? "").trim();
-  const sectionEmpty = !String(student.section ?? "").trim();
-  const codeEmpty = !String(student.joining_code ?? "").trim();
-  return gradeEmpty && sectionEmpty && codeEmpty;
-}
+const COUNT_KEY = ["school-admin", "students", "count"] as const;
+const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const errText = (e: unknown, fallback = "Try again.") => (e instanceof Error ? e.message : fallback);
 
-/** Grade is stored as the full configured name (e.g. "Grade 5") — prefixing "Grade " again would double it up. */
-function formatGradeBadge(grade: string | undefined | null): string {
-  const g = String(grade ?? "").trim();
-  if (!g) return "";
-  return /^grade\b/i.test(g) ? g : `Grade ${g}`;
-}
-
-/** Preferred display name when full_name was cleared server-side — falls back from email local part. */
-function displayStudentName(student: Student): string {
-  const trimmed = student?.profile?.full_name?.trim();
-  if (trimmed) return trimmed;
-  const email = student?.profile?.email?.trim();
-  if (email) {
-    const raw = email.split("@")[0] ?? "";
-    const tokens = raw
-      .replace(/[._+-]+/g, " ")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    if (tokens.length > 0) {
-      return tokens.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-    }
-  }
-  return `Student #${student.id}`;
-}
-
-function mapStudentToTableRow(student: Student): SchoolAdminStudentTableRow {
-  const nameDisplay = displayStudentName(student);
-  const emailDisplay = student.profile?.email || "No email";
-  const gradeDisplay = student.grade || "-";
-  const sectionDisplay = student.section || "";
-  const parentNameDisplay = student.profile?.parent_name || "";
-  const parentPhoneDisplay = student.profile?.parent_phone || "";
-  return {
-    id: student.id,
-    nameDisplay,
-    emailDisplay,
-    gradeDisplay,
-    sectionDisplay,
-    parentNameDisplay,
-    parentPhoneDisplay,
-    parentPhoneHref: parentPhoneDisplay ? `tel:${parentPhoneDisplay}` : null,
-    hasJoinCode: !!student.joining_code,
-    enrolledDisplay: student.enrolled_at
-      ? new Date(student.enrolled_at).toLocaleDateString()
-      : "—",
-    statusLabel: student.is_active ? "Active" : "Inactive",
-    is_active: student.is_active,
-    searchBlob: [nameDisplay, emailDisplay, gradeDisplay, sectionDisplay, parentNameDisplay, parentPhoneDisplay]
-      .join(" ")
-      .toLowerCase(),
-  };
-}
-
-/** Radix Select forbids `SelectItem value=""`. Drops blanks / whitespace-only and dedupes. */
-function selectChoicesFrom(values: (string | null | undefined)[], sortAlphabetically: boolean): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of values) {
-    const v = String(raw ?? "").trim();
-    if (!v || seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
-  }
-  return sortAlphabetically ? [...out].sort() : out;
+/** The API sometimes wraps the payload in `data`; this returns the inner object either way. */
+function unwrap(res: { data?: unknown }): Record<string, unknown> {
+  const root = (res.data ?? {}) as Record<string, unknown>;
+  return root.data != null && typeof root.data === "object" && !Array.isArray(root.data) ? (root.data as Record<string, unknown>) : root;
 }
 
 export default function StudentsManagement() {
+  const queryClient = useQueryClient();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAddingStudent, setIsAddingStudent] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
@@ -135,19 +58,30 @@ export default function StudentsManagement() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
-  const [schoolId, setSchoolId] = useState<string>("");
+  const [schoolId, setSchoolId] = useState("");
   const [schoolGrades, setSchoolGrades] = useState<string[]>([]);
   const [schoolSections, setSchoolSections] = useState<string[]>([]);
-  const [schoolGradesDetailed, setSchoolGradesDetailed] = useState<
-    Array<{ id: string; name: string; sections: Array<{ id: string; name: string }> }>
-  >([]);
+  const [schoolGradesDetailed, setSchoolGradesDetailed] = useState<SchoolGrade[]>([]);
 
-  /** Sections that actually exist for a given grade — falls back to the full school-wide list when the grade isn't selected/known yet, matching the previous (unscoped) behavior instead of showing nothing. */
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Student | null>(null);
+  const [formData, setFormData] = useState<StudentForm>(emptyStudentForm());
+  const [saving, setSaving] = useState(false);
+  const [viewing, setViewing] = useState<Student | null>(null);
+  const [resetting, setResetting] = useState<Student | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectAll = useRef<HTMLInputElement>(null);
+
+  /* ───────── school setup: grades and sections ───────── */
+  const gradeList = useMemo(() => [...selectChoicesFrom(schoolGrades, false)].sort(natural), [schoolGrades]);
+  const predefinedSections = useMemo(() => selectChoicesFrom(schoolSections, false), [schoolSections]);
+
+  /** Sections that exist for a grade; falls back to the school-wide list when the grade is unknown. */
   const sectionsForGrade = useCallback(
     (grade: string) => {
       if (!grade) return predefinedSections;
@@ -155,159 +89,56 @@ export default function StudentsManagement() {
       if (!g || g.sections.length === 0) return predefinedSections;
       return selectChoicesFrom(g.sections.map((s) => s.name), false);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [schoolGradesDetailed, schoolSections],
+    [schoolGradesDetailed, predefinedSections],
   );
 
-  const predefinedSections = useMemo(
-    () => selectChoicesFrom(schoolSections, false),
-    [schoolSections],
-  );
-  const [newPassword, setNewPassword] = useState("");
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [importPreview, setImportPreview] = useState<Array<Record<string, string>>>([]);
-  const [importResults, setImportResults] = useState<null | {
-    summary: { total: number; success: number; failed: number; generated_passwords: number; dry_run: boolean };
-    results: Array<{ index: number; email: string | null; success: boolean; error?: string; generated_password?: string }>;
-  }>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [deletingStudent, setDeletingStudent] = useState<Student | null>(null);
-  const [isDeleteStudentDialogOpen, setIsDeleteStudentDialogOpen] = useState(false);
-  const [isDeletingStudent, setIsDeletingStudent] = useState(false);
-  const [toggleTarget, setToggleTarget] = useState<{ student: Student; next: boolean } | null>(null);
-  const [isToggleStudentDialogOpen, setIsToggleStudentDialogOpen] = useState(false);
-  const [isTogglingStudent, setIsTogglingStudent] = useState(false);
-  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<SchoolAdminStudentTableRow[] | null>(null);
-  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
-  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [bulkSelectionResetKey, setBulkSelectionResetKey] = useState(0);
-
-  const studentTableRows = useMemo(() => students.map(mapStudentToTableRow), [students]);
-
-  // Form states
-  const [formData, setFormData] = useState({
-    full_name: "",
-    email: "",
-    grade: "",
-    section: "",
-    joining_code: "",
-    password: "",
-    parent_name: "",
-    parent_phone: ""
-  });
-
-  const addStudentDirty = useDirtySnapshot(isAddDialogOpen, formData);
-  const editStudentDirty =
-    useDirtySnapshot(isEditDialogOpen, formData) || newPassword.trim() !== "";
-
-  const requestCloseAddStudent = () => {
-    void requestClose(addStudentDirty, () => setIsAddDialogOpen(false));
-  };
-
-  const requestCloseEditStudent = () => {
-    void requestClose(editStudentDirty, () => {
-      setIsEditDialogOpen(false);
-      setSelectedStudent(null);
-      setNewPassword("");
-      setShowNewPassword(false);
-    });
-  };
-
-  // The Edit form's Select only renders options scoped to the selected
-  // grade, so a student's real section that isn't in that grade's *current*
-  // configured list (renamed/removed since assignment, grade mismatch, or
-  // the config fetch racing the edit click) would render as blank even
-  // though formData.section correctly holds it — include it explicitly so
-  // the dropdown can actually show it.
-  const editSectionOptions = useMemo(() => {
+  /** Keeps a student's real section selectable even if it is no longer in the grade's configured list. */
+  const formSections = useMemo(() => {
     const options = sectionsForGrade(formData.grade);
     const current = formData.section?.trim();
-    if (!current || options.includes(current)) return options;
-    return [...options, current];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.grade, formData.section, schoolGradesDetailed, schoolSections]);
+    return !current || options.includes(current) ? options : [...options, current];
+  }, [sectionsForGrade, formData.grade, formData.section]);
 
-  const getEmptyStudentForm = () => ({
-    full_name: "",
-    email: "",
-    grade: "",
-    section: "",
-    joining_code: "",
-    password: "",
-    parent_name: "",
-    parent_phone: "",
-  });
+  const loadSchool = useCallback(async () => {
+    try {
+      const res = await schoolAdminApi.school.get();
+      const school = ((res.data ?? {}) as {
+        school?: { id?: string; grades_offered?: string[]; sections_offered?: string[]; grades?: SchoolGrade[] };
+      }).school;
+      if (school) {
+        setSchoolId(school.id ?? "");
+        if (school.sections_offered?.length) setSchoolSections(school.sections_offered);
+        setSchoolGrades(Array.isArray(school.grades_offered) ? selectChoicesFrom(school.grades_offered, true) : []);
+        setSchoolGradesDetailed(Array.isArray(school.grades) ? school.grades : []);
+      }
+    } catch (err) {
+      console.error("Error fetching school info:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSchool();
+  }, [loadSchool]);
+
+  /* ───────── the list ───────── */
+  const filterParams = useCallback(
+    () => ({
+      q: searchTerm || undefined,
+      grade: gradeFilter !== "all" ? gradeFilter : undefined,
+      section: sectionFilter !== "all" ? sectionFilter : undefined,
+      status: statusFilter !== "all" ? statusFilter : undefined,
+    }),
+    [searchTerm, gradeFilter, sectionFilter, statusFilter],
+  );
 
   const loadStudents = useCallback(async () => {
     try {
       setLoading(true);
-      
-      // Fetch school info via schoolAdminApi (school_admins table)
-      try {
-        const schoolRes = await schoolAdminApi.school.get();
-        const schoolData = schoolRes.data ?? {};
-        const school = (schoolData as {
-          school?: {
-            id?: string;
-            number_of_sections?: number;
-            grades_offered?: string[];
-            sections_offered?: string[];
-            grades?: Array<{ id: string; name: string; sections: Array<{ id: string; name: string }> }>;
-          };
-        }).school;
-        if (school) {
-          setSchoolId(school.id ?? '');
-          if (school.sections_offered && school.sections_offered.length > 0) {
-            setSchoolSections(school.sections_offered);
-          }
-          setSchoolGrades(
-            Array.isArray(school.grades_offered) ? selectChoicesFrom(school.grades_offered, true) : [],
-          );
-          setSchoolGradesDetailed(Array.isArray(school.grades) ? school.grades : []);
-        } else {
-          console.warn('School not found in API response');
-          setSchoolGrades([]);
-          setSchoolSections([]);
-          setSchoolGradesDetailed([]);
-        }
-      } catch (err) {
-        console.log('Error fetching school info:', err);
-        setSchoolGrades([]);
-        setSchoolSections([]);
-        setSchoolGradesDetailed([]);
-      }
-
-      // Load students for this school using centralized schoolAdminApi (server-side filter + paging)
-      const response = await schoolAdminApi.students.list({
-        limit: pageSize,
-        page,
-        q: searchTerm || undefined,
-        grade: gradeFilter !== 'all' ? gradeFilter : undefined,
-        section: sectionFilter !== 'all' ? sectionFilter : undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-      });
-      const raw = response.data ?? {};
-      const root = raw as Record<string, unknown> | undefined;
-      const data =
-        root?.data != null &&
-        typeof root.data === 'object' &&
-        !Array.isArray(root.data)
-          ? (root.data as Record<string, unknown>)
-          : (root ?? {});
-
-      // Transform API response to match expected format
-      type ApiStudentRow = {
+      setLoadFailed(false);
+      const data = unwrap(await schoolAdminApi.students.list({ limit: pageSize, page, ...filterParams() }));
+      type Api = {
         id?: string;
-        profile?: {
-          id?: string;
-          full_name?: string;
-          email?: string;
-          created_at?: string;
-          parent_name?: string;
-          parent_phone?: string;
-        };
+        profile?: { id?: string; full_name?: string; email?: string; created_at?: string; parent_name?: string; parent_phone?: string };
         student_id?: string;
         school_id?: string;
         grade?: string;
@@ -318,97 +149,134 @@ export default function StudentsManagement() {
         parent_name?: string;
         parent_phone?: string;
       };
-
-      const apiStudents =
-        (data as { students?: unknown[] }).students ??
-        (Array.isArray(data) ? data : []);
-
-      const transformedStudents = (apiStudents as ApiStudentRow[]).map((student) => ({
-        id: String(student.id ?? student.student_id ?? ""),
-        profile_id: student.profile?.id || student.student_id,
-        student_id: student.student_id,
-        school_id: student.school_id,
-        grade: student.grade ?? "",
-        section: student.section ?? "",
-        joining_code: student.joining_code ?? "",
-        is_active: student.is_active ?? true,
-        enrolled_at: student.enrolled_at ?? "",
+      const raw = ((data as { students?: unknown[] }).students ?? (Array.isArray(data) ? data : [])) as Api[];
+      const rows = raw.map((s) => ({
+        id: String(s.id ?? s.student_id ?? ""),
+        profile_id: s.profile?.id || s.student_id,
+        student_id: s.student_id,
+        school_id: s.school_id,
+        grade: s.grade ?? "",
+        section: s.section ?? "",
+        joining_code: s.joining_code ?? "",
+        is_active: s.is_active ?? true,
+        enrolled_at: s.enrolled_at ?? "",
         profile: {
-          full_name: student.profile?.full_name ?? "",
-          email: student.profile?.email ?? "",
-          created_at: student.profile?.created_at ?? "",
-          parent_name: student.profile?.parent_name || student.parent_name || "",
-          parent_phone: student.profile?.parent_phone || student.parent_phone || "",
+          full_name: s.profile?.full_name ?? "",
+          email: s.profile?.email ?? "",
+          created_at: s.profile?.created_at ?? "",
+          parent_name: s.profile?.parent_name || s.parent_name || "",
+          parent_phone: s.profile?.parent_phone || s.parent_phone || "",
         },
-      }));
-
-      setStudents(transformedStudents as unknown as Student[]);
-      const maybeTotal = (data as { total?: number }).total;
-      setTotal(typeof maybeTotal === 'number' ? maybeTotal : transformedStudents.length);
+      })) as unknown as Student[];
+      setStudents(rows);
+      const t = (data as { total?: number }).total;
+      setTotal(typeof t === "number" ? t : rows.length);
     } catch (error) {
-      console.error('Error loading students:', error);
+      console.error("Error loading students:", error);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
-  }, [gradeFilter, page, pageSize, searchTerm, sectionFilter, statusFilter]);
+  }, [pageSize, page, filterParams]);
 
   useEffect(() => {
-    loadStudents();
+    void loadStudents();
   }, [loadStudents]);
+
+  // search waits for a pause in typing so each keystroke is not a request
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     setPage(1);
   }, [searchTerm, gradeFilter, sectionFilter, statusFilter, pageSize]);
 
-  const handleAddStudent = async () => {
+  // a selection belongs to the page it was made on
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page, pageSize, searchTerm, gradeFilter, sectionFilter, statusFilter]);
+
+  const afterChange = useCallback(async () => {
+    await loadStudents();
+    void queryClient.invalidateQueries({ queryKey: COUNT_KEY });
+  }, [loadStudents, queryClient]);
+
+  /* ───────── counts for the grade track and the status strip ───────── */
+  const countOf = useCallback(async (params: { grade?: string; section?: string; status?: string }) => {
+    const data = unwrap(await schoolAdminApi.students.list({ limit: 1, page: 1, ...params }));
+    const t = (data as { total?: number }).total;
+    return typeof t === "number" ? t : ((data as { students?: unknown[] }).students ?? []).length;
+  }, []);
+
+  const gradeCounts = useQueries({
+    queries: gradeList.map((g) => ({
+      queryKey: [...COUNT_KEY, "grade", g, statusFilter],
+      queryFn: () => countOf({ grade: g, status: statusFilter !== "all" ? statusFilter : undefined }),
+      staleTime: 60_000,
+    })),
+  });
+  const scope = { grade: gradeFilter !== "all" ? gradeFilter : undefined, section: sectionFilter !== "all" ? sectionFilter : undefined };
+  const activeQ = useQuery({ queryKey: [...COUNT_KEY, "status", "active", gradeFilter, sectionFilter], queryFn: () => countOf({ ...scope, status: "active" }), staleTime: 60_000 });
+  const inactiveQ = useQuery({ queryKey: [...COUNT_KEY, "status", "inactive", gradeFilter, sectionFilter], queryFn: () => countOf({ ...scope, status: "inactive" }), staleTime: 60_000 });
+  const allCount = activeQ.data != null && inactiveQ.data != null ? activeQ.data + inactiveQ.data : undefined;
+
+  /* ───────── add and edit ───────── */
+  const formDirty = useDirtySnapshot(formOpen, formData);
+  const closeForm = () =>
+    void requestClose(formDirty, () => {
+      setFormOpen(false);
+      setEditing(null);
+    });
+
+  const openAdd = () => {
+    setEditing(null);
+    setFormData(emptyStudentForm());
+    setFormOpen(true);
+  };
+
+  const openEdit = (s: Student) => {
+    setViewing(null);
+    setEditing(s);
+    setFormData({
+      full_name: s.profile?.full_name || "",
+      email: s.profile?.email || "",
+      grade: s.grade || "",
+      section: s.section || "",
+      joining_code: s.joining_code || "",
+      password: "",
+      parent_name: s.profile?.parent_name || "",
+      parent_phone: s.profile?.parent_phone || "",
+    });
+    setFormOpen(true);
+  };
+
+  const canSubmit = editing
+    ? !!formData.full_name && !!formData.email && !!formData.section
+    : !!(formData.full_name && formData.email && formData.grade && formData.password && formData.section && formData.parent_name && formData.parent_phone);
+
+  const handleAdd = async () => {
+    if (!schoolId) {
+      toast.error("Your school details have not loaded. Refresh the page and try again.");
+      return;
+    }
+    if (!canSubmit) {
+      toast.warning("Fill in every field: name, email, grade, section, password, and the parent's name and number.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      toast.warning("Enter a valid email address.");
+      return;
+    }
+    const { validatePasswordClient } = await import("@/lib/password-validation");
+    const pwError = validatePasswordClient(formData.password);
+    if (pwError) {
+      toast.warning(pwError);
+      return;
+    }
+    setSaving(true);
     try {
-      setIsAddingStudent(true);
-      
-      if (!schoolId) {
-        toast.error('School ID not available. Please refresh the page.');
-        console.error('School ID not available');
-        setIsAddingStudent(false);
-        return;
-      }
-
-      // Validate required fields (manual add flow: all visible fields are mandatory)
-      if (
-        !formData.full_name ||
-        !formData.email ||
-        !formData.grade ||
-        !formData.password ||
-        !formData.section ||
-        !formData.parent_name ||
-        !formData.parent_phone
-      ) {
-        toast.warning('Please fill in all required fields: Full Name, Email, Grade, Section, Password, Parent Name, and Parent Number.');
-        setIsAddingStudent(false);
-        return;
-      }
-
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        toast.warning('Please enter a valid email address.');
-        setIsAddingStudent(false);
-        return;
-      }
-
-      // Validate password strength (8+ chars, uppercase, lowercase, number)
-      const { validatePasswordClient } = await import('@/lib/password-validation');
-      const passwordError = validatePasswordClient(formData.password);
-      if (passwordError) {
-        toast.warning(passwordError);
-        setIsAddingStudent(false);
-        return;
-      }
-
-      console.log('➕ Creating student...', {
-        full_name: formData.full_name,
-        email: formData.email,
-        grade: formData.grade,
-        school_id: schoolId || undefined });
-
       const response = await schoolAdminApi.students.create({
         full_name: formData.full_name,
         email: formData.email,
@@ -416,132 +284,31 @@ export default function StudentsManagement() {
         section: formData.section || undefined,
         password: formData.password,
         parent_name: formData.parent_name || undefined,
-        parent_phone: formData.parent_phone || undefined
+        parent_phone: formData.parent_phone || undefined,
       });
-
-      const result = response.data as { success?: boolean; student?: unknown; error?: string; details?: string };
-
+      const result = response.data as { success?: boolean; error?: string };
       if (result.success) {
-        console.log('✅ Student created successfully:', result.student);
-        const studentName = formData.full_name;
-        const studentEmail = formData.email;
-        setFormData(getEmptyStudentForm());
-        setIsAddDialogOpen(false);
-        await loadStudents();
-        toast.success(
-          `Student "${studentName}" added. They can log in with ${studentEmail} and the password you set.`,
-        );
+        const { full_name, email } = formData;
+        setFormData(emptyStudentForm());
+        setFormOpen(false);
+        await afterChange();
+        toast.success(`Added ${full_name}. They can log in with ${email} and the password you set.`);
       } else {
-        console.error('Failed to create student:', result.error);
-        toast.error(`Failed to create student: ${result.error || 'Please try again.'}`);
+        toast.error(`Could not add the student: ${result.error || "Try again."}`);
       }
-     
     } catch (error: unknown) {
-      console.error('Error adding student:', error);
-      const err = error as { response?: { data?: { error?: string; details?: string } }; message?: string };
-      const msg = err?.response?.data?.error || err?.response?.data?.details || (error instanceof Error ? error.message : 'Please try again.');
-      toast.error(`Error adding student: ${msg}`);
+      const err = error as { response?: { data?: { error?: string; details?: string } } };
+      toast.error(`Could not add the student: ${err?.response?.data?.error || err?.response?.data?.details || errText(error)}`);
     } finally {
-      setIsAddingStudent(false);
+      setSaving(false);
     }
   };
 
-  const handleViewStudent = (student: Student) => {
-    setViewingStudent(student);
-    setIsViewDialogOpen(true);
-  };
-
-  const handleEditStudentClick = (student: Student) => {
-    setSelectedStudent(student);
-    setFormData({
-      full_name: student?.profile?.full_name || "",
-      email: student?.profile?.email || "",
-      grade: student.grade || "",
-      // Preserve the student's real, persisted section unconditionally —
-      // same as grade above. Filtering this against predefinedSections
-      // (the school's *current* configured list) used to silently blank
-      // out a correct value whenever that list hadn't loaded yet (async
-      // race) or had drifted since the student was assigned, forcing the
-      // admin to re-guess a section on every affected edit.
-      section: student.section || "",
-      joining_code: student.joining_code || "",
-      password: "",
-      parent_name: student?.profile?.parent_name || "",
-      parent_phone: student?.profile?.parent_phone || ""
-    });
-    setNewPassword(""); // Reset new password
-    setShowNewPassword(false); // Reset new password visibility
-    setIsEditDialogOpen(true);
-  };
-
-  const handleChangePassword = async () => {
-    if (!selectedStudent) return;
-
-    if (!newPassword) {
-      toast.warning('Please enter a new password.');
-      return;
-    }
-    
-    // Validate password strength (8+ chars, uppercase, lowercase, number)
-    const { validatePasswordClient } = await import('@/lib/password-validation');
-    const passwordError = validatePasswordClient(newPassword);
-    if (passwordError) {
-      toast.warning(passwordError);
-      return;
-    }
-
-    setActionLoading('change-password');
-
+  const handleEdit = async () => {
+    if (!editing) return;
+    setSaving(true);
     try {
-      console.log('🔐 Changing password for student:', selectedStudent?.profile?.email);
-
-      await schoolAdminApi.students.changePassword(selectedStudent.id, { password: newPassword });
-
-      toast.success(
-        `Password updated for ${selectedStudent ? displayStudentName(selectedStudent) : 'student'}.`,
-      );
-      
-      // Reset password field
-      setNewPassword("");
-      
-      // Refresh the student list to get updated data
-      await loadStudents();
-     
-    } catch (error: unknown) {
-      console.error('Error changing password:', error);
-      const msg = error instanceof Error ? error.message : 'Please try again.';
-      toast.error(`Failed to change password: ${msg}`);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const generateNewPassword = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setNewPassword(password);
-  };
-
-  const copyNewPassword = async () => {
-    try {
-      await navigator.clipboard.writeText(newPassword);
-      toast.success('Password copied to clipboard.');
-    } catch (err) {
-      console.error('Failed to copy password:', err);
-      toast.error('Failed to copy password to clipboard.');
-    }
-  };
-
-  const handleEditStudent = async () => {
-    if (!selectedStudent) return;
-
-    try {
-      console.log('✏️ Updating student:', selectedStudent.id);
-
-      await schoolAdminApi.students.update(selectedStudent.id, {
+      await schoolAdminApi.students.update(editing.id, {
         full_name: formData.full_name,
         email: formData.email,
         grade: formData.grade,
@@ -550,1201 +317,385 @@ export default function StudentsManagement() {
         parent_name: formData.parent_name || null,
         parent_phone: formData.parent_phone || null,
       });
-
-      console.log('✅ Student updated successfully');
-      setIsEditDialogOpen(false);
-      setSelectedStudent(null);
-      await loadStudents();
-      toast.success(`Student "${formData.full_name}" updated successfully.`);
-     
-    } catch (error: unknown) {
-      console.error('Error updating student:', error);
-      const msg = error instanceof Error ? error.message : 'Please try again.';
-      toast.error(`Error updating student: ${msg}`);
-    }
-  };
-
-  const requestDeleteStudent = (student: Student) => {
-    setDeletingStudent(student);
-    setIsDeleteStudentDialogOpen(true);
-  };
-
-  const confirmDeleteStudent = async () => {
-    if (!deletingStudent || isDeletingStudent) return;
-    const student = deletingStudent;
-    setIsDeletingStudent(true);
-    try {
-      console.log('🗑️ Deleting student:', student.id);
-      await schoolAdminApi.students.delete(student.id, { hard: true });
-      await loadStudents();
-      setIsDeleteStudentDialogOpen(false);
-      setDeletingStudent(null);
-      toast.success(`Student "${displayStudentName(student)}" deleted successfully.`);
-    } catch (error: unknown) {
-      console.error('Error deleting student:', error);
-      const msg = error instanceof Error ? error.message : 'Please try again.';
-      toast.error(`Error deleting student: ${msg}`);
-    } finally {
-      setIsDeletingStudent(false);
-    }
-  };
-
-  const requestToggleStudentActive = (student: Student) => {
-    const next = !student.is_active;
-    setToggleTarget({ student, next });
-    setIsToggleStudentDialogOpen(true);
-  };
-
-  const confirmToggleStudentActive = async () => {
-    if (!toggleTarget || isTogglingStudent) return;
-    const { student, next } = toggleTarget;
-    setIsTogglingStudent(true);
-    try {
-      setActionLoading('toggle-active');
-      await schoolAdminApi.students.update(student.id, { is_active: next });
-      await loadStudents();
-      const needsRepairHint =
-        enrollmentMissingClassOrCode(student) ||
-        !(student.profile?.full_name ?? "").trim();
-      const repairNote = needsRepairHint
-        ? ' Class or name fields may still be blank—use Edit on this student to restore them.'
-        : '';
-      toast.success(
-        `Student "${displayStudentName(student)}" is now ${next ? 'Active' : 'Inactive'}.${repairNote}`,
-      );
-      setIsToggleStudentDialogOpen(false);
-      setToggleTarget(null);
-    } catch (error: unknown) {
-      console.error('Error toggling student status:', error);
-      const msg = error instanceof Error ? error.message : 'Please try again.';
-      toast.error(`Failed to update student status: ${msg}`);
-    } finally {
-      setActionLoading(null);
-      setIsTogglingStudent(false);
-    }
-  };
-
-  const filteredStudents = students;
-
-  const findStudentById = (id: string) => students.find((s) => s.id === id);
-
-  const requestBulkDeleteStudents = (rows: SchoolAdminStudentTableRow[]) => {
-    if (rows.length === 0) return;
-    setBulkDeleteTargets(rows);
-    setIsBulkDeleteDialogOpen(true);
-  };
-
-  const confirmBulkDeleteStudents = async () => {
-    if (!bulkDeleteTargets?.length || isBulkDeleting) return;
-    setIsBulkDeleting(true);
-    try {
-      const results = await Promise.allSettled(
-        bulkDeleteTargets.map((row) => schoolAdminApi.students.delete(row.id, { hard: true })),
-      );
-      const succeeded = results.filter((r) => r.status === "fulfilled").length;
-      const failed = results.length - succeeded;
-      if (succeeded > 0) {
-        toast.success(`Deleted ${succeeded} student${succeeded !== 1 ? "s" : ""}.`);
-        setBulkSelectionResetKey((k) => k + 1);
-        await loadStudents();
-      }
-      if (failed > 0) {
-        toast.error(`Could not delete ${failed} student${failed !== 1 ? "s" : ""}.`);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error("Bulk delete failed unexpectedly.");
-    } finally {
-      setIsBulkDeleting(false);
-      setIsBulkDeleteDialogOpen(false);
-      setBulkDeleteTargets(null);
-    }
-  };
-
-  const getGradeOptions = () => selectChoicesFrom(schoolGrades, true);
-
-  const handleExportStudents = async () => {
-    if (total === 0) {
-      toast.warning('No students to export.');
-      return;
-    }
-
-    // `students`/`filteredStudents` only ever holds the current server-paged
-    // slice (pageSize, default 50) — exporting that directly would silently
-    // drop every student past the first page with no indication. Page
-    // through the same filtered query (search/grade/section/status) to
-    // export everything that matches, not just what's currently on screen.
-    setActionLoading('export');
-    let allStudents: Student[];
-    try {
-      const exportPageSize = 200; // backend's max per-request limit
-      const first = await schoolAdminApi.students.list({
-        limit: exportPageSize,
-        page: 1,
-        q: searchTerm || undefined,
-        grade: gradeFilter !== 'all' ? gradeFilter : undefined,
-        section: sectionFilter !== 'all' ? sectionFilter : undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-      });
-      const extractPage = (res: typeof first) => {
-        const raw = res.data ?? {};
-        const root = raw as Record<string, unknown>;
-        const data =
-          root?.data != null && typeof root.data === 'object'
-            ? (root.data as Record<string, unknown>)
-            : root;
-        return {
-          students: (data.students as Student[]) ?? [],
-          total: (data.total as number) ?? 0,
-        };
-      };
-      const firstPage = extractPage(first);
-      allStudents = [...firstPage.students];
-      const totalPages = Math.min(Math.ceil(firstPage.total / exportPageSize), 25); // cap at 5000 students
-      for (let p = 2; p <= totalPages; p++) {
-        const res = await schoolAdminApi.students.list({
-          limit: exportPageSize,
-          page: p,
-          q: searchTerm || undefined,
-          grade: gradeFilter !== 'all' ? gradeFilter : undefined,
-          section: sectionFilter !== 'all' ? sectionFilter : undefined,
-          status: statusFilter !== 'all' ? statusFilter : undefined,
-        });
-        allStudents.push(...extractPage(res).students);
-      }
+      setFormOpen(false);
+      setEditing(null);
+      await afterChange();
+      toast.success(`Saved changes to ${formData.full_name}.`);
     } catch (error) {
-      console.error('Error fetching students for export:', error);
-      toast.error('Failed to export students. Please try again.');
-      setActionLoading(null);
-      return;
-    }
-    setActionLoading(null);
-
-    if (allStudents.length === 0) {
-      toast.warning('No students to export.');
-      return;
-    }
-
-    // Prepare CSV data
-    const headers = ['Name', 'Email', 'Grade', 'Section', 'Joining Code', 'Status', 'Enrolled Date'];
-    const rows = allStudents.map((student: Student) => [
-      student?.profile?.full_name?.trim() || displayStudentName(student),
-      student?.profile?.email || '',
-      student.grade || '',
-      student.section || '',
-      student.joining_code || '',
-      student.is_active ? 'Active' : 'Inactive',
-      student.enrolled_at ? new Date(student.enrolled_at).toLocaleDateString() : '',
-    ]);
-
-    // Create CSV content
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row: (string | number)[]) => row.map((cell: string | number) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    
-    // Generate filename with timestamp
-    const timestamp = new Date().toISOString().split('T')[0];
-    link.setAttribute('download', `students_export_${timestamp}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    toast.success(`Exported ${allStudents.length} student(s) to CSV.`);
-  };
-
-  const downloadImportTemplate = () => {
-    const headers = ['email', 'full_name', 'grade', 'section', 'joining_code', 'parent_name', 'parent_phone', 'password', 'is_active'];
-    const example = [
-      ['student1@example.com', 'Student One', 'Grade 5', 'A', 'ABC123', 'Parent One', '9999999999', '', 'true'],
-      ['student2@example.com', 'Student Two', 'Grade 6', 'B', '', 'Parent Two', '', 'StrongPass1!', 'true'],
-    ];
-    const csv = [headers.join(','), ...example.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'students_import_template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const parseCsv = (text: string) => {
-    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length === 0) return [];
-    const splitLine = (line: string) => {
-      const out: string[] = [];
-      let cur = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (ch === '"') {
-          const next = line[i + 1];
-          if (inQuotes && next === '"') {
-            cur += '"';
-            i++;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (ch === ',' && !inQuotes) {
-          out.push(cur);
-          cur = '';
-        } else {
-          cur += ch;
-        }
-      }
-      out.push(cur);
-      return out.map((s) => s.trim());
-    };
-    const headers = splitLine(lines[0]).map((h) => h.replace(/^"|"$/g, '').trim());
-    const rows = lines.slice(1).map((l) => splitLine(l));
-    return rows.map((cols) => {
-      const obj: Record<string, string> = {};
-      headers.forEach((h, idx) => {
-        const raw = cols[idx] ?? '';
-        obj[h] = raw.replace(/^"|"$/g, '').trim();
-      });
-      return obj;
-    });
-  };
-
-  const handleSelectImportFile = async (file: File) => {
-    const text = await file.text();
-    const rows = parseCsv(text);
-    setImportResults(null);
-    setImportPreview(rows);
-    if (rows.length === 0) toast.warning('No rows found in CSV.');
-  };
-
-  const handleRunImport = async (dryRun: boolean) => {
-    if (importPreview.length === 0) {
-      toast.warning('Please select a CSV file first.');
-      return;
-    }
-    setActionLoading(dryRun ? 'import-dry' : 'import');
-    try {
-      const studentsPayload = importPreview.map((r) => ({
-        email: r.email,
-        full_name: r.full_name,
-        grade: r.grade,
-        section: r.section,
-        joining_code: r.joining_code,
-        parent_name: r.parent_name,
-        parent_phone: r.parent_phone,
-        password: r.password,
-        is_active: r.is_active ? String(r.is_active).toLowerCase() !== 'false' : undefined,
-      }));
-
-      const resp = await schoolAdminApi.students.bulkImport({ students: studentsPayload, dry_run: dryRun });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = resp.data as { success: boolean; summary: any; results: any[] };
-      if (!data?.success) throw new Error('Bulk import failed');
-      setImportResults({ summary: data.summary, results: data.results });
-      if (!dryRun) await loadStudents();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Please try again.';
-      toast.error(`Import failed: ${msg}`);
+      toast.error(`Could not save the changes: ${errText(error)}`);
     } finally {
-      setActionLoading(null);
+      setSaving(false);
     }
   };
+
+  /* ───────── reset password ───────── */
+  const handleResetPassword = async (password: string) => {
+    if (!resetting) return;
+    const { validatePasswordClient } = await import("@/lib/password-validation");
+    const pwError = validatePasswordClient(password);
+    if (pwError) {
+      toast.warning(pwError);
+      return;
+    }
+    setResetBusy(true);
+    try {
+      await schoolAdminApi.students.changePassword(resetting.id, { password });
+      toast.success(`Password updated for ${displayStudentName(resetting)}.`);
+      setResetting(null);
+    } catch (error) {
+      toast.error(`Could not change the password: ${errText(error)}`);
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  /* ───────── delete, activate, bulk delete ───────── */
+  const runConfirm = async () => {
+    if (!confirm || confirmBusy) return;
+    setConfirmBusy(true);
+    try {
+      if (confirm.kind === "delete") {
+        await schoolAdminApi.students.delete(confirm.student.id, { hard: true });
+        toast.success(`Deleted ${displayStudentName(confirm.student)}.`);
+      } else if (confirm.kind === "toggle") {
+        const { student, next } = confirm;
+        await schoolAdminApi.students.update(student.id, { is_active: next });
+        const repair = enrollmentMissingClassOrCode(student) || !(student.profile?.full_name ?? "").trim()
+          ? " Their class or name looks blank. Use Edit to fill it in."
+          : "";
+        toast.success(`${displayStudentName(student)} is now ${next ? "active" : "inactive"}.${repair}`);
+      } else {
+        const results = await Promise.allSettled(confirm.students.map((s) => schoolAdminApi.students.delete(s.id, { hard: true })));
+        const ok = results.filter((r) => r.status === "fulfilled").length;
+        const bad = results.length - ok;
+        if (ok > 0) toast.success(`Deleted ${plural(ok, "student")}.`);
+        if (bad > 0) toast.error(`Could not delete ${plural(bad, "student")}.`);
+        setSelected(new Set());
+      }
+      setViewing(null);
+      setConfirm(null);
+      await afterChange();
+    } catch (error) {
+      toast.error(`That did not work: ${errText(error)}`);
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
+
+  /* ───────── export ───────── */
+  const handleExport = async () => {
+    if (total === 0) {
+      toast.warning("There are no students to export.");
+      return;
+    }
+    setExporting(true);
+    try {
+      // The list only holds one page, so walk every page of the same filtered query.
+      const size = 200;
+      const params = filterParams();
+      const grab = async (p: number) => {
+        const d = unwrap(await schoolAdminApi.students.list({ limit: size, page: p, ...params }));
+        return { students: ((d.students as Student[]) ?? []), total: (d.total as number) ?? 0 };
+      };
+      const first = await grab(1);
+      const all = [...first.students];
+      const pages = Math.min(Math.ceil(first.total / size), 25); // up to 5,000 students
+      for (let p = 2; p <= pages; p++) all.push(...(await grab(p)).students);
+      if (all.length === 0) {
+        toast.warning("There are no students to export.");
+        return;
+      }
+      const headers = ["Name", "Email", "Grade", "Section", "Parent name", "Parent phone", "Joining code", "Status", "Enrolled date"];
+      const rows = all.map((s) => [
+        s?.profile?.full_name?.trim() || displayStudentName(s),
+        s?.profile?.email || "",
+        s.grade || "",
+        s.section || "",
+        s?.profile?.parent_name || "",
+        s?.profile?.parent_phone || "",
+        s.joining_code || "",
+        s.is_active ? "Active" : "Inactive",
+        s.enrolled_at ? new Date(s.enrolled_at).toLocaleDateString() : "",
+      ]);
+      downloadText(`students_export_${new Date().toISOString().split("T")[0]}.csv`, [headers.join(","), ...rows.map((r) => r.map(csvCell).join(","))].join("\n"));
+      toast.success(`Exported ${plural(all.length, "student")} to CSV.`);
+    } catch (error) {
+      console.error("Error exporting students:", error);
+      toast.error("The export did not finish. Try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  /* ───────── selection ───────── */
+  const allOnPage = students.length > 0 && students.every((s) => selected.has(s.id));
+  const someOnPage = students.some((s) => selected.has(s.id));
+  useEffect(() => {
+    if (selectAll.current) selectAll.current.indeterminate = someOnPage && !allOnPage;
+  }, [someOnPage, allOnPage]);
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectedStudents = students.filter((s) => selected.has(s.id));
+
+  /* ───────── copy ───────── */
+  const hasFilters = !!searchTerm || gradeFilter !== "all" || sectionFilter !== "all" || statusFilter !== "all";
+  const clearFilters = () => {
+    setSearchInput("");
+    setGradeFilter("all");
+    setSectionFilter("all");
+    setStatusFilter("all");
+  };
+  const describe = [
+    gradeFilter !== "all" && gradeFilter,
+    sectionFilter !== "all" && formatSectionLabel(sectionFilter),
+    statusFilter !== "all" && statusFilter,
+    searchTerm && `“${searchTerm}”`,
+  ].filter(Boolean) as string[];
+
+  let status: React.ReactNode;
+  if (loadFailed) status = "The students did not load. Check your connection and try again.";
+  else if (loading && students.length === 0) status = "Loading students…";
+  else if (hasFilters) status = <><strong>{plural(total, "student")}</strong> {total === 1 ? "matches" : "match"} {describe.join(", ")}.</>;
+  else status = <><strong>{plural(total, "student")}</strong> in your school.</>;
+
+  const sectionChoices = sectionsForGrade(gradeFilter !== "all" ? gradeFilter : "");
+  const gradeStrengths = gradeList.map((name, i) => ({ name, count: gradeCounts[i]?.data }));
+  const statusButtons = [
+    { id: "all", label: "All students", value: allCount, hint: "Active and inactive" },
+    { id: "active", label: "Active", value: activeQ.data, hint: "Can log in" },
+    { id: "inactive", label: "Inactive", value: inactiveQ.data, hint: "Locked out" },
+  ];
+
+  const rowMenu = (s: Student) => [
+    { label: "View details", icon: EyeIcon, onClick: () => setViewing(s) },
+    { label: "Edit", icon: Pencil, onClick: () => openEdit(s) },
+    { label: "Reset password", icon: KeyRound, onClick: () => setResetting(s) },
+    { label: s.is_active ? "Deactivate" : "Activate", icon: Power, onClick: () => setConfirm({ kind: "toggle", student: s, next: !s.is_active }) },
+    { label: "Delete", icon: Trash2, danger: true, separatorBefore: true, onClick: () => setConfirm({ kind: "delete", student: s }) },
+  ];
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Students Management</h1>
-        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">Manage student enrollment and information</p>
-      </div>
-
-      {/* Filters and Actions */}
-      <div className="mb-4 md:mb-6 space-y-3 md:space-y-4">
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-row sm:gap-4">
-          <div className="col-span-3 sm:flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search students..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </div>
-          <Select value={gradeFilter} onValueChange={setGradeFilter}>
-            <SelectTrigger className="w-full max-sm:px-2.5 max-sm:text-xs sm:w-48">
-              <SelectValue placeholder="Filter by grade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Grades</SelectItem>
-              {getGradeOptions().map((grade: string) => (
-                <SelectItem key={grade} value={grade}>{grade}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={sectionFilter} onValueChange={setSectionFilter}>
-            <SelectTrigger className="w-full max-sm:px-2.5 max-sm:text-xs sm:w-48">
-              <SelectValue placeholder="Filter by section" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sections</SelectItem>
-              {sectionsForGrade(gradeFilter !== 'all' ? gradeFilter : '').map((section: string) => (
-                <SelectItem key={section} value={section}>Section {section}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full max-sm:px-2.5 max-sm:text-xs sm:w-48">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-wrap justify-between items-center gap-2">
-          <div className="text-sm text-gray-600">
-            Showing {filteredStudents.length} of {total} student(s)
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportStudents}
-              disabled={actionLoading === 'export'}
-            >
-              {actionLoading === 'export' ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
-              Export
-            </Button>
-            <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Upload className="mr-2 h-4 w-4" />
-                  Import CSV
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Bulk import students (CSV)</DialogTitle>
-                  <DialogDescription>
-                    Download the template, fill it, and upload to create students in bulk.
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-3">
-                  <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" onClick={downloadImportTemplate}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Download template
-                    </Button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv,text/csv"
-                      className="hidden"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void handleSelectImportFile(f);
-                      }}
-                    />
-                    <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Choose CSV
-                    </Button>
-                    {importPreview.length > 0 && (
-                      <div className="text-sm text-gray-600 flex items-center">
-                        Loaded {importPreview.length} row(s)
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="text-xs text-gray-600">
-                    Required column: <code>email</code>. If <code>password</code> is empty, the system generates one and returns it in the result.
-                  </div>
-
-                  {importResults && (
-                    <div className="border rounded p-3 space-y-2">
-                      <div className="text-sm font-medium">Result</div>
-                      <div className="text-sm text-gray-700">
-                        Total: {importResults.summary.total} | Success: {importResults.summary.success} | Failed: {importResults.summary.failed} | Generated passwords: {importResults.summary.generated_passwords}{importResults.summary.dry_run ? ' (dry run)' : ''}
-                      </div>
-                      {importResults.results.filter((r) => !r.success).slice(0, 10).length > 0 && (
-                        <div className="text-sm text-red-700">
-                          {importResults.results.filter((r) => !r.success).slice(0, 10).map((r) => (
-                            <div key={`${r.index}-${r.email}`}>Row {r.index + 1}: {r.email || '(no email)'} — {r.error}</div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <DialogFooter>
-                  {importResults ? (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setImportResults(null);
-                          setImportPreview([]);
-                          if (fileInputRef.current) fileInputRef.current.value = '';
-                        }}
-                      >
-                        Start New Import
-                      </Button>
-                      <Button onClick={() => setIsImportDialogOpen(false)}>
-                        Done & Close
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button variant="outline" onClick={() => setIsImportDialogOpen(false)}>
-                        Close
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={actionLoading !== null || importPreview.length === 0}
-                        onClick={() => void handleRunImport(true)}
-                      >
-                        Dry run
-                      </Button>
-                      <Button
-                        disabled={actionLoading !== null || importPreview.length === 0}
-                        onClick={() => void handleRunImport(false)}
-                      >
-                        Import
-                      </Button>
-                    </>
-                  )}
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog
-              open={isAddDialogOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setIsAddDialogOpen(true);
-                  setFormData(getEmptyStudentForm());
-                  return;
-                }
-                requestCloseAddStudent();
-              }}
-            >
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Student
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Add New Student</DialogTitle>
-                  <DialogDescription>
-                    Add a new student to your school. You’ll share their login credentials securely after creation.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="full_name" className="text-right">
-                      Full Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="full_name"
-                      value={formData.full_name}
-                      onChange={(e) => setFormData({...formData, full_name: e.target.value})}
-                      className="col-span-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="email" className="text-right">
-                      Email <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      className="col-span-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="grade" className="text-right">
-                      Grade <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      value={formData.grade || undefined}
-                      onValueChange={(value) => setFormData({...formData, grade: value})}
-                    >
-                      <SelectTrigger id="grade" className="col-span-3">
-                        <SelectValue placeholder="Select grade" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {selectChoicesFrom(schoolGrades, true).map((grade) => (
-                          <SelectItem key={grade} value={grade}>
-                            {grade}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="section" className="text-right">
-                      Section <span className="text-red-500">*</span>
-                    </Label>
-                    <div className="col-span-3 space-y-2">
-                      <Select
-                        value={formData.section || undefined}
-                        onValueChange={(value) => setFormData({...formData, section: value})}
-                      >
-                        <SelectTrigger id="section" className="w-full">
-                          <SelectValue placeholder="Select section" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sectionsForGrade(formData.grade).map((section) => (
-                            <SelectItem key={section} value={section}>
-                              {section}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="password" className="text-right">
-                      Password <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({...formData, password: e.target.value})}
-                      className="col-span-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="parent_name" className="text-right">
-                      Parent Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="parent_name"
-                      value={formData.parent_name}
-                      onChange={(e) => setFormData({...formData, parent_name: e.target.value})}
-                      className="col-span-3"
-                      placeholder="Enter parent/guardian name"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="parent_phone" className="text-right">
-                      Parent Number <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="parent_phone"
-                      type="tel"
-                      value={formData.parent_phone}
-                      onChange={(e) => setFormData({...formData, parent_phone: e.target.value})}
-                      className="col-span-3"
-                      placeholder="Enter parent/guardian phone"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button 
-                    variant="outline" 
-                    onClick={requestCloseAddStudent}
-                    disabled={isAddingStudent}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleAddStudent}
-                    disabled={
-                      isAddingStudent ||
-                      !formData.full_name ||
-                      !formData.email ||
-                      !formData.grade ||
-                      !formData.password ||
-                      !formData.section ||
-                      !formData.parent_name ||
-                      !formData.parent_phone
-                    }
-                  >
-                    {isAddingStudent ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Adding...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Student
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="sm-title">
+        <div className="sd-hero-copy">
+          <h1 id="sm-title" className="mc-hero-title">Students</h1>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--amber" onClick={openAdd}><Plus aria-hidden="true" />Add student</button>
+            <button className="sd-btn sd-btn--ghost-dark" onClick={() => setImportOpen(true)}><Upload aria-hidden="true" />Import CSV</button>
+            <button className="sd-btn sd-btn--ghost-dark" onClick={handleExport} disabled={exporting}>
+              {exporting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}Export
+            </button>
           </div>
         </div>
+        <GradeRun
+          grades={gradeStrengths}
+          selected={gradeFilter}
+          onSelect={(g) => { setGradeFilter(g); setSectionFilter("all"); }}
+          total={allCount}
+          matching={loading && students.length === 0 ? undefined : total}
+        />
+      </section>
 
+      <div className="sd-ledger sm-ledger" data-cols="3" role="group" aria-label="Show students by status">
+        {statusButtons.map((b) => (
+          <button key={b.id} type="button" aria-pressed={statusFilter === b.id} onClick={() => setStatusFilter(b.id)}>
+            <span className="sd-l">{b.label}</span>
+            {b.value == null ? <span className="sd-skel" style={{ height: "2.2rem", width: "4rem" }} /> : <b className="sd-n">{b.value.toLocaleString("en-IN")}</b>}
+            <small>{b.hint}</small>
+          </button>
+        ))}
       </div>
 
-      {/* Students Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Students List</CardTitle>
-          <CardDescription>
-            Manage student information and enrollment status — use column filters or select rows for bulk actions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SchoolAdminStudentManagementTable
-            rows={studentTableRows}
-            loading={loading}
-            onView={(row) => {
-              const student = findStudentById(row.id);
-              if (student) handleViewStudent(student);
-            }}
-            onEdit={(row) => {
-              const student = findStudentById(row.id);
-              if (student) handleEditStudentClick(student);
-            }}
-            onToggleActive={(row) => {
-              const student = findStudentById(row.id);
-              if (student) requestToggleStudentActive(student);
-            }}
-            onDelete={(row) => {
-              const student = findStudentById(row.id);
-              if (student) requestDeleteStudent(student);
-            }}
-            onBulkDeleteSelected={requestBulkDeleteStudents}
-            resetSelectionKey={bulkSelectionResetKey}
-            serverPagination={{
-              page,
-              pageSize,
-              total,
-              onPageChange: setPage,
-              onPageSizeChange: setPageSize,
-              pageSizeOptions: [25, 50, 100],
-            }}
-            emptyMessage="No students found. Try adjusting your search or filters."
-            className="shadow-sm"
+      <div className="nt-bar">
+        <input
+          type="search"
+          className="sd-field"
+          placeholder="Search by name, email or parent"
+          aria-label="Search students"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
+        {sectionChoices.length > 0 && (
+          <ChipGroup
+            label="Section"
+            value={sectionFilter}
+            options={[["all", "All sections"] as const, ...sectionChoices.map((s) => [s, formatSectionLabel(s)] as const)]}
+            onChange={setSectionFilter}
           />
-        </CardContent>
-      </Card>
+        )}
+        {hasFilters && <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>}
+      </div>
 
-      {/* View Student Dialog */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Student Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about the student
-            </DialogDescription>
-          </DialogHeader>
-          {viewingStudent && (
-            <div className="space-y-6 py-4">
-              {/* Basic Information */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Full Name</Label>
-                  <p className="text-base font-medium">
-                    {viewingStudent ? displayStudentName(viewingStudent) : ""}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Email</Label>
-                  <p className="text-base">{viewingStudent?.profile?.email || "No email"}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Student ID</Label>
-                  <p className="text-base font-mono text-sm">{viewingStudent.id}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Grade</Label>
-                  <Badge variant="outline">{formatGradeBadge(viewingStudent.grade)}</Badge>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Section</Label>
-                  {viewingStudent.section ? (
-                    <Badge variant="outline">Section {viewingStudent.section}</Badge>
-                  ) : (
-                    <p className="text-base text-gray-400 italic">Not assigned</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Enrollment Source</Label>
-                  {viewingStudent.joining_code ? (
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                        <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                          <circle cx="6" cy="6" r="6" fill="#16a34a" opacity="0.15"/>
-                          <path d="M3.5 6l1.8 1.8 3.2-3.6" stroke="#16a34a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        Self-registered via join code
-                      </span>
-                      <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">{viewingStudent.joining_code}</code>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500 mt-0.5">Added by admin</p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Status</Label>
-                  <Badge variant={viewingStudent.is_active ? "default" : "secondary"}>
-                    {viewingStudent.is_active ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Enrolled Date</Label>
-                  <p className="text-base">{new Date(viewingStudent.enrolled_at).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Created At</Label>
-                  <p className="text-base">
-                    {viewingStudent?.profile?.created_at
-                      ? new Date(viewingStudent.profile.created_at).toLocaleDateString()
-                      : "Unknown"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Parent Information */}
-              {(viewingStudent?.profile?.parent_name || viewingStudent?.profile?.parent_phone) && (
-                <div className="border-t pt-4">
-                  <h3 className="text-lg font-semibold mb-3">Parent/Guardian Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    {viewingStudent?.profile?.parent_name && (
-                      <div>
-                        <Label className="text-sm font-medium text-gray-500">Parent Name</Label>
-                        <p className="text-base">{viewingStudent.profile.parent_name}</p>
-                      </div>
-                    )}
-                    {viewingStudent?.profile?.parent_phone && (
-                      <div>
-                        <Label className="text-sm font-medium text-gray-500">Parent Phone</Label>
-                        <p className="text-base">
-                          <a 
-                            href={`tel:${viewingStudent.profile.parent_phone}`}
-                            className="text-blue-600 hover:text-blue-800 hover:underline"
-                          >
-                            {viewingStudent.profile.parent_phone}
-                          </a>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Student Dialog */}
-      <Dialog
-        open={isEditDialogOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setIsEditDialogOpen(true);
-            return;
-          }
-          requestCloseEditStudent();
-        }}
-      >
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Edit Student</DialogTitle>
-            <DialogDescription>
-              Update student information and enrollment details.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit_full_name" className="text-right">
-                Full Name
-              </Label>
-              <Input
-                id="edit_full_name"
-                value={formData.full_name}
-                onChange={(e) => setFormData({...formData, full_name: e.target.value})}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit_email" className="text-right">
-                Email
-              </Label>
-              <Input
-                id="edit_email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">
-                Change Password
-              </Label>
-              <div className="col-span-3 space-y-2">
-                <p className="text-xs text-gray-500">
-                  Use this to reset the password if the student has forgotten it. A new password will be generated and assigned.
-                </p>
-                <div className="relative">
-                  <Shield className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="new_password"
-                    type={showNewPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password (min 8: uppercase, lowercase, number)"
-                    className="pl-10 pr-20"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    onClick={generateNewPassword}
-                    className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Generate
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    onClick={copyNewPassword}
-                    disabled={!newPassword}
-                    className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Copy className="h-3 w-3" />
-                    Copy
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    onClick={handleChangePassword}
-                    disabled={!newPassword || newPassword.length < 8 || actionLoading === 'change-password'}
-                    className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    {actionLoading === 'change-password' ? (
-                      <>
-                        <RefreshCw className="h-3 w-3 animate-spin" />
-                        Changing...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="h-3 w-3" />
-                        Change Password
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit_grade" className="text-right">
-                Grade
-              </Label>
-              <Select
-                value={formData.grade || undefined}
-                onValueChange={(value) => setFormData({...formData, grade: value})}
-              >
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select grade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectChoicesFrom(schoolGrades, true).map((grade) => (
-                    <SelectItem key={grade} value={grade}>
-                      {grade}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit_section" className="text-right">
-                Section <span className="text-red-500">*</span>
-              </Label>
-              <div className="col-span-3 space-y-2">
-                <Select
-                  value={formData.section || undefined}
-                  onValueChange={(value) => setFormData({...formData, section: value})}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select section" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {editSectionOptions.map((section) => (
-                      <SelectItem key={section} value={section}>
-                        {section}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit_joining_code" className="text-right">
-                Joining Code
-              </Label>
-              <Input
-                id="edit_joining_code"
-                value={formData.joining_code}
-                onChange={(e) => setFormData({...formData, joining_code: e.target.value})}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit_parent_name" className="text-right">
-                Parent Name
-              </Label>
-              <Input
-                id="edit_parent_name"
-                value={formData.parent_name}
-                onChange={(e) => setFormData({...formData, parent_name: e.target.value})}
-                className="col-span-3"
-                placeholder="Enter parent/guardian name"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit_parent_phone" className="text-right">
-                Parent Number
-              </Label>
-              <Input
-                id="edit_parent_phone"
-                type="tel"
-                value={formData.parent_phone}
-                onChange={(e) => setFormData({...formData, parent_phone: e.target.value})}
-                className="col-span-3"
-                placeholder="Enter parent/guardian phone"
-              />
-            </div>
+      {loading && students.length === 0 ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : loadFailed ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load your students</b>
+            <p>Check your connection, then try again.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void loadStudents()}>Try again</button>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={requestCloseEditStudent}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleEditStudent}
-              disabled={!formData.full_name || !formData.email || !formData.section}
-            >
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={isDeleteStudentDialogOpen}
-        onOpenChange={(open) => {
-          setIsDeleteStudentDialogOpen(open);
-          if (!open) setDeletingStudent(null);
-        }}
-      >
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete student</DialogTitle>
-            <DialogDescription>
-              This cannot be undone. Enrollments and related data for this student may be removed depending on server policy.
-            </DialogDescription>
-          </DialogHeader>
-          {deletingStudent && (
-            <p className="text-sm text-gray-700 py-2">
-              Delete <span className="font-semibold">{displayStudentName(deletingStudent)}</span>?
-            </p>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsDeleteStudentDialogOpen(false);
-                setDeletingStudent(null);
-              }}
-              disabled={isDeletingStudent}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="bg-red-600 hover:bg-red-700"
-              disabled={isDeletingStudent || !deletingStudent}
-              onClick={() => void confirmDeleteStudent()}
-            >
-              {isDeletingStudent ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting…
-                </>
-              ) : (
-                <>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete student
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={isBulkDeleteDialogOpen}
-        onOpenChange={(open) => {
-          setIsBulkDeleteDialogOpen(open);
-          if (!open) setBulkDeleteTargets(null);
-        }}
-      >
-        <DialogContent className="max-w-md bg-white">
-          <DialogHeader>
-            <DialogTitle>Delete selected students</DialogTitle>
-            <DialogDescription>
-              This cannot be undone. Selected student accounts will be permanently removed.
-            </DialogDescription>
-          </DialogHeader>
-          {bulkDeleteTargets && bulkDeleteTargets.length > 0 && (
-            <div className="space-y-2 py-2">
-              <p className="text-sm text-gray-700">
-                Delete <span className="font-semibold">{bulkDeleteTargets.length}</span>{" "}
-                student{bulkDeleteTargets.length !== 1 ? "s" : ""}?
-              </p>
-              <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-sm text-muted-foreground">
-                {bulkDeleteTargets.slice(0, 20).map((t) => (
-                  <li key={t.id}>{t.nameDisplay}</li>
-                ))}
-                {bulkDeleteTargets.length > 20 && (
-                  <li className="list-none pl-0 text-muted-foreground/80">
-                    …and {bulkDeleteTargets.length - 20} more
-                  </li>
-                )}
-              </ul>
+        </section>
+      ) : students.length === 0 ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>{hasFilters ? "No students match" : "No students yet"}</b>
+            <p>{hasFilters ? "Try a different search, or clear the filters." : "Add students one at a time, or import a whole class from a CSV file."}</p>
+            {hasFilters ? (
+              <button className="sd-btn sd-btn--line" onClick={clearFilters}>Clear filters</button>
+            ) : (
+              <div className="sd-hero-actions" style={{ marginTop: 0 }}>
+                <button className="sd-btn sd-btn--amber" onClick={openAdd}><Plus aria-hidden="true" />Add student</button>
+                <button className="sd-btn sd-btn--line" onClick={() => setImportOpen(true)}><Upload aria-hidden="true" />Import CSV</button>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section className="sd-panel as-list mc-swap" aria-label="Students" aria-busy={loading}>
+          {selectedStudents.length > 0 && (
+            <div className="sm-bulk" role="status">
+              <b>{selectedStudents.length} selected</b>
+              <div>
+                <button className="sd-btn sd-btn--line" onClick={() => setSelected(new Set())}>Clear</button>
+                <button className="sd-btn sd-btn--danger" onClick={() => setConfirm({ kind: "bulk", students: selectedStudents })}><Trash2 aria-hidden="true" />Delete</button>
+              </div>
             </div>
           )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsBulkDeleteDialogOpen(false);
-                setBulkDeleteTargets(null);
-              }}
-              disabled={isBulkDeleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isBulkDeleting || !bulkDeleteTargets?.length}
-              onClick={() => void confirmBulkDeleteStudents()}
-            >
-              {isBulkDeleting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting…
-                </>
-              ) : (
-                <>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete students
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="sm-head" aria-hidden={false}>
+            <input ref={selectAll} type="checkbox" className="sm-check" checked={allOnPage} onChange={() => setSelected(allOnPage ? new Set() : new Set(students.map((s) => s.id)))} aria-label="Select everyone on this page" />
+            <span />
+            <span>Student</span>
+            <span>Class</span>
+            <span>Parent or guardian</span>
+            <span>Status</span>
+            <span />
+          </div>
+          {students.map((s) => {
+            const name = displayStudentName(s);
+            const grade = formatGradeBadge(s.grade);
+            return (
+              <article key={s.id} className="sm-row" data-selected={selected.has(s.id)}>
+                <input type="checkbox" className="sm-check" checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} aria-label={`Select ${name}`} />
+                <span className="sd-avatar" aria-hidden="true">{initialsOf(name)}</span>
+                <button className="sm-who" onClick={() => setViewing(s)}>
+                  <b>{name}</b>
+                  <small>{s.profile?.email || "No email"}</small>
+                </button>
+                <div className="sm-class">
+                  {grade || s.section ? (
+                    <>
+                      {grade && <span className="sm-chip" data-class="true">{grade}</span>}
+                      {s.section && <span className="sm-chip">{formatSectionLabel(s.section)}</span>}
+                    </>
+                  ) : (
+                    <span className="sm-chip" data-warn="true">No class</span>
+                  )}
+                </div>
+                <div className="sm-parent">
+                  {s.profile?.parent_name || s.profile?.parent_phone ? (
+                    <>
+                      {s.profile.parent_name && <b>{s.profile.parent_name}</b>}
+                      {s.profile.parent_phone && <a href={`tel:${s.profile.parent_phone}`}>{s.profile.parent_phone}</a>}
+                    </>
+                  ) : (
+                    <span className="sm-muted">Not provided</span>
+                  )}
+                </div>
+                <span className="sm-status"><span className="sm-chip" data-on={s.is_active}>{s.is_active ? "Active" : "Inactive"}</span></span>
+                <div className="sm-acts">
+                  <button className="pl-ico" onClick={() => openEdit(s)} aria-label={`Edit ${name}`} title="Edit"><Pencil /></button>
+                  <RowMenu label={`More actions for ${name}`} items={rowMenu(s)} />
+                </div>
+              </article>
+            );
+          })}
+          <Pager
+            offset={(page - 1) * pageSize}
+            count={students.length}
+            total={total}
+            pageSize={pageSize}
+            busy={loading}
+            onPrev={() => setPage((p) => Math.max(1, p - 1))}
+            onNext={() => setPage((p) => p + 1)}
+            sizes={[25, 50, 100]}
+            onSize={setPageSize}
+            noun="Students"
+          />
+        </section>
+      )}
 
-      <Dialog
-        open={isToggleStudentDialogOpen}
-        onOpenChange={(open) => {
-          setIsToggleStudentDialogOpen(open);
-          if (!open) setToggleTarget(null);
-        }}
+      <StudentFormModal
+        open={formOpen}
+        mode={editing ? "edit" : "add"}
+        form={formData}
+        onChange={setFormData}
+        grades={gradeList}
+        sections={formSections}
+        busy={saving}
+        canSubmit={canSubmit}
+        onClose={closeForm}
+        onSubmit={() => void (editing ? handleEdit() : handleAdd())}
+      />
+
+      <StudentDetailModal
+        student={viewing}
+        onClose={() => setViewing(null)}
+        onEdit={() => viewing && openEdit(viewing)}
+        onResetPassword={() => { if (viewing) { setResetting(viewing); setViewing(null); } }}
+        onToggle={() => viewing && setConfirm({ kind: "toggle", student: viewing, next: !viewing.is_active })}
+        onDelete={() => viewing && setConfirm({ kind: "delete", student: viewing })}
+      />
+
+      <StudentPasswordModal
+        key={resetting?.id ?? "none"}
+        open={!!resetting}
+        name={resetting ? displayStudentName(resetting) : ""}
+        busy={resetBusy}
+        onClose={() => setResetting(null)}
+        onSubmit={(pw) => void handleResetPassword(pw)}
+        onCopied={(err) => (err ? toast.error(err) : toast.success("Password copied."))}
+      />
+
+      <StudentImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={() => void afterChange()} />
+
+      <ConfirmModal
+        open={!!confirm}
+        onClose={() => setConfirm(null)}
+        busy={confirmBusy}
+        danger={confirm?.kind !== "toggle" || !confirm.next}
+        onConfirm={() => void runConfirm()}
+        title={
+          confirm?.kind === "delete" ? "Delete this student?"
+          : confirm?.kind === "bulk" ? `Delete ${plural(confirm.students.length, "student")}?`
+          : confirm?.next ? "Activate this student?" : "Deactivate this student?"
+        }
+        subtitle={
+          confirm?.kind === "toggle"
+            ? confirm.next ? "They will be able to log in again." : "They will not be able to log in until you activate them again."
+            : "This cannot be undone. Their account and related data will be removed."
+        }
+        confirmLabel={
+          confirm?.kind === "delete" ? "Delete student"
+          : confirm?.kind === "bulk" ? "Delete students"
+          : confirm?.next ? "Activate" : "Deactivate"
+        }
       >
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {toggleTarget?.next ? 'Activate student' : 'Deactivate student'}
-            </DialogTitle>
-            <DialogDescription>
-              {toggleTarget?.next
-                ? 'This student will be able to log in again (subject to other account rules).'
-                : 'This student will not be able to log in until reactivated.'}
-            </DialogDescription>
-          </DialogHeader>
-          {toggleTarget && (
-            <p className="text-sm text-gray-700 py-2">
-              {toggleTarget.next ? 'Activate' : 'Deactivate'}{' '}
-              <span className="font-semibold">{displayStudentName(toggleTarget.student)}</span>?
-            </p>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsToggleStudentDialogOpen(false);
-                setToggleTarget(null);
-              }}
-              disabled={isTogglingStudent}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant={toggleTarget?.next ? 'default' : 'secondary'}
-              disabled={isTogglingStudent || !toggleTarget}
-              onClick={() => void confirmToggleStudentActive()}
-            >
-              {isTogglingStudent ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Updating…
-                </>
-              ) : toggleTarget?.next ? (
-                'Activate'
-              ) : (
-                'Deactivate'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {confirm?.kind === "bulk" ? (
+          <ul className="sm-bulklist">
+            {confirm.students.slice(0, 20).map((s) => <li key={s.id}>{displayStudentName(s)}</li>)}
+            {confirm.students.length > 20 && <li>…and {confirm.students.length - 20} more</li>}
+          </ul>
+        ) : confirm ? (
+          <p><strong>{displayStudentName(confirm.student)}</strong></p>
+        ) : null}
+      </ConfirmModal>
     </div>
   );
 }
-

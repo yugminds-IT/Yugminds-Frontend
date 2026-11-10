@@ -1,99 +1,55 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Trash2,
-  RefreshCw,
-  Undo2,
-  Loader2,
-  Users,
-  BookOpen,
-  AlertTriangle,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw, Search, Trash2, Undo2 } from "lucide-react";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import { Pager } from "@/components/portal/notifications";
+import AgeRun from "@/components/admin/trash/AgeRun";
+import TrashList from "@/components/admin/trash/TrashList";
+import { KINDS, NOTE, ageOf, plural, type Age, type Kind, type TrashItem } from "@/components/admin/trash/utils";
 import { adminApi } from "@/lib/api/admin.api";
+import { toast } from "@/components/ui/toast";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips and forms
+import "@/components/school-admin/teachers.css"; // tm- track nodes
+import "@/components/admin/trash/trash.css";
 
-interface TrashItem {
-  id: string;
-  name: string;
-  detail: string;
-  deleted_at: string | null;
-}
+type TrashData = Record<Kind, TrashItem[]>;
+const EMPTY: TrashData = { teachers: [], courses: [] };
+const PAGE_SIZE = 50;
 
-type TrashData = {
-  students: TrashItem[];
-  teachers: TrashItem[];
-  schools: TrashItem[];
-  courses: TrashItem[];
-};
-
-type TabKey = keyof TrashData;
-
-const EMPTY: TrashData = { students: [], teachers: [], schools: [], courses: [] };
-
-// Students and schools are deleted immediately and permanently elsewhere in
-// the admin UI (AdminStudentsService.delete / AdminSchoolsService.delete
-// both intentionally hard-delete, never setting deletedAt) — they can NEVER
-// populate here, so showing them as recoverable tabs would be misleading.
-// Only teachers and courses are genuinely soft-deleted and restorable.
-const TABS: Array<{ key: TabKey; label: string; icon: React.ReactNode }> = [
-  { key: "teachers", label: "Teachers", icon: <Users className="h-4 w-4" /> },
-  { key: "courses", label: "Courses", icon: <BookOpen className="h-4 w-4" /> },
-];
-
-function formatDate(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-const plural = (n: number, word: string) => `${n} ${word}${n !== 1 ? "s" : ""}`;
+// Students and schools are deleted at once and for good everywhere else in the admin area (the backend never
+// sets deletedAt for them), so they can never be in the trash and are not shown. Only teachers and courses are.
 
 export default function TrashPage() {
   const [data, setData] = useState<TrashData>(EMPTY);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<TabKey | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  const [tab, setTab] = useState<Kind | null>(null);
+  const [age, setAge] = useState<Age | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [purgeTarget, setPurgeTarget] = useState<{ type: TabKey; items: TrashItem[] } | null>(null);
+  const [purgeTarget, setPurgeTarget] = useState<{ kind: Kind; items: TrashItem[] } | null>(null);
   const [purging, setPurging] = useState(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    setError(null);
     try {
       const res = await adminApi.trash.list();
-      const payload = (res.data ?? {}) as Partial<TrashData>;
-      const next: TrashData = {
-        students: payload.students ?? [],
-        teachers: payload.teachers ?? [],
-        schools: payload.schools ?? [],
-        courses: payload.courses ?? [],
-      };
-      setData(next);
-      setSelected((prev) => prev.filter((id) => TABS.some((t) => next[t.key].some((i) => i.id === id))));
+      const p = (res.data ?? {}) as Partial<TrashData>;
+      setData({ teachers: p.teachers ?? [], courses: p.courses ?? [] });
+      setNow(Date.now());
+      setLoadFailed(false);
     } catch {
-      setError("Failed to load trash.");
+      setLoadFailed(true);
     } finally {
       setRefreshing(false);
       setLoaded(true);
@@ -101,267 +57,212 @@ export default function TrashPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  const activeTab: TabKey = tab ?? (data.teachers.length === 0 && data.courses.length > 0 ? "courses" : "teachers");
-  const activeItems = data[activeTab];
-  const selectedItems = activeItems.filter((i) => selected.includes(i.id));
-  const allSelected = activeItems.length > 0 && selectedItems.length === activeItems.length;
+  // Open on whichever tab has something in it.
+  const kind: Kind = tab ?? (data.teachers.length === 0 && data.courses.length > 0 ? "courses" : "teachers");
+  const meta = KINDS.find((k) => k.key === kind)!;
+  const all = data[kind];
+  const totalCount = data.teachers.length + data.courses.length;
 
-  const changeTab = (value: string) => {
-    setTab(value as TabKey);
-    setSelected([]);
-  };
+  const counts = useMemo(() => {
+    const c: Record<Age, number> = { today: 0, week: 0, month: 0, older: 0 };
+    for (const i of all) c[ageOf(i.deleted_at, now)] += 1;
+    return c;
+  }, [all, now]);
 
-  const toggle = (id: string) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return all.filter((i) => (!age || ageOf(i.deleted_at, now) === age) && (!q || i.name.toLowerCase().includes(q) || i.detail.toLowerCase().includes(q)));
+  }, [all, age, search, now]);
 
-  /** Runs `action` for each item; returns the names that failed. */
-  const runEach = async (items: TrashItem[], action: (item: TrashItem) => Promise<unknown>) => {
+  const lastPage = Math.max(0, Math.ceil(shown.length / PAGE_SIZE) - 1);
+  const at = Math.min(page, lastPage);
+  const pageRows = shown.slice(at * PAGE_SIZE, (at + 1) * PAGE_SIZE);
+  const selectedItems = all.filter((i) => picked.has(i.id));
+  const allPicked = pageRows.length > 0 && pageRows.every((i) => picked.has(i.id));
+
+  const pickTab = (k: Kind) => { setTab(k); setAge(null); setSearch(""); setPage(0); setPicked(new Set()); };
+  const pickAge = (a: Age | null) => { setAge(a); setPage(0); setPicked(new Set()); };
+  const toggle = (id: string) => setPicked((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const togglePage = () => setPicked((prev) => { const n = new Set(prev); for (const i of pageRows) { if (allPicked) n.delete(i.id); else n.add(i.id); } return n; });
+
+  /** Runs `action` for each item and returns the names that failed. */
+  const runEach = async (items: TrashItem[], action: (i: TrashItem) => Promise<unknown>) => {
     const results = await Promise.allSettled(items.map(action));
     return items.filter((_, i) => results[i].status === "rejected").map((i) => i.name);
   };
-
-  const reportFailures = (verb: string, failed: string[]) => {
-    if (failed.length === 0) return;
+  const failure = (verb: string, failed: string[]) => {
     const preview = failed.slice(0, 3).map((n) => `"${n}"`).join(", ");
-    const more = failed.length > 3 ? ` and ${failed.length - 3} more` : "";
-    setError(`Failed to ${verb} ${preview}${more}.`);
+    setError(`We could not ${verb} ${preview}${failed.length > 3 ? ` and ${failed.length - 3} more` : ""}. Try again.`);
   };
 
-  const handleRestore = async (type: TabKey, items: TrashItem[]) => {
+  const restore = async (k: Kind, items: TrashItem[]) => {
     if (items.length === 1) setBusyId(items[0].id);
     else setBusy(true);
     setError(null);
-    const failed = await runEach(items, (item) => adminApi.trash.restore(type, item.id));
+    const failed = await runEach(items, (i) => adminApi.trash.restore(k, i.id));
     await load();
-    reportFailures("restore", failed);
+    const word = KINDS.find((x) => x.key === k)!;
+    const done = items.length - failed.length;
+    if (done > 0) toast.success(`Restored ${plural(done, word.one)}`);
+    if (failed.length) failure("restore", failed);
+    setPicked(new Set());
     setBusyId(null);
     setBusy(false);
   };
 
-  const handlePurge = async () => {
+  const purge = async () => {
     if (!purgeTarget) return;
     setPurging(true);
     setError(null);
-    const failed = await runEach(purgeTarget.items, (item) => adminApi.trash.purge(purgeTarget.type, item.id));
+    const { kind: k, items } = purgeTarget;
+    const failed = await runEach(items, (i) => adminApi.trash.purge(k, i.id));
     setPurgeTarget(null);
     await load();
-    reportFailures("permanently delete", failed);
+    const done = items.length - failed.length;
+    if (done > 0) toast.success(`Deleted ${plural(done, KINDS.find((x) => x.key === k)!.one)} forever`);
+    if (failed.length) failure("delete", failed);
+    setPicked(new Set());
     setPurging(false);
   };
 
-  // Only teachers/courses can ever be non-empty (see TABS comment above) —
-  // students/schools are still fetched from the API for forward-compat but
-  // deliberately excluded from the displayed total and tabs.
-  const totalCount = data.teachers.length + data.courses.length;
+  const first = !loaded;
+  const dash = loadFailed && totalCount === 0;
+  const week = counts.today + counts.week;
+
+  let statusLine: React.ReactNode;
+  if (dash) statusLine = "The trash did not load. Try refreshing.";
+  else if (first) statusLine = "Checking the trash…";
+  else if (totalCount === 0) statusLine = <><strong>The trash is empty.</strong> Deleted teachers and courses wait here.</>;
+  else statusLine = <><strong>{plural(totalCount, "item")}</strong> can be restored.{counts.older > 0 && <> {counts.older} {meta.key === "teachers" ? "teacher" : "course"}{counts.older === 1 ? " has" : "s have"} been here over a month.</>}</>;
+
+  const runCaption = first ? "Loading…" : week > 0 ? `${week} deleted this week` : all.length > 0 ? "Nothing recent" : `No ${meta.many}`;
   const purgeCount = purgeTarget?.items.length ?? 0;
+  const purgeWord = purgeTarget ? KINDS.find((k) => k.key === purgeTarget.kind)! : meta;
 
   return (
-    <div className="p-4 md:p-6 lg:p-8" style={{ minHeight: "100vh", backgroundColor: "#f9fafb" }}>
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <Trash2 className="h-7 w-7 text-red-500" />
-            Trash
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Deleted teachers and courses are kept here and can be restored — purging is permanent.
-            Students and schools are deleted immediately and cannot be recovered.
-          </p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="tr-title">
+        <div className="sd-hero-copy">
+          <h1 id="tr-title" className="mc-hero-title">Trash</h1>
+          <p className="sd-where">Deleted teachers and courses</p>
+          <p className="sd-status">{statusLine}</p>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void load()} disabled={refreshing} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <Button variant="outline" onClick={load} disabled={refreshing} className="flex items-center gap-2">
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        {first ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : (
+          <AgeRun counts={counts} selected={age} onSelect={pickAge} caption={runCaption} noun={meta.many} />
+        )}
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Trash numbers">
+        <button type="button" aria-pressed={kind === "teachers"} onClick={() => pickTab("teachers")}>
+          <span className="sd-l">Teachers</span><b className="sd-n">{dash || first ? "–" : data.teachers.length}</b><small>{dash ? "Not loaded" : first ? " " : data.teachers.length > 0 ? "Tap to see them" : "None deleted"}</small>
+        </button>
+        <button type="button" aria-pressed={kind === "courses"} onClick={() => pickTab("courses")}>
+          <span className="sd-l">Courses</span><b className="sd-n">{dash || first ? "–" : data.courses.length}</b><small>{dash ? "Not loaded" : first ? " " : data.courses.length > 0 ? "Tap to see them" : "None deleted"}</small>
+        </button>
+        <button type="button" aria-pressed={age === "today" || age === "week"} onClick={() => pickAge(age === "week" ? null : "week")}>
+          <span className="sd-l">Deleted this week</span><b className="sd-n">{dash || first ? "–" : week}</b><small>{dash ? "Not loaded" : first ? " " : `Among ${meta.many}`}</small>
+        </button>
       </div>
 
       {error && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertTriangle className="h-4 w-4" /> {error}
+        <div className="tr-error" role="alert">
+          {error}
+          <button className="sd-btn sd-btn--line" onClick={() => setError(null)}>Dismiss</button>
         </div>
       )}
 
-      {!loaded ? (
-        <div className="flex items-center justify-center py-24 text-gray-500">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading trash…
+      <div className="mc-tabs" role="tablist" aria-label="What was deleted" style={{ justifySelf: "start" }}>
+        {KINDS.map((k) => (
+          <button key={k.key} role="tab" className="mc-tab" aria-selected={kind === k.key} onClick={() => pickTab(k.key)}>{k.label}{loaded && !loadFailed && <b>{data[k.key].length}</b>}</button>
+        ))}
+      </div>
+      <p className="tr-note">{NOTE[kind]}</p>
+
+      {all.length > 6 && (
+        <div className="tr-bar">
+          <div className="sd-search" style={{ flex: "1 1 16rem", maxWidth: "26rem", width: "auto" }}>
+            <Search aria-hidden="true" />
+            <input type="search" placeholder={`Search deleted ${meta.many}`} aria-label={`Search deleted ${meta.many}`} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+          </div>
+          {(search || age) && <button className="sd-btn sd-btn--line" onClick={() => { setSearch(""); pickAge(null); }}>Clear filters</button>}
         </div>
-      ) : totalCount === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center text-gray-500">
-            <Trash2 className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-medium text-gray-900 mb-1">Trash is empty</h3>
-            <p>Deleted teachers and courses will appear here. Students and schools are deleted immediately, not moved to trash.</p>
-          </CardContent>
-        </Card>
+      )}
+
+      {first ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : dash ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the trash</b>
+            <p>Check your connection, then try again.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void load()}>Try again</button>
+          </div>
+        </section>
+      ) : all.length === 0 ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>No deleted {meta.many}</b>
+            <p>{totalCount === 0 ? "When you delete a teacher or a course it waits here, and you can restore it." : `Nothing deleted here. ${kind === "teachers" ? "Courses" : "Teachers"} in the trash are on the other tab.`}</p>
+            {totalCount > 0 && <button className="sd-btn sd-btn--line" onClick={() => pickTab(kind === "teachers" ? "courses" : "teachers")}>Show {kind === "teachers" ? "courses" : "teachers"}</button>}
+          </div>
+        </section>
+      ) : shown.length === 0 ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>Nothing matches</b>
+            <p>Try a different search, or show everything again.</p>
+            <button className="sd-btn sd-btn--line" onClick={() => { setSearch(""); pickAge(null); }}>Clear filters</button>
+          </div>
+        </section>
       ) : (
-        <Tabs value={activeTab} onValueChange={changeTab} className="space-y-4">
-          <TabsList>
-            {TABS.map((t) => (
-              <TabsTrigger key={t.key} value={t.key} className="flex items-center gap-2">
-                {t.icon}
-                {t.label}
-                {data[t.key].length > 0 && (
-                  <Badge variant="secondary" className="ml-1">{data[t.key].length}</Badge>
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {TABS.map((t) => (
-            <TabsContent key={t.key} value={t.key}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Deleted {t.label.toLowerCase()}</CardTitle>
-                  <CardDescription>
-                    {t.key === "courses"
-                      ? "Courses are restored unpublished — re-publish when ready."
-                      : "Restoring reactivates the account immediately."}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {data[t.key].length === 0 ? (
-                    <p className="px-6 pb-6 text-sm text-gray-500">Nothing here.</p>
-                  ) : (
-                    <>
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-y bg-gray-50 px-6 py-2.5">
-                        <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer">
-                          <Checkbox
-                            checked={allSelected}
-                            onCheckedChange={() => setSelected(allSelected ? [] : activeItems.map((i) => i.id))}
-                            aria-label="Select all"
-                          />
-                          {selectedItems.length > 0
-                            ? `${selectedItems.length} of ${activeItems.length} selected`
-                            : "Select all"}
-                        </label>
-                        {selectedItems.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="border-green-500 text-green-700 hover:bg-green-50"
-                              disabled={busy}
-                              onClick={() => handleRestore(t.key, selectedItems)}
-                            >
-                              {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Undo2 className="h-4 w-4 mr-1" />}
-                              Restore {selectedItems.length}
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="bg-red-600 hover:bg-red-700 text-white"
-                              disabled={busy}
-                              onClick={() => setPurgeTarget({ type: t.key, items: selectedItems })}
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Delete {selectedItems.length} forever
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                      <div className="divide-y">
-                        {data[t.key].map((item) => (
-                          <div
-                            key={item.id}
-                            className={`flex items-center justify-between px-6 py-3 ${selected.includes(item.id) ? "bg-red-50/40" : ""}`}
-                          >
-                            <div className="flex min-w-0 items-center gap-3">
-                              <Checkbox
-                                checked={selected.includes(item.id)}
-                                onCheckedChange={() => toggle(item.id)}
-                                aria-label={`Select ${item.name}`}
-                              />
-                              <div className="min-w-0">
-                                <div className="font-medium text-gray-900 truncate">{item.name}</div>
-                                <div className="text-xs text-gray-500 truncate">
-                                  {item.detail} · deleted {formatDate(item.deleted_at)}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-green-500 text-green-700 hover:bg-green-50"
-                                disabled={busy || busyId === item.id}
-                                onClick={() => handleRestore(t.key, [item])}
-                              >
-                                {busyId === item.id ? (
-                                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                ) : (
-                                  <Undo2 className="h-4 w-4 mr-1" />
-                                )}
-                                Restore
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-red-400 text-red-600 hover:bg-red-50"
-                                disabled={busy || busyId === item.id}
-                                onClick={() => setPurgeTarget({ type: t.key, items: [item] })}
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                Delete forever
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          ))}
-        </Tabs>
+        <>
+          <TrashList kind={kind} rows={pageRows} now={now} picked={picked} onPick={toggle} onPickAll={togglePage} allPicked={allPicked} busyId={busyId} onRestore={(i) => void restore(kind, [i])} onPurge={(i) => setPurgeTarget({ kind, items: [i] })} />
+          <Pager offset={at * PAGE_SIZE} count={pageRows.length} total={shown.length} pageSize={PAGE_SIZE} noun={meta.many} onPrev={() => setPage(Math.max(0, at - 1))} onNext={() => setPage(at + 1)} />
+        </>
       )}
 
-      {/* Purge confirmation */}
-      <Dialog open={!!purgeTarget} onOpenChange={(open) => !open && !purging && setPurgeTarget(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <AlertTriangle className="h-5 w-5" /> Delete forever?
-            </DialogTitle>
-            <DialogDescription>
-              {purgeCount === 1 ? (
-                <>
-                  This permanently deletes <span className="font-semibold">{purgeTarget?.items[0].name}</span> and all
-                  related data.
-                </>
-              ) : (
-                <>
-                  This permanently deletes <span className="font-semibold">{plural(purgeCount, purgeTarget?.type === "courses" ? "course" : "teacher")}</span>{" "}
-                  and all their related data.
-                </>
-              )}{" "}
-              This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {purgeCount > 1 && (
-            <ul className="max-h-40 overflow-y-auto rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700 space-y-0.5">
-              {purgeTarget?.items.map((i) => (
-                <li key={i.id} className="truncate">• {i.name}</li>
-              ))}
-            </ul>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPurgeTarget(null)} disabled={purging}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="bg-red-600 hover:bg-red-700"
-              onClick={handlePurge}
-              disabled={purging}
-            >
-              {purging ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-              Delete {purgeCount > 1 ? `${purgeCount} ` : ""}forever
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <p className="tr-fine">Students and schools are deleted at once and cannot be recovered, so they never appear here.</p>
+
+      {selectedItems.length > 0 && (
+        <div className="tr-selbar" role="region" aria-label="Selected items">
+          <b>{plural(selectedItems.length, meta.one)} selected</b>
+          <div>
+            <button className="sd-btn sd-btn--line" onClick={() => setPicked(new Set())} disabled={busy}>Clear</button>
+            <button className="sd-btn sd-btn--amber" onClick={() => void restore(kind, selectedItems)} disabled={busy}><Undo2 aria-hidden="true" />Restore</button>
+            <button className="sd-btn sd-btn--danger" onClick={() => setPurgeTarget({ kind, items: selectedItems })} disabled={busy}><Trash2 aria-hidden="true" />Delete forever</button>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={!!purgeTarget}
+        onClose={() => { if (!purging) setPurgeTarget(null); }}
+        title={purgeCount === 1 ? "Delete this forever?" : `Delete ${purgeCount} ${purgeWord.many} forever?`}
+        subtitle={purgeCount === 1 ? purgeTarget?.items[0].name : undefined}
+        confirmLabel={purgeCount > 1 ? `Delete ${purgeCount} forever` : "Delete forever"}
+        danger
+        busy={purging}
+        onConfirm={() => void purge()}
+      >
+        <p style={{ margin: 0 }}>
+          {purgeCount === 1 ? "This removes it" : "This removes them"} and all {purgeCount === 1 ? "its" : "their"} related data for good. It cannot be undone.
+        </p>
+        {purgeCount > 1 && (
+          <ul className="tr-names">
+            {purgeTarget?.items.map((i) => <li key={i.id}>{i.name}</li>)}
+          </ul>
+        )}
+      </ConfirmModal>
     </div>
   );
 }

@@ -1,143 +1,41 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { WEEKDAY_LABELS } from "@/lib/weekday-utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  CalendarDays,
-  Plus,
-  Zap,
-  Sun,
-  Coffee,
-  AlertCircle,
-  Trash2,
-  Pencil,
-  Loader2,
-  School,
-  Globe,
-  ChevronDown,
-  ChevronRight,
-  ChevronLeft,
-  List,
-  LayoutGrid,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutGrid, List, Pencil, Plus, RefreshCw, Sun, Trash2 } from "lucide-react";
 import { adminApi } from "@/lib/api/admin.api";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { toast } from "@/components/ui/toast";
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import TypeRun from "@/components/admin/calendar/TypeRun";
+import { EntryFormModal, MarkTodayModal, type EntryForm } from "@/components/admin/calendar/EntryModals";
+import {
+  KIND_LABEL,
+  TYPE_LABEL,
+  buildMonth,
+  eventKey,
+  groupEntries,
+  longDate,
+  monthTitle,
+  plural,
+  rangeLabel,
+  todayIst,
+  type CalendarEntry,
+  type EntryType,
+} from "@/components/admin/calendar/utils";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips and forms
+import "@/components/school-admin/teachers.css"; // tm- track nodes
+import "@/components/teacher/calendar/calendar.css"; // cd- grid and chips
+import "@/components/admin/calendar/calendar.css";
 
-interface CalendarEntry {
-  id: string;
-  school_id: string;
-  school_name: string;
-  date: string;
-  end_date: string | null;
-  name: string;
-  type: "Holiday" | "Break" | "HalfDay" | "CompensatoryWork";
-  academic_year: string;
-  description: string | null;
-  batch_id: string | null;
-  created_at: string;
-}
+const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const TYPE_CFG: Record<
-  CalendarEntry["type"],
-  { label: string; icon: React.ReactNode; cls: string }
-> = {
-  Holiday: { label: "Holiday", icon: <Sun className="h-3.5 w-3.5" />, cls: "bg-red-100 text-red-800 border-red-200" },
-  Break: { label: "Break", icon: <Coffee className="h-3.5 w-3.5" />, cls: "bg-orange-100 text-orange-800 border-orange-200" },
-  HalfDay: { label: "Half Day", icon: <AlertCircle className="h-3.5 w-3.5" />, cls: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  CompensatoryWork: { label: "Compensatory Work", icon: <Zap className="h-3.5 w-3.5" />, cls: "bg-blue-100 text-blue-800 border-blue-200" },
-};
-
-function formatDate(d: string) {
-  return new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-function todayIstStr(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
-}
-
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-/** True if `dateStr` falls within [entry.date, entry.end_date ?? entry.date]. */
-function entryCoversDate(entry: CalendarEntry, dateStr: string): boolean {
-  const end = entry.end_date ?? entry.date;
-  return entry.date <= dateStr && dateStr <= end;
-}
-
-interface DayCell {
-  dateStr: string;
-  day: number;
-  isSunday: boolean;
-  entries: CalendarEntry[];
-}
-
-/** Standard Sun-start month grid: leading/trailing nulls pad partial weeks. */
-function buildMonthGrid(year: number, month: number, entries: CalendarEntry[]): (DayCell | null)[] {
-  const firstOfMonth = new Date(Date.UTC(year, month - 1, 1));
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const startWeekday = firstOfMonth.getUTCDay(); // 0=Sun
-
-  const cells: (DayCell | null)[] = Array.from({ length: startWeekday }, () => null);
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-    cells.push({
-      dateStr,
-      day,
-      isSunday: dow === 0,
-      entries: entries.filter((e) => entryCoversDate(e, dateStr)),
-    });
-  }
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
-}
-
-type FormState = {
-  scope: "school" | "all";
-  school_id: string;
-  date: string;
-  end_date: string;
-  name: string;
-  type: CalendarEntry["type"];
-  description: string;
-};
-
-const EMPTY_FORM: FormState = {
+const EMPTY_FORM: EntryForm = {
   scope: "school",
   school_id: "",
-  date: todayIstStr(),
+  date: todayIst(),
   end_date: "",
   name: "",
   type: "Holiday",
@@ -146,37 +44,25 @@ const EMPTY_FORM: FormState = {
 
 export default function AdminCalendarPage() {
   const { schools: rawSchools } = useAdminSchools();
-  const schools = useMemo(
-    () => (rawSchools ?? []).map((s) => ({ id: s.id, name: s.name })),
-    [rawSchools],
-  );
+  const schools = useMemo(() => (rawSchools ?? []).map((s) => ({ id: s.id, name: s.name })), [rawSchools]);
 
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Per school, which weekdays (0=Sun..6=Sat) at least one teacher actually
-  // works there — a school absent from this map has no teachers assigned
-  // yet, so it has no working days at all until one is assigned.
   const [viewSchoolId, setViewSchoolId] = useState<string>("all");
-  // "YYYY-MM" — drives both the calendar grid and the list view so they
-  // always show the same month; prev/next arrows walk this forward/back.
-  const [viewMonthStr, setViewMonthStr] = useState<string>(() => todayIstStr().slice(0, 7));
+  // "YYYY-MM": drives both the grid and the list so they always show the same month.
+  const [viewMonthStr, setViewMonthStr] = useState<string>(() => todayIst().slice(0, 7));
   const [viewTab, setViewTab] = useState<"calendar" | "list">("calendar");
+  const [typeFilter, setTypeFilter] = useState<EntryType | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const viewYear = parseInt(viewMonthStr.slice(0, 4), 10);
   const viewMonthNum = parseInt(viewMonthStr.slice(5, 7), 10);
 
-  // Per school, the exact dates in the *viewed* month that are an active
-  // working day for at least one teacher — resolved day-by-day server-side
-  // (see AdminCalendarService.getActiveDatesBySchoolForMonth), so a
-  // mid-month working-days change shows up precisely on the day it actually
-  // took effect instead of one flat weekday pattern approximating the whole
-  // month.
+  // Per school, the exact dates in the viewed month that somebody teaches there, resolved day by day on the
+  // server, so a mid-month working-days change shows up on the day it took effect.
   const [activeDatesBySchool, setActiveDatesBySchool] = useState<Record<string, string[]>>({});
-  // Distinguishes "haven't confirmed yet / lookup failed" from "confirmed
-  // this school has zero working days" — without this, a failed or slow
-  // fetch would look identical to "nobody is scheduled anywhere," greying
-  // out the whole calendar even though the data is fine.
+  // "not confirmed yet or the lookup failed" is not the same as "this school has no working days".
   const [activeDatesReady, setActiveDatesReady] = useState(false);
   const [activeWeekdaysError, setActiveWeekdaysError] = useState(false);
   useEffect(() => {
@@ -191,31 +77,22 @@ export default function AdminCalendarPage() {
   }, [viewYear, viewMonthNum]);
   const isSchoolActiveOnDate = useCallback(
     (schoolId: string, dateStr: string) => {
-      // Don't restrict anything until we've actually confirmed the data —
-      // otherwise a not-yet-loaded or failed lookup falsely shows every
-      // school as having nobody scheduled.
-      if (!activeDatesReady) return true;
+      if (!activeDatesReady) return true; // do not restrict anything until the data is confirmed
       const dates = activeDatesBySchool[schoolId];
-      // No working-days history at all for this school → no working days
-      // until a teacher is assigned there (not "every day is fine").
-      if (!dates) return false;
+      if (!dates) return false; // no working-days history: nobody works there until a teacher is assigned
       return dates.includes(dateStr);
     },
     [activeDatesBySchool, activeDatesReady],
   );
 
-  // Separate from activeDatesBySchool (which tracks whichever month is
-  // being *viewed*) — "Mark Today" is always about literal today regardless
-  // of which month the admin has navigated to, so it needs its own fetch
-  // for today's own month rather than reusing a map that might be resolved
-  // for a different month.
+  // "Mark today" is always about literal today, whichever month is on screen, so it has its own lookup.
   const [todayActiveDatesBySchool, setTodayActiveDatesBySchool] = useState<Record<string, string[]> | null>(null);
   const isSchoolActiveToday = useCallback(
     (schoolId: string) => {
       if (!todayActiveDatesBySchool) return true;
       const dates = todayActiveDatesBySchool[schoolId];
       if (!dates) return false;
-      return dates.includes(todayIstStr());
+      return dates.includes(todayIst());
     },
     [todayActiveDatesBySchool],
   );
@@ -223,20 +100,17 @@ export default function AdminCalendarPage() {
   const goToMonth = (delta: number) => {
     const d = new Date(Date.UTC(viewYear, viewMonthNum - 1 + delta, 1));
     setViewMonthStr(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+    setSelected(null);
   };
-  const goToToday = () => setViewMonthStr(todayIstStr().slice(0, 7));
+  const goToToday = () => { setViewMonthStr(todayIst().slice(0, 7)); setSelected(todayIst()); };
 
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<EntryForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
   const calendarFormDirty = useDirtySnapshot(isFormOpen, form);
-
-  const requestCloseCalendarForm = () => {
-    void requestClose(calendarFormDirty, () => setIsFormOpen(false));
-  };
+  const requestCloseCalendarForm = () => { void requestClose(calendarFormDirty, () => setIsFormOpen(false)); };
 
   const [isMarkTodayOpen, setIsMarkTodayOpen] = useState(false);
   const [markTodayScope, setMarkTodayScope] = useState<"school" | "all">("all");
@@ -248,7 +122,6 @@ export default function AdminCalendarPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ kind: "single" | "batch"; id: string; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
-
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -262,55 +135,20 @@ export default function AdminCalendarPage() {
       });
       setEntries(((data as { calendar?: CalendarEntry[] })?.calendar ?? []) as CalendarEntry[]);
     } catch {
-      setError("Failed to load the calendar.");
+      setError("The calendar did not load. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
   }, [viewSchoolId, viewYear, viewMonthNum]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Group entries applied to every school (same batch_id) into one row.
-  const groupedEntries = useMemo(() => {
-    const byBatch = new Map<string, CalendarEntry[]>();
-    const standalone: CalendarEntry[] = [];
-    for (const e of entries) {
-      if (e.batch_id) {
-        if (!byBatch.has(e.batch_id)) byBatch.set(e.batch_id, []);
-        byBatch.get(e.batch_id)!.push(e);
-      } else {
-        standalone.push(e);
-      }
-    }
-    type Row =
-      | { kind: "single"; entry: CalendarEntry; sortDate: string }
-      | { kind: "batch"; batchId: string; entries: CalendarEntry[]; sortDate: string };
-    const rows: Row[] = [
-      ...standalone.map((entry): Row => ({ kind: "single", entry, sortDate: entry.date })),
-      ...Array.from(byBatch.entries()).map(([batchId, list]): Row => ({
-        kind: "batch",
-        batchId,
-        entries: list,
-        sortDate: list[0].date,
-      })),
-    ];
-    return rows.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
-  }, [entries]);
+  useEffect(() => { load(); }, [load]);
 
   const openCreateForm = (opts?: { date?: string }) => {
     setEditingId(null);
-    // Default scope/school to whatever's currently being viewed — clicking a
-    // day while looking at one school shouldn't require re-selecting it.
+    // Default scope and school to what is being viewed, so adding from a day does not mean picking again.
     const prefillScope: "school" | "all" = viewSchoolId === "all" ? "all" : "school";
     const prefillSchoolId = viewSchoolId !== "all" ? viewSchoolId : (schools[0]?.id ?? "");
-    setForm({
-      ...EMPTY_FORM,
-      scope: prefillScope,
-      school_id: prefillSchoolId,
-      date: opts?.date ?? EMPTY_FORM.date,
-    });
+    setForm({ ...EMPTY_FORM, scope: prefillScope, school_id: prefillSchoolId, date: opts?.date ?? EMPTY_FORM.date });
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -330,16 +168,18 @@ export default function AdminCalendarPage() {
     setIsFormOpen(true);
   };
 
+  const patchForm = (patch: Partial<EntryForm>) =>
+    setForm((f) => {
+      const next = { ...f, ...patch };
+      // A school picked for the old date may have nobody working the new one, so clear it.
+      if (patch.date && !editingId && next.school_id && !isSchoolActiveOnDate(next.school_id, patch.date)) next.school_id = "";
+      return next;
+    });
+
   const submitForm = async () => {
     setFormError(null);
-    if (!form.name.trim()) {
-      setFormError("A reason is required (e.g. \"Diwali\", \"Republic Day\").");
-      return;
-    }
-    if (form.scope === "school" && !form.school_id) {
-      setFormError("Choose a school, or switch to \"All schools\".");
-      return;
-    }
+    if (!form.name.trim()) { setFormError("Add a reason, for example Diwali or Republic Day."); return; }
+    if (form.scope === "school" && !form.school_id) { setFormError("Choose a school, or switch to All schools."); return; }
     setSaving(true);
     try {
       if (editingId) {
@@ -350,11 +190,10 @@ export default function AdminCalendarPage() {
           type: form.type,
           description: form.description.trim() || null,
         });
+        toast.success("Entry saved.");
       } else {
         const { data } = await adminApi.calendar.create({
-          ...(form.scope === "all"
-            ? { apply_to_all_schools: true }
-            : { school_id: form.school_id }),
+          ...(form.scope === "all" ? { apply_to_all_schools: true } : { school_id: form.school_id }),
           date: form.date,
           end_date: form.end_date || undefined,
           name: form.name.trim(),
@@ -364,54 +203,56 @@ export default function AdminCalendarPage() {
         if (form.scope === "all") {
           const applied = (data as { schools_count?: number })?.schools_count ?? 0;
           const total = schools.length;
-          if (applied < total) {
-            toast.info(`Applied to ${applied} of ${total} schools — the rest have no one scheduled that day.`);
-          }
-        }
+          if (applied < total) toast.info(`Applied to ${applied} of ${total} schools. The rest have nobody scheduled that day.`);
+          else toast.success("Entry added to every school.");
+        } else toast.success("Entry added.");
       }
       setIsFormOpen(false);
       await load();
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setFormError(msg || "Failed to save this entry.");
+      setFormError(msg || "Could not save this entry. Try again.");
     } finally {
       setSaving(false);
     }
   };
 
+  const openMarkToday = () => {
+    setMarkTodayScope("all");
+    setMarkTodaySchoolId("");
+    setMarkTodayError(null);
+    setIsMarkTodayOpen(true);
+    const todayStr = todayIst();
+    adminApi.calendar
+      .activeDates({ year: todayStr.slice(0, 4), month: todayStr.slice(5, 7) })
+      .then(({ data }) => setTodayActiveDatesBySchool((data as Record<string, string[]>) ?? {}))
+      .catch(() => setTodayActiveDatesBySchool(null));
+  };
+
   const submitMarkToday = async () => {
     setMarkTodayError(null);
-    if (!markTodayReason.trim()) {
-      setMarkTodayError("A reason is required — this shows up on attendance reports.");
-      return;
-    }
-    if (markTodayScope === "school" && !markTodaySchoolId) {
-      setMarkTodayError("Choose a school, or switch to \"All schools\".");
-      return;
-    }
+    if (!markTodayReason.trim()) { setMarkTodayError("Add a reason. It shows on attendance reports."); return; }
+    if (markTodayScope === "school" && !markTodaySchoolId) { setMarkTodayError("Choose a school, or switch to All schools."); return; }
     setMarkingToday(true);
     try {
       const { data } = await adminApi.calendar.markToday({
-        ...(markTodayScope === "all"
-          ? { apply_to_all_schools: true }
-          : { school_id: markTodaySchoolId }),
+        ...(markTodayScope === "all" ? { apply_to_all_schools: true } : { school_id: markTodaySchoolId }),
         name: markTodayReason.trim(),
         description: markTodayNotes.trim() || undefined,
       });
       if (markTodayScope === "all") {
         const applied = (data as { schools_count?: number })?.schools_count ?? 0;
         const total = schools.length;
-        if (applied < total) {
-          toast.info(`Applied to ${applied} of ${total} schools — the rest have no one scheduled today.`);
-        }
+        if (applied < total) toast.info(`Applied to ${applied} of ${total} schools. The rest have nobody scheduled today.`);
       }
+      toast.success("Today is now a holiday.");
       setIsMarkTodayOpen(false);
       setMarkTodayReason("");
       setMarkTodayNotes("");
       await load();
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setMarkTodayError(msg || "Failed to mark today as a holiday.");
+      setMarkTodayError(msg || "Could not mark today as a holiday. Try again.");
     } finally {
       setMarkingToday(false);
     }
@@ -421,662 +262,273 @@ export default function AdminCalendarPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      if (deleteTarget.kind === "batch") {
-        await adminApi.calendar.deleteBatch(deleteTarget.id);
-      } else {
-        await adminApi.calendar.delete(deleteTarget.id);
-      }
+      if (deleteTarget.kind === "batch") await adminApi.calendar.deleteBatch(deleteTarget.id);
+      else await adminApi.calendar.delete(deleteTarget.id);
+      toast.success(`${deleteTarget.label} was deleted.`);
       setDeleteTarget(null);
       await load();
     } catch {
-      setError("Failed to delete. Try again.");
+      toast.error("Could not delete it. Try again.");
     } finally {
       setDeleting(false);
     }
   };
 
-  const toggleGroup = (batchId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(batchId)) next.delete(batchId);
-      else next.add(batchId);
-      return next;
-    });
-  };
+  const toggleGroup = (batchId: string) =>
+    setExpandedGroups((prev) => { const next = new Set(prev); if (next.has(batchId)) next.delete(batchId); else next.add(batchId); return next; });
+
+  /* ───────── derived ───────── */
+  const schoolName = viewSchoolId === "all" ? "All schools" : schools.find((s) => s.id === viewSchoolId)?.name ?? "";
+  const specific = viewSchoolId !== "all";
+  const counts: Record<EntryType, number> = { Holiday: 0, Break: 0, HalfDay: 0, CompensatoryWork: 0 };
+  const seen = new Set<string>();
+  entries.forEach((e) => { const k = eventKey(e); if (!seen.has(k)) { seen.add(k); counts[e.type] += 1; } });
+  const visibleEntries = typeFilter ? entries.filter((e) => e.type === typeFilter) : entries;
+  const rows = groupEntries(visibleEntries);
+  const month = useMemo(
+    () => buildMonth(viewYear, viewMonthNum, entries, (date) => specific && activeDatesReady && !isSchoolActiveOnDate(viewSchoolId, date)),
+    [viewYear, viewMonthNum, entries, specific, activeDatesReady, isSchoolActiveOnDate, viewSchoolId],
+  );
+  const daysClosed = month.cells.filter((c) => c.kind === "closed").length;
+  const today = todayIst();
+  const isCurrentMonth = viewMonthStr === today.slice(0, 7);
+  const todayCell = isCurrentMonth ? month.cells.find((c) => c.date === today) : undefined;
+  const pickedCell = selected ? month.cells.find((c) => c.date === selected) : undefined;
+  const pickedGroups = pickedCell ? groupEntries(pickedCell.entries) : [];
+
+  let status: React.ReactNode;
+  if (loading && entries.length === 0) status = "Loading the calendar…";
+  else if (error) status = "The calendar did not load. Try again.";
+  else if (todayCell?.kind === "closed") status = <><strong>Today is a holiday</strong> {specific ? "at this school" : "at some schools"}. {todayCell.entries[0]?.name}.</>;
+  else if (entries.length === 0) status = <>Nothing is declared for <strong>{monthTitle(viewYear, viewMonthNum)}</strong>. Sundays are the weekly off.</>;
+  else status = <><strong>{plural(daysClosed, "day")} closed</strong> in {monthTitle(viewYear, viewMonthNum)}, with {plural(Object.values(counts).reduce((a, b) => a + b, 0), "entry", "entries")} in all.</>;
+
+  const entryRow = (e: CalendarEntry, withSchool: boolean) => (
+    <div key={e.id} className="ac-ev">
+      <span className="ac-ev-main"><b>{e.name}</b><small>{[rangeLabel(e), withSchool ? e.school_name : null, e.description].filter(Boolean).join(" · ")}</small></span>
+      <span className="cd-chip" data-t={e.type}>{TYPE_LABEL[e.type]}</span>
+      <span className="ac-ev-acts">
+        <button type="button" className="pl-ico" aria-label={`Edit ${e.name}`} onClick={() => openEditForm(e)}><Pencil /></button>
+        <button type="button" className="pl-ico" aria-label={`Delete ${e.name}`} onClick={() => setDeleteTarget({ kind: "single", id: e.id, label: e.name })}><Trash2 /></button>
+      </span>
+    </div>
+  );
 
   return (
-    <div className="p-4 md:p-6 lg:p-8" style={{ minHeight: "100vh", backgroundColor: "#f9fafb" }}>
-      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <CalendarDays className="h-7 w-7 text-blue-600" />
-            School Calendar
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Holidays, breaks, half-days, and compensatory work days. Declaring a day
-            here immediately corrects attendance for it — no separate step needed.
-          </p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ac-title">
+        <div className="sd-hero-copy">
+          <h1 id="ac-title" className="mc-hero-title">School calendar</h1>
+          <p className="sd-where">Holidays, breaks and make-up days</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--amber" onClick={openMarkToday}><Sun aria-hidden="true" />Mark today as a holiday</button>
+            <button className="sd-btn sd-btn--ghost-dark" onClick={() => openCreateForm({ date: selected ?? undefined })}><Plus aria-hidden="true" />Add entry</button>
+          </div>
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            className="border-red-400 text-red-700 hover:bg-red-50"
-            onClick={() => {
-              setMarkTodayScope("all");
-              setMarkTodaySchoolId("");
-              setMarkTodayError(null);
-              setIsMarkTodayOpen(true);
-              // Always fetched fresh for literal today, independent of
-              // whichever month is currently being browsed in the grid.
-              const todayStr = todayIstStr();
-              adminApi.calendar
-                .activeDates({ year: todayStr.slice(0, 4), month: todayStr.slice(5, 7) })
-                .then(({ data }) => setTodayActiveDatesBySchool((data as Record<string, string[]>) ?? {}))
-                .catch(() => setTodayActiveDatesBySchool(null));
-            }}
-          >
-            <Sun className="h-4 w-4 mr-2" />
-            Mark Today as Holiday
-          </Button>
-          <Button onClick={() => openCreateForm()}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Entry
-          </Button>
+        <TypeRun counts={counts} selected={typeFilter} onSelect={setTypeFilter} caption={`In ${monthTitle(viewYear, viewMonthNum)}`} />
+      </section>
+
+      <div className="ac-bar">
+        <select className="sd-field" aria-label="School" value={viewSchoolId} onChange={(e) => { setViewSchoolId(e.target.value); setSelected(null); }}>
+          <option value="all">All schools</option>
+          {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <div className="ac-nav">
+          <button type="button" className="pl-ico" onClick={() => goToMonth(-1)} aria-label="Previous month"><ChevronLeft /></button>
+          <b aria-live="polite">{monthTitle(viewYear, viewMonthNum)}</b>
+          <button type="button" className="pl-ico" onClick={() => goToMonth(1)} aria-label="Next month"><ChevronRight /></button>
+          {!isCurrentMonth && <button type="button" className="sd-btn sd-btn--line" style={{ minHeight: "2.25rem" }} onClick={goToToday}>Today</button>}
         </div>
+        <span className="ac-views" role="group" aria-label="Layout">
+          <button type="button" aria-pressed={viewTab === "calendar"} onClick={() => setViewTab("calendar")}><LayoutGrid aria-hidden="true" />Calendar</button>
+          <button type="button" aria-pressed={viewTab === "list"} onClick={() => setViewTab("list")}><List aria-hidden="true" />List</button>
+        </span>
       </div>
 
-      {/* Filters */}
-      <Card className="mb-4">
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-gray-500 whitespace-nowrap">School</Label>
-                <Select value={viewSchoolId} onValueChange={setViewSchoolId}>
-                  <SelectTrigger className="w-56">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    <SelectItem value="all">All schools</SelectItem>
-                    {schools.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => goToMonth(-1)}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <div className="w-40 text-center font-medium text-gray-900">
-                  {MONTH_NAMES[viewMonthNum - 1]} {viewYear}
-                </div>
-                <Button variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => goToMonth(1)}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                {viewMonthStr !== todayIstStr().slice(0, 7) && (
-                  <Button variant="ghost" size="sm" className="h-9 text-xs text-gray-500" onClick={goToToday}>
-                    Today
-                  </Button>
-                )}
-              </div>
-            </div>
-            <Tabs value={viewTab} onValueChange={(v) => setViewTab(v as "calendar" | "list")}>
-              <TabsList>
-                <TabsTrigger value="calendar" className="gap-1.5">
-                  <LayoutGrid className="h-3.5 w-3.5" /> Calendar
-                </TabsTrigger>
-                <TabsTrigger value="list" className="gap-1.5">
-                  <List className="h-3.5 w-3.5" /> List
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-        </CardContent>
-      </Card>
-
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <div className="ac-note" role="alert">{error} <button className="sm-reset" style={{ color: "inherit" }} onClick={() => void load()}>Try again</button></div>}
       {activeWeekdaysError && (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Couldn&apos;t confirm which days schools are actually staffed — the grid below isn&apos;t restricting by
-          working days right now. Refresh the page to try again.
-        </div>
+        <div className="ac-note" data-tone="warn" role="status">Could not confirm which days each school is staffed, so the grid is not greying out days with nobody scheduled. Refresh the page to try again.</div>
       )}
 
-      {/* Calendar grid view */}
-      {viewTab === "calendar" && (
-        <Card className="mb-4">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">
-              {viewSchoolId === "all" ? "All Schools" : schools.find((s) => s.id === viewSchoolId)?.name ?? ""}
-            </CardTitle>
-            <CardDescription>
-              Click any day to add an entry for it. Sundays are always the weekly off —
-              they don&apos;t need to be marked.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-16 text-gray-500">
-                <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading…
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-7 gap-1.5 mb-1.5">
-                  {WEEKDAY_LABELS.map((w) => (
-                    <div key={w} className="text-center text-xs font-semibold text-gray-400 uppercase py-1">
-                      {w}
-                    </div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1.5">
-                  {buildMonthGrid(viewYear, viewMonthNum, entries).map((cell, idx) => {
-                    if (!cell) return <div key={`blank-${idx}`} />;
-                    const compEntry = cell.entries.find((e) => e.type === "CompensatoryWork");
-                    const offEntry = cell.entries.find((e) => e.type === "Holiday" || e.type === "Break");
-                    const halfDayEntry = cell.entries.find((e) => e.type === "HalfDay");
-                    // Sunday is off by default, unless a CompensatoryWork entry
-                    // explicitly turns it into a working day.
-                    const isOff = (cell.isSunday && !compEntry) || !!offEntry;
-                    // Only meaningful when viewing one specific school: a
-                    // plain weekday nobody's assigned to work there — no
-                    // point letting an entry be created for it (the
-                    // attendance math already excludes it with zero
-                    // admin action needed).
-                    const isNotScheduled =
-                      viewSchoolId !== "all" &&
-                      !isOff &&
-                      !halfDayEntry &&
-                      !compEntry &&
-                      !isSchoolActiveOnDate(viewSchoolId, cell.dateStr);
-                    const cellCls = isOff
-                      ? "bg-red-50 border-red-200"
-                      : halfDayEntry
-                        ? "bg-yellow-50 border-yellow-200"
-                        : compEntry
-                          ? "bg-blue-50 border-blue-200"
-                          : isNotScheduled
-                            ? "bg-gray-100 border-gray-200"
-                            : "bg-green-50/60 border-green-100";
-                    const uniqueSchools = new Set(cell.entries.map((e) => e.school_id)).size;
-                    return (
+      {viewTab === "calendar" ? (
+        <section className="sd-panel mc-swap" aria-labelledby="ac-grid-h">
+          <div className="cd-head">
+            <div><h2 id="ac-grid-h">{schoolName}</h2><p>Pick a day to see what is on it. Sundays are the weekly off and need no entry.</p></div>
+          </div>
+          {loading && entries.length === 0 ? (
+            <div className="sd-skel" style={{ height: "24rem" }} />
+          ) : (
+            <>
+              <div className="cd-dow" aria-hidden="true">{DOW.map((d) => <span key={d}>{d}</span>)}</div>
+              <ol className="cd-grid">
+                {Array.from({ length: month.lead }, (_, i) => <li key={`b${i}`} aria-hidden="true" />)}
+                {month.cells.map((c) => {
+                  const first = c.entries[0];
+                  const dim = typeFilter !== null && !c.entries.some((e) => e.type === typeFilter);
+                  return (
+                    <li key={c.date}>
                       <button
-                        key={cell.dateStr}
                         type="button"
-                        disabled={isNotScheduled}
-                        onClick={() => openCreateForm({ date: cell.dateStr })}
-                        className={`relative flex min-w-0 flex-col items-start overflow-hidden rounded-lg border p-1 sm:p-2 min-h-[3.75rem] sm:min-h-[5.5rem] text-left transition-colors ${isNotScheduled ? "cursor-default" : "hover:ring-2 hover:ring-blue-300"} ${cellCls}`}
+                        className="cd-day"
+                        data-k={c.kind}
+                        data-today={c.date === today}
+                        data-dim={dim}
+                        aria-pressed={c.date === selected}
+                        aria-label={`${longDate(c.date)}: ${KIND_LABEL[c.kind]}${c.entries.length ? `, ${c.entries.map((e) => e.name).join(", ")}` : ""}`}
+                        onClick={() => setSelected(c.date === selected ? null : c.date)}
                       >
-                        <span className={`text-sm font-semibold ${cell.isSunday ? "text-red-600" : isNotScheduled ? "text-gray-400" : "text-gray-700"}`}>
-                          {cell.day}
+                        <b>{c.day}</b>
+                        {c.entries.length > 0 && <small>{first.name}{c.entries.length > 1 ? ` +${c.entries.length - 1}` : ""}</small>}
+                        <span className="cd-marks" aria-hidden="true">
+                          {c.entries.slice(0, 3).map((e) => <i key={e.id} data-t={e.type} />)}
                         </span>
-                        <div className="mt-1 flex flex-col gap-0.5 w-full">
-                          {cell.isSunday && !compEntry && (
-                            <span className="text-[10px] font-medium text-red-600">
-                              <span className="sm:hidden">Off</span>
-                              <span className="hidden sm:inline">Weekly Off</span>
-                            </span>
-                          )}
-                          {isNotScheduled && (
-                            <span className="hidden text-[10px] font-medium text-gray-400 sm:inline">No one scheduled</span>
-                          )}
-                          {cell.entries.slice(0, 2).map((e) => (
-                            <span
-                              key={e.id}
-                              className={`truncate text-[10px] font-medium px-1 py-0.5 rounded ${TYPE_CFG[e.type].cls}`}
-                              title={`${e.name}${viewSchoolId === "all" ? ` — ${e.school_name}` : ""}`}
-                            >
-                              {e.name}
-                            </span>
-                          ))}
-                          {cell.entries.length > 2 && (
-                            <span className="text-[10px] text-gray-400">+{cell.entries.length - 2} more</span>
-                          )}
-                          {viewSchoolId === "all" && uniqueSchools > 1 && (
-                            <span className="hidden text-[10px] text-gray-400 sm:flex items-center gap-0.5">
-                              <Globe className="h-2.5 w-2.5" /> {uniqueSchools} schools
-                            </span>
-                          )}
-                        </div>
                       </button>
-                    );
-                  })}
-                </div>
-                {/* Legend */}
-                <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t text-xs text-gray-500">
-                  <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-green-50 border border-green-200" /> Working day</span>
-                  <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-red-50 border border-red-200" /> Holiday / Sunday</span>
-                  <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-yellow-50 border border-yellow-200" /> Half day</span>
-                  <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-blue-50 border border-blue-200" /> Compensatory work</span>
-                  {viewSchoolId !== "all" && (
-                    <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-gray-100 border border-gray-200" /> Not scheduled (no teacher assigned that day)</span>
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="cd-key">
+                <span><i data-k="work" />Teaching day</span>
+                <span><i data-k="closed" />Holiday or break</span>
+                <span><i data-k="half" />Half day</span>
+                <span><i data-k="comp" />Make-up day</span>
+                <span><i data-k="off" />Weekly off</span>
+                {specific && <span><i data-k="unassigned" />Nobody scheduled</span>}
+              </p>
+            </>
+          )}
+
+          {pickedCell && (
+            <div className="cd-detail" aria-live="polite">
+              <div className="cd-detail-head">
+                <h3>{longDate(pickedCell.date)}</h3>
+                <span className="cd-chip" data-k={pickedCell.kind}>{KIND_LABEL[pickedCell.kind]}</span>
+              </div>
+              {pickedGroups.length === 0 ? (
+                <p className="cd-fine">{pickedCell.kind === "off" ? "Sunday is the weekly off. Add a make-up day to teach on it." : pickedCell.kind === "unassigned" ? "Nobody is scheduled at this school on this day." : "Nothing special on the calendar."}</p>
+              ) : (
+                <div>
+                  {pickedGroups.map((g) =>
+                    g.kind === "single" ? entryRow(g.entry, !specific) : (
+                      <div key={g.batchId} className="ac-ev">
+                        <span className="ac-ev-main"><b>{g.entries[0].name}</b><small>{[rangeLabel(g.entries[0]), `Applied to ${plural(g.entries.length, "school")}`, g.entries[0].description].filter(Boolean).join(" · ")}</small></span>
+                        <span className="cd-chip" data-t={g.entries[0].type}>{TYPE_LABEL[g.entries[0].type]}</span>
+                        <span className="ac-ev-acts">
+                          <button type="button" className="pl-ico" aria-label={`Delete ${g.entries[0].name} from every school`} onClick={() => setDeleteTarget({ kind: "batch", id: g.batchId, label: `${g.entries[0].name} (all schools)` })}><Trash2 /></button>
+                        </span>
+                      </div>
+                    ),
                   )}
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* List view */}
-      {viewTab === "list" && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">
-            {viewSchoolId === "all" ? "All Schools" : schools.find((s) => s.id === viewSchoolId)?.name ?? ""}
-            {" · "}{MONTH_NAMES[viewMonthNum - 1]} {viewYear}
-          </CardTitle>
-          <CardDescription>
-            {viewSchoolId === "all"
-              ? "Entries applied to every school at once are grouped into a single row."
-              : "Holidays, breaks, half-days, and compensatory work days declared for this school."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-16 text-gray-500">
-              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading…
+              )}
+              <div className="ac-detail-acts">
+                <button className="sd-btn sd-btn--amber" onClick={() => openCreateForm({ date: pickedCell.date })} disabled={pickedCell.kind === "unassigned"}><Plus aria-hidden="true" />Add an entry for this day</button>
+              </div>
             </div>
-          ) : groupedEntries.length === 0 ? (
-            <div className="py-16 text-center text-gray-500">
-              <CalendarDays className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-              No calendar entries for {MONTH_NAMES[viewMonthNum - 1]} {viewYear}.
+          )}
+        </section>
+      ) : (
+        <section className="sd-panel ac-list mc-swap" aria-label={`Calendar entries, ${monthTitle(viewYear, viewMonthNum)}`}>
+          {loading && entries.length === 0 ? (
+            <div style={{ padding: "1.25rem" }}><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : rows.length === 0 ? (
+            <div className="sd-empty" style={{ padding: "1.5rem 1.25rem" }}>
+              <b>{typeFilter ? `No ${TYPE_LABEL[typeFilter].toLowerCase()}s in ${monthTitle(viewYear, viewMonthNum)}` : `Nothing declared for ${monthTitle(viewYear, viewMonthNum)}`}</b>
+              <p>{typeFilter ? "Pick another kind, or show every kind." : "Holidays, breaks, half days and make-up days you add show up here."}</p>
+              <button className="sd-btn sd-btn--amber" onClick={() => openCreateForm()}><Plus aria-hidden="true" />Add entry</button>
             </div>
           ) : (
-            <div className="divide-y">
-              {groupedEntries.map((row) => {
-                if (row.kind === "single") {
-                  const e = row.entry;
-                  const cfg = TYPE_CFG[e.type];
-                  return (
-                    <div key={e.id} className="flex items-start justify-between gap-4 px-6 py-4">
-                      <div className="flex items-start gap-3 min-w-0">
-                        <Badge variant="outline" className={`${cfg.cls} flex items-center gap-1 mt-0.5 shrink-0`}>
-                          {cfg.icon}
-                          {cfg.label}
-                        </Badge>
-                        <div className="min-w-0">
-                          <div className="font-medium text-gray-900">{e.name}</div>
-                          <div className="text-sm text-gray-500">
-                            {formatDate(e.date)}
-                            {e.end_date && e.end_date !== e.date ? ` – ${formatDate(e.end_date)}` : ""}
-                            {viewSchoolId === "all" && (
-                              <>
-                                {" · "}
-                                <span className="inline-flex items-center gap-1"><School className="h-3 w-3" />{e.school_name}</span>
-                              </>
-                            )}
-                          </div>
-                          {e.description && (
-                            <p className="text-sm text-gray-500 mt-1">{e.description}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="sm" onClick={() => openEditForm(e)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-500 hover:text-red-700"
-                          onClick={() => setDeleteTarget({ kind: "single", id: e.id, label: e.name })}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                const first = row.entries[0];
-                const cfg = TYPE_CFG[first.type];
-                const expanded = expandedGroups.has(row.batchId);
+            rows.map((row) => {
+              if (row.kind === "single") {
+                const e = row.entry;
                 return (
-                  <div key={row.batchId}>
-                    <div className="flex items-start justify-between gap-4 px-6 py-4 bg-blue-50/40">
-                      <button
-                        className="flex items-start gap-3 min-w-0 text-left flex-1"
-                        onClick={() => toggleGroup(row.batchId)}
-                      >
-                        {expanded ? (
-                          <ChevronDown className="h-4 w-4 text-gray-400 mt-1 shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-gray-400 mt-1 shrink-0" />
-                        )}
-                        <Badge variant="outline" className={`${cfg.cls} flex items-center gap-1 mt-0.5 shrink-0`}>
-                          {cfg.icon}
-                          {cfg.label}
-                        </Badge>
-                        <div className="min-w-0">
-                          <div className="font-medium text-gray-900">{first.name}</div>
-                          <div className="text-sm text-gray-500 flex items-center gap-1">
-                            {formatDate(first.date)}
-                            {first.end_date && first.end_date !== first.date ? ` – ${formatDate(first.end_date)}` : ""}
-                            {" · "}
-                            <Globe className="h-3 w-3" /> Applied to {row.entries.length} schools
-                          </div>
-                          {first.description && (
-                            <p className="text-sm text-gray-500 mt-1">{first.description}</p>
-                          )}
-                        </div>
-                      </button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500 hover:text-red-700 shrink-0"
-                        onClick={() => setDeleteTarget({ kind: "batch", id: row.batchId, label: `${first.name} (all schools)` })}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {expanded && (
-                      <div className="divide-y bg-gray-50/50">
-                        {row.entries
-                          .slice()
-                          .sort((a, b) => a.school_name.localeCompare(b.school_name))
-                          .map((e) => (
-                            <div key={e.id} className="flex items-center justify-between px-6 py-2 pl-14">
-                              <span className="text-sm text-gray-700 flex items-center gap-1.5">
-                                <School className="h-3.5 w-3.5 text-gray-400" />
-                                {e.school_name}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-400 hover:text-red-600"
-                                onClick={() => setDeleteTarget({ kind: "single", id: e.id, label: `${e.name} — ${e.school_name}` })}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          ))}
-                      </div>
-                    )}
+                  <div key={e.id} className="ac-row">
+                    <span className="ac-date">{rangeLabel(e)}</span>
+                    <span className="ac-main"><b>{e.name}</b><small>{[specific ? null : e.school_name, e.description].filter(Boolean).join(" · ")}</small></span>
+                    <span className="cd-chip" data-t={e.type}>{TYPE_LABEL[e.type]}</span>
+                    <span className="ac-ev-acts">
+                      <button type="button" className="pl-ico" aria-label={`Edit ${e.name}`} onClick={() => openEditForm(e)}><Pencil /></button>
+                      <button type="button" className="pl-ico" aria-label={`Delete ${e.name}`} onClick={() => setDeleteTarget({ kind: "single", id: e.id, label: e.name })}><Trash2 /></button>
+                    </span>
                   </div>
                 );
-              })}
-            </div>
+              }
+              const first = row.entries[0];
+              const open = expandedGroups.has(row.batchId);
+              return (
+                <div key={row.batchId}>
+                  <div className="ac-row" data-batch="true">
+                    <span className="ac-date">{rangeLabel(first)}</span>
+                    <button type="button" className="ac-main" aria-expanded={open} onClick={() => toggleGroup(row.batchId)}>
+                      <b>{first.name}</b>
+                      <small>{[`Applied to ${plural(row.entries.length, "school")}. ${open ? "Hide them" : "Show them"}`, first.description].filter(Boolean).join(" · ")}</small>
+                    </button>
+                    <span className="cd-chip" data-t={first.type}>{TYPE_LABEL[first.type]}</span>
+                    <span className="ac-ev-acts">
+                      <button type="button" className="pl-ico" aria-label={`Delete ${first.name} from every school`} onClick={() => setDeleteTarget({ kind: "batch", id: row.batchId, label: `${first.name} (all schools)` })}><Trash2 /></button>
+                    </span>
+                  </div>
+                  {open && row.entries.slice().sort((a, b) => a.school_name.localeCompare(b.school_name)).map((e) => (
+                    <div key={e.id} className="ac-sub">
+                      <span>{e.school_name}</span>
+                      <button type="button" className="pl-ico" aria-label={`Delete ${e.name} at ${e.school_name}`} onClick={() => setDeleteTarget({ kind: "single", id: e.id, label: `${e.name}, ${e.school_name}` })}><Trash2 /></button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })
           )}
-        </CardContent>
-      </Card>
+        </section>
       )}
 
-      {/* Add / Edit entry dialog */}
-      <Dialog
+      <EntryFormModal
         open={isFormOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setIsFormOpen(true);
-            return;
-          }
-          requestCloseCalendarForm();
-        }}
+        editing={!!editingId}
+        form={form}
+        onChange={patchForm}
+        schools={schools}
+        schoolsOnDate={schools.filter((s) => isSchoolActiveOnDate(s.id, form.date))}
+        error={formError}
+        busy={saving}
+        onSubmit={() => void submitForm()}
+        onClose={requestCloseCalendarForm}
+      />
+
+      <MarkTodayModal
+        open={isMarkTodayOpen}
+        scope={markTodayScope}
+        onScope={setMarkTodayScope}
+        schoolId={markTodaySchoolId}
+        onSchool={setMarkTodaySchoolId}
+        reason={markTodayReason}
+        onReason={setMarkTodayReason}
+        notes={markTodayNotes}
+        onNotes={setMarkTodayNotes}
+        schools={schools.filter((s) => isSchoolActiveToday(s.id))}
+        error={markTodayError}
+        busy={markingToday}
+        onSubmit={() => void submitMarkToday()}
+        onClose={() => setIsMarkTodayOpen(false)}
+      />
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete this calendar entry?"
+        subtitle={deleteTarget?.label}
+        confirmLabel="Delete entry"
+        danger
+        busy={deleting}
+        onConfirm={() => void confirmDelete()}
       >
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingId ? "Edit calendar entry" : "Add calendar entry"}</DialogTitle>
-            <DialogDescription>
-              {editingId
-                ? "Update this entry."
-                : "Declare a holiday, break, half-day, or compensatory working day."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {!editingId && (
-              <div className="space-y-2">
-                <Label>Apply to</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={form.scope === "school" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setForm((f) => ({ ...f, scope: "school" }))}
-                  >
-                    <School className="h-4 w-4 mr-1.5" /> One school
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={form.scope === "all" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setForm((f) => ({ ...f, scope: "all" }))}
-                  >
-                    <Globe className="h-4 w-4 mr-1.5" /> All schools
-                  </Button>
-                </div>
-              </div>
-            )}
-            {(editingId || form.scope === "school") && (
-              <div className="space-y-2">
-                <Label>School</Label>
-                <Select
-                  value={form.school_id}
-                  onValueChange={(v) => setForm((f) => ({ ...f, school_id: v }))}
-                  disabled={!!editingId}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select school" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    {(editingId ? schools : schools.filter((s) => isSchoolActiveOnDate(s.id, form.date))).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!editingId && schools.filter((s) => isSchoolActiveOnDate(s.id, form.date)).length === 0 && (
-                  <p className="text-xs text-amber-600">
-                    No school has anyone working on this day — pick a different date, or use &quot;All schools&quot;.
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => {
-                    const newDate = e.target.value;
-                    setForm((f) => ({
-                      ...f,
-                      date: newDate,
-                      // A school picked for the old date may no longer have
-                      // anyone working the new date's weekday — clear it
-                      // rather than silently keep an invalid selection.
-                      school_id:
-                        !editingId && f.school_id && !isSchoolActiveOnDate(f.school_id, newDate)
-                          ? ""
-                          : f.school_id,
-                    }));
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>End date (optional)</Label>
-                <Input type="date" value={form.end_date} onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v as CalendarEntry["type"] }))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  {(Object.keys(TYPE_CFG) as CalendarEntry["type"][]).map((t) => (
-                    <SelectItem key={t} value={t}>{TYPE_CFG[t].label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.type === "HalfDay" && (
-                <p className="text-xs text-gray-500">Half days still count as a working day for attendance.</p>
-              )}
-              {form.type === "CompensatoryWork" && (
-                <p className="text-xs text-gray-500">Marks an off-day (e.g. Saturday) as an actual working day.</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Reason <span className="text-red-500">*</span></Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. Diwali, Republic Day, Local bandh"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Notes (optional)</Label>
-              <Textarea
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Any extra context for staff"
-              />
-            </div>
-            {formError && <p className="text-sm text-red-600">{formError}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={requestCloseCalendarForm} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={submitForm} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              {editingId ? "Save changes" : "Add entry"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Mark today as holiday — quick action for sudden closures */}
-      <Dialog open={isMarkTodayOpen} onOpenChange={setIsMarkTodayOpen}>
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sun className="h-5 w-5 text-red-500" />
-              Mark today as a holiday
-            </DialogTitle>
-            <DialogDescription>
-              For a sudden closure — a bandh, weather, an emergency. Today&apos;s date
-              is filled in automatically; this immediately excludes today from
-              working-day totals and stops it from counting as an absence.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Apply to</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={markTodayScope === "school" ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setMarkTodayScope("school")}
-                >
-                  <School className="h-4 w-4 mr-1.5" /> One school
-                </Button>
-                <Button
-                  type="button"
-                  variant={markTodayScope === "all" ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setMarkTodayScope("all")}
-                >
-                  <Globe className="h-4 w-4 mr-1.5" /> All schools
-                </Button>
-              </div>
-            </div>
-            {markTodayScope === "school" && (
-              <div className="space-y-2">
-                <Label>School</Label>
-                <Select value={markTodaySchoolId} onValueChange={setMarkTodaySchoolId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select school" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    {schools.filter((s) => isSchoolActiveToday(s.id)).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {schools.filter((s) => isSchoolActiveToday(s.id)).length === 0 && (
-                  <p className="text-xs text-amber-600">
-                    No school has anyone working today — try &quot;All schools&quot; or the full Add Entry form.
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Reason <span className="text-red-500">*</span></Label>
-              <Input
-                value={markTodayReason}
-                onChange={(e) => setMarkTodayReason(e.target.value)}
-                placeholder="e.g. City-wide bandh, heavy flooding"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Notes (optional)</Label>
-              <Textarea
-                value={markTodayNotes}
-                onChange={(e) => setMarkTodayNotes(e.target.value)}
-                placeholder="Any extra context for staff"
-              />
-            </div>
-            {markTodayError && <p className="text-sm text-red-600">{markTodayError}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsMarkTodayOpen(false)} disabled={markingToday}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-red-600 hover:bg-red-700"
-              onClick={submitMarkToday}
-              disabled={markingToday}
-            >
-              {markingToday ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sun className="h-4 w-4 mr-2" />}
-              Mark as holiday
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete confirmation */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete calendar entry</DialogTitle>
-            <DialogDescription>
-              {deleteTarget?.kind === "batch"
-                ? "This removes it from every school it was applied to."
-                : "This cannot be undone."}
-            </DialogDescription>
-          </DialogHeader>
-          {deleteTarget && (
-            <p className="text-sm text-gray-700 py-2">
-              Delete <span className="font-semibold">{deleteTarget.label}</span>?
-            </p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="bg-red-600 hover:bg-red-700"
-              onClick={confirmDelete}
-              disabled={deleting}
-            >
-              {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <p>{deleteTarget?.kind === "batch" ? "It is removed from every school it was applied to." : "This cannot be undone."} Attendance for those days is worked out again.</p>
+      </ConfirmModal>
     </div>
   );
 }

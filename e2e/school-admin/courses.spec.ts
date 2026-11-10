@@ -23,7 +23,7 @@ test.describe('School Admin — Courses', () => {
     const res = await coursesResponse;
     expect(res.ok()).toBeTruthy();
 
-    const courseRow = page.getByRole('row', { name: new RegExp(courseName) });
+    const courseRow = page.getByRole('article').filter({ hasText: courseName });
     await expect(courseRow).toBeVisible();
     // BUG: this course was created with `grades: ["Grade 1"]` (POST
     // /admin/courses), but the school-admin Courses list shows "N/A" for its
@@ -48,32 +48,23 @@ test.describe('School Admin — Courses', () => {
       (res) => res.url().includes('/school-admin/courses') && res.request().method() === 'GET' && !res.url().includes('progress'),
     );
 
-    // NOTE: page.tsx has `<Label htmlFor="status">`/`<Label htmlFor="grade">`
-    // but the corresponding <SelectTrigger> never receives a matching `id`
-    // prop (same htmlFor/id-mismatch pattern already found and fixed on the
-    // students page's grade/section selects) — so neither #status nor a
-    // getByLabel() query can reach these controls. Selecting by DOM order
-    // instead (Status combobox renders before Grade combobox).
-    const statusCombobox = page.getByRole('combobox').first();
-    await statusCombobox.click();
-    await page.getByRole('option', { name: 'Published', exact: true }).click();
+    // The status filter is the lifecycle track in the page header: one button per
+    // stage, named "<Stage>: <n> course(s)". Pressing a stage filters; pressing it again clears.
+    await page.getByRole('button', { name: /^Published: \d+ courses?$/ }).click();
     await expect(page.getByText(courseName)).not.toBeVisible();
 
-    await statusCombobox.click();
-    await page.getByRole('option', { name: 'Draft', exact: true }).click();
+    await page.getByRole('button', { name: /^Draft: \d+ courses?$/ }).click();
     await expect(page.getByText(courseName)).toBeVisible();
   });
 
-  test('stats cards reflect the real fixture course counts', async ({ page }) => {
+  test('the lifecycle track reflects the real fixture course counts', async ({ page }) => {
     await page.goto('/lms/school-admin/courses');
     await page.waitForResponse(
       (res) => res.url().includes('/school-admin/courses') && res.request().method() === 'GET' && !res.url().includes('progress'),
     );
 
-    const totalCoursesCard = page.locator('text=Total Courses').locator('..').locator('..');
-    await expect(totalCoursesCard.getByText('1', { exact: true })).toBeVisible();
-
-    const publishedCard = page.locator('text=Published').locator('..').locator('..');
-    await expect(publishedCard.getByText('0', { exact: true })).toBeVisible();
+    // One Draft course (the fixture default) and no Published ones.
+    await expect(page.getByRole('button', { name: 'Draft: 1 course' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Published: 0 courses' })).toBeVisible();
   });
 });

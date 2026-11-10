@@ -1,9 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
-import { Button } from "../ui/button";
-import { Card, CardContent } from "../ui/card";
+import { RefreshCw } from "lucide-react";
 
 interface Props {
   children: React.ReactNode;
@@ -36,23 +34,13 @@ export class AdminTabErrorBoundary extends React.Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <Card>
-          <CardContent className="p-8">
-            <div className="text-center py-8">
-              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
-              <p className="text-lg font-medium text-red-600">
-                {this.props.tabName ? `${this.props.tabName} failed to load` : "Something went wrong"}
-              </p>
-              <p className="text-sm text-gray-600 mt-2">
-                {this.state.error?.message ?? "An unexpected error occurred in this section."}
-              </p>
-              <Button onClick={this.reset} className="mt-4" variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Try Again
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <section className="sd-panel" role="alert">
+          <div className="sd-empty">
+            <b>{this.props.tabName ? `${this.props.tabName} did not load` : "Something went wrong"}</b>
+            <p>{this.state.error?.message ?? "An unexpected error stopped this section from showing."} Try again, and if it keeps happening, refresh the page.</p>
+            <button className="sd-btn sd-btn--amber" onClick={this.reset}><RefreshCw aria-hidden="true" />Try again</button>
+          </div>
+        </section>
       );
     }
 

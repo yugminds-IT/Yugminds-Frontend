@@ -285,7 +285,7 @@ export default function TeacherProfileView({ teacher, open, onClose, refreshTrig
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto bg-white">
         <DialogHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pr-10">
             <DialogTitle className="text-2xl font-bold">Teacher Profile</DialogTitle>
             <ImpersonateUserButton userId={currentTeacher.id} label="Sign in as teacher" />
           </div>

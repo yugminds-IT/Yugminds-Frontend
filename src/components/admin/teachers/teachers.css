@@ -1,0 +1,91 @@
+/* Admin Teachers. Needs portal.css, school-admin/overview.css (hero meta), school-admin/students.css + teachers.css
+   (sm- chips, tm- track and leave rows) and teacher/overview/overview.css loaded first. */
+
+.at-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.at-bar select.sd-field { width: auto; min-width: 10rem; padding-block: 0.6rem; }
+.at-bar-end { margin-left: auto; }
+.at-field { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--sd-ink-soft); }
+.at-field .sd-field { min-width: 12rem; padding-block: 0.55rem; }
+.at-hot .sd-n { color: var(--sd-late); }
+
+/* Teacher rows */
+.at-list { padding: 0; overflow: hidden; }
+.at-head, .at-row { display: grid; grid-template-columns: 1.5rem 2.5rem minmax(0, 1.25fr) minmax(0, 1.6fr) minmax(0, 1fr) minmax(7.5rem, 0.8fr) 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.at-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.at-row { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
+.at-row:last-of-type { border-bottom: 0; }
+@media (hover: hover) { .at-row:hover { background: var(--sd-wash); } }
+.at-row[data-picked="true"] { background: rgb(251 191 36 / 0.14); }
+.at-row[data-off="true"] .at-who b { color: var(--sd-ink-soft); }
+.at-row .sd-avatar { width: 2.5rem; height: 2.5rem; }
+.at-check { width: 1.15rem; height: 1.15rem; accent-color: var(--sd-ink); cursor: pointer; }
+.at-who { display: grid; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.at-who--static { cursor: default; }
+.at-who b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.at-who small, .at-bg small, .at-school small, .at-more { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+button.at-who:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; border-radius: 0.4rem; }
+@media (hover: hover) { button.at-who:hover b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; } }
+.at-schools { display: grid; gap: 0.45rem; min-width: 0; }
+.at-school { display: grid; min-width: 0; }
+.at-schools > .sm-chip { justify-self: start; }
+.at-school b { font: 700 0.95rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.at-bg { display: grid; min-width: 0; }
+.at-bg b { font: 600 0.93rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.at-today { display: grid; gap: 0.3rem; justify-items: start; }
+.at-per { display: grid; gap: 0.1rem; }
+.at-chip { display: inline-flex; align-items: center; padding: 0.05rem 0.7rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.78rem/1.6 var(--sd-body); color: var(--sd-ink-soft); white-space: nowrap; }
+.at-chip[data-k="present"] { border-color: var(--sd-ink); background: var(--sd-ink); color: var(--sd-amber); }
+.at-chip[data-k="leave"] { border-color: var(--sd-amber-deep); background: rgb(251 191 36 / 0.22); color: var(--sd-ink); }
+.at-chip[data-k="absent"] { border-style: dashed; }
+.at-chip[data-k="off"] { border-color: var(--sd-line); background: var(--sd-wash); }
+
+.at-selbar { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; padding: 0.7rem 1rem; border: 1.5px solid var(--sd-ink); border-radius: 1.1rem; background: var(--sd-paper); box-shadow: 0 0.75rem 2rem rgb(11 27 58 / 0.18); }
+.at-selbar b { font: 800 1.05rem/1 var(--sd-display); }
+.at-selbar > div { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.at-selbar .sd-btn { min-height: 2.25rem; padding-inline: 1rem; }
+.at-names { max-height: 10rem; margin: 0.5rem 0 0; padding-left: 1.2rem; overflow-y: auto; font-size: 0.95rem; color: var(--sd-ink-soft); }
+
+/* Monthly attendance */
+.at-month-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; padding: 1rem 1.25rem 0; }
+.at-sort { width: auto; min-width: 12rem; padding-block: 0.6rem; }
+.at-rule { padding: 0.75rem 1.25rem 0.9rem; border-bottom: 1.5px solid var(--sd-line); font-size: 0.88rem; line-height: 1.5; color: var(--sd-ink-soft); }
+.at-rule span { display: block; max-width: 60rem; }
+.at-mrow { border-bottom: 1.5px solid var(--sd-line); }
+.at-mrow:last-of-type { border-bottom: 0; }
+.at-mmain { display: grid; grid-template-columns: 2.5rem minmax(0, 1.1fr) minmax(8rem, 0.7fr) minmax(0, 2fr) 4.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.at-mmain .sd-avatar { width: 2.5rem; height: 2.5rem; }
+.at-mschool small { font-size: 0.88rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.at-expand { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.2rem; border: 0; background: none; color: var(--sd-ink); font: 700 0.9rem/1.2 var(--sd-body); cursor: pointer; }
+.at-expand svg { width: 1rem; height: 1rem; }
+.at-expand:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; border-radius: 0.4rem; }
+.at-mbar { display: grid; gap: 0.35rem; min-width: 0; }
+.at-mbar small { font-size: 0.82rem; color: var(--sd-ink-soft); }
+.at-pct { justify-self: end; font: 800 1.05rem/1 var(--sd-display); font-variant-numeric: tabular-nums; }
+.at-pct[data-b="low"] { color: var(--sd-late); }
+.at-pct[data-b="watch"] { color: var(--sd-amber-deep); }
+.at-sub { display: grid; padding: 0 1.25rem 0.9rem calc(1.25rem + 3.5rem); }
+.at-subrow { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 2.5fr) 4.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.6rem 0; border-top: 1.5px dashed var(--sd-line); }
+
+@media (max-width: 1100px) {
+  .at-head { display: none; }
+  .at-row { grid-template-columns: 1.5rem 2.5rem minmax(0, 1fr) 2.25rem; grid-template-areas: "ck av who go" ". . schools schools" ". . bg bg" ". . today today"; gap: 0.4rem 0.8rem; }
+  .at-row > .at-check { grid-area: ck; }
+  .at-row > .sd-avatar { grid-area: av; }
+  .at-row > .at-who { grid-area: who; }
+  .at-row > .at-schools { grid-area: schools; }
+  .at-row > .at-bg { grid-area: bg; }
+  .at-row > .at-today { grid-area: today; }
+  .at-row > .at-menu { grid-area: go; }
+  .at-mmain { grid-template-columns: 2.5rem minmax(0, 1fr) 4.5rem; grid-template-areas: "av who pct" ". school school" ". bar bar"; }
+  .at-mmain > .sd-avatar { grid-area: av; }
+  .at-mmain > .at-who { grid-area: who; }
+  .at-mmain > .at-pct { grid-area: pct; }
+  .at-mmain > .at-mschool { grid-area: school; }
+  .at-mmain > .at-mbar { grid-area: bar; }
+  .at-sub { padding-left: 1.25rem; }
+  .at-subrow { grid-template-columns: minmax(0, 1fr) 4.5rem; grid-template-areas: "who pct" "bar bar"; }
+  .at-subrow > .at-who { grid-area: who; }
+  .at-subrow > .at-mbar { grid-area: bar; }
+  .at-subrow > .at-pct { grid-area: pct; }
+}
+@media (prefers-reduced-motion: reduce) { .at-row { transition: none; } }

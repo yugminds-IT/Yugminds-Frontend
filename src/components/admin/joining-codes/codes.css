@@ -1,0 +1,85 @@
+/* Admin Joining codes. Needs portal.css, school-admin/overview.css (hero meta), school-admin/students.css (sm- chips, forms)
+   and school-admin/teachers.css (tm- track nodes) loaded first. */
+
+.jc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.jc-bar select.sd-field { width: auto; min-width: 14rem; max-width: 24rem; padding-block: 0.6rem; }
+.jc-add { margin-left: auto; }
+.jc-hint { font-size: 0.86rem; line-height: 1.5; color: var(--sd-ink-soft); }
+.jc-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 700; letter-spacing: 0.04em; }
+
+.jc-list { padding: 0; overflow: hidden; container-type: inline-size; }
+.jc-head, .jc-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 1.1fr) minmax(8rem, 0.9fr) 6.5rem 10.5rem 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.jc-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.jc-row { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
+.jc-row:last-of-type { border-bottom: 0; }
+@media (hover: hover) { .jc-row:hover { background: var(--sd-wash); } }
+.jc-row[data-s="off"] .jc-code code, .jc-row[data-s="expired"] .jc-code code { color: var(--sd-ink-soft); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.jc-class { display: grid; min-width: 0; }
+.jc-class b { font: 700 1rem/1.3 var(--sd-body); }
+.jc-class small, .jc-used small, .jc-exp { font-size: 0.86rem; color: var(--sd-ink-soft); }
+.jc-code { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; }
+.jc-code code { padding: 0.25rem 0.75rem; border: 1.5px solid var(--sd-ink); border-radius: 0.7rem; background: var(--sd-paper); font: 800 1.05rem/1.4 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.06em; white-space: nowrap; }
+.jc-code button { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border: 0; border-radius: 50%; background: transparent; color: var(--sd-ink-soft); cursor: pointer; }
+.jc-code button:hover { background: var(--sd-wash); color: var(--sd-ink); }
+.jc-code button:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+.jc-code button svg { width: 1.05rem; height: 1.05rem; }
+.jc-used { display: grid; gap: 0.25rem; min-width: 0; }
+.jc-used b { font: 800 1.05rem/1.2 var(--sd-display); font-variant-numeric: tabular-nums; }
+.jc-row[data-s="full"] .sd-meter i { background: var(--sd-late); }
+.jc-state { display: flex; align-items: center; gap: 0.6rem; }
+.jc-state .st-switch { width: 2.7rem; height: 1.6rem; flex: none; }
+.jc-state .st-switch::after { width: 1rem; height: 1rem; }
+.jc-state .st-switch[aria-checked="true"]::after { translate: 1.1rem -50%; }
+.jc-chip { display: inline-flex; padding: 0.05rem 0.7rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.78rem/1.6 var(--sd-body); color: var(--sd-ink-soft); white-space: nowrap; }
+.jc-chip[data-s="active"] { border-color: var(--sd-ink); background: var(--sd-ink); color: var(--sd-amber); }
+.jc-chip[data-s="full"] { border-color: #e8b4ab; background: #fff1ee; color: var(--sd-late); }
+.jc-chip[data-s="expired"] { border-color: var(--sd-amber-deep); background: rgb(251 191 36 / 0.22); color: var(--sd-ink); }
+.jc-chip[data-s="off"] { border-style: dashed; }
+.jc-menu { display: grid; place-items: center; }
+.jc-menu > svg { width: 1.2rem; height: 1.2rem; }
+
+/* Make codes */
+.jc-form { display: grid; gap: 1.5rem; }
+.jc-form h3 { margin-bottom: 0.5rem; font: 700 1.05rem/1.3 var(--sd-body); }
+.jc-form h3 small { font-weight: 500; color: var(--sd-ink-soft); }
+.jc-grades { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.jc-grade small { margin-left: 0.4rem; font-size: 0.74rem; font-weight: 500; opacity: 0.75; }
+.jc-grade[data-off="true"]:not([aria-pressed="true"]) { opacity: 0.55; }
+.jc-secs { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; align-items: center; gap: 0.4rem 0.9rem; padding: 0.6rem 0; border-top: 1.5px solid var(--sd-line); }
+.jc-secs b { font: 700 0.95rem/1.3 var(--sd-body); }
+.jc-secs-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.jc-secs small { font-size: 0.85rem; color: var(--sd-ink-soft); }
+.jc-warn { padding: 0.8rem 1rem; border: 1.5px solid var(--sd-amber-deep); border-radius: 1rem; background: rgb(251 191 36 / 0.16); font-size: 0.93rem; }
+
+/* Schools overview (no school picked) */
+.jc-schools { padding: 0; overflow: hidden; }
+.jc-school { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 0.5rem 1rem; padding: 0.9rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); }
+.jc-school:last-child { border-bottom: 0; }
+.jc-school > span { display: grid; min-width: 0; }
+.jc-school b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.jc-school small { font-size: 0.86rem; color: var(--sd-ink-soft); }
+.jc-guide { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem 2rem; margin: 0; padding: 0; list-style: none; }
+.jc-guide li { display: grid; gap: 0.15rem; font-size: 0.93rem; line-height: 1.5; }
+.jc-guide b { font: 700 0.98rem/1.3 var(--sd-body); }
+
+/* Rows follow the width of the list, not the screen, so the same rows work in the narrower dialog */
+@container (max-width: 820px) {
+  .jc-head { display: none; }
+  .jc-row { grid-template-columns: minmax(0, 1fr) auto 2.25rem; grid-template-areas: "class code menu" "used exp state"; gap: 0.5rem 1rem; }
+  .jc-row > .jc-class { grid-area: class; }
+  .jc-row > .jc-menu { grid-area: menu; }
+  .jc-row > .jc-code { grid-area: code; }
+  .jc-row > .jc-used { grid-area: used; }
+  .jc-row > .jc-exp { grid-area: exp; }
+  .jc-row > .jc-state { grid-area: state; justify-self: end; }
+}
+@container (max-width: 520px) {
+  .jc-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "class menu" "code code" "used used" "exp exp" "state state"; }
+  .jc-row > .jc-state { justify-self: start; }
+}
+@media (max-width: 1000px) {
+  .jc-guide { grid-template-columns: minmax(0, 1fr); }
+  .jc-secs { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .jc-row { transition: none; } }
+.jc-dialog { display: grid; gap: 1rem; }

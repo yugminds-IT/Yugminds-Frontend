@@ -292,7 +292,10 @@ export function ChipGroup<T extends string>({
   );
 }
 
-/** Previous and next for server-paged lists. Shows nothing when everything fits on one page. */
+/**
+ * Previous and next for server-paged lists. Shows nothing when everything fits on one page.
+ * Pass `sizes` and `onSize` to let people pick how many rows a page holds.
+ */
 export function Pager({
   offset,
   count,
@@ -301,6 +304,9 @@ export function Pager({
   busy = false,
   onPrev,
   onNext,
+  sizes,
+  onSize,
+  noun = "rows",
 }: {
   offset: number;
   count: number;
@@ -309,12 +315,24 @@ export function Pager({
   busy?: boolean;
   onPrev: () => void;
   onNext: () => void;
+  sizes?: number[];
+  onSize?: (n: number) => void;
+  noun?: string;
 }) {
-  if (total <= pageSize) return null;
+  // With a size picker the bar stays visible, so someone on 100 per page can go back to 25.
+  if (total <= (sizes ? Math.min(...sizes) : pageSize)) return null;
   return (
     <div className="nt-pager">
       <span>Showing {count === 0 ? 0 : offset + 1}–{offset + count} of {total}</span>
       <div>
+        {sizes && onSize && (
+          <label className="nt-size">
+            <span>Show</span>
+            <select value={pageSize} onChange={(e) => onSize(Number(e.target.value))} aria-label={`${noun} per page`}>
+              {sizes.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
         <button className="sd-btn sd-btn--line" disabled={offset === 0 || busy} onClick={onPrev}>Previous</button>
         <button className="sd-btn sd-btn--line" disabled={offset + pageSize >= total || busy} onClick={onNext}>Next</button>
       </div>

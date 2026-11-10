@@ -1,0 +1,5 @@
+/* Teacher student progress. The school-admin rows, with a wider class column: a teacher's class label spells out the section. */
+@media (min-width: 961px) {
+  .tp .sp-row { grid-template-columns: 2.5rem minmax(0, 1.3fr) 11rem minmax(0, 0.8fr) minmax(8rem, 1fr) 8.5rem 2.25rem; }
+}
+.tp .sm-chip[data-class="true"] { justify-self: start; }

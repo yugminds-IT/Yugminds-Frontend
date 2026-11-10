@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2, X } from "lucide-react";
 import { teacherApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
-import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { classLabel } from "./overview/utils";
 
 interface RetakeRequestRow {
   id: string;
@@ -24,18 +24,20 @@ interface RetakeRequestRow {
 }
 
 const TABS = [
-  { key: "pending", label: "Pending" },
+  { key: "pending", label: "Waiting" },
   { key: "approved", label: "Approved" },
-  { key: "rejected", label: "Rejected" },
+  { key: "rejected", label: "Declined" },
 ] as const;
+const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
+/** Students asking for another try. Approve to let them retake, or decline with a note. */
 export default function TeacherRetakeRequestsPanel() {
   const [statusFilter, setStatusFilter] = useState<"pending" | "approved" | "rejected">("pending");
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [remarksById, setRemarksById] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["teacher", "retake-requests", statusFilter],
     queryFn: async () => {
       const { data } = await teacherApi.retakeRequests.list({ status: statusFilter });
@@ -43,7 +45,7 @@ export default function TeacherRetakeRequestsPanel() {
     },
   });
 
-  // Pending count independent of the active filter, for the tab badge.
+  // Waiting count independent of the active filter, for the tab badge.
   const { data: pendingCount } = useQuery({
     queryKey: ["teacher", "retake-requests", "pending-count"],
     queryFn: async () => {
@@ -55,9 +57,7 @@ export default function TeacherRetakeRequestsPanel() {
   const decide = useMutation({
     mutationFn: async ({ id, action, remarks }: { id: string; action: "approve" | "reject"; remarks?: string }) =>
       teacherApi.retakeRequests.decide(id, { action, remarks }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["teacher", "retake-requests"] });
-    },
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["teacher", "retake-requests"] }); },
   });
 
   const handleDecide = async (id: string, action: "approve" | "reject") => {
@@ -67,7 +67,7 @@ export default function TeacherRetakeRequestsPanel() {
       toast.success(action === "approve" ? "Retake approved." : "Request declined.");
       setRemarksById((prev) => ({ ...prev, [id]: "" }));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update request");
+      toast.error(err instanceof Error ? err.message : "The request could not be updated.");
     } finally {
       setDecidingId(null);
     }
@@ -76,112 +76,53 @@ export default function TeacherRetakeRequestsPanel() {
   const requests = data ?? [];
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-100 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="tg-detail" style={{ gap: "1rem" }}>
+      <div className="mc-tabs" role="tablist" aria-label="Retake requests" style={{ justifySelf: "start" }}>
         {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setStatusFilter(t.key)}
-            className={`relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
-              statusFilter === t.key
-                ? "text-gray-900"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
-          >
+          <button key={t.key} type="button" role="tab" aria-selected={statusFilter === t.key} className="mc-tab" onClick={() => setStatusFilter(t.key)}>
             {t.label}
-            {t.key === "pending" && !!pendingCount && (
-              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold">
-                {pendingCount}
-              </span>
-            )}
-            {statusFilter === t.key && (
-              <span className="absolute left-0 right-0 bottom-0 h-0.5 bg-blue-600 rounded-full" />
-            )}
+            {t.key === "pending" && !!pendingCount && <span className="tg-dot">{pendingCount}</span>}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <div className="py-16 text-center text-sm text-gray-500">
-          <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-          Loading requests…
-        </div>
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : isError ? (
+        <div className="sd-panel"><div className="sd-empty"><b>Could not load requests</b><p>Check your connection and try again.</p><button className="sd-btn sd-btn--ink" onClick={() => void refetch()}>Try again</button></div></div>
       ) : requests.length === 0 ? (
-        <div className="py-16 text-center text-gray-400">
-          <p className="text-sm font-medium text-gray-500">
-            No {statusFilter} retake requests
-          </p>
-        </div>
+        <div className="sd-panel"><div className="sd-empty"><b>{statusFilter === "pending" ? "No retake requests waiting" : `No ${statusFilter === "approved" ? "approved" : "declined"} requests`}</b><p>{statusFilter === "pending" ? "When a student asks for another try, it shows up here." : "Nothing here yet."}</p></div></div>
       ) : (
-        <div className="space-y-3">
+        <div className="sd-panel as-list tg-line">
           {requests.map((r) => (
-            <div key={r.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-start justify-between gap-4">
+            <article key={r.id} className="tg-req">
+              <div className="tg-req-top">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{r.student_name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {r.assignment_title}
-                    {r.course_title ? ` · ${r.course_title}` : ""}
-                    {(r.grade || r.section) && (
-                      <> · {r.grade ?? ""}{r.grade && r.section ? " " : ""}{r.section ? `Sec ${r.section}` : ""}</>
-                    )}
-                  </p>
-                  {r.reason && (
-                    <p className="text-sm text-gray-600 mt-2 text-left">
-                      &ldquo;{r.reason}&rdquo;
-                    </p>
-                  )}
+                  <b>{r.student_name}</b>
+                  <small>{[r.assignment_title, r.course_title, classLabel(r.grade, r.section)].filter(Boolean).join(", ")}</small>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-400 whitespace-nowrap">
-                  <Clock className="h-3.5 w-3.5" />
-                  {new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </div>
+                <small style={{ whiteSpace: "nowrap", color: "var(--sd-ink-soft)" }}>{day(r.created_at)}</small>
               </div>
+              {r.reason && <p className="tg-quote">{r.reason}</p>}
 
               {r.status === "pending" ? (
-                <div className="mt-3 space-y-2">
-                  <Textarea
-                    value={remarksById[r.id] ?? ""}
-                    onChange={(e) => setRemarksById((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                    placeholder="Optional note to the student…"
-                    rows={2}
-                    className="text-sm"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDecide(r.id, "approve")}
-                      disabled={decidingId === r.id}
-                      className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {decidingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                      Approve
+                <>
+                  <textarea className="sd-field" rows={2} placeholder="A note for the student (optional)" aria-label={`Note for ${r.student_name}`} value={remarksById[r.id] ?? ""} onChange={(e) => setRemarksById((prev) => ({ ...prev, [r.id]: e.target.value }))} />
+                  <div className="tg-req-acts">
+                    <button type="button" className="sd-btn sd-btn--ink tg-btn" onClick={() => void handleDecide(r.id, "approve")} disabled={decidingId === r.id}>
+                      {decidingId === r.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Check aria-hidden="true" />}Approve retake
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDecide(r.id, "reject")}
-                      disabled={decidingId === r.id}
-                      className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-medium px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <XCircle className="h-3.5 w-3.5" />
-                      Reject
-                    </button>
+                    <button type="button" className="sd-btn sd-btn--line tg-btn" onClick={() => void handleDecide(r.id, "reject")} disabled={decidingId === r.id}><X aria-hidden="true" />Decline</button>
                   </div>
-                </div>
+                </>
               ) : (
-                <div className={`mt-3 flex items-center gap-2 text-xs font-medium ${r.status === "approved" ? "text-emerald-600" : "text-red-500"}`}>
-                  {r.status === "approved" ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                  {r.status === "approved" ? "Approved" : "Declined"}
-                  {r.decided_at && (
-                    <span className="text-gray-400 font-normal">
-                      · {new Date(r.decided_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    </span>
-                  )}
-                  {r.teacher_remarks && <span className="text-gray-500 font-normal">— &ldquo;{r.teacher_remarks}&rdquo;</span>}
-                </div>
+                <p className="tg-note" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
+                  <span className="tg-chip" data-s={r.status === "approved" ? "granted" : "rejected"}>{r.status === "approved" ? "Approved" : "Declined"}</span>
+                  {r.decided_at && <span>{day(r.decided_at)}</span>}
+                  {r.teacher_remarks && <span>Your note: {r.teacher_remarks}</span>}
+                </p>
               )}
-            </div>
+            </article>
           ))}
         </div>
       )}

@@ -1,0 +1,73 @@
+/* Admin overview. Needs portal.css, school-admin/overview.css (hero meta, to-do rows, two-column grid) and teacher/overview/overview.css (track). */
+
+.ao-metrics { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.ao-metric { padding: 0.3rem 0.9rem; border: 1.5px solid var(--sd-navy-line); border-radius: 999px; background: transparent; color: var(--sd-navy-soft); font: 700 0.85rem/1.3 var(--sd-body); cursor: pointer; transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease; }
+@media (hover: hover) { .ao-metric:hover { border-color: var(--sd-paper); color: var(--sd-paper); } }
+.ao-metric[aria-pressed="true"] { border-color: var(--sd-amber); background: var(--sd-amber); color: var(--sd-ink); }
+.ao-metric:focus-visible { outline: 3px solid var(--sd-amber); outline-offset: 2px; }
+.ao-stop { display: grid; justify-items: center; gap: 0.5rem; width: 100%; }
+.ao-stop .sd-node { width: 2rem; height: 2rem; font-size: 0.78rem; }
+.ao-nogrowth { color: var(--sd-navy-soft); font-size: 0.95rem; min-height: 5rem; display: grid; align-content: center; }
+
+.ao-search { display: inline-flex; align-items: center; gap: 0.3rem; }
+.ao-search kbd { padding: 0.05rem 0.4rem; border: 1.5px solid currentColor; border-radius: 0.4rem; font: 700 0.72rem/1.4 var(--sd-body); opacity: 0.8; }
+
+/* System status rows */
+.ao-stats { display: grid; margin: 0; padding: 0; list-style: none; }
+.ao-stats > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.3rem 1rem; padding: 0.8rem 0; border-bottom: 1.5px solid var(--sd-line); color: inherit; text-decoration: none; }
+.ao-stats > li:first-child { padding-top: 0; }
+.ao-stats > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.ao-stats b { font: 700 0.98rem/1.3 var(--sd-body); }
+.ao-stats small { display: block; font-size: 0.85rem; color: var(--sd-ink-soft); }
+.ao-val { font: 800 1.35rem/1 var(--sd-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; text-align: right; }
+.ao-val[data-hot="true"] { color: var(--sd-late); }
+.ao-stats .sd-meter { grid-column: 1 / -1; height: 0.5rem; }
+a.ao-link { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.3rem 1rem; color: inherit; text-decoration: none; cursor: pointer; }
+a.ao-link:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 3px; border-radius: 0.5rem; }
+@media (hover: hover) { a.ao-link:hover b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 0.2em; } }
+.ao-perf { margin-top: 1.1rem; padding-top: 1rem; border-top: 1.5px solid var(--sd-line); }
+.ao-perf h3 { margin-bottom: 0.7rem; font: 700 1rem/1.3 var(--sd-body); }
+
+/* Recently added */
+.ao-recent { display: flex; align-items: center; gap: 0.8rem; padding: 0.7rem 0; border-bottom: 1.5px solid var(--sd-line); }
+.ao-recent:first-child { padding-top: 0; }
+.ao-recent:last-child { border-bottom: 0; padding-bottom: 0; }
+.ao-chips { margin-bottom: 0.9rem; }
+
+/* Command palette */
+.ao-pal { display: grid; gap: 0.5rem; }
+.ao-pal-input { position: relative; }
+.ao-pal-input svg { position: absolute; left: 1rem; top: 50%; width: 1.1rem; height: 1.1rem; translate: 0 -50%; color: var(--sd-ink-soft); pointer-events: none; }
+.ao-pal-input .sd-field { padding-left: 2.75rem; border-radius: 999px; }
+.ao-pal-list { display: grid; gap: 0.15rem; max-height: 20rem; margin: 0; padding: 0; list-style: none; overflow-y: auto; }
+.ao-hit { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; width: 100%; padding: 0.55rem 0.7rem; border: 0; border-radius: 0.9rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ao-hit[aria-selected="true"] { background: rgb(251 191 36 / 0.2); }
+.ao-hit:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: -3px; }
+.ao-hit-ico { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; border-radius: 50%; background: var(--sd-wash); box-shadow: inset 0 0 0 1.5px var(--sd-line); }
+.ao-hit-ico svg { width: 1.05rem; height: 1.05rem; }
+.ao-hit b { display: block; font: 700 0.98rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.ao-hit small { display: block; font-size: 0.84rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.ao-hit-type { font-size: 0.8rem; font-weight: 700; color: var(--sd-ink-soft); }
+.ao-pal-note { padding: 1.25rem 0.5rem; text-align: center; color: var(--sd-ink-soft); font-size: 0.95rem; }
+.ao-pal-foot { font-size: 0.82rem; color: var(--sd-ink-soft); }
+
+@media (prefers-reduced-motion: reduce) { .ao-metric { transition: none; } }
+
+/* Reports tab */
+.rt-reports { display: grid; margin: 0; padding: 0; list-style: none; }
+.rt-reports li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.5rem 1rem; padding: 0.9rem 0; border-top: 1.5px solid var(--sd-line); }
+.rt-reports li:first-child { border-top: 0; padding-top: 0; }
+.rt-ico { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--sd-ink); color: var(--sd-amber); }
+.rt-ico svg { width: 1.2rem; height: 1.2rem; }
+.rt-text { display: grid; gap: 0.1rem; min-width: 0; }
+.rt-text b { font: 700 1rem/1.3 var(--sd-body); }
+.rt-text small { font-size: 0.88rem; color: var(--sd-ink-soft); }
+.rt-reports .sd-btn { min-height: 2.25rem; padding-inline: 1rem; }
+.rt-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.rt-table th, .rt-table td { padding: 0.6rem 0.5rem; border-top: 1.5px solid var(--sd-line); text-align: right; font-variant-numeric: tabular-nums; }
+.rt-table thead th { border-top: 0; padding-top: 0; font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.rt-table th:first-child, .rt-table td:first-child { text-align: left; }
+.rt-table tbody th { font: 700 0.95rem/1.3 var(--sd-body); }
+.rt-zero { color: var(--sd-ink-soft); }
+.rt-empty { margin: 0; font-size: 0.95rem; color: var(--sd-ink-soft); }
+@media (max-width: 560px) { .rt-reports li { grid-template-columns: auto minmax(0, 1fr); } .rt-reports li .sm-chip, .rt-reports li .sd-btn { grid-column: 2; justify-self: start; } }

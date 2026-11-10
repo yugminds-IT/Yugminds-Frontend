@@ -19,8 +19,6 @@ export const commonApi = {
 
   /** Auth activity */
   auth: {
-    trackLogin: (data: Record<string, unknown>) =>
-      apiClient.post('/auth/track-login', data),
     activity: {
       get: (params?: { user_id?: string; limit?: number }) =>
         apiClient.get(withParams('/auth/activity', params)),

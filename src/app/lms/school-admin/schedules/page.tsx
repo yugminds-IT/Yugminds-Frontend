@@ -1,328 +1,45 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { DEFAULT_OPERATING_DAYS, WEEKDAY_NAMES_MON_FIRST } from "@/lib/weekday-utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Bell, ChevronDown, Clock, Download, FileSpreadsheet, FileText, Plus, Printer, ShieldCheck } from "lucide-react";
+import { DEFAULT_OPERATING_DAYS } from "@/lib/weekday-utils";
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { 
-  Calendar,
-  Clock,
-  Plus,
-  Edit,
-  Trash2,
-  Search,
-  Building2,
-  Send,
-  Loader2,
-  ArrowRight,
-  AlertCircle,
-  MoreVertical,
-  Copy,
-  Repeat,
-  ClipboardCopy,
-  ChevronDown,
-  Coffee,
-  ChevronUp,
-  LayoutDashboard,
-  Bell,
-  ShieldCheck,
-  Download,
-  FileText,
-  FileSpreadsheet,
-  Printer,
-  Activity,
-  ExternalLink,
-  CheckCircle2,
-  DoorOpen,
-  CalendarDays
-} from "lucide-react";
 import { useSchoolAdmin } from "@/contexts/SchoolAdminContext";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { toast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-
-interface Schedule {
-  id: string;
-  school_id: string;
-  class_id?: string;
-  teacher_id?: string;
-  subject: string;
-  grade: string;
-  section?: string | null;
-  day_of_week: string;
-  period_id?: string;
-  room_id?: string;
-  start_time: string;
-  end_time: string;
-  academic_year: string;
-  is_active: boolean;
-  notes?: string;
-  class?: {
-    id: string;
-    class_name: string;
-    grade: string;
-    subject: string;
-  };
-  teacher?: {
-    id: string;
-    full_name: string;
-    email: string;
-  };
-  period?: {
-    id: string;
-    period_number: number;
-    start_time: string;
-    end_time: string;
-  };
-  room?: {
-    id: string;
-    room_number: string;
-    room_name?: string;
-    capacity?: number;
-  };
-}
-
-interface Period {
-  id: string;
-  school_id: string;
-  period_number: number;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-}
-
-interface Room {
-  id: string;
-  school_id: string;
-  room_number: string;
-  room_name?: string;
-  room_type?: string;
-  capacity?: number;
-  location?: string;
-  facilities?: string[];
-  is_active: boolean;
-}
-
-interface Teacher {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  subjects: string[];
-  grades_assigned: string[];
-  grade_sections_assigned?: Array<{ grade: string; sections: string[] }>;
-  teacher_schools?: Array<{
-    grades_assigned: string[];
-    subjects: string[];
-    working_days_per_week: number;
-    /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
-    working_days?: number[];
-    /** Calendar date range the teacher is assigned to this school (YYYY-MM-DD); null = no bound. */
-    assigned_from?: string | null;
-    assigned_until?: string | null;
-    max_students_per_session: number;
-    grade_sections_assigned?: Array<{ grade: string; sections: string[] }>;
-    sections_assigned?: string[];
-  }>;
-}
-
-interface Class {
-  id: string;
-  class_name: string;
-  grade: string;
-  subject?: string;
-}
-
-const DAYS_OF_WEEK = WEEKDAY_NAMES_MON_FIRST;
-const GRID_DAYS = WEEKDAY_NAMES_MON_FIRST.slice(0, 6);
-
-/** 0=Sun..6=Sat — matches TeacherSchool.workingDays / school-admin-extra.controller.ts's DAY_MAP. */
-const DAY_NAME_TO_NUMBER: Record<string, number> = {
-  Sunday: 0,
-  Monday: 1,
-  Tuesday: 2,
-  Wednesday: 3,
-  Thursday: 4,
-  Friday: 5,
-  Saturday: 6,
-};
-
-const NUMBER_TO_DAY_NAME: Record<number, string> = {
-  0: 'Sunday',
-  1: 'Monday',
-  2: 'Tuesday',
-  3: 'Wednesday',
-  4: 'Thursday',
-  5: 'Friday',
-  6: 'Saturday',
-};
-
-/** Next school operating day after `day` (wraps within the week). */
-function getNextOperatingDay(day: string, operatingDays: number[]): string | null {
-  if (!operatingDays.length) return null;
-  const start = DAY_NAME_TO_NUMBER[day];
-  if (start === undefined) return null;
-  for (let step = 1; step <= 7; step++) {
-    const candidate = (start + step) % 7;
-    if (operatingDays.includes(candidate)) {
-      return NUMBER_TO_DAY_NAME[candidate] ?? null;
-    }
-  }
-  return null;
-}
-
-/** Academic year string matching backend `currentAcademicYear` (starts in June). */
-function currentAcademicYear(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const start = now.getMonth() < 5 ? year - 1 : year;
-  return `${start}-${String(start + 1).slice(-2)}`;
-}
-
-const CURRENT_ACADEMIC_YEAR = currentAcademicYear();
-
-/**
- * Expands a single "starting" room number into `count` sequential room
- * numbers for bulk creation. Preserves a numeric suffix's width (leading
- * zeros) when one exists, e.g. "R101" x3 -> R101, R102, R103; "Lab-05" x3 ->
- * Lab-05, Lab-06, Lab-07. Falls back to a "-N" suffix when the base has no
- * trailing digits to increment, e.g. "Library" x3 -> Library-1, Library-2, Library-3.
- */
-function generateBulkRoomNumbers(base: string, count: number): string[] {
-  const trimmed = base.trim();
-  const match = trimmed.match(/^(.*?)(\d+)$/);
-  if (match) {
-    const [, prefix, digits] = match;
-    const start = parseInt(digits, 10);
-    return Array.from({ length: count }, (_, i) =>
-      `${prefix}${String(start + i).padStart(digits.length, '0')}`,
-    );
-  }
-  return Array.from({ length: count }, (_, i) => `${trimmed}-${i + 1}`);
-}
-
-/** Breaks are time gaps between teaching periods — never stored as Period rows. */
-type TemplateBreakType = 'short' | 'lunch';
-
-interface TemplateBreak {
-  id: string;
-  type: TemplateBreakType;
-  afterPeriod: number;
-  durationMin: number;
-}
-
-function msToHHMM(ms: number): string {
-  return new Date(ms).toTimeString().substring(0, 5);
-}
-
-/** Heuristic for amber gap rows: ≥25 min → Lunch, else Short break. */
-function breakLabelForGap(diffMin: number): string {
-  return diffMin >= 25 ? `Lunch · ${diffMin} min` : `Short break · ${diffMin} min`;
-}
-
-function buildPeriodTimeline(opts: {
-  startTime: string;
-  count: number;
-  durationMin: number;
-  breaks?: Array<{ afterPeriod: number; durationMin: number }>;
-}): Array<{ period_number: number; start_time: string; end_time: string; is_active: boolean }> {
-  const gapAfter = new Map<number, number>();
-  for (const b of opts.breaks ?? []) {
-    if (b.afterPeriod < 1 || b.afterPeriod >= opts.count || b.durationMin <= 0) continue;
-    gapAfter.set(b.afterPeriod, (gapAfter.get(b.afterPeriod) ?? 0) + b.durationMin);
-  }
-  let currentMs = new Date(`2000-01-01T${opts.startTime}`).getTime();
-  const config: Array<{
-    period_number: number;
-    start_time: string;
-    end_time: string;
-    is_active: boolean;
-  }> = [];
-  for (let i = 1; i <= opts.count; i++) {
-    const endMs = currentMs + opts.durationMin * 60000;
-    config.push({
-      period_number: i,
-      start_time: msToHHMM(currentMs),
-      end_time: msToHHMM(endMs),
-      is_active: true,
-    });
-    currentMs = endMs;
-    const gap = gapAfter.get(i);
-    if (gap) currentMs += gap * 60000;
-  }
-  return config;
-}
-
-type DayPreviewItem =
-  | { kind: 'period'; label: string; range: string }
-  | { kind: 'break'; label: string; range: string };
-
-function buildDayPreview(opts: {
-  startTime: string;
-  count: number;
-  durationMin: number;
-  breaks: TemplateBreak[];
-}): DayPreviewItem[] {
-  const items: DayPreviewItem[] = [];
-  const gapAfter = new Map<number, TemplateBreak[]>();
-  for (const b of opts.breaks) {
-    if (b.afterPeriod < 1 || b.afterPeriod >= opts.count || b.durationMin <= 0) continue;
-    if (!gapAfter.has(b.afterPeriod)) gapAfter.set(b.afterPeriod, []);
-    gapAfter.get(b.afterPeriod)!.push(b);
-  }
-  let currentMs = new Date(`2000-01-01T${opts.startTime}`).getTime();
-  for (let i = 1; i <= opts.count; i++) {
-    const endMs = currentMs + opts.durationMin * 60000;
-    items.push({
-      kind: 'period',
-      label: `Period ${i}`,
-      range: `${msToHHMM(currentMs)} – ${msToHHMM(endMs)}`,
-    });
-    currentMs = endMs;
-    for (const b of gapAfter.get(i) ?? []) {
-      const breakEnd = currentMs + b.durationMin * 60000;
-      items.push({
-        kind: 'break',
-        label: b.type === 'lunch' ? `Lunch · ${b.durationMin} min` : `Short break · ${b.durationMin} min`,
-        range: `${msToHHMM(currentMs)} – ${msToHHMM(breakEnd)}`,
-      });
-      currentMs = breakEnd;
-    }
-  }
-  return items;
-}
-
-const AVAILABLE_GRADES = [
-  'Pre-K',
-  'Kindergarten', 
-  'Grade 1', 
-  'Grade 2', 
-  'Grade 3', 
-  'Grade 4', 
-  'Grade 5',
-  'Grade 6', 
-  'Grade 7', 
-  'Grade 8', 
-  'Grade 9', 
-  'Grade 10', 
-  'Grade 11', 
-  'Grade 12'
-];
+import RowMenu from "@/components/portal/RowMenu";
+import { ChipGroup } from "@/components/portal/notifications";
+import type { Period, PeriodForm, Room, RoomForm, Schedule, ScheduleForm, Teacher } from "@/components/school-admin/schedule/types";
+import {
+  AVAILABLE_GRADES,
+  CURRENT_ACADEMIC_YEAR,
+  DAYS_OF_WEEK,
+  DAY_NAME_TO_NUMBER,
+  GRID_DAYS,
+  NUMBER_TO_DAY_NAME,
+  buildDayPreview,
+  buildPeriodTimeline,
+  formatTime,
+  generateBulkRoomNumbers,
+  getNextOperatingDay,
+  gradeSectionLabel,
+  naturalSort,
+  type TemplateBreak,
+  type TemplateBreakType,
+} from "@/components/school-admin/schedule/utils";
+import WeekRun from "@/components/school-admin/schedule/WeekRun";
+import ScheduleGrid from "@/components/school-admin/schedule/ScheduleGrid";
+import ScheduleList from "@/components/school-admin/schedule/ScheduleList";
+import WorkloadList, { type WorkloadRow } from "@/components/school-admin/schedule/WorkloadList";
+import ScheduleFormModal from "@/components/school-admin/schedule/ScheduleFormModal";
+import PeriodsModal from "@/components/school-admin/schedule/PeriodsModal";
+import RoomsModal from "@/components/school-admin/schedule/RoomsModal";
+import { CopyClassModal, CopyDayModal } from "@/components/school-admin/schedule/CopyModals";
+import { PushModal, TeacherWeekModal, ValidationModal } from "@/components/school-admin/schedule/TimetableModals";
+import "@/components/school-admin/students.css";
+import "@/components/school-admin/teachers.css";
+import "@/components/school-admin/schedule/schedule.css";
 
 export default function ClassSchedulingPage() {
   const { schoolInfo } = useSchoolAdmin();
@@ -330,7 +47,6 @@ export default function ClassSchedulingPage() {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolGrades, setSchoolGrades] = useState<string[]>([]);
   const [schoolGradesDetailed, setSchoolGradesDetailed] = useState<
@@ -398,9 +114,9 @@ export default function ClassSchedulingPage() {
   };
 
   // Form states
-  const [scheduleForm, setScheduleForm] = useState(initialScheduleForm);
-  const [periodForm, setPeriodForm] = useState(initialPeriodForm);
-  const [roomForm, setRoomForm] = useState(initialRoomForm);
+  const [scheduleForm, setScheduleForm] = useState<ScheduleForm>(initialScheduleForm);
+  const [periodForm, setPeriodForm] = useState<PeriodForm>(initialPeriodForm);
+  const [roomForm, setRoomForm] = useState<RoomForm>(initialRoomForm);
   const [bulkRoomMode, setBulkRoomMode] = useState(false);
   const [bulkRoomCount, setBulkRoomCount] = useState('5');
 
@@ -417,6 +133,8 @@ export default function ClassSchedulingPage() {
 
   // Section 7 & 8 State
   const [showCompletionTracker, setShowCompletionTracker] = useState(false);
+  const [tab, setTab] = useState<'grid' | 'list' | 'workload'>('grid');
+  const [dayFocus, setDayFocus] = useState('all');
   const [pushModalOpen, setPushModalOpen] = useState(false);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const [selectedTeachersToPush, setSelectedTeachersToPush] = useState<string[]>([]);
@@ -427,44 +145,6 @@ export default function ClassSchedulingPage() {
   const [validationModalOpen, setValidationModalOpen] = useState(false);
   const [validationResults, setValidationResults] = useState<{ errors: string[]; warnings: string[]; info: string[] } | null>(null);
   const [selectedTeacherWorkload, setSelectedTeacherWorkload] = useState<Teacher | null>(null);
-
-  const SUBJECT_COLORS: Record<string, string> = {
-    'Mathematics': 'blue',
-    'Science': 'green',
-    'English': 'purple',
-    'Social Studies': 'amber',
-    'Art': 'pink',
-    'Music': 'indigo',
-    'Physical Education': 'orange',
-    'Computer Science': 'cyan',
-    'History': 'red',
-    'Geography': 'emerald'
-  };
-
-  const getSubjectColor = (subject: string) => {
-    const s = subject?.trim() || 'Other';
-    if (SUBJECT_COLORS[s]) return SUBJECT_COLORS[s];
-    const colors = ['blue', 'green', 'purple', 'amber', 'pink', 'indigo', 'orange', 'cyan', 'red', 'emerald'];
-    let hash = 0;
-    for (let i = 0; i < s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
-  };
-
-  const getColorClasses = (color: string) => {
-    const mapping: Record<string, { border: string, bg: string, text: string }> = {
-      blue: { border: 'border-l-blue-500', bg: 'bg-blue-50/50', text: 'text-blue-700' },
-      green: { border: 'border-l-green-500', bg: 'bg-green-50/50', text: 'text-green-700' },
-      purple: { border: 'border-l-purple-500', bg: 'bg-purple-50/50', text: 'text-purple-700' },
-      amber: { border: 'border-l-amber-500', bg: 'bg-amber-50/50', text: 'text-amber-700' },
-      pink: { border: 'border-l-pink-500', bg: 'bg-pink-50/50', text: 'text-pink-700' },
-      indigo: { border: 'border-l-indigo-500', bg: 'bg-indigo-50/50', text: 'text-indigo-700' },
-      orange: { border: 'border-l-orange-500', bg: 'bg-orange-50/50', text: 'text-orange-700' },
-      cyan: { border: 'border-l-cyan-500', bg: 'bg-cyan-50/50', text: 'text-cyan-700' },
-      red: { border: 'border-l-red-500', bg: 'bg-red-50/50', text: 'text-red-700' },
-      emerald: { border: 'border-l-emerald-500', bg: 'bg-emerald-50/50', text: 'text-emerald-700' }
-    };
-    return mapping[color] || mapping.blue;
-  };
 
   // Helper function to normalize grade for comparison
   const normalizeGradeForComparison = (grade: string): string => {
@@ -562,6 +242,8 @@ export default function ClassSchedulingPage() {
           phone?: string;
           subjects?: string[];
           grades_assigned?: string[];
+          grade_sections_assigned?: Teacher['grade_sections_assigned'];
+          teacher_schools?: NonNullable<Teacher['teacher_schools']>;
           teacher?: { full_name?: string; email?: string; phone?: string; profile_id?: string }; 
           profile?: { id?: string; fullName?: string; full_name?: string; email?: string; phone?: string } 
         };
@@ -581,7 +263,7 @@ export default function ClassSchedulingPage() {
               return null;
             }
 
-            const schoolRow = ((ts as any).teacher_schools || [])[0] ?? {};
+            const schoolRow: Partial<NonNullable<Teacher['teacher_schools']>[number]> = (ts.teacher_schools || [])[0] ?? {};
             const transformed: Teacher = {
               id: userId,
               full_name: ts.full_name ?? profile.full_name ?? profile.fullName ?? teacher.full_name ?? 'Unknown',
@@ -592,11 +274,10 @@ export default function ClassSchedulingPage() {
                 ? ts.grades_assigned
                 : (schoolRow.grades_assigned || []),
               grade_sections_assigned:
-                (ts as any).grade_sections_assigned ||
+                ts.grade_sections_assigned ||
                 schoolRow.grade_sections_assigned ||
                 [],
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              teacher_schools: (ts as any).teacher_schools || []
+              teacher_schools: ts.teacher_schools || []
             };
 
             // Keep teachers even without email — Teachers Management can show them
@@ -611,8 +292,6 @@ export default function ClassSchedulingPage() {
       } catch {
         setTeachers([]);
       }
-
-      setClasses([]);
 
     } catch (error) {
       console.error('Error loading scheduling data:', error);
@@ -663,8 +342,6 @@ export default function ClassSchedulingPage() {
     )].sort();
   })();
 
-  const gradeSectionLabel = (schedule: Schedule) =>
-    schedule.section ? `${schedule.grade}-${schedule.section}` : schedule.grade;
   
   const calculateDuration = (p: Period | undefined | null) => {
     if (!p) return 0;
@@ -756,7 +433,6 @@ export default function ClassSchedulingPage() {
         .filter((t) => isTeacherWorkingOnDay(t, scheduleForm.day_of_week))
         .filter((t) => isTeacherCurrentlyAssigned(t)),
     // isTeacherAssigned / day helpers are stable closures over scheduleForm + teachers
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       teachers,
       scheduleForm.grade,
@@ -1615,16 +1291,6 @@ export default function ClassSchedulingPage() {
   // Get unique grades from schedules (for filter dropdown)
   const uniqueGradesFromSchedules = [...new Set(schedules.map((s: Schedule) => s.grade))].sort();
 
-  // Format time for display
-  const formatTime = (time: string) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
   // Section 7 Logic: Completion Calculation
   const operatingGridDaysCount = GRID_DAYS.filter(d => schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).length;
   const totalPossibleSlots = (periods.length || 1) * (operatingGridDaysCount || 1);
@@ -1940,10 +1606,10 @@ export default function ClassSchedulingPage() {
     // Info: Stats, Unused teachers/rooms
     info.push(`Total active schedules for ${CURRENT_ACADEMIC_YEAR}: ${activeSchedules.length}`);
     const unusedTeachers = teachers.filter(t => !activeSchedules.some(s => s.teacher_id === t.id));
-    if (unusedTeachers.length > 0) info.push(`${unusedTeachers.length} teachers have no classes assigned this week.`);
+    if (unusedTeachers.length > 0) info.push(`${unusedTeachers.length} ${unusedTeachers.length === 1 ? 'teacher has' : 'teachers have'} no classes this week.`);
     
     const unusedRooms = rooms.filter(r => !activeSchedules.some(s => s.room_id === r.id));
-    if (unusedRooms.length > 0) info.push(`${unusedRooms.length} rooms are completely unused.`);
+    if (unusedRooms.length > 0) info.push(`${unusedRooms.length} ${unusedRooms.length === 1 ? 'room is' : 'rooms are'} not used by any class.`);
 
     setValidationResults({ 
       errors: [...new Set(errors)], 
@@ -2035,2035 +1701,350 @@ export default function ClassSchedulingPage() {
     }
   };
 
+  // Which weekday the track and grid focus on. On a phone, start on one day instead of six cramped columns.
+  const focusInit = useRef(false);
+  useEffect(() => {
+    if (loading || focusInit.current) return;
+    focusInit.current = true;
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      const open = GRID_DAYS.filter((d) => schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d]));
+      const today = NUMBER_TO_DAY_NAME[new Date().getDay()];
+      setDayFocus(open.includes(today) ? today : (open[0] ?? "all"));
+    }
+  }, [loading, schoolOperatingDays]);
+
+
+  /* ───────── what the page shows ───────── */
+  const activeSchedules = schedules.filter((s) => s.is_active && (!s.academic_year || s.academic_year === CURRENT_ACADEMIC_YEAR));
+  const isOpenDay = (d: string) => schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d]);
+  const todayName = NUMBER_TO_DAY_NAME[new Date().getDay()];
+  const runDays = GRID_DAYS.map((name) => ({
+    name,
+    count: activeSchedules.filter((s) => s.day_of_week === name).length,
+    open: isOpenDay(name),
+    today: name === todayName,
+  }));
+  const sortedPeriods = [...periods].sort((a, b) => a.period_number - b.period_number);
+  const dayRange = sortedPeriods.length ? `${formatTime(sortedPeriods[0].start_time)} to ${formatTime(sortedPeriods[sortedPeriods.length - 1].end_time)}` : "Not set up yet";
+  const needTeacher = unassignedActiveSchedules.length;
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+  const workloadRows: WorkloadRow[] = teachers.map((teacher) => {
+    const mine = activeSchedules.filter((s) => s.teacher_id === teacher.id);
+    return {
+      teacher,
+      classes: mine.length,
+      hours: getTeacherLoad(teacher.id),
+      subjects: [...new Set(mine.map((s) => s.subject))],
+      grades: [...new Set(mine.map((s) => gradeSectionLabel(s)).filter(Boolean))],
+    };
+  });
+
+  let status: React.ReactNode;
+  if (periods.length === 0) status = "Set up your school day first. Then add classes into it.";
+  else {
+    status = (
+      <>
+        <strong>{plural(activeSchedules.length, "class", "classes")}</strong> a week across {plural(periods.length, "period")}.
+        {needTeacher > 0 ? <> <strong>{needTeacher}</strong> still {needTeacher === 1 ? "needs" : "need"} a teacher.</> : null}
+      </>
+    );
+  }
+
+  const ledger = [
+    { label: "Periods", value: periods.length, hint: dayRange, onClick: () => setPeriodDialogOpen(true), pressed: false },
+    { label: "Rooms", value: rooms.length, hint: rooms.length ? `${rooms.filter((r) => r.is_active).length} in use` : "None yet", onClick: () => setRoomDialogOpen(true), pressed: false },
+    { label: "Classes", value: activeSchedules.length, hint: needTeacher > 0 ? `${needTeacher} need a teacher` : "Every class has a teacher", onClick: () => setTab("list"), pressed: tab === "list" },
+    { label: "Teachers", value: teachersWithSchedules.length, hint: `of ${teachers.length} teach this week`, onClick: () => setTab("workload"), pressed: tab === "workload" },
+  ];
+
+  const focusOptions: Array<readonly [string, string]> = [["all", "All days"], ...GRID_DAYS.filter(isOpenDay).map((d) => [d, d.slice(0, 3)] as const)];
+  const gradeChoices = uniqueGradesFromSchedules.length ? [...uniqueGradesFromSchedules].sort(naturalSort) : [];
+
+  const openCopyClass = (s: Schedule) => {
+    setScheduleToCopy(s);
+    setTargetDay("");
+    setCopyScheduleDialogOpen(true);
+  };
+  const openCopyDay = (day: string) => {
+    setSourceDayToCopy(day);
+    const next = getNextOperatingDay(day, schoolOperatingDays);
+    setTargetDays(next && next !== day ? [next] : []);
+    setCopyResults(null);
+    setCopyDayDialogOpen(true);
+  };
+  const openPush = () => {
+    setSelectedTeachersToPush(teachersWithSchedules.map((t) => t.id));
+    setPushSuccessSummary(null);
+    setPushModalOpen(true);
+  };
+
   if (loading) {
     return (
-      <div className="p-8 bg-gray-50/50">
-        <div className="flex flex-col items-center justify-center h-64 gap-4">
-          <div className="w-10 h-10 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
-          <p className="text-sm text-gray-500 font-medium">Loading timetable...</p>
-        </div>
+      <div className="sd-page">
+        <section className="sd-hero mc-band" aria-label="Timetable">
+          <div className="sd-hero-copy">
+            <h1 className="mc-hero-title">Timetable</h1>
+            <p className="sd-status">Loading your timetable…</p>
+          </div>
+        </section>
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-50/30">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-4 py-3 md:px-8 md:py-5">
-        <div className="flex items-center justify-between flex-wrap gap-3 md:gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
-              <Calendar className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 tracking-tight">Class Scheduling</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Build and manage your school&apos;s weekly timetable</p>
-            </div>
-          </div>
-
-          {/* Right: utilities */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={runValidation} className="h-9 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm gap-1.5">
-              <ShieldCheck className="h-4 w-4" />
-              Validate
-            </Button>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-9 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm gap-1.5">
-                  <Download className="h-4 w-4" />
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={handleExportPDF}>
-                  <FileText className="h-4 w-4 mr-2" />Export as PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExportExcel}>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />Export as Excel
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => window.print()}>
-                  <Printer className="h-4 w-4 mr-2" />Print View
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <div className="h-6 w-px bg-gray-200" />
-
-            <Button
-              size="sm"
-              onClick={() => {
-                const ids = teachersWithSchedules.map(t => t.id);
-                setSelectedTeachersToPush(ids);
-                setPushSuccessSummary(null);
-                setPushModalOpen(true);
-              }}
-              className="h-9 bg-blue-600 hover:bg-blue-700 text-white shadow-sm text-sm gap-1.5"
-            >
-              {isSyncing ? (
-                <><Loader2 className="h-4 w-4 animate-spin" />Pushing...</>
-              ) : (
-                <><Bell className="h-4 w-4" />Push to Teachers</>
-              )}
-            </Button>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ts-title">
+        <div className="sd-hero-copy">
+          <h1 id="ts-title" className="mc-hero-title">Timetable</h1>
+          <p className="sd-where">{CURRENT_ACADEMIC_YEAR}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            {periods.length > 0 ? (
+              <button className="sd-btn sd-btn--amber" onClick={openBlankScheduleDialog}><Plus aria-hidden="true" />Add class</button>
+            ) : (
+              <button className="sd-btn sd-btn--amber" onClick={() => setPeriodDialogOpen(true)}><Clock aria-hidden="true" />Set up periods</button>
+            )}
+            <button className="sd-btn sd-btn--ghost-dark" onClick={openPush}><Bell aria-hidden="true" />Send to teachers</button>
+            <button className="sd-btn sd-btn--ghost-dark" onClick={runValidation}><ShieldCheck aria-hidden="true" />Check timetable</button>
+            <RowMenu
+              label="Export the timetable"
+              buttonClassName="sd-btn sd-btn--ghost-dark"
+              button={<><Download aria-hidden="true" />Export<ChevronDown aria-hidden="true" /></>}
+              items={[
+                { label: "Export as PDF", icon: FileText, onClick: handleExportPDF },
+                { label: "Export as Excel", icon: FileSpreadsheet, onClick: handleExportExcel },
+                { label: "Print this view", icon: Printer, onClick: () => window.print() },
+              ]}
+            />
           </div>
         </div>
-      </div>
-
-      {/* Action bar */}
-      <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-2.5 md:py-3 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
-        <Button size="sm" onClick={openBlankScheduleDialog} className="h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm text-sm gap-1.5">
-          <Plus className="h-3.5 w-3.5" />Add Schedule
-        </Button>
-        <div className="h-5 w-px bg-gray-200 mx-1" />
-        <Button variant="ghost" size="sm" onClick={() => setPeriodDialogOpen(true)} className="h-8 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm gap-1.5">
-          <Clock className="h-3.5 w-3.5" />Manage Periods
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setRoomDialogOpen(true)} className="h-8 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm gap-1.5">
-          <Building2 className="h-3.5 w-3.5" />Manage Rooms
-        </Button>
-      </div>
+        <WeekRun days={runDays} focus={dayFocus} onFocus={(d) => { setDayFocus(d); if (d !== "all") setTab("grid"); }} total={activeSchedules.length} />
+      </section>
 
       {showWizard ? (
-        <div className="flex items-center justify-center p-8 min-h-[70vh]">
-          <div className="w-full max-w-lg">
-            <div className="text-center mb-8">
-              <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
-                <Calendar className="w-7 h-7 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">Set up your timetable</h2>
-              <p className="text-gray-500 mt-1.5 text-sm">Complete these steps to start building your schedule</p>
-            </div>
-            <div className="space-y-3">
-              {[
-                { step: 1, title: 'Add school periods', desc: 'Define daily time slots (e.g. Period 1: 9:00 – 9:45 AM)', done: periods.length > 0, action: () => setPeriodDialogOpen(true), label: periods.length > 0 ? 'Edit Periods' : 'Add Periods' },
-                { step: 2, title: 'Add classrooms', desc: 'Set up rooms where classes take place', done: rooms.length > 0, action: () => setRoomDialogOpen(true), label: rooms.length > 0 ? 'Edit Rooms' : 'Add Rooms' },
-              ].map(({ step, title, desc, done, action, label }) => (
-                <div key={step} className={`flex items-center gap-4 p-4 rounded-xl border-2 bg-white transition-all ${done ? 'border-green-100 bg-green-50/30' : 'border-gray-100 hover:border-blue-100 hover:bg-blue-50/20'}`}>
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold ${done ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                    {done ? <CheckCircle2 className="w-5 h-5" /> : step}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-semibold text-sm ${done ? 'text-green-700' : 'text-gray-900'}`}>{title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
-                  </div>
-                  <Button size="sm" variant={done ? 'outline' : 'default'} onClick={action} className={`text-xs h-8 flex-shrink-0 ${done ? '' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
-                    {label}
-                  </Button>
-                </div>
-              ))}
-              <Button
-                onClick={() => setShowWizard(false)}
-                disabled={periods.length === 0}
-                className="w-full mt-2 h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm shadow-blue-200 rounded-xl gap-2"
-              >
-                Start Building Timetable <ArrowRight className="w-4 h-4" />
-              </Button>
-            </div>
+        <section className="sd-panel" aria-labelledby="ts-setup">
+          <div className="sd-panel-head"><div><h2 id="ts-setup">Set up your timetable</h2><p>Two steps. The second one is optional, but it helps catch double bookings.</p></div></div>
+          <ol className="sm-steps">
+            <li>
+              <b>Add school periods</b>
+              <span>The time slots of your day, like period 1 from 9:00 to 9:45.</span>
+              <button className={`sd-btn ${periods.length > 0 ? "sd-btn--line" : "sd-btn--amber"}`} onClick={() => setPeriodDialogOpen(true)}>{periods.length > 0 ? `Edit ${plural(periods.length, "period")}` : "Add periods"}</button>
+            </li>
+            <li>
+              <b>Add classrooms</b>
+              <span>The rooms where classes take place.</span>
+              <button className="sd-btn sd-btn--line" onClick={() => setRoomDialogOpen(true)}>{rooms.length > 0 ? `Edit ${plural(rooms.length, "room")}` : "Add rooms"}</button>
+            </li>
+          </ol>
+          <div style={{ marginTop: "1.25rem" }}>
+            <button className="sd-btn sd-btn--amber sd-btn--lg" disabled={periods.length === 0} onClick={() => setShowWizard(false)}>Start building the timetable</button>
           </div>
-        </div>
+        </section>
       ) : (
-      <div className="p-6 space-y-4">
-      <Tabs defaultValue="grid" className="space-y-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <TabsList className="bg-white border border-gray-200 shadow-sm rounded-lg p-1">
-            <TabsTrigger value="grid" className="rounded-md data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-sm">Grid View</TabsTrigger>
-            <TabsTrigger value="list" className="rounded-md data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-sm">Schedule List</TabsTrigger>
-            <TabsTrigger value="workload" className="rounded-md data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm text-sm">Teacher Workload</TabsTrigger>
-          </TabsList>
-
-          {/* Inline filters */}
-          <div className="flex w-full items-center gap-2 flex-wrap sm:w-auto">
-            <Select
-              value={selectedGrade}
-              onValueChange={(value) => {
-                setSelectedGrade(value);
-                setSelectedSection('all');
-              }}
-            >
-              <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-[150px] h-9 text-sm bg-white border-gray-200 shadow-sm">
-                <SelectValue placeholder="All Grades" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Grades</SelectItem>
-                {uniqueGradesFromSchedules.map((grade: string) => (
-                  <SelectItem key={grade} value={grade}>{grade}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedSection} onValueChange={setSelectedSection}>
-              <SelectTrigger className="w-[calc(50%-0.25rem)] sm:w-[140px] h-9 text-sm bg-white border-gray-200 shadow-sm">
-                <SelectValue placeholder="All Sections" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Sections</SelectItem>
-                {filterSectionsForGrade.map((sectionName) => (
-                  <SelectItem key={sectionName} value={sectionName}>{sectionName}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="relative w-full sm:w-auto">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-              <Input
-                placeholder="Search subject, teacher..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 h-9 w-full sm:w-56 text-sm bg-white border-gray-200 shadow-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Grid View Tab */}
-        <TabsContent value="grid" className="space-y-4">
-          {/* Completion Tracker */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <button
-              onClick={() => setShowCompletionTracker(!showCompletionTracker)}
-              className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50/80 transition-colors"
-            >
-              <div className="flex items-center gap-2.5">
-                <LayoutDashboard className="h-4 w-4 text-blue-500" />
-                <span className="text-sm font-semibold text-gray-800">Completion Tracker</span>
-                <span className="text-xs bg-blue-50 text-blue-600 border border-blue-100 rounded-full px-2 py-0.5 font-medium">
-                  {completionStats.length} classes
-                </span>
-              </div>
-              {showCompletionTracker ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-            </button>
-            {showCompletionTracker && (
-              <div className="px-5 pb-4 pt-1 border-t border-gray-50">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mt-3">
-                  {completionStats.map(stat => (
-                    <button
-                      key={stat.label}
-                      className="text-left group p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/40 transition-all"
-                      onClick={() => {
-                        setSelectedGrade(stat.grade);
-                        setSelectedSection(stat.section ?? 'all');
-                        window.scrollTo({ top: document.getElementById('grid-card')?.offsetTop || 0, behavior: 'smooth' });
-                      }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-gray-700 group-hover:text-blue-700 truncate">{stat.label}</span>
-                        <span className={`text-xs font-bold tabular-nums ${stat.percentage === 100 ? 'text-green-600' : 'text-gray-400'}`}>{stat.percentage}%</span>
-                      </div>
-                      <Progress value={stat.percentage} className="h-1.5" />
-                      <p className="text-[10px] text-gray-400 mt-1.5">{stat.filled}/{stat.total} slots</p>
-                    </button>
-                  ))}
-                  {completionStats.length === 0 && (
-                    <div className="col-span-full py-6 text-center text-sm text-gray-400">
-                      No schedules yet — add one to start tracking.
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+        <>
+          <div className="sd-ledger" role="group" aria-label="Timetable setup and summary">
+            {ledger.map((m) => (
+              <button key={m.label} type="button" aria-pressed={m.pressed} onClick={m.onClick}>
+                <span className="sd-l">{m.label}</span>
+                <b className="sd-n">{m.value}</b>
+                <small>{m.hint}</small>
+              </button>
+            ))}
           </div>
 
-          {/* Grid View — days across, periods down (same layout as teacher Class Schedule) */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden" id="grid-card">
-            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="font-semibold text-gray-900 text-sm">Weekly timetable</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {filteredSchedules.length} class{filteredSchedules.length === 1 ? '' : 'es'}
-                  {' · '}
-                  {periods.length} period{periods.length === 1 ? '' : 's'}
-                </p>
-              </div>
-            </div>
-            {periods.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <Clock className="h-8 w-8 text-gray-300 mb-2" />
-                <p className="text-sm font-medium text-gray-600">No periods yet</p>
-                <p className="text-xs text-gray-400 mt-1">Add periods to build the timetable</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table data-no-stack className="w-full min-w-[720px] border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-gray-50/90">
-                      <th className="sticky left-0 z-20 bg-gray-50/90 border-b border-r border-gray-100 px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400 w-28 min-w-[7rem]">
-                        Period
-                      </th>
-                      {GRID_DAYS.map((day) => {
-                        const dayIsOpen = schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[day]);
-                        const dayCount = filteredSchedules.filter((s) => s.day_of_week === day).length;
-                        return (
-                          <th
-                            key={day}
-                            className={`border-b border-r border-gray-100 last:border-r-0 px-2 py-2.5 text-center min-w-[150px] align-top ${
-                              !dayIsOpen ? 'bg-gray-50/80' : ''
-                            }`}
-                          >
-                            <div className={`text-xs font-bold uppercase tracking-wider ${dayIsOpen ? 'text-gray-600' : 'text-gray-400'}`}>
-                              {day.slice(0, 3)}
-                            </div>
-                            <div className="text-[10px] font-medium text-gray-400 mt-0.5">{day}</div>
-                            {!dayIsOpen ? (
-                              <span className="inline-block mt-1 text-[9px] font-medium text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">
-                                Closed
-                              </span>
-                            ) : dayCount > 0 ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="mt-1.5 h-6 px-1.5 text-[10px] font-medium text-indigo-700 border-indigo-200 hover:bg-indigo-50 gap-1"
-                                onClick={() => {
-                                  setSourceDayToCopy(day);
-                                  const next = getNextOperatingDay(day, schoolOperatingDays);
-                                  setTargetDays(next && next !== day ? [next] : []);
-                                  setCopyResults(null);
-                                  setCopyDayDialogOpen(true);
-                                }}
-                                disabled={isCopying}
-                                title="Copy all periods on this day to another day"
-                              >
-                                <ClipboardCopy className="h-3 w-3" />
-                                Copy day…
-                              </Button>
-                            ) : null}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...periods]
-                      .sort((a, b) => a.period_number - b.period_number)
-                      .map((period, pIdx, sortedPeriods) => (
-                          <tr key={period.id} className="group/row">
-                            <td
-                              className={`sticky left-0 z-10 border-r border-gray-100 bg-white px-3 py-2 align-top shadow-[1px_0_0_0_#f3f4f6] ${
-                                pIdx < sortedPeriods.length - 1 ? 'border-b border-gray-50' : ''
-                              }`}
-                            >
-                              <div className="text-xs font-bold text-gray-700 tabular-nums">
-                                P{period.period_number}
-                              </div>
-                              <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">
-                                {formatTime(period.start_time)} – {formatTime(period.end_time)}
-                              </div>
-                            </td>
-                            {GRID_DAYS.map((day) => {
-                              const dayIsOpen = schoolOperatingDays.includes(
-                                DAY_NAME_TO_NUMBER[day],
-                              );
-                              const cellSchedules = filteredSchedules.filter(
-                                (s) => s.day_of_week === day && s.period_id === period.id,
-                              );
-                              return (
-                                <td
-                                  key={`${day}-${period.id}`}
-                                  className={`border-r border-gray-50 last:border-r-0 px-1.5 py-1.5 align-top min-h-[4.5rem] relative group/cell ${
-                                    pIdx < sortedPeriods.length - 1 ? 'border-b border-gray-50' : ''
-                                  } ${
-                                    !dayIsOpen
-                                      ? 'bg-gray-50/60'
-                                      : cellSchedules.length === 0
-                                        ? 'bg-gray-50/40'
-                                        : 'bg-white'
-                                  }`}
-                                >
-                                  {!dayIsOpen ? (
-                                    <div className="min-h-[3.25rem] flex items-center justify-center text-[10px] text-gray-300">
-                                      —
-                                    </div>
-                                  ) : cellSchedules.length === 0 ? (
-                                    <button
-                                      type="button"
-                                      className="min-h-[3.25rem] w-full rounded-md border border-dashed border-gray-100 hover:border-blue-300 hover:bg-blue-50/40 text-gray-300 hover:text-blue-500 opacity-0 group-hover/cell:opacity-100 transition-all flex flex-col items-center justify-center gap-0.5"
-                                      onClick={() => handleAddScheduleGrid(day, period.id)}
-                                    >
-                                      <Plus className="h-3.5 w-3.5" />
-                                      <span className="text-[10px] font-medium">Add</span>
-                                    </button>
-                                  ) : (
-                                    <div className="flex flex-col gap-1">
-                                      {cellSchedules.map((schedule) => {
-                                        const colorClasses = getColorClasses(
-                                          getSubjectColor(schedule.subject),
-                                        );
-                                        return (
-                                          <div
-                                            key={schedule.id}
-                                            className={`rounded-md border border-gray-100 border-l-[3px] px-2 py-1.5 shadow-sm cursor-pointer hover:shadow-md transition-shadow group/card relative ${colorClasses.border} ${colorClasses.bg}`}
-                                            onClick={() => handleEditSchedule(schedule)}
-                                          >
-                                            <div className="flex justify-between items-start gap-1">
-                                              <p
-                                                className={`text-xs font-bold truncate leading-tight ${colorClasses.text}`}
-                                              >
-                                                {schedule.subject || 'Class'}
-                                              </p>
-                                              <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-5 w-5 -mt-0.5 -mr-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity rounded hover:bg-white/80 flex-shrink-0"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                  >
-                                                    <MoreVertical className="h-3 w-3 text-gray-500" />
-                                                  </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-48 shadow-lg">
-                                                  <DropdownMenuItem
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setScheduleToCopy(schedule);
-                                                      setTargetDay('');
-                                                      setCopyScheduleDialogOpen(true);
-                                                    }}
-                                                  >
-                                                    <Copy className="h-3.5 w-3.5 mr-2" />
-                                                    Copy class to day…
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      handleRepeatAcrossWeek(schedule);
-                                                    }}
-                                                  >
-                                                    <Repeat className="h-3.5 w-3.5 mr-2" />
-                                                    Repeat across week
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuSeparator />
-                                                  <DropdownMenuItem
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      handleEditSchedule(schedule);
-                                                    }}
-                                                  >
-                                                    <Edit className="h-3.5 w-3.5 mr-2" />
-                                                    Edit
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem
-                                                    className="text-red-600 focus:text-red-600"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      handleDeleteSchedule(schedule.id);
-                                                    }}
-                                                  >
-                                                    <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                                    Delete
-                                                  </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                              </DropdownMenu>
-                                            </div>
-                                            <p className="text-[10px] text-gray-600 font-medium truncate mt-0.5">
-                                              {gradeSectionLabel(schedule)}
-                                            </p>
-                                            {schedule.teacher?.full_name ? (
-                                              <p className="text-[10px] text-gray-400 truncate mt-0.5">
-                                                {schedule.teacher.full_name}
-                                                {schedule.room?.room_number
-                                                  ? ` · ${schedule.room.room_number}`
-                                                  : ''}
-                                              </p>
-                                            ) : (
-                                              <p className="text-[10px] font-medium text-amber-700 mt-0.5">
-                                                Unassigned
-                                              </p>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                      <button
-                                        type="button"
-                                        className="opacity-0 group-hover/cell:opacity-100 transition-opacity text-[10px] text-gray-400 hover:text-blue-600 py-0.5 rounded border border-dashed border-transparent hover:border-blue-200 w-full flex items-center justify-center gap-0.5"
-                                        onClick={() => handleAddScheduleGrid(day, period.id)}
-                                      >
-                                        <Plus className="h-3 w-3" /> Add
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Schedule List Tab */}
-        <TabsContent value="list">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-gray-900 text-sm">All Schedules</h3>
-                <p className="text-xs text-gray-400 mt-0.5">{filteredSchedules.length} entries for {CURRENT_ACADEMIC_YEAR}</p>
-              </div>
-            </div>
-            {filteredSchedules.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mb-3">
-                  <Calendar className="h-6 w-6 text-gray-400" />
-                </div>
-                <p className="text-sm font-medium text-gray-700">No schedules found</p>
-                <p className="text-xs text-gray-400 mt-1">Add a schedule from the grid or use the + Add Schedule button</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50/60 hover:bg-gray-50/60">
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Day</TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Time</TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Grade</TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Teacher</TableHead>
-                    <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Room</TableHead>
-                    <TableHead className="w-20"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredSchedules
-                    .sort((a: Schedule, b: Schedule) => {
-                      const dayOrder = DAYS_OF_WEEK.indexOf(a.day_of_week) - DAYS_OF_WEEK.indexOf(b.day_of_week);
-                      if (dayOrder !== 0) return dayOrder;
-                      return a.start_time.localeCompare(b.start_time);
-                    })
-                    .map((schedule: Schedule) => {
-                      const colorClasses = getColorClasses(getSubjectColor(schedule.subject));
-                      return (
-                        <TableRow key={schedule.id} className="hover:bg-gray-50/50 group">
-                          <TableCell className="py-3">
-                            <span className="text-xs font-semibold text-gray-500 bg-gray-100 rounded px-2 py-1">{schedule.day_of_week.slice(0,3)}</span>
-                          </TableCell>
-                          <TableCell className="py-3 text-xs text-gray-500 font-mono tabular-nums">
-                            {formatTime(schedule.start_time)} – {formatTime(schedule.end_time)}
-                          </TableCell>
-                          <TableCell className="py-3">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full flex-shrink-0 bg-${getSubjectColor(schedule.subject)}-500`} />
-                              <span className={`text-sm font-semibold ${colorClasses.text}`}>{schedule.subject}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-3">
-                            <span className="text-xs bg-blue-50 text-blue-700 font-medium rounded px-2 py-0.5">{gradeSectionLabel(schedule)}</span>
-                          </TableCell>
-                          <TableCell className="py-3 text-sm text-gray-600">{schedule.teacher?.full_name || <span className="text-gray-300 italic text-xs">Unassigned</span>}</TableCell>
-                          <TableCell className="py-3 text-sm text-gray-500">{schedule.room?.room_number || <span className="text-gray-300">—</span>}</TableCell>
-                          <TableCell className="py-3">
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-blue-50 hover:text-blue-600" onClick={() => handleEditSchedule(schedule)}>
-                                <Edit className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-red-50 hover:text-red-500" onClick={() => handleDeleteSchedule(schedule.id)}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Teacher Workload Tab */}
-        <TabsContent value="workload">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
-              <h3 className="font-semibold text-gray-900 text-sm">Teacher Workload</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Weekly periods and hours — {CURRENT_ACADEMIC_YEAR}</p>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50/60 hover:bg-gray-50/60">
-                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Teacher</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Subjects</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Grades</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Periods</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Hours/wk</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Load</TableHead>
-                  <TableHead className="w-8"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teachers.length === 0 ? (
-                  <TableRow>
-                    <td colSpan={7} className="py-12 text-center text-sm text-gray-400">No teachers found</td>
-                  </TableRow>
-                ) : teachers.map((teacher: Teacher) => {
-                  const teacherSchedules = schedules.filter(s => s.teacher_id === teacher.id && s.is_active && (!s.academic_year || s.academic_year === CURRENT_ACADEMIC_YEAR));
-                  const hours = getTeacherLoad(teacher.id);
-                  const periodsCount = teacherSchedules.length;
-                  const teacherSubjects = [...new Set(teacherSchedules.map(s => s.subject))];
-                  const teacherGrades = [...new Set(teacherSchedules.map(s => gradeSectionLabel(s)).filter(Boolean))];
-                  const isOverloaded = hours > 30;
-                  const isHigh = hours > 24;
-
-                  return (
-                    <TableRow
-                      key={teacher.id}
-                      className="hover:bg-blue-50/20 cursor-pointer transition-colors group"
-                      onClick={() => setSelectedTeacherWorkload(teacher)}
-                    >
-                      <TableCell className="py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {teacher.full_name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-800">{teacher.full_name}</p>
-                            <p className="text-[10px] text-gray-400">{teacher.email}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="flex flex-wrap gap-1 max-w-[180px]">
-                          {teacherSubjects.slice(0, 3).map(s => (
-                            <span key={s} className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${getColorClasses(getSubjectColor(s)).bg} ${getColorClasses(getSubjectColor(s)).text}`}>{s}</span>
-                          ))}
-                          {teacherSubjects.length === 0 && <span className="text-xs text-gray-300 italic">None</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {teacherGrades.map(g => (
-                            <span key={g} className="text-[10px] font-medium bg-gray-100 text-gray-600 rounded px-1.5 py-0.5">{g}</span>
-                          ))}
-                          {teacherGrades.length === 0 && <span className="text-xs text-gray-300">—</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3 text-center">
-                        <span className="text-sm font-bold text-gray-700">{periodsCount}</span>
-                      </TableCell>
-                      <TableCell className="py-3 text-center">
-                        <span className={`text-sm font-bold tabular-nums ${isOverloaded ? 'text-red-600' : isHigh ? 'text-orange-500' : 'text-gray-700'}`}>{hours.toFixed(1)}h</span>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="flex items-center gap-2 w-28">
-                          <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className={`h-1.5 rounded-full transition-all ${isOverloaded ? 'bg-red-500' : isHigh ? 'bg-orange-400' : 'bg-green-500'}`}
-                              style={{ width: `${Math.min((hours / 30) * 100, 100)}%` }}
-                            />
-                          </div>
-                          <span className={`text-[10px] font-bold ${isOverloaded ? 'text-red-600' : isHigh ? 'text-orange-500' : 'text-green-600'}`}>
-                            {isOverloaded ? 'Over' : isHigh ? 'High' : 'OK'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <ExternalLink className="h-3.5 w-3.5 text-gray-300 group-hover:text-blue-400 transition-colors" />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-      </Tabs>
-      </div>
-      )}
-
-      {/* Add/Edit Schedule Dialog */}
-      <Dialog open={scheduleDialogOpen} onOpenChange={(open) => {
-        if (open) {
-          setScheduleDialogOpen(true);
-          return;
-        }
-        closeScheduleDialog();
-      }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0">
-          <DialogTitle className="sr-only">{editingSchedule ? 'Edit Schedule' : 'Add New Schedule'}</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-                <CalendarDays className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">{editingSchedule ? 'Edit Schedule' : 'Add New Schedule'}</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Fill in the details below to {editingSchedule ? 'update the' : 'create a new'} class schedule</p>
-              </div>
-            </div>
+          <div className="mc-tabs" role="tablist" aria-label="Timetable views" style={{ justifySelf: "start" }}>
+            {([["grid", "Week", filteredSchedules.length], ["list", "All classes", activeSchedules.length], ["workload", "Workload", teachers.length]] as const).map(([id, label, n]) => (
+              <button key={id} role="tab" className="mc-tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}<b>{n}</b></button>
+            ))}
           </div>
 
-          <div className="px-6 py-5 space-y-5">
-            {/* When */}
-            <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">When</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Day of Week <span className="text-red-400">*</span></Label>
-                  {lockedFields.day_of_week ? (
-                    <div className="px-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-medium h-10 flex items-center text-sm">{scheduleForm.day_of_week}</div>
-                  ) : (
-                    <Select value={scheduleForm.day_of_week} onValueChange={(value) => setScheduleForm({ ...scheduleForm, day_of_week: value })}>
-                      <SelectTrigger className="h-10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DAYS_OF_WEEK.filter((day) => schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[day])).map((day: string) => (
-                          <SelectItem key={day} value={day}>{day}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {!schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[scheduleForm.day_of_week]) && (
-                    <p className="text-xs text-red-500">Your school doesn&apos;t operate on {scheduleForm.day_of_week}s.</p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Period <span className="text-red-400">*</span></Label>
-                  {lockedFields.period_id ? (
-                    <div className="px-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-medium h-10 flex items-center text-sm">
-                      {periods.find((p: Period) => p.id === scheduleForm.period_id)
-                        ? `Period ${periods.find((p: Period) => p.id === scheduleForm.period_id)?.period_number}`
-                        : ''}
-                    </div>
-                  ) : (
-                    <Select
-                      value={scheduleForm.period_id || ''}
-                      onValueChange={(value) => {
-                        const selectedPeriod = periods.find((p: Period) => p.id === value);
-                        setScheduleForm({
-                          ...scheduleForm,
-                          period_id: value === 'none' ? '' : value,
-                          start_time: selectedPeriod ? selectedPeriod.start_time : '',
-                          end_time: selectedPeriod ? selectedPeriod.end_time : ''
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Select period" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {periods.length > 0 ? periods.map((period: Period) => (
-                          <SelectItem key={period.id} value={period.id}>
-                            Period {period.period_number} ({formatTime(period.start_time)} – {formatTime(period.end_time)})
-                          </SelectItem>
-                        )) : (
-                          <SelectItem value="none" disabled>No periods available</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100" />
-
-            {/* What */}
-            <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">What</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Subject <span className="text-red-400">*</span></Label>
-                  <Input
-                    id="subject"
-                    list="subjects-list"
-                    value={scheduleForm.subject}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, subject: e.target.value })}
-                    placeholder="e.g., Mathematics"
-                    autoComplete="off"
-                    className="h-10"
-                  />
-                  <datalist id="subjects-list">
-                    {uniqueSubjects.map(sub => <option key={sub} value={sub} />)}
-                  </datalist>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-700">Grade <span className="text-red-400">*</span></Label>
-                    <Select
-                      value={scheduleForm.grade || ''}
-                      onValueChange={(value) => setScheduleForm({ ...scheduleForm, grade: value, section: '', class_id: '' })}
-                    >
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder="Grade" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(availableGrades.length > 0 ? availableGrades : AVAILABLE_GRADES).map((grade) => (
-                          <SelectItem key={grade} value={grade}>{grade}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-700">
-                      Section
-                      {sectionsForSelectedGrade.length > 0 && <span className="text-red-400"> *</span>}
-                    </Label>
-                    <Select
-                      value={scheduleForm.section || ''}
-                      onValueChange={(val) => setScheduleForm({ ...scheduleForm, section: val === 'none' ? '' : val })}
-                      disabled={!scheduleForm.grade || sectionsForSelectedGrade.length === 0}
-                    >
-                      <SelectTrigger className="h-10">
-                        <SelectValue placeholder={sectionsForSelectedGrade.length ? 'Section' : 'No sections'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sectionsForSelectedGrade.map((sectionName) => (
-                          <SelectItem key={sectionName} value={sectionName}>{sectionName}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100" />
-
-            {/* Who & Where */}
-            <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Who & Where</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Teacher *</Label>
-                  <Select
-                    value={scheduleForm.teacher_id || undefined}
-                    onValueChange={(value) =>
-                      setScheduleForm({
-                        ...scheduleForm,
-                        teacher_id: value === 'none' ? '' : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select teacher" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {displayTeachers.length > 0 ? (
-                        displayTeachers.map((teacher: Teacher) => {
-                          const isMatch = scheduleForm.grade
-                            ? isTeacherAssigned(
-                                teacher,
-                                scheduleForm.subject,
-                                scheduleForm.grade,
-                                scheduleForm.section,
-                              )
-                            : true;
-                          return (
-                            <SelectItem key={teacher.id} value={String(teacher.id)}>
-                              <div className="flex justify-between items-center w-full min-w-[150px]">
-                                <div className="flex items-center gap-2">
-                                  <span>{teacher.full_name}</span>
-                                  {!isMatch && (
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[8px] h-4 py-0 opacity-70"
-                                    >
-                                      No Match
-                                    </Badge>
-                                  )}
-                                </div>
-                                <span className="text-gray-400 text-xs ml-2 tabular-nums">
-                                  {getTeacherLoad(teacher.id).toFixed(1)}h/wk
-                                </span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })
-                      ) : (
-                        <SelectItem value="none" disabled>
-                          No teachers available
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {teachers.length === 0 ? (
-                    <p className="text-[11px] text-amber-700">
-                      No teachers loaded. Open Teachers Management and confirm this school has teachers.
-                    </p>
-                  ) : filteredTeachers.length === 0 ? (
-                    <p className="text-[11px] text-amber-700">
-                      No exact grade/section match — showing all {teachers.length} teacher
-                      {teachers.length === 1 ? '' : 's'}. Pick one to continue.
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-gray-500">
-                      {filteredTeachers.length} matching teacher
-                      {filteredTeachers.length === 1 ? '' : 's'} for this class
-                    </p>
-                  )}
-                  {suggestedTeacher && scheduleForm.teacher_id !== suggestedTeacher.id && (
-                    <div className="mt-2 p-2.5 border border-green-200 bg-green-50 rounded-lg flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-xs text-green-800 font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                        <span>Suggested: {suggestedTeacher.full_name}</span>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 text-[11px] px-2 border-green-300 text-green-700 hover:bg-green-100 whitespace-nowrap"
-                        onClick={() =>
-                          setScheduleForm({
-                            ...scheduleForm,
-                            teacher_id: suggestedTeacher.id,
-                          })
-                        }
-                      >
-                        Use
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Room</Label>
-                  <Select value={scheduleForm.room_id || ''} onValueChange={(value) => setScheduleForm({ ...scheduleForm, room_id: value === 'none' ? '' : value })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select room (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rooms.length > 0 ? rooms.map((room: Room) => {
-                        const available = isRoomAvailable(room.id, scheduleForm.day_of_week, scheduleForm.period_id || '');
-                        return (
-                          <SelectItem key={room.id} value={room.id} disabled={!available}>
-                            <div className="flex items-center justify-between w-full min-w-[200px]">
-                              <span>{room.room_number}{room.room_name ? ` – ${room.room_name}` : ''}{room.capacity ? ` (${room.capacity})` : ''}</span>
-                              <span className={`ml-2 text-[10px] font-medium ${available ? 'text-green-600' : 'text-red-400'}`}>
-                                {available ? '✓ Free' : '✗ Taken'}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        );
-                      }) : (
-                        <SelectItem value="none" disabled>No rooms available</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100" />
-
-            {/* Notes */}
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium text-gray-700">Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
-              <Input
-                id="notes"
-                value={scheduleForm.notes}
-                onChange={(e) => setScheduleForm({ ...scheduleForm, notes: e.target.value })}
-                placeholder="Any additional information..."
-                className="h-10"
-              />
-            </div>
-
-            {conflictWarning && (
-              <div className="p-3.5 border border-red-200 bg-red-50 text-red-800 text-sm flex gap-3 items-start rounded-lg">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-500" />
-                <div>
-                  <span className="font-semibold block text-xs mb-0.5 text-red-700">Schedule Conflict Detected</span>
-                  <span className="text-xs text-red-600">{conflictWarning}</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end gap-3">
-            <Button variant="outline" className="h-9" onClick={closeScheduleDialog}>
-              Cancel
-            </Button>
-            <Button className="h-9 bg-blue-600 hover:bg-blue-700" onClick={editingSchedule ? handleUpdateSchedule : handleCreateSchedule} disabled={!!conflictWarning}>
-              {editingSchedule ? 'Save Changes' : 'Create Schedule'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Period Dialog */}
-      <Dialog open={periodDialogOpen} onOpenChange={setPeriodDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0">
-          <DialogTitle className="sr-only">Manage Periods</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-violet-600 flex items-center justify-center flex-shrink-0">
-                  <Clock className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-gray-900">Manage Periods</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Define time slots and breaks for your school day</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] text-gray-400 font-medium">Templates:</span>
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleUseTemplate('standard')}>8×45m</Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleUseTemplate('extended')}>6×60m</Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleUseTemplate('halfday')}>5×40m</Button>
-                <Button
-                  variant={showCustomTemplate ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setShowCustomTemplate((v) => !v)}
-                >
-                  Custom
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 py-5 space-y-6">
-            {showCustomTemplate && (
-              <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-4 space-y-4">
-                <p className="text-[11px] font-semibold text-violet-700 uppercase tracking-wider">
-                  Custom day template
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-700">Day start</Label>
-                    <Input
-                      type="time"
-                      value={customStartTime}
-                      onChange={(e) => setCustomStartTime(e.target.value)}
-                      className="h-10 bg-white"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-700">No. of periods</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={customPeriodCount}
-                      onChange={(e) =>
-                        setCustomPeriodCount(
-                          Math.min(12, Math.max(1, parseInt(e.target.value, 10) || 1)),
-                        )
-                      }
-                      className="h-10 bg-white"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-700">Class duration (min)</Label>
-                    <Input
-                      type="number"
-                      min={20}
-                      max={90}
-                      value={customDurationMin}
-                      onChange={(e) =>
-                        setCustomDurationMin(
-                          Math.min(90, Math.max(20, parseInt(e.target.value, 10) || 20)),
-                        )
-                      }
-                      className="h-10 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Label className="text-sm font-medium text-gray-700">Breaks</Label>
-                    <div className="flex gap-1.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={customPeriodCount < 2}
-                        onClick={() => addCustomBreak('short')}
-                      >
-                        + Short break
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={customPeriodCount < 2}
-                        onClick={() => addCustomBreak('lunch')}
-                      >
-                        + Lunch
-                      </Button>
-                    </div>
-                  </div>
-                  {customBreaks.length === 0 ? (
-                    <p className="text-xs text-gray-500">
-                      Optional. Add short breaks or lunch between periods — they become time gaps, not schedule columns.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {customBreaks.map((b) => (
-                        <div
-                          key={b.id}
-                          className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-white p-2.5"
-                        >
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-gray-400 uppercase">Type</span>
-                            <Select
-                              value={b.type}
-                              onValueChange={(v) =>
-                                setCustomBreaks((prev) =>
-                                  prev.map((x) =>
-                                    x.id === b.id
-                                      ? {
-                                          ...x,
-                                          type: v as TemplateBreakType,
-                                          durationMin:
-                                            v === 'lunch' && x.durationMin < 25
-                                              ? 30
-                                              : v === 'short' && x.durationMin >= 25
-                                                ? 10
-                                                : x.durationMin,
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                            >
-                              <SelectTrigger className="h-8 w-[120px] text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="short">Short break</SelectItem>
-                                <SelectItem value="lunch">Lunch</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-gray-400 uppercase">After period</span>
-                            <Select
-                              value={String(b.afterPeriod)}
-                              onValueChange={(v) =>
-                                setCustomBreaks((prev) =>
-                                  prev.map((x) =>
-                                    x.id === b.id
-                                      ? { ...x, afterPeriod: parseInt(v, 10) }
-                                      : x,
-                                  ),
-                                )
-                              }
-                            >
-                              <SelectTrigger className="h-8 w-[90px] text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Array.from(
-                                  { length: Math.max(0, customPeriodCount - 1) },
-                                  (_, i) => i + 1,
-                                ).map((n) => (
-                                  <SelectItem key={n} value={String(n)}>
-                                    {n}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-gray-400 uppercase">Minutes</span>
-                            <Input
-                              type="number"
-                              min={5}
-                              max={120}
-                              className="h-8 w-20 text-xs"
-                              value={b.durationMin}
-                              onChange={(e) =>
-                                setCustomBreaks((prev) =>
-                                  prev.map((x) =>
-                                    x.id === b.id
-                                      ? {
-                                          ...x,
-                                          durationMin: Math.min(
-                                            120,
-                                            Math.max(5, parseInt(e.target.value, 10) || 5),
-                                          ),
-                                        }
-                                      : x,
-                                  ),
-                                )
-                              }
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:bg-red-50"
-                            onClick={() =>
-                              setCustomBreaks((prev) => prev.filter((x) => x.id !== b.id))
-                            }
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-gray-100 bg-white p-3">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                    Day preview
-                  </p>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {customDayPreview.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex items-center justify-between text-xs px-2 py-1 rounded ${
-                          item.kind === 'break'
-                            ? 'bg-amber-50 text-amber-800'
-                            : 'text-gray-700'
-                        }`}
-                      >
-                        <span className="font-medium flex items-center gap-1.5">
-                          {item.kind === 'break' && <Coffee className="h-3 w-3" />}
-                          {item.label}
-                        </span>
-                        <span className="font-mono tabular-nums text-gray-500">{item.range}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Button
-                  className="w-full h-9 bg-violet-600 hover:bg-violet-700"
-                  onClick={handleApplyCustomTemplate}
-                >
-                  Apply custom template
-                </Button>
-              </div>
-            )}
-
-            {/* Existing Periods */}
-            <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Current Periods</p>
-              {periods.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-200 rounded-xl text-center">
-                  <Clock className="h-8 w-8 text-gray-300 mb-2" />
-                  <p className="text-sm font-medium text-gray-500">No periods yet</p>
-                  <p className="text-xs text-gray-400 mt-1">Use a template or add a period below</p>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-gray-100 overflow-hidden divide-y divide-gray-100">
-                  {(() => {
-                    const sorted = [...periods].sort((a, b) => a.period_number - b.period_number);
-                    const rows = [];
-                    for (let i = 0; i < sorted.length; i++) {
-                      if (i > 0) {
-                        const prevEnd = new Date(`2000-01-01T${sorted[i-1].end_time}`);
-                        const currStart = new Date(`2000-01-01T${sorted[i].start_time}`);
-                        if (currStart.getTime() > prevEnd.getTime()) {
-                          const diffMin = (currStart.getTime() - prevEnd.getTime()) / 60000;
-                          rows.push(
-                            <div key={`break-${i}`} className="flex items-center justify-between px-4 py-2 bg-amber-50/60">
-                              <div className="flex items-center gap-2 text-amber-700">
-                                <Coffee className="h-3.5 w-3.5" />
-                                <span className="text-xs font-medium">{breakLabelForGap(diffMin)}</span>
-                              </div>
-                              <span className="text-xs font-mono text-amber-600">
-                                {formatTime(sorted[i-1].end_time)} – {formatTime(sorted[i].start_time)}
-                              </span>
-                            </div>
-                          );
-                        }
-                      }
-                      const period = sorted[i];
-                      rows.push(
-                        <div key={period.id} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-gray-50/50 transition-colors">
-                          <div className="flex items-center gap-4">
-                            <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0">
-                              <span className="text-xs font-bold text-violet-600">{period.period_number}</span>
-                            </div>
-                            <span className="font-mono text-sm text-gray-700 tabular-nums">
-                              {formatTime(period.start_time)} – {formatTime(period.end_time)}
-                            </span>
-                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${period.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {period.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex flex-wrap items-center gap-1.5 border-r border-gray-200 pr-3 mr-1">
-                              {[
-                                { label: '10', min: 10 },
-                                { label: '15', min: 15 },
-                                { label: '30', min: 30 },
-                                { label: '40', min: 40 },
-                              ].map((chip) => (
-                                <Button
-                                  key={chip.min}
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className={`h-7 text-[10px] px-1.5 ${
-                                    chip.min >= 25
-                                      ? 'text-amber-700 border-amber-200 hover:bg-amber-50'
-                                      : 'text-gray-600'
-                                  }`}
-                                  title={chip.min >= 25 ? `Lunch ${chip.min}m` : `Short ${chip.min}m`}
-                                  onClick={() => handleInsertBreak(period.id, chip.min)}
-                                  disabled={
-                                    !sorted.some((p) => p.period_number > period.period_number)
-                                  }
-                                >
-                                  {chip.min >= 25 ? `L${chip.min}` : `S${chip.min}`}
-                                </Button>
-                              ))}
-                              <Input
-                                type="number"
-                                placeholder="min"
-                                className="w-14 h-7 text-xs text-center"
-                                value={breakDuration[period.id] || ''}
-                                onChange={(e) => setBreakDuration({...breakDuration, [period.id]: e.target.value})}
-                              />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[11px] px-2 text-amber-600 border-amber-200 hover:bg-amber-50 whitespace-nowrap"
-                                onClick={() => handleInsertBreak(period.id, parseInt(breakDuration[period.id] || '0'))}
-                                disabled={!breakDuration[period.id] || parseInt(breakDuration[period.id]) <= 0}
-                              >
-                                + Break
-                              </Button>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => handleEditPeriod(period)} className="h-7 w-7 hover:bg-blue-50 hover:text-blue-600">
-                              <Edit className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeletePeriod(period.id)} className="h-7 w-7 hover:bg-red-50 hover:text-red-500">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return rows;
-                  })()}
-                </div>
+          {tab !== "workload" && (
+            <div className="nt-bar">
+              <input type="search" className="sd-field" placeholder="Search subject, teacher or room" aria-label="Search classes" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              {gradeChoices.length > 0 && (
+                <ChipGroup
+                  label="Grade"
+                  value={selectedGrade}
+                  options={[["all", "All grades"] as const, ...gradeChoices.map((g) => [g, g] as const)]}
+                  onChange={(g) => { setSelectedGrade(g); setSelectedSection("all"); }}
+                />
               )}
-            </div>
-
-            {/* Add / Edit Form */}
-            <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                {editingPeriod ? 'Edit Period' : 'Add Period'}
-              </p>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Period #</Label>
-                  <Input
-                    type="number"
-                    value={periodForm.period_number}
-                    onChange={(e) => setPeriodForm({ ...periodForm, period_number: parseInt(e.target.value) || 1 })}
-                    disabled={periods.length > 0 && !editingPeriod}
-                    className="h-10"
-                  />
-                  {periods.length > 0 && !editingPeriod && <p className="text-[10px] text-gray-400">Auto-assigned</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Start Time</Label>
-                  <Input
-                    type="time"
-                    value={periodForm.start_time}
-                    onChange={(e) => setPeriodForm({ ...periodForm, start_time: e.target.value })}
-                    disabled={periods.length > 0 && !editingPeriod}
-                    className="h-10"
-                  />
-                  {periods.length > 0 && !editingPeriod && <p className="text-[10px] text-gray-400">Chained from previous</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">End Time</Label>
-                  <Input
-                    type="time"
-                    value={periodForm.end_time}
-                    onChange={(e) => setPeriodForm({ ...periodForm, end_time: e.target.value })}
-                    className="h-10"
-                  />
-                </div>
-              </div>
-              {periodError && (
-                <p className="text-xs text-red-500 mt-3 flex items-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" /> {periodError}
-                </p>
+              {filterSectionsForGrade.length > 0 && (
+                <ChipGroup
+                  label="Section"
+                  value={selectedSection}
+                  options={[["all", "All sections"] as const, ...filterSectionsForGrade.map((s) => [s, s] as const)]}
+                  onChange={setSelectedSection}
+                />
               )}
-              <div className="flex gap-2 mt-4">
-                {editingPeriod && (
-                  <Button variant="outline" onClick={resetPeriodForm} className="flex-1 h-9">
-                    Cancel
-                  </Button>
-                )}
-                <Button
-                  onClick={editingPeriod ? handleUpdatePeriod : handleCreatePeriod}
-                  className={`h-9 bg-violet-600 hover:bg-violet-700 ${editingPeriod ? 'flex-1' : 'w-full'}`}
-                  disabled={!!periodError}
-                >
-                  {editingPeriod ? 'Save Changes' : 'Add Period'}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end">
-            <Button className="h-9" onClick={() => setPeriodDialogOpen(false)}>Done</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Room Dialog */}
-      <Dialog
-        open={roomDialogOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setRoomDialogOpen(true);
-            return;
-          }
-          closeRoomDialog();
-        }}
-      >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0">
-          <DialogTitle className="sr-only">Manage Rooms</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center flex-shrink-0">
-                <DoorOpen className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Manage Rooms</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Add and manage classrooms, labs, and other facilities</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 py-5 space-y-6">
-            {/* Existing Rooms */}
-            <div>
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                Current Rooms <span className="normal-case font-normal text-gray-400">({rooms.length})</span>
-              </p>
-              {rooms.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-200 rounded-xl text-center">
-                  <DoorOpen className="h-8 w-8 text-gray-300 mb-2" />
-                  <p className="text-sm font-medium text-gray-500">No rooms yet</p>
-                  <p className="text-xs text-gray-400 mt-1">Add your first room below</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
-                  {rooms.map((room: Room) => {
-                    const currentDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-                    const bookingsToday = schedules.filter(s => s.room_id === room.id && s.day_of_week === currentDayName).length;
-                    return (
-                      <div key={room.id} className="p-3.5 border border-gray-100 rounded-xl bg-white hover:shadow-sm transition-shadow flex flex-col gap-2">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">
-                              {room.room_number}
-                              {room.room_name && <span className="text-gray-400 font-normal ml-1.5 text-xs">({room.room_name})</span>}
-                            </p>
-                            <p className="text-[11px] text-gray-400 mt-0.5">
-                              {room.room_type || 'Classroom'} · {room.capacity ? `${room.capacity} seats` : 'No cap'} · {room.location || '—'}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <Button variant="ghost" size="icon" onClick={() => handleEditRoom(room)} className="h-7 w-7 hover:bg-blue-50 hover:text-blue-600">
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteRoom(room.id)} className="h-7 w-7 hover:bg-red-50 hover:text-red-500">
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                          <div className="flex flex-wrap gap-1">
-                            {(room.facilities || []).slice(0, 3).map((f, i) => (
-                              <span key={i} className="text-[10px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">{f}</span>
-                            ))}
-                            {(room.facilities || []).length > 3 && (
-                              <span className="text-[10px] text-gray-400">+{(room.facilities || []).length - 3}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {bookingsToday > 0 && (
-                              <span className="text-[10px] text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 font-medium">{bookingsToday} today</span>
-                            )}
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${room.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {room.is_active ? 'Active' : 'Off'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Add / Edit Form */}
-            <div className="rounded-xl border border-gray-100 bg-gray-50/50 p-4">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                  {editingRoom ? 'Edit Room' : 'Add New Room'}
-                </p>
-                {!editingRoom && (
-                  <label className="flex items-center gap-2 text-xs font-medium text-gray-600 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                      checked={bulkRoomMode}
-                      onChange={(e) => setBulkRoomMode(e.target.checked)}
-                    />
-                    Add multiple rooms at once
-                  </label>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-medium text-gray-700">
-                        {bulkRoomMode ? 'Starting Room #' : 'Room #'} <span className="text-red-400">*</span>
-                      </Label>
-                      <Input
-                        value={roomForm.room_number}
-                        onChange={(e) => setRoomForm({ ...roomForm, room_number: e.target.value })}
-                        placeholder="R101"
-                        className="h-10"
-                      />
-                    </div>
-                    {bulkRoomMode ? (
-                      <div className="space-y-1.5">
-                        <Label className="text-sm font-medium text-gray-700">Quantity <span className="text-red-400">*</span></Label>
-                        <Input
-                          type="number"
-                          min={2}
-                          max={100}
-                          value={bulkRoomCount}
-                          onChange={(e) => setBulkRoomCount(e.target.value)}
-                          placeholder="5"
-                          className="h-10"
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5">
-                        <Label className="text-sm font-medium text-gray-700">Room Name</Label>
-                        <Input
-                          value={roomForm.room_name}
-                          onChange={(e) => setRoomForm({ ...roomForm, room_name: e.target.value })}
-                          placeholder="Science Lab"
-                          className="h-10"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  {bulkRoomMode && (
-                    <p className="text-[11px] text-gray-500 -mt-2">
-                      {(() => {
-                        const count = parseInt(bulkRoomCount, 10) || 0;
-                        if (!roomForm.room_number.trim() || count < 2) return 'Creates rooms numbered sequentially from the starting Room #, all sharing the same type/capacity/location/facilities below.';
-                        const preview = generateBulkRoomNumbers(roomForm.room_number, Math.min(count, 100));
-                        return `Will create: ${preview[0]}, ${preview.length > 1 ? preview[1] : ''}${preview.length > 2 ? ', … , ' + preview[preview.length - 1] : ''}`;
-                      })()}
-                    </p>
-                  )}
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-700">Room Type</Label>
-                    <Select value={roomForm.room_type || 'Regular Classroom'} onValueChange={(val) => setRoomForm({ ...roomForm, room_type: val })}>
-                      <SelectTrigger className="h-10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {['Regular Classroom', 'Science Lab', 'Computer Lab', 'Library', 'Gymnasium', 'Art Room', 'Music Room', 'Other'].map(type => (
-                          <SelectItem key={type} value={type}>{type}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-medium text-gray-700">Capacity</Label>
-                      <Input
-                        type="number"
-                        value={roomForm.capacity}
-                        onChange={(e) => setRoomForm({ ...roomForm, capacity: e.target.value })}
-                        placeholder="30"
-                        className="h-10"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-sm font-medium text-gray-700">Location</Label>
-                      <Input
-                        value={roomForm.location}
-                        onChange={(e) => setRoomForm({ ...roomForm, location: e.target.value })}
-                        placeholder="First Floor"
-                        className="h-10"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium text-gray-700">Facilities</Label>
-                  <div className="grid grid-cols-2 gap-2 p-3 rounded-lg border border-gray-200 bg-white">
-                    {['Projector', 'Air Conditioning', 'Whiteboard', 'Smart Board', 'Computer Terminals', 'Audio System'].map((facility) => {
-                      const isSelected = roomForm.facilities?.includes(facility);
-                      return (
-                        <label key={facility} className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-emerald-50 text-emerald-800' : 'hover:bg-gray-50 text-gray-600'}`}>
-                          <input
-                            type="checkbox"
-                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              const current = roomForm.facilities || [];
-                              setRoomForm({ ...roomForm, facilities: e.target.checked ? [...current, facility] : current.filter((f: string) => f !== facility) });
-                            }}
-                          />
-                          <span className="text-xs font-medium">{facility}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-5">
-                {editingRoom && (
-                  <Button variant="outline" onClick={closeRoomDialog} className="flex-1 h-9">Cancel</Button>
-                )}
-                <Button
-                  onClick={editingRoom ? handleUpdateRoom : handleCreateRoom}
-                  className={`h-9 bg-emerald-600 hover:bg-emerald-700 ${editingRoom ? 'flex-1' : 'w-full'}`}
-                >
-                  {editingRoom ? 'Save Changes' : bulkRoomMode ? `Add ${parseInt(bulkRoomCount, 10) || 0} Rooms` : 'Add Room'}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="sticky bottom-0 px-6 py-3 border-t border-gray-100 bg-white flex justify-end">
-            <Button
-              variant="outline"
-              onClick={() => setRoomDialogOpen(false)}
-              className="h-9 px-8"
-            >
-              Done
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Copy Individual Schedule Dialog */}
-      <Dialog open={copyScheduleDialogOpen} onOpenChange={setCopyScheduleDialogOpen}>
-        <DialogContent className="max-w-md p-0 gap-0">
-          <DialogTitle className="sr-only">Copy Schedule</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <Copy className="h-4 w-4 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Copy Schedule</h2>
-                <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[260px]">Copying: <span className="font-medium text-gray-700">{scheduleToCopy?.subject}</span></p>
-              </div>
-            </div>
-          </div>
-          <div className="px-6 py-5 space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium text-gray-700">Target Day</Label>
-              <Select value={targetDay} onValueChange={setTargetDay}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Choose a day" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DAYS_OF_WEEK.filter(d => d !== scheduleToCopy?.day_of_week && schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).map(day => (
-                    <SelectItem key={day} value={day}>{day}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700 leading-relaxed">
-              A new entry will be created for {targetDay || 'the selected day'} at the same period. Conflict detection applies.
-            </div>
-          </div>
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
-            <Button variant="outline" className="h-9" onClick={() => setCopyScheduleDialogOpen(false)}>Cancel</Button>
-            <Button className="h-9 bg-blue-600 hover:bg-blue-700" onClick={handleCopyToDay} disabled={!targetDay || isCopying}>
-              {isCopying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-              Copy
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Copy Entire Day Dialog */}
-      <Dialog open={copyDayDialogOpen} onOpenChange={setCopyDayDialogOpen}>
-        <DialogContent className="max-w-lg p-0 gap-0">
-          <DialogTitle className="sr-only">Copy Entire Day</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                <ClipboardCopy className="h-4 w-4 text-indigo-600" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Copy entire day</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Copy all periods from{' '}
-                  <span className="font-medium text-gray-700">{sourceDayToCopy}</span>
-                  {' '}(
-                  {schedules.filter((s) => s.day_of_week === sourceDayToCopy && s.is_active).length}{' '}
-                  class
-                  {schedules.filter((s) => s.day_of_week === sourceDayToCopy && s.is_active).length === 1
-                    ? ''
-                    : 'es'}
-                  ) to the day(s) you select
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 py-5 space-y-4">
-            {(() => {
-              const next = sourceDayToCopy
-                ? getNextOperatingDay(sourceDayToCopy, schoolOperatingDays)
-                : null;
-              return next && next !== sourceDayToCopy ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                  onClick={() => setTargetDays([next])}
-                >
-                  <ArrowRight className="h-3.5 w-3.5 mr-1.5" />
-                  Use next day ({next})
-                </Button>
-              ) : null;
-            })()}
-
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Select target day(s)</p>
-            <div className="grid grid-cols-2 gap-2">
-              {DAYS_OF_WEEK.filter(d => d !== sourceDayToCopy && schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[d])).map(day => {
-                const selected = targetDays.includes(day);
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${selected ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                    onClick={() => setTargetDays(prev => selected ? prev.filter(d => d !== day) : [...prev, day])}
-                  >
-                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${selected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'}`}>
-                      {selected && <span className="text-white text-[10px] font-bold">✓</span>}
-                    </div>
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
-
-            {copyResults ? (
-              <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="text-center p-2 bg-green-50 rounded-lg">
-                    <p className="text-lg font-bold text-green-700">{copyResults.success}</p>
-                    <p className="text-[11px] text-green-600">Copied</p>
-                  </div>
-                  <div className="text-center p-2 bg-orange-50 rounded-lg">
-                    <p className="text-lg font-bold text-orange-600">{copyResults.skipped}</p>
-                    <p className="text-[11px] text-orange-500">Skipped</p>
-                  </div>
-                </div>
-                {copyResults.errors.length > 0 && (
-                  <div className="text-xs text-red-600 max-h-24 overflow-y-auto border-t border-gray-200 pt-2">
-                    <ul className="space-y-1 list-disc pl-4">
-                      {copyResults.errors.map((err, i) => <li key={i}>{err}</li>)}
-                    </ul>
-                  </div>
-                )}
-                <Button variant="outline" size="sm" className="w-full h-8 text-xs" onClick={() => setCopyResults(null)}>Dismiss</Button>
-              </div>
-            ) : (
-              <div className="p-3 bg-amber-50 rounded-lg text-xs text-amber-700 leading-relaxed">
-                Existing schedules in target days will not be overwritten — overlapping slots will be skipped.
-              </div>
-            )}
-          </div>
-
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
-            <Button variant="outline" className="h-9" onClick={() => setCopyDayDialogOpen(false)}>Cancel</Button>
-            <Button className="h-9 bg-indigo-600 hover:bg-indigo-700" onClick={handleCopyEntireDay} disabled={targetDays.length === 0 || isCopying}>
-              {isCopying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ClipboardCopy className="h-4 w-4 mr-2" />}
-              {copyResults
-                ? 'Copy again'
-                : targetDays.length === 1
-                  ? `Copy all to ${targetDays[0]}`
-                  : `Copy all to ${targetDays.length || '?'} days`}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Push to Teachers Modal */}
-      <Dialog open={pushModalOpen} onOpenChange={setPushModalOpen}>
-        <DialogContent className="max-w-3xl p-0 gap-0">
-          <DialogTitle className="sr-only">Push Schedule to Teachers</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-                <Bell className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Push Schedule to Teachers</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Review and send weekly schedule notifications to your staff</p>
-              </div>
-            </div>
-          </div>
-
-          {pushSuccessSummary ? (
-            <div className="py-16 flex flex-col items-center justify-center space-y-4 px-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle2 className="h-9 w-9 text-green-600" />
-              </div>
-              <div className="text-center">
-                <h3 className="text-lg font-bold text-gray-900">Push Complete</h3>
-                <p className="text-sm text-gray-500 mt-1">{pushSuccessSummary}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
-              <div className="px-5 py-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Select Teachers</p>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setSelectedTeachersToPush(teachersWithSchedules.map(t => t.id))}>All</Button>
-                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setSelectedTeachersToPush([])}>None</Button>
-                  </div>
-                </div>
-                {lastPushTimestamp && (
-                  <div className="text-[10px] text-blue-600 bg-blue-50 px-2 py-1 rounded-md inline-flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> Last pushed: {lastPushTimestamp}
-                  </div>
-                )}
-                <div className="rounded-xl border border-gray-100 overflow-hidden divide-y divide-gray-50 max-h-72 overflow-y-auto">
-                  {teachersWithSchedules.length === 0 ? (
-                    <div className="py-8 px-4 text-center space-y-3">
-                      <p className="text-sm text-gray-600 font-medium">
-                        {unassignedActiveSchedules.length > 0
-                          ? `${unassignedActiveSchedules.length} class${unassignedActiveSchedules.length === 1 ? '' : 'es'} have no teacher assigned`
-                          : 'No teachers with active schedules'}
-                      </p>
-                      <p className="text-xs text-gray-400 leading-relaxed">
-                        {unassignedActiveSchedules.length > 0
-                          ? 'Push only notifies teachers linked to a class. Assign teachers on the grid (or use auto-assign), then try again.'
-                          : 'Add classes with a teacher selected, then push their weekly schedule.'}
-                      </p>
-                      {unassignedActiveSchedules.length > 0 && teachers.length > 0 && (
-                        <Button
-                          size="sm"
-                          className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
-                          disabled={isAutoAssigning}
-                          onClick={() => void handleAutoAssignTeachers()}
-                        >
-                          {isAutoAssigning ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                          ) : null}
-                          Auto-assign teachers
-                        </Button>
-                      )}
-                    </div>
-                  ) : teachersWithSchedules.map((teacher: Teacher) => {
-                    const count = schedules.filter(s => s.teacher_id === teacher.id && s.is_active).length;
-                    const selected = selectedTeachersToPush.includes(teacher.id);
-                    return (
-                      <div
-                        key={teacher.id}
-                        className={`px-4 py-3 flex items-center justify-between cursor-pointer transition-colors ${selected ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}
-                        onClick={() => setSelectedTeachersToPush(prev => prev.includes(teacher.id) ? prev.filter(id => id !== teacher.id) : [...prev, teacher.id])}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${selected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
-                            {selected && <span className="text-white text-[9px] font-bold">✓</span>}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-800">{teacher.full_name}</p>
-                            <p className="text-[10px] text-gray-400">{teacher.email}</p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-medium text-gray-500 bg-gray-100 rounded px-2 py-0.5">{count} classes</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="px-5 py-5 space-y-3">
-                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Notification Preview</p>
-                <div className="bg-gray-900 text-green-400 rounded-xl p-4 font-mono text-[11px] h-[280px] overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                  {selectedTeachersToPush.length > 0
-                    ? generatePushPreview(selectedTeachersToPush[0])
-                    : <span className="text-gray-500 italic">Select a teacher to preview their notification</span>}
-                  {selectedTeachersToPush.length > 1 && (
-                    <div className="mt-4 pt-3 border-t border-gray-700 text-gray-600 italic text-[10px]">
-                      + {selectedTeachersToPush.length - 1} more notification{selectedTeachersToPush.length > 2 ? 's' : ''}...
-                    </div>
-                  )}
-                </div>
-                <div className="p-2.5 bg-amber-50 rounded-lg text-[10px] text-amber-700 leading-relaxed">
-                  Each selected teacher will receive a real-time in-app notification with their weekly schedule.
-                </div>
-              </div>
+              {tab === "grid" && <ChipGroup label="Day" value={dayFocus} options={focusOptions} onChange={setDayFocus} />}
             </div>
           )}
 
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
-            <Button variant="outline" className="h-9" onClick={() => setPushModalOpen(false)}>
-              {pushSuccessSummary ? 'Close' : 'Cancel'}
-            </Button>
-            {!pushSuccessSummary && (
-              <Button
-                className="h-9 bg-blue-600 hover:bg-blue-700"
-                onClick={handlePushToSelectedTeachers}
-                disabled={selectedTeachersToPush.length === 0 || isSyncing}
-              >
-                {isSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-                Push to {selectedTeachersToPush.length} Teacher{selectedTeachersToPush.length !== 1 ? 's' : ''}
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Validation Results Modal */}
-      <Dialog open={validationModalOpen} onOpenChange={setValidationModalOpen}>
-        <DialogContent className="max-w-2xl p-0 gap-0">
-          <DialogTitle className="sr-only">Timetable Validation</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-                <ShieldCheck className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Timetable Validation</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Analysis for Academic Year {CURRENT_ACADEMIC_YEAR}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
-            {/* Summary row */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center p-3 rounded-xl bg-red-50 border border-red-100">
-                <p className="text-2xl font-bold text-red-600">{validationResults?.errors.length || 0}</p>
-                <p className="text-[11px] text-red-500 font-medium mt-0.5">Errors</p>
-              </div>
-              <div className="text-center p-3 rounded-xl bg-orange-50 border border-orange-100">
-                <p className="text-2xl font-bold text-orange-500">{validationResults?.warnings.length || 0}</p>
-                <p className="text-[11px] text-orange-500 font-medium mt-0.5">Warnings</p>
-              </div>
-              <div className="text-center p-3 rounded-xl bg-blue-50 border border-blue-100">
-                <p className="text-2xl font-bold text-blue-600">{validationResults?.info.length || 0}</p>
-                <p className="text-[11px] text-blue-500 font-medium mt-0.5">Info</p>
-              </div>
-            </div>
-
-            {/* Errors */}
-            {(validationResults?.errors.length || 0) > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-red-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5" /> Errors
-                </p>
-                {validationResults?.errors.map((err, i) => (
-                  <div key={i} className="px-3.5 py-2.5 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700 flex items-start gap-2">
-                    <span className="text-red-400 flex-shrink-0 mt-0.5">✗</span>
-                    {err}
+          {tab === "grid" && (
+            <>
+              <section className="sd-panel ts-comp" aria-label="Completion by class">
+                <button type="button" className="ts-comp-toggle" aria-expanded={showCompletionTracker} onClick={() => setShowCompletionTracker(!showCompletionTracker)}>
+                  <b>How complete is each class?</b>
+                  <span className="sm-chip">{plural(completionStats.length, "class", "classes")}</span>
+                  <ChevronDown aria-hidden="true" />
+                </button>
+                {showCompletionTracker && (
+                  <div className="ts-comp-grid">
+                    {completionStats.length === 0 ? (
+                      <p className="sm-muted">Add a class and its progress will show here.</p>
+                    ) : completionStats.map((stat) => (
+                      <button key={stat.label} type="button" onClick={() => { setSelectedGrade(stat.grade); setSelectedSection(stat.section ?? "all"); }}>
+                        <span><b>{stat.label}</b><i>{stat.percentage}%</i></span>
+                        <i className="tm-bar" aria-hidden="true"><u style={{ width: `${stat.percentage}%` }} /></i>
+                        <small>{stat.filled} of {stat.total} slots filled</small>
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-            {validationResults?.errors.length === 0 && (
-              <div className="px-3.5 py-2.5 bg-green-50 border border-green-100 rounded-lg text-xs text-green-700 flex items-center gap-2">
-                <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" /> No critical errors — well done!
-              </div>
-            )}
+                )}
+              </section>
+              <ScheduleGrid
+                periods={periods}
+                schedules={filteredSchedules}
+                operatingDays={schoolOperatingDays}
+                focus={dayFocus}
+                busy={isCopying}
+                onAdd={handleAddScheduleGrid}
+                onEdit={handleEditSchedule}
+                onCopyClass={openCopyClass}
+                onRepeat={(s) => void handleRepeatAcrossWeek(s)}
+                onDelete={(id) => void handleDeleteSchedule(id)}
+                onCopyDay={openCopyDay}
+                onSetupPeriods={() => setPeriodDialogOpen(true)}
+              />
+            </>
+          )}
+          {tab === "list" && (
+            <ScheduleList schedules={filteredSchedules} year={CURRENT_ACADEMIC_YEAR} onEdit={handleEditSchedule} onDelete={(id) => void handleDeleteSchedule(id)} onAdd={openBlankScheduleDialog} />
+          )}
+          {tab === "workload" && <WorkloadList rows={workloadRows} year={CURRENT_ACADEMIC_YEAR} onOpen={setSelectedTeacherWorkload} />}
+        </>
+      )}
 
-            {/* Warnings */}
-            {(validationResults?.warnings.length || 0) > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-orange-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5" /> Warnings
-                </p>
-                {validationResults?.warnings.map((warn, i) => (
-                  <div key={i} className="px-3.5 py-2.5 bg-orange-50 border border-orange-100 rounded-lg text-xs text-orange-700 flex items-start gap-2">
-                    <span className="text-orange-400 flex-shrink-0 mt-0.5">!</span>
-                    {warn}
-                  </div>
-                ))}
-              </div>
-            )}
+      <ScheduleFormModal
+        open={scheduleDialogOpen}
+        editing={!!editingSchedule}
+        form={scheduleForm}
+        onChange={setScheduleForm}
+        locked={lockedFields}
+        operatingDays={schoolOperatingDays}
+        periods={periods}
+        rooms={rooms}
+        grades={availableGrades.length > 0 ? availableGrades : AVAILABLE_GRADES}
+        sections={sectionsForSelectedGrade}
+        subjects={uniqueSubjects}
+        teachers={displayTeachers}
+        teacherCount={teachers.length}
+        matchCount={filteredTeachers.length}
+        isMatch={(t) => (scheduleForm.grade ? isTeacherAssigned(t, scheduleForm.subject, scheduleForm.grade, scheduleForm.section) : true)}
+        loadOf={getTeacherLoad}
+        roomFree={(id) => isRoomAvailable(id, scheduleForm.day_of_week, scheduleForm.period_id || "")}
+        suggested={suggestedTeacher}
+        conflict={conflictWarning}
+        onClose={closeScheduleDialog}
+        onSubmit={() => void (editingSchedule ? handleUpdateSchedule() : handleCreateSchedule())}
+      />
 
-            {/* Info */}
-            {(validationResults?.info.length || 0) > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Activity className="h-3.5 w-3.5" /> Info
-                </p>
-                {validationResults?.info.map((info, i) => (
-                  <div key={i} className="px-3.5 py-2.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-700">
-                    {info}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      <PeriodsModal
+        open={periodDialogOpen}
+        periods={periods}
+        form={periodForm}
+        setForm={setPeriodForm}
+        editing={editingPeriod}
+        error={periodError}
+        onClose={() => setPeriodDialogOpen(false)}
+        onTemplate={(t) => void handleUseTemplate(t)}
+        showCustom={showCustomTemplate}
+        setShowCustom={setShowCustomTemplate}
+        customStart={customStartTime}
+        setCustomStart={setCustomStartTime}
+        customCount={customPeriodCount}
+        setCustomCount={setCustomPeriodCount}
+        customDuration={customDurationMin}
+        setCustomDuration={setCustomDurationMin}
+        customBreaks={customBreaks}
+        setCustomBreaks={setCustomBreaks}
+        addCustomBreak={addCustomBreak}
+        preview={customDayPreview}
+        onApplyCustom={() => void handleApplyCustomTemplate()}
+        onInsertBreak={(id, min) => void handleInsertBreak(id, min)}
+        onEdit={handleEditPeriod}
+        onDelete={(id) => void handleDeletePeriod(id)}
+        onCreate={() => void handleCreatePeriod()}
+        onUpdate={() => void handleUpdatePeriod()}
+        onResetForm={resetPeriodForm}
+      />
 
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end">
-            <Button className="h-9" onClick={() => setValidationModalOpen(false)}>Close</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <RoomsModal
+        open={roomDialogOpen}
+        rooms={rooms}
+        schedules={schedules}
+        form={roomForm}
+        setForm={setRoomForm}
+        bulk={bulkRoomMode}
+        setBulk={setBulkRoomMode}
+        bulkCount={bulkRoomCount}
+        setBulkCount={setBulkRoomCount}
+        editing={editingRoom}
+        onClose={closeRoomDialog}
+        onCreate={() => void handleCreateRoom()}
+        onUpdate={() => void handleUpdateRoom()}
+        onEdit={handleEditRoom}
+        onDelete={(id) => void handleDeleteRoom(id)}
+        onCancelEdit={resetRoomForm}
+      />
 
-      {/* Teacher Workload Detail Panel */}
-      <Dialog open={!!selectedTeacherWorkload} onOpenChange={() => setSelectedTeacherWorkload(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0">
-          <DialogTitle className="sr-only">{selectedTeacherWorkload?.full_name ?? 'Teacher Workload'}</DialogTitle>
-          <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
-                {selectedTeacherWorkload?.full_name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">{selectedTeacherWorkload?.full_name}</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Weekly Schedule · {CURRENT_ACADEMIC_YEAR}</p>
-              </div>
-            </div>
-          </div>
-          <div className="px-6 py-5">
-            <div className="grid grid-cols-7 gap-2">
-              {GRID_DAYS.map(day => (
-                <div key={day} className="space-y-2">
-                  <div className="text-center py-1.5 rounded-lg bg-gray-100 text-[10px] font-bold text-gray-600 uppercase tracking-wider">{day.slice(0,3)}</div>
-                  <div className="space-y-1.5">
-                    {[...periods].sort((a, b) => a.period_number - b.period_number).map(period => {
-                      const schedule = schedules.find(s =>
-                        s.teacher_id === selectedTeacherWorkload?.id &&
-                        s.day_of_week === day &&
-                        s.period_id === period.id &&
-                        s.is_active &&
-                        (!s.academic_year || s.academic_year === CURRENT_ACADEMIC_YEAR)
-                      );
-                      if (!schedule) return (
-                        <div key={period.id} className="h-14 rounded-lg border-2 border-dashed border-gray-100 bg-gray-50/30" />
-                      );
-                      const colorClasses = getColorClasses(getSubjectColor(schedule.subject));
-                      return (
-                        <div key={period.id} className={`h-14 rounded-lg border-l-[3px] px-2 py-1.5 flex flex-col justify-center shadow-sm ${colorClasses.border} ${colorClasses.bg}`}>
-                          <p className={`text-[10px] font-bold truncate leading-tight ${colorClasses.text}`}>{schedule.subject}</p>
-                          <p className="text-[9px] text-gray-600 font-medium">{gradeSectionLabel(schedule)}</p>
-                          <p className="text-[9px] text-gray-400 mt-0.5">P{period.period_number}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end">
-            <Button variant="outline" className="h-9" onClick={() => setSelectedTeacherWorkload(null)}>Close</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CopyClassModal
+        schedule={copyScheduleDialogOpen ? scheduleToCopy : null}
+        targetDay={targetDay}
+        setTargetDay={setTargetDay}
+        operatingDays={schoolOperatingDays}
+        busy={isCopying}
+        onClose={() => setCopyScheduleDialogOpen(false)}
+        onCopy={() => void handleCopyToDay()}
+      />
+
+      <CopyDayModal
+        source={copyDayDialogOpen ? sourceDayToCopy : null}
+        count={schedules.filter((s) => s.day_of_week === sourceDayToCopy && s.is_active).length}
+        targets={targetDays}
+        setTargets={setTargetDays}
+        operatingDays={schoolOperatingDays}
+        results={copyResults}
+        clearResults={() => setCopyResults(null)}
+        busy={isCopying}
+        onClose={() => setCopyDayDialogOpen(false)}
+        onCopy={() => void handleCopyEntireDay()}
+      />
+
+      <PushModal
+        open={pushModalOpen}
+        teachers={teachersWithSchedules}
+        schedules={schedules}
+        selected={selectedTeachersToPush}
+        setSelected={setSelectedTeachersToPush}
+        lastPushed={lastPushTimestamp}
+        success={pushSuccessSummary}
+        unassigned={unassignedActiveSchedules.length}
+        canAutoAssign={teachers.length > 0}
+        autoAssigning={isAutoAssigning}
+        onAutoAssign={() => void handleAutoAssignTeachers()}
+        preview={generatePushPreview}
+        busy={isSyncing}
+        onClose={() => setPushModalOpen(false)}
+        onPush={() => void handlePushToSelectedTeachers()}
+      />
+
+      <ValidationModal open={validationModalOpen} year={CURRENT_ACADEMIC_YEAR} results={validationResults} onClose={() => setValidationModalOpen(false)} />
+
+      <TeacherWeekModal teacher={selectedTeacherWorkload} periods={periods} schedules={schedules} year={CURRENT_ACADEMIC_YEAR} onClose={() => setSelectedTeacherWorkload(null)} />
     </div>
   );
 }
-

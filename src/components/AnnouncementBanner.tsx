@@ -1,20 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Megaphone, X } from "lucide-react";
 import { getBaseURL } from "@/lib/api/axios";
+import { useBannerSpace } from "@/hooks/useBannerSpace";
 
 interface Announcement {
   enabled: boolean;
   text: string;
   level: "info" | "warning" | "critical";
 }
-
-const LEVEL_CLS: Record<Announcement["level"], string> = {
-  info: "bg-blue-600 text-white",
-  warning: "bg-amber-500 text-amber-950",
-  critical: "bg-red-600 text-white",
-};
 
 const DISMISS_KEY = "announcement_dismissed";
 
@@ -26,6 +21,9 @@ const DISMISS_KEY = "announcement_dismissed";
 export default function AnnouncementBanner() {
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const bar = useRef<HTMLDivElement>(null);
+  const showing = !!announcement && !dismissed;
+  useBannerSpace(bar, "top", showing);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,15 +50,12 @@ export default function AnnouncementBanner() {
   if (!announcement || dismissed) return null;
 
   return (
-    <div
-      className={`fixed top-0 inset-x-0 z-[55] flex items-center justify-center gap-3 px-4 py-2 text-sm font-medium shadow-md ${LEVEL_CLS[announcement.level] ?? LEVEL_CLS.info}`}
-      role="status"
-    >
-      <Megaphone className="h-4 w-4 flex-shrink-0" />
+    <div ref={bar} className="sd-banner" data-edge="top" data-tone={announcement.level} role="status">
+      <Megaphone aria-hidden="true" />
       <span>{announcement.text}</span>
       <button
         aria-label="Dismiss announcement"
-        className="ml-2 opacity-80 hover:opacity-100"
+        className="sd-banner-x"
         onClick={() => {
           setDismissed(true);
           try {
@@ -70,7 +65,7 @@ export default function AnnouncementBanner() {
           }
         }}
       >
-        <X className="h-4 w-4" />
+        <X aria-hidden="true" />
       </button>
     </div>
   );

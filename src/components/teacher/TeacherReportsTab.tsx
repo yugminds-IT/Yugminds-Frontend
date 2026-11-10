@@ -1,86 +1,45 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { FileText } from "lucide-react";
-import { useTeacherReports, type TeacherReport, formatGradeSection } from "../../hooks/useTeacherData";
-import { SkeletonTable } from "../ui/skeleton-table";
+import { useTeacherReports } from "../../hooks/useTeacherData";
+import RecentReports from "./reports/RecentReports";
+import type { ReportRow } from "./reports/utils";
+import "@/components/teacher/reports/reports.css";
 
 interface TeacherReportsTabProps {
   selectedSchoolId?: string;
 }
 
+/** The dashboard's Reports tab: your newest reports and where each one stands. */
 export default function TeacherReportsTab({ selectedSchoolId }: TeacherReportsTabProps) {
-  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchoolId, { limit: 10 });
-
-  if (reportsLoading) {
-    return <SkeletonTable columns={4} rows={5} />;
-  }
+  const { data, isLoading, isError, refetch } = useTeacherReports(selectedSchoolId, { limit: 10 });
+  const [now] = useState(() => Date.now());
+  const reports = (data ?? []) as ReportRow[];
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Recent Reports</CardTitle>
-              <CardDescription>Your submitted teaching reports</CardDescription>
-            </div>
-            <Link href="/lms/teacher/reports">
-              <Button size="sm">View All</Button>
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {reports && reports.length > 0 ? (
-            <div className="space-y-2 md:space-y-3">
-              {reports.map((report: TeacherReport) => (
-                <div
-                  key={report.id}
-                  className="flex items-start justify-between gap-3 p-3 md:items-center md:p-4 border rounded-lg"
-                >
-                  <div className="min-w-0 flex-1">
-                    {(() => {
-                      // Handle both array and object formats for classes
-                      const classData = Array.isArray(report.classes) ? report.classes[0] : report.classes;
-                      return (
-                        <>
-                          <p className="font-medium">{formatGradeSection(report.grade || classData?.grade, report.section ?? classData?.section) || 'N/A'}</p>
-                          <p className="text-sm text-gray-600 line-clamp-2">
-                            {report.topics_taught?.substring(0, 100) || 'No topics listed'}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {report.date ? new Date(report.date).toLocaleDateString() : 'No date'} • {report.created_at ? new Date(report.created_at).toLocaleTimeString() : ''}
-                          </p>
-                        </>
-                      );
-                    })()}
-                  </div>
-                  <Badge className="shrink-0" variant={
-                    report.report_status === 'Approved' ? 'default' :
-                    report.report_status === 'Flagged' ? 'destructive' :
-                    'secondary'
-                  }>
-                    {report.report_status}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No reports submitted yet</p>
-              <Link href="/lms/teacher/reports">
-                <Button className="mt-4" size="sm">Submit Your First Report</Button>
-              </Link>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <section className="sd-panel" aria-labelledby="tr-title">
+      <div className="sd-panel-head">
+        <div><h2 id="tr-title">Recent reports</h2><p>Your newest reports and their review status</p></div>
+        <Link href="/lms/teacher/reports" className="sd-link">Submit report</Link>
+      </div>
+      {isLoading ? (
+        <><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></>
+      ) : isError ? (
+        <div className="sd-empty">
+          <b>Could not load your reports</b>
+          <p>Check your connection and try again.</p>
+          <button className="sd-btn sd-btn--ink" onClick={() => void refetch()}>Try again</button>
+        </div>
+      ) : reports.length === 0 ? (
+        <div className="sd-empty">
+          <b>No reports yet</b>
+          <p>Write a report after each class. Your admin reviews it and the status shows here.</p>
+          <Link href="/lms/teacher/reports" className="sd-btn sd-btn--amber">Submit your first report</Link>
+        </div>
+      ) : (
+        <RecentReports reports={reports} now={now} limit={10} />
+      )}
+    </section>
   );
 }
-
-

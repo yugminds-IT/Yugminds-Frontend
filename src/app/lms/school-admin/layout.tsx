@@ -21,6 +21,7 @@ import { usePendingPasswordResetCount } from "@/hooks/usePendingPasswordResetCou
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import ResponsiveTables from "@/components/ResponsiveTables";
+import StatusScreen from "@/components/public/StatusScreen";
 
 type UserProfile = {
   id: string;
@@ -299,11 +300,7 @@ export default function SchoolAdminLayout({
   };
 
   if (status === 'loading') {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
-      </div>
-    );
+    return <StatusScreen variant="loading" title="Loading the school admin dashboard." />;
   }
 
   if (status === 'unauthenticated') {
@@ -311,14 +308,7 @@ export default function SchoolAdminLayout({
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading school admin dashboard...</p>
-        </div>
-      </div>
-    );
+    return <StatusScreen variant="loading" title="Loading the school admin dashboard." />;
   }
 
   return (

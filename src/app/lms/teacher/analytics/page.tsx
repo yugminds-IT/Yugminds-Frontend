@@ -1,416 +1,218 @@
 "use client";
 
-import { useTeacherSchool } from "../context";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useSmartRefresh } from "@/hooks/useSmartRefresh";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  useTeacherMonthlyAttendance,
-  useTeacherReports,
-  useTeacherReportsStats,
-  useTeacherLeaves,
-  formatMonthLabel
-} from "@/hooks/useTeacherData";
-import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell
-} from "recharts";
-import { TrendingUp, Calendar, FileText, Clock } from "lucide-react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
+import { ClipboardList } from "lucide-react";
+import { useTeacherSchool } from "../context";
+import { useSmartRefresh } from "@/hooks/useSmartRefresh";
+import { useTeacherMonthlyAttendance, useTeacherReports, useTeacherReportsStats, useTeacherLeaves } from "@/hooks/useTeacherData";
+import { ChipGroup } from "@/components/portal/notifications";
+import OutcomeRun from "@/components/teacher/analytics/OutcomeRun";
+import { ColumnChart, MiniSeg, SegmentBar, type Col, type Part } from "@/components/teacher/analytics/Charts";
+import { lastMonths, monthName, rollUp, type MonthRow } from "@/components/teacher/attendance/utils";
+import { daysBetween, statusOf } from "@/components/teacher/leaves/utils";
+import type { Leave } from "@/components/teacher/leaves/utils";
+import { plural } from "@/components/teacher/overview/utils";
+import "@/components/school-admin/overview.css"; // hero meta, two-column grid
+import "@/components/teacher/overview/overview.css"; // report track
+import "@/components/teacher/analytics/analytics.css";
 
-const _COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+type Range = "6" | "12";
 
-type MonthlyAttendanceRecord = {
-  month: string;
-  present_count?: number;
-  absent_count?: number;
-  leave_count?: number;
-  total_days?: number;
-};
-
-/**
- * Analytics Page
- * 
- * Displays comprehensive analytics and insights for the teacher
- */
+/** How you are doing: attendance over the months, how your reports were reviewed, and your leave. */
 export default function AnalyticsPage() {
   const { selectedSchool } = useTeacherSchool();
-  const _queryClient = useQueryClient();
-  const { data: monthlyAttendance, isLoading: attendanceLoading } = useTeacherMonthlyAttendance(
-    selectedSchool?.id,
-    12
-  );
-  // The reports list itself is only used to drive the charts below (month
-  // groupings, etc.) — it's still capped at 500. "Total Reports" and
-  // "Approval Rate" instead use useTeacherReportsStats, a real DB count
-  // that's accurate no matter how many reports exist beyond this cap.
-  const { data: reports, isLoading: reportsLoading } = useTeacherReports(selectedSchool?.id, { limit: 500 });
-  const { data: reportStats } = useTeacherReportsStats(selectedSchool?.id);
-  const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves(selectedSchool?.id);
+  const queryClient = useQueryClient();
+  const [now] = useState(() => new Date());
+  const [range, setRange] = useState<Range>("12");
 
-  // Use smart refresh for tab switching
+  const school = selectedSchool?.id;
+  const monthlyQ = useTeacherMonthlyAttendance(school, 12);
+  // The list backs the monthly chart and is capped at 500; the counts come from the server so they stay exact.
+  const reportsQ = useTeacherReports(school, { limit: 500 });
+  const statsQ = useTeacherReportsStats(school);
+  const leavesQ = useTeacherLeaves(school);
   useSmartRefresh({
-    queryKeys: [
-      ['teacher', 'monthly-attendance', selectedSchool?.id, 12],
-      ['teacher', 'reports', selectedSchool?.id],
-      ['teacher', 'reports-stats', selectedSchool?.id],
-      ['teacher', 'leaves', selectedSchool?.id]
-    ],
-    minRefreshInterval: 60000, // 1 minute minimum between refreshes
+    customRefresh: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["teacher", "monthly-attendance"] }),
+        queryClient.invalidateQueries({ queryKey: ["teacher", "reports"] }),
+        queryClient.invalidateQueries({ queryKey: ["teacher", "reports-stats"] }),
+        queryClient.invalidateQueries({ queryKey: ["teacher", "leaves"] }),
+      ]);
+    },
+    minRefreshInterval: 60000,
   });
 
-  // Calculate statistics — from the real, uncapped server-side counts, not
-  // the capped `reports` list (which only backs the charts further down).
-  const totalReports = reportStats?.total ?? 0;
-  const pendingReports = reportStats?.pending ?? 0;
-  const reviewedReports = reportStats?.reviewed ?? 0;
-  const approvedReports = reportStats?.approved ?? 0;
-  const rejectedReports = reportStats?.rejected ?? 0;
-  // Approval rate among DECIDED reports only (approved+rejected) — using
-  // totalReports as the denominator diluted the percentage with reports
-  // still awaiting review, e.g. 10 approved out of 50 total (40 still
-  // pending) read as "20% approval rate" when really 100% of the reports
-  // actually reviewed so far were approved.
-  const decidedReports = approvedReports + rejectedReports;
+  const months = useMemo(() => rollUp(monthlyQ.data as MonthRow[] | undefined), [monthlyQ.data]);
+  const keys = useMemo(() => lastMonths(now, Number(range)), [now, range]);
+  const logged = keys.filter((k) => months.has(k));
+  const lastLogged = logged[logged.length - 1];
 
-  const approvedLeaves = leaves?.filter((l) => l.status === 'Approved').length || 0;
-   
-  const pendingLeaves = leaves?.filter((l) => l.status === 'Pending').length || 0;
-   
-  const rejectedLeaves = leaves?.filter((l) => l.status === 'Rejected').length || 0;
+  // Share of working days present across every logged month in view (weighted, so a short month counts less)
+  const present = logged.reduce((n, k) => n + (months.get(k)?.present ?? 0), 0);
+  const worked = logged.reduce((n, k) => n + (months.get(k)?.total ?? 0), 0);
+  const attendancePct = worked > 0 ? Math.round((present / worked) * 100) : null;
 
-  // Attendance trend data
-   
-  interface _MonthlyAttendance {
-    month: string;
-    total_days?: number;
-    present_count?: number;
-    absent_count?: number;
-    leave_count?: number;
-  }
-  
-  type MonthlyAttendanceData = {
-    month: string;
-    total_days?: number;
-    present_count?: number;
-    absent_count?: number;
-    leave_count?: number;
-  };
-  const attendanceTrend = (monthlyAttendance as MonthlyAttendanceData[] | undefined)?.slice().reverse().map((m: MonthlyAttendanceData) => ({
-    month: formatMonthLabel(m.month),
-    percentage: (m.total_days ?? 0) > 0 ? Math.round(((m.present_count ?? 0) / (m.total_days ?? 0)) * 100) : 0,
-    present: m.present_count ?? 0,
-    absent: m.absent_count ?? 0,
-    leave: m.leave_count ?? 0
-  })) || [];
+  const attendanceCols: Col[] = keys.map((k) => {
+    const m = months.get(k);
+    return { key: k, label: monthName(k, false).replace(/ \d{4}$/, ""), full: monthName(k), value: m ? m.pct : null, text: m ? `${m.pct}% present (${m.present} of ${m.total} days)` : "no attendance logged", hot: k === lastLogged };
+  });
 
-  // Last 6 months in CHRONOLOGICAL order — previously rendered newest-first,
-  // reading in the opposite direction from the trend chart beside it.
-  const attendanceBarData =
-    (monthlyAttendance as MonthlyAttendanceRecord[] | undefined)?.slice(0, 6).reverse().map((m: MonthlyAttendanceRecord) => ({
-      month: formatMonthLabel(m.month),
-      Present: m.present_count ?? 0,
-      Absent: m.absent_count ?? 0,
-      Leave: m.leave_count ?? 0,
-    })) ?? [];
+  const stats = statsQ.data;
+  const outcomes = { pending: stats?.pending ?? 0, reviewed: stats?.reviewed ?? 0, approved: stats?.approved ?? 0, rejected: stats?.rejected ?? 0 };
+  const decided = outcomes.approved + outcomes.rejected;
+  const approvalPct = decided > 0 ? Math.round((outcomes.approved / decided) * 100) : null;
 
-  // Report status distribution — matches the real 4-state vocabulary
-  // (Pending/Reviewed/Approved/Rejected) shared with the school-admin/admin
-  // review dashboards. 'Flagged' was never a real status; using it here
-  // meant every Rejected (and any Reviewed) report silently vanished from
-  // this chart instead of showing up as Rejected/Reviewed.
-  const reportStatusData = [
-    { name: 'Pending', value: pendingReports, color: '#FFBB28' },
-    { name: 'Reviewed', value: reviewedReports, color: '#8884d8' },
-    { name: 'Approved', value: approvedReports, color: '#00C49F' },
-    { name: 'Rejected', value: rejectedReports, color: '#FF8042' },
-  ].filter((d) => d.value > 0);
+  const perMonth = useMemo(() => {
+    const m = new Map<string, number>();
+    (reportsQ.data ?? []).forEach((r) => {
+      const k = String(r.date ?? "").slice(0, 7);
+      if (k) m.set(k, (m.get(k) ?? 0) + 1);
+    });
+    return m;
+  }, [reportsQ.data]);
+  const reportMax = Math.max(1, ...keys.map((k) => perMonth.get(k) ?? 0));
+  const reportCols: Col[] = keys.map((k) => ({ key: k, label: monthName(k, false).replace(/ \d{4}$/, ""), full: monthName(k), value: perMonth.get(k) ?? 0, text: plural(perMonth.get(k) ?? 0, "report"), hot: k === keys[keys.length - 1] }));
 
-  // Leave status distribution
-  const leaveStatusData = [
-    { name: 'Approved', value: approvedLeaves, color: '#00C49F' },
-    { name: 'Pending', value: pendingLeaves, color: '#FFBB28' },
-    { name: 'Rejected', value: rejectedLeaves, color: '#FF8042' }
+  const leaves = (leavesQ.data ?? []) as Leave[];
+  const leaveCount = (s: string) => leaves.filter((l) => statusOf(l) === s).length;
+  const approvedLeaves = leaves.filter((l) => statusOf(l) === "approved");
+  const approvedDays = approvedLeaves.reduce((n, l) => n + daysBetween(l.start_date, l.end_date), 0);
+
+  const reportParts: Part[] = [
+    { label: "Approved", value: outcomes.approved, tone: "ink" },
+    { label: "Reviewed", value: outcomes.reviewed, tone: "blue" },
+    { label: "Waiting for review", value: outcomes.pending, tone: "amber" },
+    { label: "Rejected", value: outcomes.rejected, tone: "red" },
   ];
+  const leaveParts: Part[] = [
+    { label: "Approved", value: leaveCount("approved"), tone: "ink" },
+    { label: "Waiting", value: leaveCount("pending"), tone: "amber" },
+    { label: "Rejected", value: leaveCount("rejected"), tone: "red" },
+    { label: "Cancelled", value: leaveCount("cancelled"), tone: "line" },
+  ];
+  const mixRows = logged.slice(-6).reverse();
+
+  const failed = monthlyQ.isError || statsQ.isError;
+  let status: React.ReactNode;
+  if (failed) status = "Some numbers did not load. Try again.";
+  else if (monthlyQ.isLoading || statsQ.isLoading) status = "Adding it up…";
+  else if (approvalPct != null && attendancePct != null) status = <><strong>{approvalPct}% of your reviewed reports are approved.</strong> You were present {attendancePct}% of working days over {plural(logged.length, "month")}.</>;
+  else if (approvalPct != null) status = <><strong>{approvalPct}% of your reviewed reports are approved.</strong> Attendance shows up once a month is logged.</>;
+  else if (attendancePct != null) status = <><strong>You were present {attendancePct}% of working days</strong> over {plural(logged.length, "month")}. Reports appear here once your admin reviews them.</>;
+  else status = "These numbers fill in as you report your classes.";
+
+  const ledger = [
+    { label: "Reports submitted", value: stats ? String(stats.total) : "–", hint: "All time" },
+    { label: "Approval rate", value: approvalPct != null ? `${approvalPct}%` : "–", hint: decided > 0 ? `${outcomes.approved} of ${decided} reviewed reports` : "Nothing reviewed yet" },
+    { label: "Attendance", value: attendancePct != null ? `${attendancePct}%` : "–", hint: logged.length ? `Over ${plural(logged.length, "logged month")}` : "No attendance logged yet" },
+    { label: "Leave approved", value: String(approvedLeaves.length), hint: approvedLeaves.length ? `${plural(approvedDays, "day")} in all` : "None yet" },
+  ];
+  const loading = monthlyQ.isLoading || statsQ.isLoading;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
-        <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">
-          Comprehensive insights and analytics {selectedSchool ? `for ${selectedSchool.name}` : ''}
-        </p>
-        <div className="mt-2 md:mt-3">
-          <Link href="/lms/teacher/assignments" className="text-sm text-blue-600 hover:underline">
-            Manage assignments and retakes
-          </Link>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ta-title">
+        <div className="sd-hero-copy">
+          <h1 id="ta-title" className="mc-hero-title">Analytics</h1>
+          <p className="sd-where">{selectedSchool?.name ?? "All your schools"}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <Link href="/lms/teacher/assignments" className="sd-btn sd-btn--amber"><ClipboardList aria-hidden="true" />Assignments and retakes</Link>
+          </div>
         </div>
+        {statsQ.isLoading ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : (
+          <OutcomeRun counts={outcomes} caption={approvalPct != null ? `${approvalPct}% of reviewed approved.` : "Nothing reviewed yet."} />
+        )}
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Your numbers">
+        {ledger.map((m) => (
+          <div key={m.label}>
+            <span className="sd-l">{m.label}</span>
+            {loading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4.5rem" }} /> : <b className="sd-n">{failed ? "–" : m.value}</b>}
+            <small>{m.hint}</small>
+          </div>
+        ))}
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Reports</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalReports}</div>
-            <p className="text-xs text-muted-foreground">All time</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Approval Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {decidedReports > 0 ? Math.round((approvedReports / decidedReports) * 100) : 0}%
+      <div className="so-grid">
+        <div className="so-col">
+          <section className="sd-panel" aria-labelledby="ta-att">
+            <div className="ta-head">
+              <div><h2 id="ta-att">Attendance by month</h2><p>Share of working days you were present</p></div>
+              <ChipGroup<Range> label="How far back" value={range} options={[["6", "6 months"], ["12", "12 months"]]} onChange={setRange} />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {decidedReports > 0 ? `${approvedReports} of ${decidedReports} reviewed reports` : 'No reports reviewed yet'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Approved Leaves</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{approvedLeaves}</div>
-            <p className="text-xs text-muted-foreground">Leave requests</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Attendance</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {attendanceTrend.length > 0
-                 
-                ? Math.round(attendanceTrend.reduce((sum: number, d: { percentage: number }) => sum + d.percentage, 0) / attendanceTrend.length)
-                : 0}%
-            </div>
-            <p className="text-xs text-muted-foreground">Last 12 months</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        {/* Attendance Trend */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Attendance Trend</CardTitle>
-            <CardDescription>Attendance percentage over time</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {attendanceLoading ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : attendanceTrend.length > 0 ? (
-              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
-                <LineChart data={attendanceTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="percentage" stroke="#0088FE" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer></div>
+            {monthlyQ.isLoading ? (
+              <div className="sd-skel" style={{ height: "11rem" }} />
+            ) : monthlyQ.isError ? (
+              <div className="sd-empty"><b>Could not load attendance</b><p>Check your connection and try again.</p><button className="sd-btn sd-btn--ink" onClick={() => void monthlyQ.refetch()}>Try again</button></div>
+            ) : logged.length === 0 ? (
+              <div className="sd-empty"><b>No attendance logged yet</b><p>A month appears here once you have reported your classes in it.</p></div>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                <p>No attendance data available</p>
-              </div>
+              <ColumnChart cols={attendanceCols} label="Attendance percentage by month" />
             )}
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* Report Status Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Report Status Distribution</CardTitle>
-            <CardDescription>Breakdown of report submission status</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {reportsLoading ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : totalReports > 0 ? (
-              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={reportStatusData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(props: { name?: string; percent?: number }) => {
-                      const name = props.name || '';
-                      const percent = props.percent || 0;
-                      return `${name} ${(percent * 100).toFixed(0)}%`;
-                    }}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {reportStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer></div>
+          <section className="sd-panel" aria-labelledby="ta-mix">
+            <div className="ta-head"><div><h2 id="ta-mix">Where your days went</h2><p>The last {Math.min(6, mixRows.length) || 6} logged months, newest first</p></div></div>
+            {monthlyQ.isLoading ? (
+              <div className="sd-skel" style={{ height: "8rem" }} />
+            ) : mixRows.length === 0 ? (
+              <p className="ta-empty">Nothing logged yet.</p>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                <p>No reports submitted yet</p>
-              </div>
+              <>
+                <ul className="ta-mix">
+                  {mixRows.map((k) => {
+                    const m = months.get(k)!;
+                    return (
+                      <li key={k}>
+                        <span>{monthName(k, false).replace(/ \d{4}$/, "")}</span>
+                        <MiniSeg parts={[
+                          { label: "Present", value: m.present, tone: "ink" },
+                          { label: "Leave", value: m.leave, tone: "amber" },
+                          { label: "Absent", value: m.absent, tone: "red" },
+                          { label: "Not reported", value: m.unreported, tone: "line" },
+                        ]} />
+                        <small>{m.present} of {m.total}</small>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="ta-key">
+                  <span><i data-t="ink" />Present</span><span><i data-t="amber" />Leave</span><span><i data-t="red" />Absent</span><span><i data-t="line" />Not reported</span>
+                </p>
+              </>
             )}
-          </CardContent>
-        </Card>
+          </section>
+        </div>
 
-        {/* Leave Status Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Leave Request Status</CardTitle>
-            <CardDescription>Breakdown of leave request status</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {leavesLoading ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : (approvedLeaves + pendingLeaves + rejectedLeaves) > 0 ? (
-              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={leaveStatusData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(props: { name?: string; percent?: number }) => {
-                      const name = props.name || '';
-                      const percent = props.percent || 0;
-                      return `${name} ${(percent * 100).toFixed(0)}%`;
-                    }}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {leaveStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer></div>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                <p>No leave requests submitted yet</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+        <div className="so-col">
+          <section className="sd-panel" aria-labelledby="ta-out">
+            <div className="ta-head"><div><h2 id="ta-out">How your reports were reviewed</h2><p>Every report you have submitted</p></div></div>
+            {statsQ.isLoading ? <div className="sd-skel" style={{ height: "8rem" }} /> : <SegmentBar parts={reportParts} empty="No reports yet. Submit one after a class and its review shows here." />}
+          </section>
 
-      {/* Detailed Statistics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        {/* Attendance Breakdown */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Attendance Breakdown (Last 6 Months)</CardTitle>
-            <CardDescription>Present vs Absent vs Leave</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {attendanceLoading ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : monthlyAttendance && monthlyAttendance.length > 0 ? (
-              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
-                <BarChart data={attendanceBarData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="Present" fill="#00C49F" />
-                  <Bar dataKey="Absent" fill="#FF8042" />
-                  <Bar dataKey="Leave" fill="#FFBB28" />
-                </BarChart>
-              </ResponsiveContainer></div>
+          <section className="sd-panel" aria-labelledby="ta-rep">
+            <div className="ta-head"><div><h2 id="ta-rep">Reports each month</h2><p>How many you submitted</p></div></div>
+            {reportsQ.isLoading ? (
+              <div className="sd-skel" style={{ height: "11rem" }} />
+            ) : (reportsQ.data ?? []).length === 0 ? (
+              <p className="ta-empty">No reports yet.</p>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                <p>No attendance data available</p>
-              </div>
+              <ColumnChart cols={reportCols} max={reportMax} label="Reports submitted by month" />
             )}
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* Monthly Report Count */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Report Submission Trend</CardTitle>
-            <CardDescription>Number of reports submitted per month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {reportsLoading ? (
-              <div className="h-64 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : reports && reports.length > 0 ? (
-              <div className="h-[220px] md:h-[300px]"><ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={(() => {
-                  // Group by sortable YYYY-MM key first so months render in
-                  // chronological order (label-keyed grouping followed report
-                  // arrival order, which is newest-first).
-                  const monthlyReports = new Map<string, number>();
-                  reports.forEach((r) => {
-                    const key = String(r.date ?? '').slice(0, 7); // YYYY-MM
-                    if (!key) return;
-                    monthlyReports.set(key, (monthlyReports.get(key) || 0) + 1);
-                  });
-                  return [...monthlyReports.entries()]
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([key, count]) => ({
-                      month: formatMonthLabel(key, { month: 'short', year: '2-digit' }),
-                      count,
-                    }));
-                })()}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="count" stroke="#0088FE" fill="#0088FE" fillOpacity={0.3} />
-                </AreaChart>
-              </ResponsiveContainer></div>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                <p>No reports submitted yet</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          <section className="sd-panel" aria-labelledby="ta-leave">
+            <div className="ta-head"><div><h2 id="ta-leave">Your leave requests</h2><p><Link href="/lms/teacher/leaves" className="sd-link">See all requests</Link></p></div></div>
+            {leavesQ.isLoading ? <div className="sd-skel" style={{ height: "6rem" }} /> : <SegmentBar parts={leaveParts} empty="You have not asked for leave yet." />}
+          </section>
+        </div>
       </div>
     </div>
   );

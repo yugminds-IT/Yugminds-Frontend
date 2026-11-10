@@ -1,0 +1,80 @@
+/* Admin Certificates. Needs portal.css, school-admin/overview.css (hero meta), school-admin/students.css (sm- chips, forms),
+   school-admin/teachers.css (tm- track nodes) and teacher/overview/overview.css loaded first. */
+
+.ce-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; }
+.ce-bar select.sd-field { width: auto; min-width: 9.5rem; padding-block: 0.6rem; }
+.ce-bar select.sd-field:disabled { opacity: 0.55; cursor: not-allowed; }
+.ce-bar form.sd-search { flex: 1 1 16rem; max-width: 26rem; width: auto; }
+
+.ce-list { padding: 0; overflow: hidden; }
+.ce-head, .ce-row { display: grid; grid-template-columns: 1.5rem minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(8rem, 0.7fr) 6.5rem 6.5rem 5.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.ce-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
+.ce-row { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
+.ce-row:last-of-type { border-bottom: 0; }
+@media (hover: hover) { .ce-row:hover { background: var(--sd-wash); } }
+.ce-row[data-picked="true"] { background: rgb(251 191 36 / 0.14); }
+.ce-row[data-revoked="true"] .ce-who b, .ce-row[data-revoked="true"] .ce-course { color: var(--sd-ink-soft); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.ce-check { width: 1.15rem; height: 1.15rem; accent-color: var(--sd-ink); cursor: pointer; }
+.ce-check:disabled { cursor: not-allowed; opacity: 0.4; }
+.ce-who, .ce-school { display: grid; min-width: 0; }
+.ce-who b, .ce-school b { font: 700 0.98rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.ce-school b { font-size: 0.93rem; }
+.ce-who small, .ce-school small, .ce-issued small { font-size: 0.85rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.ce-course { font: 600 0.93rem/1.35 var(--sd-body); overflow-wrap: anywhere; }
+.ce-id { display: inline-flex; align-items: center; gap: 0.2rem; min-width: 0; }
+.ce-id code { padding: 0.1rem 0.55rem; border: 1.5px solid var(--sd-line); border-radius: 999px; background: var(--sd-wash); font: 700 0.8rem/1.6 var(--sd-body); letter-spacing: 0.02em; }
+.ce-id button { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border: 0; border-radius: 50%; background: transparent; color: var(--sd-ink-soft); cursor: pointer; }
+.ce-id button:hover { background: var(--sd-wash); color: var(--sd-ink); }
+.ce-id button:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+.ce-id svg { width: 0.95rem; height: 0.95rem; }
+.ce-issued { display: grid; font-size: 0.93rem; }
+.ce-chip { display: inline-flex; align-items: center; justify-self: start; padding: 0.05rem 0.7rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.78rem/1.6 var(--sd-body); color: var(--sd-ink-soft); white-space: nowrap; background: var(--sd-paper); }
+.ce-chip[data-s="active"] { border-color: var(--sd-ink); background: var(--sd-ink); color: var(--sd-amber); }
+.ce-chip[data-s="pending"] { border-color: var(--sd-amber-deep); background: rgb(251 191 36 / 0.25); color: var(--sd-ink); }
+.ce-chip[data-s="broken"] { border-color: #e8b4ab; background: #fff1ee; color: var(--sd-late); }
+.ce-chip[data-s="revoked"] { border-style: dashed; }
+.ce-acts { display: flex; align-items: center; justify-content: flex-end; gap: 0.1rem; }
+
+.ce-selbar { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; padding: 0.7rem 1rem; border: 1.5px solid var(--sd-ink); border-radius: 1.1rem; background: var(--sd-paper); box-shadow: 0 0.75rem 2rem rgb(11 27 58 / 0.18); }
+.ce-selbar b { font: 800 1.05rem/1 var(--sd-display); }
+.ce-selbar > div { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.ce-selbar .sd-btn { min-height: 2.25rem; padding-inline: 1rem; }
+
+/* Template */
+.ce-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(1rem, 2vw, 1.5rem); align-items: start; }
+.ce-holders { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+.ce-holders code { padding: 0.1rem 0.6rem; border: 1.5px solid var(--sd-line); border-radius: 999px; background: var(--sd-wash); font: 600 0.82rem/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+.ce-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.8rem 1rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-wash); }
+.ce-state[data-on="true"] { border-color: var(--sd-ink); background: rgb(251 191 36 / 0.14); }
+.ce-state > span { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+.ce-state svg { width: 1.1rem; height: 1.1rem; }
+.ce-state > div { display: flex; gap: 0.5rem; }
+.ce-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.ce-code { width: 100%; min-height: 18rem; padding: 0.8rem 1rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-wash); color: var(--sd-ink); font: 500 0.82rem/1.5 ui-monospace, "SF Mono", Menlo, monospace; resize: vertical; }
+.ce-code:focus-visible { border-color: var(--sd-blue); outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+.ce-sample { border: 1.5px solid var(--sd-line); border-radius: 1rem; overflow: hidden; background: #fff; }
+.ce-sample img { display: block; width: 100%; height: auto; }
+.ce-sample-empty { display: grid; place-items: center; min-height: 12rem; padding: 1rem; text-align: center; color: var(--sd-ink-soft); }
+.ce-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; padding-top: 1rem; margin-top: 1rem; border-top: 1.5px solid var(--sd-line); }
+
+/* Preview */
+.ce-preview { display: grid; gap: 1rem; }
+.ce-preview-img { border: 1.5px solid var(--sd-line); border-radius: 1rem; overflow: hidden; background: #fff; }
+.ce-preview-img img { display: block; width: 100%; height: auto; }
+.ce-facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; font-size: 0.9rem; color: var(--sd-ink-soft); }
+.ce-facts b { color: var(--sd-ink); }
+
+@media (max-width: 1100px) {
+  .ce-head { display: none; }
+  .ce-row { grid-template-columns: 1.5rem minmax(0, 1fr) auto; grid-template-areas: "ck who acts" ". school school" ". course course" ". id id" ". issued status"; gap: 0.35rem 0.8rem; }
+  .ce-row > .ce-check { grid-area: ck; }
+  .ce-row > .ce-who { grid-area: who; }
+  .ce-row > .ce-school { grid-area: school; }
+  .ce-row > .ce-course { grid-area: course; }
+  .ce-row > .ce-id { grid-area: id; }
+  .ce-row > .ce-issued { grid-area: issued; }
+  .ce-row > .ce-chip { grid-area: status; justify-self: end; }
+  .ce-row > .ce-acts { grid-area: acts; }
+  .ce-two { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .ce-row { transition: none; } }

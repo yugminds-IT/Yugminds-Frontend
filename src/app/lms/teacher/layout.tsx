@@ -7,6 +7,8 @@ import PortalSidebar from "@/components/portal/PortalSidebar";
 import PasswordPrompt from "@/components/portal/PasswordPrompt";
 import { TEACHER_NAV } from "@/components/portal/navs";
 import "@/components/portal/portal.css";
+import "@/components/teacher/chrome.css";
+import StatusScreen from "@/components/public/StatusScreen";
 import { TeacherSchoolContext, type TeacherSchool } from "./context";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
@@ -430,11 +432,7 @@ export default function TeacherLayout({
   };
 
   if (status === 'loading') {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
-      </div>
-    );
+    return <StatusScreen variant="loading" title="Loading the teacher dashboard." />;
   }
 
   if (status === 'unauthenticated') {
@@ -442,15 +440,9 @@ export default function TeacherLayout({
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading teacher dashboard...</p>
-        </div>
-      </div>
-    );
+    return <StatusScreen variant="loading" title="Loading the teacher dashboard." />;
   }
+
 
   return (
     <PortalShell
@@ -473,86 +465,69 @@ export default function TeacherLayout({
         />
       }
     >
-        {/* School Selector Topbar */}
+        {/* School switcher */}
         {schools.length > 1 && (
-          <div className="bg-white border-b border-gray-200 px-4 py-2.5 md:px-6 md:py-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex w-full min-w-0 items-center gap-2 md:w-auto md:gap-4">
-                <span className="shrink-0 text-xs font-medium text-gray-700 md:text-sm">
-                  <span className="md:hidden">School:</span>
-                  <span className="hidden md:inline">Active School:</span>
-                </span>
-                <select
-                  value={selectedSchool?.id || ALL_SCHOOLS_VALUE}
-                  onChange={(e) => {
-                    if (e.target.value === ALL_SCHOOLS_VALUE) {
-                      handleSelectAllSchools();
-                      return;
-                    }
-                    const school = schools.find((s: School) => s.id === e.target.value);
-                    if (school) handleSchoolChange(school);
-                  }}
-                  className="min-w-0 flex-1 truncate px-2.5 py-1.5 border border-gray-300 rounded-md text-sm md:flex-none md:px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value={ALL_SCHOOLS_VALUE}>All Schools (combined)</option>
-                  {schools.map((school) => {
-                    const isSunday = new Date().getDay() === 0;
-                    const status = todayWorkStatus?.working.includes(school.id)
-                      ? ' — working today'
-                      : todayWorkStatus?.holiday.includes(school.id)
-                        ? ' — holiday today'
-                        : todayWorkStatus?.off.includes(school.id)
-                          ? isSunday
-                            ? ' — Sunday (weekly off)'
-                            : ' — off today'
-                          : '';
-                    return (
-                      <option key={school.id} value={school.id}>
-                        {school.name} {school.school_code ? `(${school.school_code})` : ''}
-                        {status}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-              {!selectedSchool && (
-                <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1">
-                  Showing combined data across all {schools.length} of your schools.
-                </div>
+          <div className="to-school">
+            <label htmlFor="to-school-select">School</label>
+            <select
+              id="to-school-select"
+              value={selectedSchool?.id || ALL_SCHOOLS_VALUE}
+              onChange={(e) => {
+                if (e.target.value === ALL_SCHOOLS_VALUE) {
+                  handleSelectAllSchools();
+                  return;
+                }
+                const school = schools.find((s: School) => s.id === e.target.value);
+                if (school) handleSchoolChange(school);
+              }}
+              className="mc-select"
+            >
+              <option value={ALL_SCHOOLS_VALUE}>All schools (combined)</option>
+              {schools.map((school) => {
+                const isSunday = new Date().getDay() === 0;
+                const status = todayWorkStatus?.working.includes(school.id)
+                  ? ' — working today'
+                  : todayWorkStatus?.holiday.includes(school.id)
+                    ? ' — holiday today'
+                    : todayWorkStatus?.off.includes(school.id)
+                      ? isSunday
+                        ? ' — Sunday (weekly off)'
+                        : ' — off today'
+                      : '';
+                return (
+                  <option key={school.id} value={school.id}>
+                    {school.name} {school.school_code ? `(${school.school_code})` : ''}
+                    {status}
+                  </option>
+                );
+              })}
+            </select>
+            {!selectedSchool && <p className="to-pill">Showing combined data across all {schools.length} of your schools.</p>}
+            {todayWorkStatus &&
+              selectedSchool &&
+              !todayWorkStatus.working.includes(selectedSchool.id) &&
+              todayWorkStatus.working.length > 0 && (
+                <p className="to-pill" data-tone="warn">
+                  Not scheduled here today.
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const workingSchool = schools.find((s) => s.id === todayWorkStatus.working[0]);
+                      if (workingSchool) handleSchoolChange(workingSchool);
+                    }}
+                  >
+                    Switch to {schools.find((s) => s.id === todayWorkStatus.working[0])?.name}
+                  </button>
+                </p>
               )}
-              {todayWorkStatus &&
-                selectedSchool &&
-                !todayWorkStatus.working.includes(selectedSchool.id) &&
-                todayWorkStatus.working.length > 0 && (
-                  <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 md:w-auto md:py-1">
-                    <span>
-                      Not scheduled here today.
-                    </span>
-                    <button
-                      type="button"
-                      className="text-left underline font-medium hover:text-amber-900"
-                      onClick={() => {
-                        const workingSchool = schools.find(
-                          (s) => s.id === todayWorkStatus.working[0],
-                        );
-                        if (workingSchool) handleSchoolChange(workingSchool);
-                      }}
-                    >
-                      Switch to {schools.find((s) => s.id === todayWorkStatus.working[0])?.name}
-                    </button>
-                  </div>
-                )}
-            </div>
           </div>
         )}
 
         {/* Store selected school in context for child components */}
-        <TeacherSchoolContext.Provider value={{ selectedSchool, schools, onSchoolChange: handleSchoolChange }}>
-          <div className="p-4 md:p-6 lg:p-8">
-            <TeacherHolidayBanner selectedSchoolId={selectedSchool?.id ?? null} schools={schools} />
-            <PendingReportsPopup />
-            {children}
-          </div>
+        <TeacherSchoolContext.Provider value={{ selectedSchool, schools, onSchoolChange: handleSchoolChange, profileName: userProfile?.full_name ?? null }}>
+          <TeacherHolidayBanner selectedSchoolId={selectedSchool?.id ?? null} schools={schools} />
+          <PendingReportsPopup />
+          {children}
         </TeacherSchoolContext.Provider>
     </PortalShell>
   );

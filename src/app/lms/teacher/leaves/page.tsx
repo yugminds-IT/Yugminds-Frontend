@@ -1,440 +1,233 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { CalendarDays, CalendarPlus } from "lucide-react";
 import { useTeacherSchool } from "../context";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { EmergencyApprovalStages } from "@/components/leaves/EmergencyApprovalStages";
-import { 
-  useTeacherLeaves, 
-  useTeacherDayStatus,
-  useApplyLeave,
-  useCancelLeave,
-} from "@/hooks/useTeacherData";
-import { useAutoSaveForm } from "@/hooks/useAutoSaveForm";
-import { loadFormData, clearFormData } from "@/lib/form-persistence";
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { useTeacherLeaves, useTeacherDayStatus, useCancelLeave } from "@/hooks/useTeacherData";
 import { toast } from "@/components/ui/toast";
-import { requestClose, useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
-import { confirmDialog } from "@/components/ui/confirm-dialog";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import LeaveStages from "@/components/school-admin/LeaveStages";
+import LeaveRun from "@/components/teacher/leaves/LeaveRun";
+import ApplyModal from "@/components/teacher/leaves/ApplyModal";
+import { daysBetween, daysWithin, rangeLabel, statusOf, STATUS_LABEL, waitingHint, type Leave, type LeaveStatus } from "@/components/teacher/leaves/utils";
+import { plural } from "@/components/teacher/overview/utils";
+import "@/components/school-admin/overview.css"; // hero meta, two-column grid
+import "@/components/school-admin/teachers.css"; // emergency approval steps
+import "@/components/teacher/overview/overview.css"; // status track
+import "@/components/teacher/leaves/leaves.css";
+
+const PAGE = 8;
 
 /**
- * Leave Application Page
- * 
- * Allows teachers to apply for leave.
-    * Leave requests go to both School Admin and System Admin for approval.
-    * Both admins can approve or reject leave requests.
-    * When approved/rejected, attendance records are automatically updated.
+ * Leave requests. Approvals come from the school admin and the admin (either can decide); an emergency leave needs
+ * both, in order. Approved leave shows as leave in attendance.
  */
 export default function LeavesPage() {
-  const router = useRouter();
+  const params = useSearchParams();
   const { selectedSchool, schools } = useTeacherSchool();
-  
-  // Load saved leave form data
-  const savedFormData = typeof window !== 'undefined' && selectedSchool?.id
-    ? loadFormData<{
-        start_date: string;
-        end_date: string;
-        reason: string;
-        substitute_required: boolean;
-      }>(`teacher-leave-form-${selectedSchool.id}`)
-    : null;
+  const [apply, setApply] = useState(params.get("apply") === "1");
+  const [filter, setFilter] = useState<LeaveStatus | null>(null);
+  const [shown, setShown] = useState(PAGE);
+  const [cancelId, setCancelId] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState(savedFormData || {
-    start_date: '',
-    end_date: '',
-    reason: '',
-    substitute_required: false
-  });
-
-  // Auto-save leave form
-  const { isDirty: isLeaveFormDirty, clearSavedData } = useAutoSaveForm({
-    formId: selectedSchool?.id ? `teacher-leave-form-${selectedSchool.id}` : 'temp-leave-form',
-    formData,
-    autoSave: !!selectedSchool?.id,
-    autoSaveInterval: 2000,
-    debounceDelay: 500,
-    useSession: false,
-    onLoad: (data) => {
-      if (data && selectedSchool?.id && !savedFormData) {
-        setFormData(data);
-      }
-    },
-    markDirty: true,
-  });
-
-  const leaveIsDirty =
-    isLeaveFormDirty &&
-    (!!formData.start_date ||
-      !!formData.end_date ||
-      !!formData.reason.trim() ||
-      formData.substitute_required);
-  useBeforeUnloadWhenDirty(leaveIsDirty);
-
-  const handleCancel = () => {
-    void requestClose(leaveIsDirty, () => {
-      clearSavedData();
-      router.back();
-    });
-  };
-
-  // History across all assigned schools — create always pins to the active
-  // school, but older requests may have been stored under a different school.
-  const { data: leaves, isLoading: leavesLoading } = useTeacherLeaves();
-  // Server's IST date (not the device clock) is the earliest a leave can start.
-  const { data: serverDay } = useTeacherDayStatus();
-  const serverTodayStr = serverDay?.date ?? new Date().toLocaleDateString('en-CA');
-  const [isEmergency, setIsEmergency] = useState(false);
-  // Emergency leave may start up to 2 days back (server enforces it too).
-  const minLeaveDate = isEmergency
-    ? new Date(new Date(serverTodayStr + 'T00:00:00Z').getTime() - 2 * 86400000).toISOString().split('T')[0]
-    : serverTodayStr;
-  const applyLeave = useApplyLeave();
+  // History across every assigned school: a request is always filed against one school, but you can have several.
+  const leavesQ = useTeacherLeaves();
   const cancelLeave = useCancelLeave();
+  const { data: serverDay } = useTeacherDayStatus();
+  const today = serverDay?.date ?? new Date().toLocaleDateString("en-CA");
 
-  // Cancellable: pending any time, or approved but not started yet (server enforces the same).
-  const canCancel = (l: { status: string; start_date: string }) =>
-    l.status === 'Pending' || (l.status === 'Approved' && l.start_date > serverTodayStr);
+  const leaves = useMemo(() => ((leavesQ.data ?? []) as Leave[]).slice().sort((a, b) => b.start_date.localeCompare(a.start_date)), [leavesQ.data]);
+  const counts = useMemo(() => {
+    const c: Record<LeaveStatus, number> = { pending: 0, approved: 0, rejected: 0, cancelled: 0 };
+    leaves.forEach((l) => { c[statusOf(l)]++; });
+    return c;
+  }, [leaves]);
+  const visible = filter ? leaves.filter((l) => statusOf(l) === filter) : leaves;
+  const schoolName = (id?: string) => schools.find((s) => s.id === id)?.name;
 
-  const handleCancelRequest = async (leaveId: string) => {
-    const ok = await confirmDialog({
-      title: 'Cancel this leave request?',
-      description: 'The request will be withdrawn and your School Admin and Admin will be notified.',
-      confirmText: 'Cancel request',
-      cancelText: 'Keep it',
-      variant: 'danger',
-    });
-    if (!ok) return;
+  // Pending any time, or approved but not started yet. The server enforces the same.
+  const canCancel = (l: Leave) => statusOf(l) === "pending" || (statusOf(l) === "approved" && l.start_date > today);
+
+  /* ───────── numbers ───────── */
+  const year = today.slice(0, 4);
+  const approved = leaves.filter((l) => statusOf(l) === "approved");
+  const daysThisYear = approved.reduce((n, l) => n + daysWithin(l, `${year}-01-01`, `${year}-12-31`), 0);
+  const daysAhead = approved.reduce((n, l) => n + daysWithin(l, today, "9999-12-31"), 0);
+  const rejectedThisYear = leaves.filter((l) => statusOf(l) === "rejected" && l.start_date.startsWith(year)).length;
+  const next = approved.filter((l) => l.end_date >= today).sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
+
+  const ledger = [
+    { label: "Days approved this year", value: daysThisYear, hint: daysThisYear ? "Counting every approved day" : "No approved leave yet" },
+    { label: "Days still to come", value: daysAhead, hint: next ? `Next: ${rangeLabel(next.start_date, next.end_date)}` : "Nothing planned" },
+    { label: "Waiting for approval", value: counts.pending, hint: counts.pending ? "Not decided yet" : "Nothing waiting" },
+    { label: "Rejected this year", value: rejectedThisYear, hint: rejectedThisYear ? "Ask your admin why" : "None rejected" },
+  ];
+
+  let status: React.ReactNode;
+  if (leavesQ.isError) status = "Your requests did not load. Try again.";
+  else if (leavesQ.isLoading) status = "Loading your requests…";
+  else if (counts.pending > 0) status = <><strong>{plural(counts.pending, "request")}</strong> {counts.pending === 1 ? "is" : "are"} waiting for approval.</>;
+  else if (next) status = <><strong>Next leave: {rangeLabel(next.start_date, next.end_date)}.</strong> Approved.</>;
+  else if (leaves.length === 0) status = "You have not asked for leave yet.";
+  else status = "No leave is planned right now.";
+
+  const caption = filter ? `Showing ${STATUS_LABEL[filter].toLowerCase()} only` : "Press a stop to filter";
+
+  const confirmCancel = async () => {
+    if (!cancelId) return;
     try {
-      await cancelLeave.mutateAsync(leaveId);
-      toast.success('Leave request cancelled.');
-    } catch (error: unknown) {
-      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(serverMsg || 'Could not cancel the leave request.');
+      await cancelLeave.mutateAsync(cancelId);
+      toast.success("Leave request cancelled.");
+      setCancelId(null);
+    } catch (error) {
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || "The request could not be cancelled.");
     }
   };
 
-  const schoolNameById = new Map<string, string>();
-  for (const s of schools) {
-    if (s.id) schoolNameById.set(s.id, s.name || s.school_code || 'School');
+  if (schools.length === 0) {
+    return (
+      <div className="sd-page">
+        <section className="sd-panel"><div className="sd-empty"><b>No school assigned</b><p>You are not assigned to any school yet. Ask your admin to add you to one.</p></div></section>
+      </div>
+    );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!selectedSchool) {
-      toast.warning('Please select a school first');
-      return;
-    }
-
-    if (!formData.start_date || !formData.end_date) {
-      toast.warning('Please select start and end dates');
-      return;
-    }
-
-    if (!formData.reason.trim()) {
-      toast.warning('Please provide a reason for leave');
-      return;
-    }
-
-    // Validate dates
-    const start = new Date(formData.start_date);
-    const end = new Date(formData.end_date);
-    if (start > end) {
-      toast.warning('End date must be after start date');
-      return;
-    }
-
-    try {
-      await applyLeave.mutateAsync({
-        school_id: selectedSchool.id!,
-        start_date: formData.start_date,
-        end_date: formData.end_date,
-        reason: formData.reason,
-        substitute_required: formData.substitute_required,
-        is_emergency: isEmergency || undefined,
-      });
-      const wasEmergency = isEmergency;
-      setIsEmergency(false);
-
-      // Clear saved form data after successful submission
-      if (selectedSchool?.id) {
-        clearFormData(`teacher-leave-form-${selectedSchool.id}`);
-        clearSavedData();
-      }
-
-      // Reset form
-      setFormData({
-        start_date: '',
-        end_date: '',
-        reason: '',
-        substitute_required: false
-      });
-
-      toast.success(
-        wasEmergency
-          ? 'Emergency leave submitted. It needs approval from your School Admin first, then the Admin — you can track both below.'
-          : 'Leave request submitted successfully! It will be reviewed by your School Admin and System Admin.',
-      );
-
-    } catch (error: unknown) {
-      const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast.error(serverMsg || 'Error submitting leave request: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Approved':
-        return <Badge className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Approved</Badge>;
-      case 'Rejected':
-        return <Badge className="bg-red-100 text-red-800"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
-      case 'Pending':
-        return <Badge className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
-      case 'Cancelled':
-        return <Badge className="bg-gray-100 text-gray-600"><XCircle className="h-3 w-3 mr-1" />Cancelled</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
-
-  const calculateDays = () => {
-    if (formData.start_date && formData.end_date) {
-      // Parse as UTC date-only to avoid timezone shifts
-      const [sy, sm, sd] = formData.start_date.split('-').map(Number);
-      const [ey, em, ed] = formData.end_date.split('-').map(Number);
-      const startMs = Date.UTC(sy, sm - 1, sd);
-      const endMs = Date.UTC(ey, em - 1, ed);
-      return Math.max(1, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1);
-    }
-    return 0;
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Leave Requests</h1>
-        <p className="text-gray-600 mt-2">
-          {selectedSchool
-            ? `Apply for leave or view your leave history for ${selectedSchool.name}`
-            : 'Viewing leave history across all your schools'}
-        </p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="lv-title">
+        <div className="sd-hero-copy">
+          <h1 id="lv-title" className="mc-hero-title">Leave requests</h1>
+          <p className="sd-where">{schools.length > 1 ? `All ${schools.length} of your schools` : schools[0]?.name}</p>
+          <p className="sd-status">{status}</p>
+          <div className="sd-hero-actions">
+            <button className="sd-btn sd-btn--amber" onClick={() => setApply(true)}><CalendarPlus aria-hidden="true" />Apply for leave</button>
+            <Link href="/lms/teacher/calendar" className="sd-btn sd-btn--ghost-dark"><CalendarDays aria-hidden="true" />School calendar</Link>
+          </div>
+        </div>
+        {leavesQ.isLoading ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : leavesQ.isError ? (
+          <div className="sd-run-card to-run-empty">
+            <b>Your requests did not load</b>
+            <button className="sd-btn sd-btn--amber" onClick={() => void leavesQ.refetch()}>Try again</button>
+          </div>
+        ) : (
+          <LeaveRun counts={counts} selected={filter} onSelect={(s) => { setFilter(filter === s ? null : s); setShown(PAGE); }} caption={caption} />
+        )}
+      </section>
+
+      <div className="sd-ledger" role="group" aria-label="Your leave">
+        {ledger.map((m) => (
+          <div key={m.label}>
+            <span className="sd-l">{m.label}</span>
+            {leavesQ.isLoading ? <span className="sd-skel" style={{ height: "2.2rem", width: "4.5rem" }} /> : <b className="sd-n">{leavesQ.isError ? "–" : m.value}</b>}
+            <small>{m.hint}</small>
+          </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Apply for Leave Form */}
-        <div className="lg:col-span-2">
-          {!selectedSchool ? (
-            <Card>
-              <CardContent className="p-8">
-                <div className="text-center py-8">
-                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
-                  <p className="text-lg font-medium">Pick a specific school to apply</p>
-                  <p className="text-sm text-gray-600 mt-2">
-                    A leave request applies to one school at a time — select it from the &quot;Active School&quot; dropdown above (not &quot;All Schools&quot;) to open the form.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Apply for Leave</CardTitle>
-              <CardDescription>
-                Submit a leave request. Your School Admin and System Admin will review and approve or reject it.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Date Range */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="start_date">Start Date *</Label>
-                    <Input
-                      id="start_date"
-                      type="date"
-                      value={formData.start_date}
-                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                      min={minLeaveDate}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="end_date">End Date *</Label>
-                    <Input
-                      id="end_date"
-                      type="date"
-                      value={formData.end_date}
-                      onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                      min={formData.start_date || minLeaveDate}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Days Calculation */}
-                {calculateDays() > 0 && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <p className="text-sm text-blue-800">
-                      <Calendar className="h-4 w-4 inline mr-2" />
-                      Total days: <strong>{calculateDays()} day(s)</strong>
-                    </p>
-                  </div>
-                )}
-
-                {/* Reason */}
-                <div className="space-y-2">
-                  <Label htmlFor="reason">Reason for Leave *</Label>
-                  <Textarea
-                    id="reason"
-                    placeholder="Please provide a reason for your leave request..."
-                    value={formData.reason}
-                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                    rows={4}
-                    required
-                  />
-                </div>
-
-                {!isEmergency && (
-                  <p className="text-xs text-gray-500">
-                    Regular leave must be submitted before 8:00 PM IST and can&apos;t start in the past. For an emergency, tick the box below.
-                  </p>
-                )}
-
-                {/* Emergency */}
-                <div className="flex items-start space-x-2 rounded-md border border-red-200 bg-red-50 p-3">
-                  <Checkbox
-                    id="is_emergency"
-                    checked={isEmergency}
-                    onCheckedChange={(checked) => setIsEmergency(checked === true)}
-                  />
-                  <Label htmlFor="is_emergency" className="cursor-pointer leading-snug">
-                    This is an emergency
-                    <span className="block text-xs font-normal text-red-700">
-                      Skips the 8:00 PM cutoff and can start up to 2 days back. A reason is required. It needs two approvals, in order: your School Admin first, then the Admin.
-                    </span>
-                  </Label>
-                </div>
-
-                {/* Substitute Required */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="substitute_required"
-                    checked={formData.substitute_required}
-                    onCheckedChange={(checked) => setFormData({ ...formData, substitute_required: checked as boolean })}
-                  />
-                  <Label htmlFor="substitute_required" className="cursor-pointer">
-                    Substitute teacher required
-                  </Label>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex items-center gap-4">
-                  <Button
-                    type="submit"
-                    disabled={applyLeave.isPending || !formData.start_date || !formData.end_date || !formData.reason.trim()}
-                    className="flex-1"
-                  >
-                    {applyLeave.isPending ? 'Submitting...' : 'Submit Leave Request'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCancel}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-          )}
-        </div>
-
-        {/* Leave History */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>Leave History</CardTitle>
-              <CardDescription>Your recent leave requests</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {leavesLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                </div>
-              ) : leaves && leaves.length > 0 ? (
-                <div className="space-y-3">
-                  {leaves.slice(0, 5).map((leave: { id: string; school_id?: string; start_date: string; end_date: string; status: string; reason?: string }) => {
-                    // Parse as UTC date-only to avoid timezone shifts
-                    const [sy, sm, sd] = leave.start_date.split('-').map(Number);
-                    const [ey, em, ed] = leave.end_date.split('-').map(Number);
-                    const startMs = Date.UTC(sy, sm - 1, sd);
-                    const endMs = Date.UTC(ey, em - 1, ed);
-                    const totalDays = Math.max(1, Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1);
-                    const start = new Date(leave.start_date + 'T00:00:00');
-                    const end = new Date(leave.end_date + 'T00:00:00');
-                    const schoolLabel = leave.school_id
-                      ? schoolNameById.get(leave.school_id)
-                      : undefined;
-                    return (
-                    <div
-                      key={leave.id}
-                      className="p-3 border rounded-lg hover:bg-gray-50"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">
-                            {start.toLocaleDateString()} - {end.toLocaleDateString()}
-                          </p>
-                          <p className="text-xs text-gray-600 mt-1">
-                            {totalDays} day(s)
-                            {schoolLabel ? ` · ${schoolLabel}` : ''}
-                          </p>
-                        </div>
-                        {getStatusBadge(leave.status)}
+      <div className="so-grid">
+        <div className="so-col">
+          <section className="sd-panel as-list lv-list" aria-labelledby="lv-requests">
+            <div className="sd-panel-head" style={{ margin: 0, padding: "1.25rem 1.25rem 0.9rem" }}>
+              <div><h2 id="lv-requests">{filter ? `${STATUS_LABEL[filter]} requests` : "Your requests"}</h2><p>{filter ? `${visible.length} of ${leaves.length}` : "Newest first"}</p></div>
+              {filter && <button className="lv-clear" onClick={() => setFilter(null)}>Show all</button>}
+            </div>
+            {leavesQ.isLoading ? (
+              <div style={{ padding: "0 1.25rem 1.25rem" }}><div className="sd-skel" /><div className="sd-skel" /></div>
+            ) : leavesQ.isError ? (
+              <div className="sd-empty" style={{ padding: "0 1.25rem 1.25rem" }}>
+                <b>Could not load your requests</b>
+                <p>Check your connection and try again.</p>
+              </div>
+            ) : visible.length === 0 ? (
+              <div className="sd-empty" style={{ padding: "0 1.25rem 1.25rem" }}>
+                <b>{filter ? `No ${STATUS_LABEL[filter].toLowerCase()} requests` : "No leave requests yet"}</b>
+                <p>{filter ? "Nothing matches that stop." : "When you ask for leave, it shows up here with where it stands."}</p>
+                {filter ? <button className="sd-btn sd-btn--line" onClick={() => setFilter(null)}>Show all</button> : <button className="sd-btn sd-btn--amber" onClick={() => setApply(true)}>Apply for leave</button>}
+              </div>
+            ) : (
+              <>
+                {visible.slice(0, shown).map((l) => {
+                  const s = statusOf(l);
+                  const hint = waitingHint(l);
+                  const school = schools.length > 1 ? schoolName(l.school_id) : undefined;
+                  return (
+                    <article key={l.id} className="lv-row" data-s={s}>
+                      <div className="lv-when">
+                        <b>{rangeLabel(l.start_date, l.end_date)}</b>
+                        <small>{plural(daysBetween(l.start_date, l.end_date), "day")}{school ? `, ${school}` : ""}</small>
                       </div>
-                      {leave.reason && (
-                        <p className="text-xs text-gray-500 line-clamp-2 mt-2">
-                          {leave.reason}
-                        </p>
-                      )}
-                      <EmergencyApprovalStages leave={leave} showHint />
-                      {canCancel(leave) && (
-                        <div className="mt-2 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            disabled={cancelLeave.isPending}
-                            onClick={() => handleCancelRequest(leave.id)}
-                          >
-                            Cancel request
-                          </Button>
+                      <div className="lv-why">
+                        {l.reason && <p>{l.reason}</p>}
+                        {(l.is_emergency || l.substitute_required) && (
+                          <span className="lv-tags">
+                            {l.is_emergency && <span className="lv-tag" data-red="true">Emergency</span>}
+                            {l.substitute_required && <span className="lv-tag">Needs a substitute</span>}
+                          </span>
+                        )}
+                      </div>
+                      <span className="lv-chip" data-s={s}>{STATUS_LABEL[s]}</span>
+                      <span className="lv-acts">
+                        {canCancel(l) && <button type="button" className="lv-cancel" onClick={() => setCancelId(l.id)}>Cancel request</button>}
+                      </span>
+                      {(l.is_emergency || hint) && (
+                        <div className="lv-extra">
+                          <LeaveStages leave={l as unknown as Parameters<typeof LeaveStages>[0]["leave"]} />
+                          {hint && <p className="lv-hint">{hint}</p>}
                         </div>
                       )}
-                    </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Clock className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                  <p className="text-sm">No leave requests yet</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    </article>
+                  );
+                })}
+                {visible.length > shown && (
+                  <div className="lv-more"><button className="sd-btn sd-btn--line" onClick={() => setShown(shown + PAGE)}>Show {Math.min(PAGE, visible.length - shown)} more</button></div>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+
+        <div className="so-col">
+          <section className="sd-panel" aria-labelledby="lv-how">
+            <div className="sd-panel-head"><div><h2 id="lv-how">How leave works</h2></div></div>
+            <ul className="lv-how">
+              <li>Send regular leave before 8 PM IST. It cannot start in the past.</li>
+              <li>Your school admin or the admin can approve or reject it.</li>
+              <li>An emergency skips the cutoff, can start 2 days back, and needs your school admin first, then the admin.</li>
+              <li>Approved leave shows as leave in your attendance, whatever you report.</li>
+              <li>You can cancel a waiting request, or approved leave that has not started.</li>
+            </ul>
+          </section>
         </div>
       </div>
+
+      {apply && (
+        <ApplyModal
+          schools={schools}
+          defaultSchoolId={selectedSchool?.id}
+          serverToday={today}
+          onClose={() => setApply(false)}
+          onSent={(emergency) => {
+            setApply(false);
+            toast.success(emergency ? "Emergency leave sent. Your school admin approves first, then the admin. Track both here." : "Leave request sent. Your school admin and the admin will review it.");
+          }}
+        />
+      )}
+
+      <ConfirmModal
+        open={cancelId !== null}
+        onClose={() => setCancelId(null)}
+        title="Cancel this leave request?"
+        subtitle="It is withdrawn, and your school admin and the admin are told."
+        confirmLabel="Cancel request"
+        cancelLabel="Keep it"
+        danger
+        busy={cancelLeave.isPending}
+        onConfirm={() => void confirmCancel()}
+      />
     </div>
   );
 }

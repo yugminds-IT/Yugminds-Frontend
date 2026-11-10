@@ -1,688 +1,297 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { requestClose } from "@/hooks/useUnsavedCloseGuard";
-import {
-  RefreshCw,
-  Search,
-  Eye,
-  Trash2,
-  AlertCircle,
-  MessageSquare,
-  X,
-  CheckCircle,
-  Archive,
-  Reply,
-  Phone,
-  Mail,
-  Tag,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  Undo2,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCw, Search } from "lucide-react";
+import ConfirmModal from "@/components/portal/ConfirmModal";
+import { ChipGroup, Pager } from "@/components/portal/notifications";
+import MessageRun from "@/components/admin/inbox/MessageRun";
+import MessageList from "@/components/admin/inbox/MessageList";
+import MessageModal from "@/components/admin/inbox/MessageModal";
+import { FLOW, NO_COUNTS, STATUS_LABEL, nameOf, plural, type Counts, type Message, type Status, type View } from "@/components/admin/inbox/utils";
 import { adminApi } from "@/lib/api/admin.api";
+import { toast } from "@/components/ui/toast";
+import { requestClose } from "@/hooks/useUnsavedCloseGuard";
+import "@/components/school-admin/overview.css"; // hero meta
+import "@/components/teacher/overview/overview.css"; // track
+import "@/components/school-admin/students.css"; // sm- chips and forms
+import "@/components/school-admin/teachers.css"; // tm- track nodes
+import "@/components/admin/inbox/inbox.css";
 
-interface ContactSubmission {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  area_code: string;
-  phone_number: string | null;
-  purpose: string;
-  message: string;
-  status: "new" | "read" | "replied" | "archived";
-  admin_notes: string | null;
-  source: string;
-  deleted_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface StatusCounts {
-  new: number;
-  read: number;
-  replied: number;
-  archived: number;
-  deleted: number;
-}
-
-interface ToastMsg { id: number; text: string; kind: "success" | "error" }
-let _tid = 0;
-
-function Toast({ toasts, remove }: { toasts: ToastMsg[]; remove: (id: number) => void }) {
-  return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium pointer-events-auto ${t.kind === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white"}`}
-        >
-          {t.kind === "success" ? <CheckCircle className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
-          <span>{t.text}</span>
-          <button onClick={() => remove(t.id)} className="ml-2 opacity-70 hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function useToast() {
-  const [toasts, setToasts] = useState<ToastMsg[]>([]);
-  const show = useCallback((text: string, kind: "success" | "error" = "success") => {
-    const id = ++_tid;
-    setToasts((p) => [...p, { id, text, kind }]);
-    setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 5000);
-  }, []);
-  const remove = useCallback((id: number) => setToasts((p) => p.filter((t) => t.id !== id)), []);
-  return { toasts, show, remove };
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-const PURPOSE_LABELS: Record<string, string> = {
-  general: "General Inquiry",
-  school: "School Partnership",
-  parent: "Parent Inquiry",
-  student: "Student Enrollment",
-  support: "Technical Support",
-  other: "Other",
-};
-
-const STATUS_CFG = {
-  new:      { label: "New",      cls: "bg-blue-100 text-blue-700 border-blue-200",     icon: <MessageSquare className="h-3 w-3 mr-1" /> },
-  read:     { label: "Read",     cls: "bg-gray-100 text-gray-700 border-gray-200",     icon: <Eye className="h-3 w-3 mr-1" /> },
-  replied:  { label: "Replied",  cls: "bg-green-100 text-green-700 border-green-200",  icon: <Reply className="h-3 w-3 mr-1" /> },
-  archived: { label: "Archived", cls: "bg-amber-100 text-amber-700 border-amber-200",  icon: <Archive className="h-3 w-3 mr-1" /> },
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CFG[status as keyof typeof STATUS_CFG] ?? { label: status, cls: "bg-gray-100 text-gray-700 border-gray-200", icon: null };
-  return (
-    <Badge variant="outline" className={`${cfg.cls} flex items-center w-fit gap-0.5`}>
-      {cfg.icon}{cfg.label}
-    </Badge>
-  );
-}
-
-const STATUS_TABS = [
-  { key: "all",      label: "All",      countKey: null },
-  { key: "new",      label: "New",      countKey: "new" },
-  { key: "read",     label: "Read",     countKey: "read" },
-  { key: "replied",  label: "Replied",  countKey: "replied" },
-  { key: "archived", label: "Archived", countKey: "archived" },
-  { key: "deleted",  label: "Deleted",  countKey: "deleted" },
-] as const;
+const LIMIT = 20;
+type Filter = View | "all";
 
 export default function ContactSubmissionsPage() {
-  const { toasts, show: toast, remove: removeToast } = useToast();
-
-  const [submissions, setSubmissions] = useState<ContactSubmission[]>([]);
+  const [rows, setRows] = useState<Message[]>([]);
   const [total, setTotal] = useState(0);
-  const [statusCounts, setStatusCounts] = useState<StatusCounts>({ new: 0, read: 0, replied: 0, archived: 0, deleted: 0 });
+  const [counts, setCounts] = useState<Counts>(NO_COUNTS);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [loadError, setLoadError] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  const [view, setView] = useState<Filter>("all");
   const [page, setPage] = useState(1);
-  const LIMIT = 20;
+  // searchInput is what the box shows; search is the debounced value sent to the server.
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const [selected, setSelected] = useState<ContactSubmission | null>(null);
-  const [viewOpen, setViewOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<ContactSubmission | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [purgeTarget, setPurgeTarget] = useState<ContactSubmission | null>(null);
-  const [purgeOpen, setPurgeOpen] = useState(false);
-  const [restoringId, setRestoringId] = useState<string | null>(null);
-
-  const [adminNotes, setAdminNotes] = useState("");
-  const [statusEdit, setStatusEdit] = useState("");
+  const [selected, setSelected] = useState<Message | null>(null);
+  const [statusEdit, setStatusEdit] = useState<Status>("read");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [purging, setPurging] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const [purgeTarget, setPurgeTarget] = useState<Message | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
-  const load = useCallback(async (resetPage = false) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const p = resetPage ? 1 : page;
       const res = await adminApi.contactSubmissions.list({
-        status: statusFilter === "all" ? undefined : statusFilter,
-        page: p,
+        status: view === "all" ? undefined : view,
+        page,
         limit: LIMIT,
-        search: search.trim() || undefined,
+        search: search || undefined,
       });
-      const data = res.data as {
-        submissions: ContactSubmission[];
-        total: number;
-        status_counts: StatusCounts;
-      };
-      setSubmissions(data.submissions);
+      const data = res.data as { submissions: Message[]; total: number; status_counts: Counts };
+      setRows(data.submissions);
       setTotal(data.total);
-      setStatusCounts(data.status_counts);
-      if (resetPage) setPage(1);
+      setCounts({ ...NO_COUNTS, ...data.status_counts });
+      setNow(Date.now());
+      setLoadError(false);
     } catch {
-      toast("Failed to load submissions", "error");
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, search, toast]);
+  }, [view, page, search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const openView = async (sub: ContactSubmission) => {
-    setSelected(sub);
-    setAdminNotes(sub.admin_notes ?? "");
-    setStatusEdit(sub.status);
-    setViewOpen(true);
-    // auto-mark as read if new
-    if (sub.status === "new") {
+  const pickView = (v: Filter) => {
+    setView(v);
+    setPage(1);
+  };
+
+  const openMessage = async (m: Message) => {
+    setSelected(m);
+    setStatusEdit(m.status);
+    setNotes(m.admin_notes ?? "");
+    // Opening a new message marks it read.
+    if (m.status === "new") {
       try {
-        await adminApi.contactSubmissions.update(sub.id, { status: "read" });
-        setSubmissions((prev) => prev.map((s) => s.id === sub.id ? { ...s, status: "read" } : s));
-        setStatusCounts((prev) => ({ ...prev, new: Math.max(0, prev.new - 1), read: prev.read + 1 }));
-        setSelected((prev) => prev ? { ...prev, status: "read" } : prev);
-        setStatusEdit("read");
+        await adminApi.contactSubmissions.update(m.id, { status: "read" });
+        setRows((prev) => prev.map((r) => (r.id === m.id ? { ...r, status: "read" } : r)));
+        setCounts((prev) => ({ ...prev, new: Math.max(0, prev.new - 1), read: prev.read + 1 }));
+        setSelected((prev) => (prev && prev.id === m.id ? { ...prev, status: "read" } : prev));
+        setStatusEdit((s) => (s === "new" ? "read" : s));
       } catch {
-        // non-critical, ignore
+        /* not critical */
       }
     }
   };
 
-  const isContactEditDirty =
-    !!selected &&
-    (adminNotes !== (selected.admin_notes ?? "") || statusEdit !== selected.status);
-
-  const requestCloseView = () => {
-    void requestClose(isContactEditDirty, () => setViewOpen(false));
-  };
+  const dirty = !!selected && (notes !== (selected.admin_notes ?? "") || statusEdit !== selected.status);
+  const closeMessage = () => { void requestClose(dirty, () => setSelected(null)); };
 
   const saveChanges = async () => {
     if (!selected) return;
     setSaving(true);
     try {
-      await adminApi.contactSubmissions.update(selected.id, {
-        status: statusEdit,
-        admin_notes: adminNotes,
-      });
-      toast("Saved successfully");
-      setSubmissions((prev) => prev.map((s) =>
-        s.id === selected.id ? { ...s, status: statusEdit as ContactSubmission["status"], admin_notes: adminNotes } : s
-      ));
-      setViewOpen(false);
-      load();
+      await adminApi.contactSubmissions.update(selected.id, { status: statusEdit, admin_notes: notes });
+      toast.success("Saved");
+      setSelected(null);
+      void load();
     } catch {
-      toast("Failed to save changes", "error");
+      toast.error("We could not save your changes. Try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
+  const setStatus = async (m: Message, s: Status) => {
+    setBusyId(m.id);
     try {
-      await adminApi.contactSubmissions.delete(deleteTarget.id);
-      toast("Submission moved to Deleted — restore it any time before purging");
-      setSubmissions((prev) => prev.filter((s) => s.id !== deleteTarget.id));
-      setTotal((t) => t - 1);
-      setStatusCounts((prev) => ({
-        ...prev,
-        [deleteTarget.status]: Math.max(0, prev[deleteTarget.status as keyof StatusCounts] - 1),
-        deleted: prev.deleted + 1,
-      }));
-      setDeleteOpen(false);
-      setDeleteTarget(null);
+      await adminApi.contactSubmissions.update(m.id, { status: s });
+      toast.success(s === "replied" ? "Marked as replied" : "Archived");
+      await load();
     } catch {
-      toast("Failed to delete submission", "error");
+      toast.error("We could not update this message. Try again.");
     } finally {
-      setDeleting(false);
+      setBusyId(null);
     }
   };
 
-  const handleRestore = async (sub: ContactSubmission) => {
-    setRestoringId(sub.id);
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setConfirming(true);
     try {
-      await adminApi.contactSubmissions.restore(sub.id);
-      toast("Submission restored");
-      setSubmissions((prev) => prev.filter((s) => s.id !== sub.id));
-      setTotal((t) => t - 1);
-      setStatusCounts((prev) => ({
-        ...prev,
-        [sub.status]: prev[sub.status as keyof StatusCounts] + 1,
-        deleted: Math.max(0, prev.deleted - 1),
-      }));
+      await adminApi.contactSubmissions.delete(deleteTarget.id);
+      toast.success("Moved to Deleted. You can restore it from there.");
+      setDeleteTarget(null);
+      await load();
     } catch {
-      toast("Failed to restore submission", "error");
+      toast.error("We could not delete this message. Try again.");
     } finally {
-      setRestoringId(null);
+      setConfirming(false);
+    }
+  };
+
+  const restore = async (m: Message) => {
+    setBusyId(m.id);
+    try {
+      await adminApi.contactSubmissions.restore(m.id);
+      toast.success("Message restored");
+      await load();
+    } catch {
+      toast.error("We could not restore this message. Try again.");
+    } finally {
+      setBusyId(null);
     }
   };
 
   const confirmPurge = async () => {
     if (!purgeTarget) return;
-    setPurging(true);
+    setConfirming(true);
     try {
       await adminApi.contactSubmissions.purge(purgeTarget.id);
-      toast("Submission permanently deleted");
-      setSubmissions((prev) => prev.filter((s) => s.id !== purgeTarget.id));
-      setTotal((t) => t - 1);
-      setStatusCounts((prev) => ({ ...prev, deleted: Math.max(0, prev.deleted - 1) }));
-      setPurgeOpen(false);
+      toast.success("Message deleted forever");
       setPurgeTarget(null);
+      await load();
     } catch {
-      toast("Failed to permanently delete submission", "error");
+      toast.error("We could not delete this message. Try again.");
     } finally {
-      setPurging(false);
+      setConfirming(false);
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+  const filed = FLOW.reduce((n, s) => n + counts[s], 0);
+  const hasFilters = view !== "all" || searchInput.trim() !== "";
+  const dash = loadError && rows.length === 0;
+  const first = loading && rows.length === 0;
+
+  let statusLine: React.ReactNode;
+  if (dash) statusLine = "The messages did not load. Try refreshing.";
+  else if (first) statusLine = "Checking the inbox…";
+  else if (filed === 0 && counts.deleted === 0) statusLine = <><strong>No messages yet.</strong> Messages from the website contact form show up here.</>;
+  else if (counts.new > 0) statusLine = <><strong>{plural(counts.new, "new message")}</strong> {counts.new === 1 ? "is" : "are"} waiting for you.{counts.read > 0 && <> {counts.read} more {counts.read === 1 ? "has" : "have"} been read but not answered.</>}</>;
+  else if (counts.read > 0) statusLine = <><strong>Nothing new.</strong> {plural(counts.read, "message")} read but not answered yet.</>;
+  else statusLine = <><strong>All caught up.</strong> Every message has been answered or filed away.</>;
+
+  const runCaption = first ? "Loading…" : counts.new + counts.read > 0 ? `${counts.new + counts.read} to answer` : filed > 0 ? "Nothing waiting" : "No messages yet";
+  const runSelected = view !== "all" && view !== "deleted" ? view : null;
+  const repliedPct = filed > 0 ? Math.round((counts.replied / filed) * 100) : 0;
+
+  const options = [
+    ["all", "All"],
+    ...(["new", "read", "replied", "archived", "deleted"] as const).map((s) => [s, counts[s] > 0 ? `${STATUS_LABEL[s]} ${counts[s]}` : STATUS_LABEL[s]] as const),
+  ] as const;
 
   return (
-    <div className="space-y-6 p-6">
-      <Toast toasts={toasts} remove={removeToast} />
-
-      {/* Header */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Contact Submissions</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Messages from the Robocoders contact form</p>
+    <div className="sd-page">
+      <section className="sd-hero mc-band" aria-labelledby="ib-title">
+        <div className="sd-hero-copy">
+          <h1 id="ib-title" className="mc-hero-title">Contact submissions</h1>
+          <p className="sd-where">Messages from the website contact form</p>
+          <p className="sd-status">{statusLine}</p>
+          {counts.new > 0 && view !== "new" && (
+            <div className="sd-hero-actions">
+              <button className="sd-btn sd-btn--amber" onClick={() => pickView("new")}>Show {plural(counts.new, "new message")}</button>
+            </div>
+          )}
+          <div className="so-meta">
+            <button className="so-refresh" onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => load(true)}
-          disabled={loading}
-          className="gap-2 self-start sm:self-auto"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+        {first ? (
+          <div className="sd-run-card"><div className="sd-skel" style={{ height: "9rem" }} /></div>
+        ) : (
+          <MessageRun counts={counts} selected={runSelected} onSelect={(s) => pickView(s ?? "all")} caption={runCaption} />
+        )}
+      </section>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {(["new", "read", "replied", "archived"] as const).map((k) => (
-          <button
-            key={k}
-            onClick={() => { setStatusFilter(k); setPage(1); }}
-            className={`rounded-xl border px-4 py-3 text-left transition-all ${statusFilter === k ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300"}`}
-          >
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{STATUS_CFG[k].label}</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">{statusCounts[k]}</p>
-          </button>
-        ))}
-        <button
-          onClick={() => { setStatusFilter("deleted"); setPage(1); }}
-          className={`rounded-xl border px-4 py-3 text-left transition-all ${statusFilter === "deleted" ? "border-red-400 bg-red-50" : "border-slate-200 bg-white hover:border-slate-300"}`}
-        >
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Deleted</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{statusCounts.deleted}</p>
+      <div className="sd-ledger" role="group" aria-label="Message numbers">
+        <button type="button" aria-pressed={view === "all"} onClick={() => pickView("all")}>
+          <span className="sd-l">Messages</span><b className="sd-n">{dash || first ? "–" : filed}</b><small>{dash ? "Not loaded" : first ? " " : "Not counting deleted"}</small>
+        </button>
+        <button type="button" aria-pressed={view === "replied"} onClick={() => pickView(view === "replied" ? "all" : "replied")}>
+          <span className="sd-l">Replied</span><b className="sd-n">{dash || first ? "–" : `${repliedPct}%`}</b><small>{dash ? "Not loaded" : first ? " " : `${plural(counts.replied, "message")} answered`}</small>
+        </button>
+        <button type="button" aria-pressed={view === "deleted"} onClick={() => pickView(view === "deleted" ? "all" : "deleted")}>
+          <span className="sd-l">Deleted</span><b className="sd-n">{dash || first ? "–" : counts.deleted}</b><small>{dash ? "Not loaded" : first ? " " : counts.deleted > 0 ? "Restore or delete forever" : "Nothing in the bin"}</small>
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            className="pl-9"
-            placeholder="Search by name, email, or message…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") load(true); }}
-          />
+      <div className="ib-bar">
+        <div className="sd-search" style={{ flex: "1 1 16rem", maxWidth: "26rem", width: "auto" }}>
+          <Search aria-hidden="true" />
+          <input type="search" placeholder="Search by name, email or message" aria-label="Search messages" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => { setStatusFilter(tab.key); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${statusFilter === tab.key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-            >
-              {tab.label}
-              {tab.countKey && statusCounts[tab.countKey] > 0 && (
-                <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${statusFilter === tab.key ? "bg-white/20" : "bg-slate-300 text-slate-700"}`}>
-                  {statusCounts[tab.countKey]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <ChipGroup label="Show messages" value={view} options={options} onChange={pickView} />
+        {hasFilters && <button className="sm-reset" style={{ color: "var(--sd-ink)" }} onClick={() => { setSearchInput(""); pickView("all"); }}>Clear</button>}
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 gap-3 text-slate-500">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm">Loading submissions…</span>
+      {first ? (
+        <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /><div className="sd-skel" /></div>
+      ) : dash ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>We could not load the messages</b>
+            <p>Check your connection, then try again.</p>
+            <button className="sd-btn sd-btn--amber" onClick={() => void load()}>Try again</button>
           </div>
-        ) : submissions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-            <MessageSquare className="h-10 w-10 opacity-40" />
-            <p className="font-medium">No submissions found</p>
-            <p className="text-sm">Try adjusting your filters or search query</p>
+        </section>
+      ) : rows.length === 0 ? (
+        <section className="sd-panel">
+          <div className="sd-empty">
+            <b>{search ? "No messages match" : view === "new" ? "No new messages" : view === "deleted" ? "Nothing deleted" : view === "all" ? "No messages yet" : `No ${STATUS_LABEL[view].toLowerCase()} messages`}</b>
+            <p>{search ? "Try a different name, email or word." : view === "new" ? "You are all caught up." : view === "deleted" ? "Deleted messages wait here until you restore them or delete them forever." : view === "all" ? "Messages from the website contact form show up here." : "Nothing is at this stage right now."}</p>
+            {hasFilters && <button className="sd-btn sd-btn--line" onClick={() => { setSearchInput(""); pickView("all"); }}>Show all messages</button>}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/80">
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Sender</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Purpose</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Message</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Received</th>
-                  <th className="px-4 py-3 text-right font-semibold text-slate-600">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {submissions.map((sub) => (
-                  <tr
-                    key={sub.id}
-                    className={`transition-colors hover:bg-slate-50 ${sub.status === "new" ? "bg-blue-50/30" : ""}`}
-                  >
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className={`font-medium text-slate-900 ${sub.status === "new" ? "font-semibold" : ""}`}>
-                          {sub.first_name} {sub.last_name}
-                          {sub.status === "new" && <span className="ml-2 inline-block h-2 w-2 rounded-full bg-blue-500 align-middle" />}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">{sub.email}</p>
-                        {sub.phone_number && (
-                          <p className="text-xs text-slate-400">{sub.area_code} {sub.phone_number}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className="text-xs bg-slate-50 text-slate-700">
-                        <Tag className="h-3 w-3 mr-1 opacity-70" />
-                        {PURPOSE_LABELS[sub.purpose] ?? sub.purpose}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 max-w-xs">
-                      <p className="text-slate-600 truncate">{sub.message}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={sub.status} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-slate-500 text-xs">{timeAgo(sub.created_at)}</p>
-                      <p className="text-slate-400 text-xs">{new Date(sub.created_at).toLocaleDateString()}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {statusFilter === "deleted" ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-2.5 gap-1.5 border-green-500 text-green-700 hover:bg-green-50"
-                              disabled={restoringId === sub.id}
-                              onClick={() => handleRestore(sub)}
-                            >
-                              {restoringId === sub.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Undo2 className="h-3.5 w-3.5" />
-                              )}
-                              Restore
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                              onClick={() => { setPurgeTarget(sub); setPurgeOpen(true); }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-2.5 gap-1.5"
-                              onClick={() => openView(sub)}
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              View
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                              onClick={() => { setDeleteTarget(sub); setDeleteOpen(true); }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-slate-500">
-          <span>Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total}</span>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 px-2.5"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="font-medium text-slate-900">Page {page} of {totalPages}</span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 px-2.5"
-              disabled={page >= totalPages || loading}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        </section>
+      ) : (
+        <>
+          <MessageList rows={rows} view={view} now={now} busyId={busyId} onOpen={(m) => void openMessage(m)} onStatus={(m, s) => void setStatus(m, s)} onDelete={setDeleteTarget} onRestore={(m) => void restore(m)} onPurge={setPurgeTarget} />
+          <Pager offset={(page - 1) * LIMIT} count={rows.length} total={total} pageSize={LIMIT} busy={loading} noun="messages" onPrev={() => setPage(Math.max(1, page - 1))} onNext={() => setPage(page + 1)} />
+        </>
       )}
 
-      {/* View / Edit Dialog */}
-      <Dialog
-        open={viewOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setViewOpen(true);
-            return;
-          }
-          requestCloseView();
-        }}
+      <MessageModal message={selected} status={statusEdit} onStatus={setStatusEdit} notes={notes} onNotes={setNotes} saving={saving} onSave={() => void saveChanges()} onClose={closeMessage} />
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Move this message to Deleted?"
+        subtitle={deleteTarget ? nameOf(deleteTarget) : undefined}
+        confirmLabel="Move to Deleted"
+        busy={confirming}
+        onConfirm={() => void confirmDelete()}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-blue-600" />
-              Contact Submission
-            </DialogTitle>
-            <DialogDescription>
-              Received {selected ? formatDate(selected.created_at) : ""}
-            </DialogDescription>
-          </DialogHeader>
+        <p style={{ margin: 0 }}>It leaves the inbox. You can restore it from the Deleted view at any time before it is deleted forever.</p>
+      </ConfirmModal>
 
-          {selected && (
-            <div className="space-y-5 py-1">
-              {/* Sender info */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sender</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-xs text-slate-500">Name</p>
-                    <p className="font-semibold text-slate-900">{selected.first_name} {selected.last_name}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500">Purpose</p>
-                    <p className="font-medium text-slate-900">{PURPOSE_LABELS[selected.purpose] ?? selected.purpose}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-slate-400 shrink-0" />
-                    <a href={`mailto:${selected.email}`} className="text-blue-600 hover:underline text-sm">{selected.email}</a>
-                  </div>
-                  {selected.phone_number && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 text-slate-400 shrink-0" />
-                      <span className="text-sm text-slate-700">{selected.area_code} {selected.phone_number}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Message */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Message</p>
-                <p className="text-slate-800 whitespace-pre-wrap leading-relaxed">{selected.message}</p>
-              </div>
-
-              {/* Status */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Status</label>
-                <Select value={statusEdit} onValueChange={setStatusEdit}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">New</SelectItem>
-                    <SelectItem value="read">Read</SelectItem>
-                    <SelectItem value="replied">Replied</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Admin notes */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Admin Notes</label>
-                <Textarea
-                  placeholder="Add internal notes about this submission…"
-                  value={adminNotes}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  className="min-h-[100px] resize-none"
-                />
-                <p className="text-xs text-slate-400">Notes are private and only visible to admins.</p>
-              </div>
-
-              {/* Quick reply link */}
-              <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm text-blue-700">
-                  <Mail className="h-4 w-4 shrink-0" />
-                  <span>Reply via email to <strong>{selected.email}</strong></span>
-                </div>
-                <a
-                  href={`mailto:${selected.email}?subject=Re: Your inquiry – Robocoders&body=Hi ${selected.first_name},%0A%0A`}
-                  className="shrink-0 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 transition-colors"
-                >
-                  Open Mail
-                </a>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={requestCloseView}>Cancel</Button>
-            <Button onClick={saveChanges} disabled={saving} className="gap-2 bg-slate-900 hover:bg-slate-800">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirm Dialog (soft-delete — restorable from the Deleted tab) */}
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <Trash2 className="h-5 w-5" />
-              Delete Submission
-            </DialogTitle>
-            <DialogDescription>
-              Move this submission from{" "}
-              <strong>{deleteTarget?.first_name} {deleteTarget?.last_name}</strong> to Deleted?
-              You can restore it from the Deleted tab any time before it&apos;s purged.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDelete}
-              disabled={deleting}
-              className="gap-2"
-            >
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Purge Confirm Dialog (permanent, irreversible) */}
-      <Dialog open={purgeOpen} onOpenChange={setPurgeOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="h-5 w-5" />
-              Delete Forever
-            </DialogTitle>
-            <DialogDescription>
-              Permanently delete the submission from{" "}
-              <strong>{purgeTarget?.first_name} {purgeTarget?.last_name}</strong>? This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPurgeOpen(false)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              onClick={confirmPurge}
-              disabled={purging}
-              className="gap-2"
-            >
-              {purging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete Forever
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmModal
+        open={!!purgeTarget}
+        onClose={() => setPurgeTarget(null)}
+        title="Delete this message forever?"
+        subtitle={purgeTarget ? nameOf(purgeTarget) : undefined}
+        confirmLabel="Delete forever"
+        danger
+        busy={confirming}
+        onConfirm={() => void confirmPurge()}
+      >
+        <p style={{ margin: 0 }}>The message and your notes on it are removed for good. This cannot be undone.</p>
+      </ConfirmModal>
     </div>
   );
 }

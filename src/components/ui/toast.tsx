@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, createContext, useContext, useCallback } from 'react'
+import { useState, useEffect, useMemo, createContext, useContext, useCallback } from 'react'
 import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -14,7 +14,6 @@ interface Toast {
 }
 
 interface ToastContextType {
-  toasts: Toast[]
   addToast: (message: string, type?: ToastType, duration?: number) => void
   removeToast: (id: string) => void
   success: (message: string, duration?: number) => void
@@ -66,6 +65,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const warning = useCallback((message: string, duration?: number) => addToast(message, 'warning', duration), [addToast])
   const info = useCallback((message: string, duration?: number) => addToast(message, 'info', duration), [addToast])
 
+  // One stable object for the life of the app. Pages put `toast` in hook dependency lists, so a new object on every
+  // render (or every time a toast appeared) re-ran their loaders, and a failing loader then showed a toast forever.
+  const api = useMemo(() => ({ addToast, removeToast, success, error, warning, info }), [addToast, removeToast, success, error, warning, info])
+
   // Set global toast function
   useEffect(() => {
     globalAddToast = addToast
@@ -75,7 +78,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [addToast])
 
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast, success, error, warning, info }}>
+    <ToastContext.Provider value={api}>
       {children}
       <ToastContainer toasts={toasts} removeToast={removeToast} />
     </ToastContext.Provider>
@@ -87,7 +90,7 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
 
   return (
     <div 
-      className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"
+      className="ui-toasts fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm"
       role="region"
       aria-label="Notifications"
       aria-live="polite"
@@ -126,9 +129,10 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   return (
     <div
       className={cn(
-        'flex items-start gap-3 p-4 rounded-lg border shadow-lg animate-in slide-in-from-right-full duration-300',
+        'ui-toast flex items-start gap-3 p-4 rounded-lg border shadow-lg animate-in slide-in-from-right-full duration-300',
         styles[toast.type]
       )}
+      data-type={toast.type}
       role="alert"
       aria-live="assertive"
     >
@@ -136,7 +140,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       <p className="flex-1 text-sm font-medium">{toast.message}</p>
       <button
         onClick={onClose}
-        className="flex-shrink-0 p-1 rounded hover:bg-black/5 transition-colors"
+        className="ui-toast-x flex-shrink-0 p-1 rounded hover:bg-black/5 transition-colors"
         aria-label="Dismiss notification"
       >
         <X className="h-4 w-4" />

@@ -1,0 +1,64 @@
+/* Teacher "Submit report". Needs portal.css, school-admin/overview.css (so- hero meta, rows) and teacher/overview/overview.css (to- track, chips). */
+
+button.to-node { border: 0; background: transparent; font: inherit; cursor: pointer; }
+button.to-node:disabled { cursor: default; }
+.sr-run-empty { display: grid; align-content: center; justify-items: start; gap: 0.75rem; min-height: 11rem; margin-top: 0; }
+.sr-run-empty b { font: 700 1.25rem/1.2 var(--sd-display); }
+
+.sr-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: clamp(1rem, 2vw, 1.5rem); align-items: start; }
+/* a global rule clips <section> horizontally, which would turn it into the scroll parent and break the sticky footer */
+.sr-formpanel { overflow: visible; }
+.sr-form { display: grid; gap: 1.5rem; }
+.sr-form fieldset { display: grid; gap: 1.5rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.sr-form fieldset:disabled { opacity: 0.5; pointer-events: none; user-select: none; }
+.sr-step { display: grid; gap: 0.75rem; min-width: 0; }
+.sr-step > h3 { font: 700 1.05rem/1.3 var(--sd-body); }
+.sr-hint { font-size: 0.88rem; color: var(--sd-ink-soft); }
+.sr-count { justify-self: end; font-size: 0.82rem; color: var(--sd-ink-soft); font-variant-numeric: tabular-nums; }
+.sr-form .sd-field-wrap > label small { font-weight: 500; color: var(--sd-ink-soft); }
+.sr-small { max-width: 12rem; }
+
+/* Picking a class: native radios, so arrow keys work. The row lights up around the checked one. */
+.sr-picks { display: grid; gap: 0.5rem; }
+.sr-pick { position: relative; display: grid; grid-template-columns: auto 6.75rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem 0.9rem; padding: 0.7rem 1rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-paper); cursor: pointer; transition: border-color 0.18s ease, background-color 0.18s ease, transform 160ms var(--sd-ease); }
+.sr-pick:active { transform: scale(0.99); }
+@media (hover: hover) { .sr-pick:hover { border-color: var(--sd-ink); } }
+.sr-pick input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: inherit; }
+.sr-pick:has(input:checked) { border-color: var(--sd-ink); background: rgb(251 191 36 / 0.16); box-shadow: inset 4px 0 0 var(--sd-amber-deep); }
+.sr-pick:has(input:focus-visible) { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+.sr-pick:has(input:disabled) { cursor: default; background: var(--sd-wash); }
+.sr-pick:has(input:disabled):hover { border-color: var(--sd-line); }
+.sr-dot { width: 1.25rem; height: 1.25rem; border: 2px solid var(--sd-ink-soft); border-radius: 50%; display: grid; place-items: center; }
+.sr-pick:has(input:checked) .sr-dot { border-color: var(--sd-ink); }
+.sr-pick:has(input:checked) .sr-dot::after { content: ""; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--sd-ink); }
+.sr-pick:has(input:disabled) .sr-dot { border-color: var(--sd-line); }
+.sr-pick-time { font: 700 0.92rem/1.3 var(--sd-display); font-variant-numeric: tabular-nums; }
+.sr-pick-main { display: grid; min-width: 0; }
+.sr-pick-main b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.sr-pick-main small { font-size: 0.86rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+
+/* Footer: why it cannot be sent yet, and the actions */
+.sr-foot { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; margin: 0 calc(-1 * clamp(1.1rem, 2vw, 1.6rem)) calc(-1 * clamp(1.1rem, 2vw, 1.6rem)); padding: 0.9rem clamp(1.1rem, 2vw, 1.6rem); border-top: 1.5px solid var(--sd-line); border-radius: 0 0 1.25rem 1.25rem; background: var(--sd-wash); }
+.sr-foot p { flex: 1 1 14rem; font-size: 0.9rem; color: var(--sd-ink-soft); }
+.sr-foot p[data-warn="true"] { color: var(--sd-ink); font-weight: 600; }
+.sr-foot-acts { display: flex; gap: 0.6rem; margin-left: auto; }
+.sr-note { padding: 0.8rem 1rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-wash); font-size: 0.92rem; }
+.sr-note[data-warn="true"] { border-color: var(--sd-amber-deep); background: rgb(251 191 36 / 0.14); }
+.sr-form .to-notice { margin: 0; }
+
+.sr-schools { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.5rem; }
+
+@media (max-width: 1024px) {
+  .sr-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .sr-pick { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .sr-pick-time { grid-column: 2; }
+  .sr-pick-main { grid-column: 2 / -1; grid-row: 2; }
+  .sr-pick .to-chip { grid-row: 1; grid-column: 3; }
+  .sr-foot-acts { width: 100%; }
+  .sr-foot-acts .sd-btn { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sr-pick { transition: none; }
+}

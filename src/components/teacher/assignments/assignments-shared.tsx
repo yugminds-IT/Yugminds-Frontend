@@ -1,4 +1,5 @@
 import type { TeacherClass } from "@/components/teacher/AssignmentAudiencePicker";
+import { initialsOf } from "@/components/portal/notifications";
 
 export type TeacherAssignment = {
   id: string;
@@ -116,35 +117,21 @@ export function audienceChipLabel(
   return a.grade_name ?? null;
 }
 
-export function StatusPill({ published }: { published?: boolean }) {
-  return published ? (
-    <span className="inline-flex items-center text-[11px] font-medium text-emerald-700">
-      Live
-    </span>
-  ) : (
-    <span className="inline-flex items-center text-[11px] font-medium text-amber-700">
-      Draft
-    </span>
-  );
+/** draft = not published, past = published and the due date has gone, live = published and still open */
+export type Stage = "draft" | "live" | "past";
+export const STAGE_LABEL: Record<Stage, string> = { draft: "Draft", live: "Live", past: "Past due" };
+
+export function stageOf(a: Pick<TeacherAssignment, "is_published" | "due_date">, now: number): Stage {
+  if (!a.is_published) return "draft";
+  const due = a.due_date ? new Date(a.due_date).getTime() : NaN;
+  return Number.isFinite(due) && due < now ? "past" : "live";
 }
 
-export function Avatar({
-  name,
-  color = "blue",
-}: {
-  name: string;
-  color?: string;
-}) {
-  const colors: Record<string, string> = {
-    blue: "bg-blue-100 text-blue-700",
-    indigo: "bg-indigo-100 text-indigo-700",
-    green: "bg-emerald-100 text-emerald-700",
-  };
-  return (
-    <div
-      className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${colors[color] ?? colors.blue}`}
-    >
-      {name.charAt(0).toUpperCase()}
-    </div>
-  );
+export function StatusPill({ published, stage }: { published?: boolean; stage?: Stage }) {
+  const s: Stage = stage ?? (published ? "live" : "draft");
+  return <span className="tg-chip" data-s={s}>{STAGE_LABEL[s]}</span>;
+}
+
+export function Avatar({ name }: { name: string }) {
+  return <span className="sd-avatar" aria-hidden="true">{initialsOf(name)}</span>;
 }

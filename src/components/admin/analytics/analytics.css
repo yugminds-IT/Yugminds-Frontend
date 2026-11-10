@@ -1,0 +1,9 @@
+/* Admin performance analytics. Needs portal.css, school-admin/overview.css (hero meta, so- grid), teacher/overview/overview.css (track),
+   admin/overview/overview.css (growth track, ao-stats rows) and teacher/analytics/analytics.css (charts) loaded first. */
+
+.pa-rows { display: grid; gap: 0.95rem; margin: 0; padding: 0; list-style: none; }
+.pa-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0.35rem 1rem; }
+.pa-rows b { font: 700 0.98rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.pa-rows span:not(.sd-meter) { font-size: 0.88rem; color: var(--sd-ink-soft); white-space: nowrap; }
+.pa-rows .sd-meter { grid-column: 1 / -1; height: 0.55rem; }
+.pa-asof { font-size: 0.85rem; color: var(--sd-navy-soft); }

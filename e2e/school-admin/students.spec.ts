@@ -33,53 +33,42 @@ test.describe('School Admin — Students', () => {
     const newName = `QA E2E New Student ${Date.now()}`;
     const newEmail = `qa_e2e_new_${Date.now()}@example.test`;
 
-    // Only the toolbar trigger exists before the dialog opens, so this click is
-    // unambiguous. Once the dialog is open, both it and the dialog's own submit
-    // button are named "Add Student" — scope everything else to the dialog to
-    // avoid a strict-mode (multiple-match) locator error.
-    await page.getByRole('button', { name: /^Add Student$/ }).click();
-    const addDialog = page.getByRole('dialog', { name: /Add New Student/i });
+    // Only the hero button exists before the dialog opens. Once it is open, scope
+    // everything to the dialog (its own submit button has the same name).
+    await page.getByRole('button', { name: /^Add student$/ }).click();
+    const addDialog = page.getByRole('dialog', { name: /Add a student/i });
     await expect(addDialog).toBeVisible();
 
-    await addDialog.getByLabel(/Full Name/).fill(newName);
-    await addDialog.getByLabel(/^Email/).fill(newEmail);
+    await addDialog.getByLabel('Full name').fill(newName);
+    await addDialog.getByLabel('Email').fill(newEmail);
 
-    // Grade/Section are Radix Selects. NOTE: the <Label htmlFor="grade">/
-    // <Label htmlFor="section"> in students/page.tsx (~line 950, ~970) point at
-    // ids that are never actually set on the <Select>/<SelectTrigger> — so
-    // getByLabel() can't reach these controls; click the trigger by its visible
-    // placeholder text instead.
-    await addDialog.getByText('Select grade', { exact: true }).click();
-    await page.getByRole('option', { name: fixture.grade, exact: true }).click();
+    // Grade and section are pill buttons. Section values are stored as full
+    // names like "Section A" (school.service.ts sections_offered), so the pill
+    // text matches fixture.section as is.
+    await addDialog.getByRole('button', { name: fixture.grade, exact: true }).click();
+    await addDialog.getByRole('button', { name: fixture.section, exact: true }).click();
 
-    // NOTE: the section SelectItem renders the raw value verbatim (students/
-    // page.tsx ~line 970 `<SelectItem value={section}>{section}</SelectItem>`),
-    // and that value comes straight from the school's `sections_offered`
-    // (school.service.ts), which stores full names like "Section A" — not the
-    // bare letter — so the option text is "Section A", matching fixture.section.
-    await addDialog.getByText('Select section', { exact: true }).click();
-    await page.getByRole('option', { name: fixture.section, exact: true }).click();
-
-    await addDialog.getByLabel(/Password/).fill('QaTest123!');
-    await addDialog.getByLabel(/Parent Name/).fill('QA E2E Parent');
-    await addDialog.getByLabel(/Parent Number/).fill('9999999999');
+    // exact: the eye button is labelled "Show password"
+    await addDialog.getByLabel('Password', { exact: true }).fill('QaTest123!');
+    await addDialog.getByLabel('Name', { exact: true }).fill('QA E2E Parent');
+    await addDialog.getByLabel('Phone number').fill('9999999999');
 
     const createResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/students') && res.request().method() === 'POST',
     );
-    await addDialog.getByRole('button', { name: /^Add Student$/ }).click();
+    await addDialog.getByRole('button', { name: /^Add student$/ }).click();
     const createRes = await createResponse;
     expect(createRes.ok(), await createRes.text()).toBeTruthy();
 
     await expect(page.getByText(newName)).toBeVisible({ timeout: 10000 });
 
     // --- Cleanup: delete only the student we just created via the real UI delete flow. ---
-    const newRow = page.getByRole('row', { name: new RegExp(newName) });
+    const newRow = page.getByRole('article').filter({ hasText: newName });
     await expect(newRow).toBeVisible();
-    await newRow.getByRole('button', { name: 'Open menu' }).click();
+    await newRow.getByRole('button', { name: `More actions for ${newName}` }).click();
     await page.getByRole('menuitem', { name: 'Delete' }).click();
 
-    const deleteConfirm = page.getByRole('button', { name: /Delete student/i });
+    const deleteConfirm = page.getByRole('button', { name: /^Delete student$/ });
     await expect(deleteConfirm).toBeVisible();
     const deleteResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/students/') && res.request().method() === 'DELETE',
@@ -90,87 +79,87 @@ test.describe('School Admin — Students', () => {
     await expect(page.getByText(newName)).toHaveCount(0);
   });
 
-  test('password reset (Change Password in Edit dialog) calls PATCH /school-admin/students/:id/password', async ({
-    page,
-  }) => {
+  test('Reset password calls PATCH /school-admin/students/:id/password', async ({ page }) => {
     const studentsResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/students') && res.request().method() === 'GET',
     );
     await page.goto('/lms/school-admin/students');
     await studentsResponse;
 
-    // NOTE: there is no standalone "Reset Password" row action in the UI —
-    // students/page.tsx defines an unused `_handleResetPassword` helper
-    // (prefixed with `_`, never wired to any button — see students/page.tsx
-    // ~line 557) that is dead code. The only reachable password-reset path is
-    // the "Change Password" control inside the row's Edit dialog, which calls
-    // schoolAdminApi.students.changePassword -> PATCH
-    // /school-admin/students/:id/password. Exercising that real path here.
-    const studentRow = page.getByRole('row', { name: /QA Student 0/ });
+    // "Reset password" is in each row's more-actions menu (and in the details dialog).
+    const studentRow = page.getByRole('article').filter({ hasText: 'QA Student 0' });
     await expect(studentRow).toBeVisible();
-    await studentRow.getByRole('button', { name: 'Open menu' }).click();
-    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await studentRow.getByRole('button', { name: /^More actions for/ }).click();
+    await page.getByRole('menuitem', { name: 'Reset password' }).click();
 
-    await expect(page.getByRole('dialog', { name: /Edit Student/i })).toBeVisible();
-    const newPasswordInput = page.locator('#new_password');
-    await newPasswordInput.fill('QaTestReset123!');
+    const dialog = page.getByRole('dialog', { name: /Reset password/i });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('New password', { exact: true }).fill('QaTestReset123!');
 
     const passwordResponse = page.waitForResponse(
       (res) =>
         /\/school-admin\/students\/[^/]+\/password$/.test(res.url()) &&
         res.request().method() === 'PATCH',
     );
-    await page.getByRole('button', { name: /^Change Password$/ }).click();
+    await dialog.getByRole('button', { name: /^Set new password$/ }).click();
     const passwordRes = await passwordResponse;
     expect(passwordRes.ok(), await passwordRes.text()).toBeTruthy();
 
     await expect(page.getByText(/Password updated for/i)).toBeVisible({ timeout: 10000 });
   });
 
-  test('Edit dialog pre-fills the Section dropdown with the student\'s real, already-assigned section', async ({
-    page,
-  }) => {
+  test('Edit dialog pre-selects the student\'s real, already-assigned section', async ({ page }) => {
     const studentsResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/students') && res.request().method() === 'GET',
     );
     await page.goto('/lms/school-admin/students');
     await studentsResponse;
 
-    // Regression test for a bug where the Edit form blanked out a student's
-    // real section whenever it didn't byte-for-byte match the school's
-    // *current* configured section list (predefinedSections.includes check),
-    // showing "Select section" instead of the real, correct value.
-    const studentRow = page.getByRole('row', { name: /QA Student 0/ });
+    // Regression test for a bug where the Edit form blanked out a student's real
+    // section whenever it didn't match the school's *current* configured list.
+    const studentRow = page.getByRole('article').filter({ hasText: 'QA Student 0' });
     await expect(studentRow).toBeVisible();
-    await studentRow.getByRole('button', { name: 'Open menu' }).click();
-    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await studentRow.getByRole('button', { name: /^Edit QA Student 0/ }).click();
 
-    const editDialog = page.getByRole('dialog', { name: /Edit Student/i });
+    const editDialog = page.getByRole('dialog', { name: /Edit student/i });
     await expect(editDialog).toBeVisible();
-    await expect(editDialog.getByText('Select section', { exact: true })).toHaveCount(0);
-    await expect(editDialog.getByText(fixture.section, { exact: true })).toBeVisible();
+    await expect(editDialog.getByRole('button', { name: fixture.section, exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('Student Details modal shows the grade without a doubled "Grade Grade" prefix', async ({
-    page,
-  }) => {
+  test('student details show the grade without a doubled "Grade Grade" prefix', async ({ page }) => {
     const studentsResponse = page.waitForResponse(
       (res) => res.url().includes('/school-admin/students') && res.request().method() === 'GET',
     );
     await page.goto('/lms/school-admin/students');
     await studentsResponse;
 
-    const studentRow = page.getByRole('row', { name: /QA Student 0/ });
-    await expect(studentRow).toBeVisible();
-    await studentRow.getByRole('button', { name: 'Open menu' }).click();
-    await page.getByRole('menuitem', { name: 'View details' }).click();
+    await page.getByRole('button', { name: /^QA Student 0/ }).click();
 
-    const detailsDialog = page.getByRole('dialog', { name: /Student Details/i });
+    const detailsDialog = page.getByRole('dialog', { name: /QA Student 0/ });
     await expect(detailsDialog).toBeVisible();
-    // fixture.grade is 'Grade 1' — the stored value already includes the
-    // "Grade " prefix, so the badge must show it exactly once, not
-    // "Grade Grade 1".
-    await expect(detailsDialog.getByText(fixture.grade, { exact: true })).toBeVisible();
-    await expect(detailsDialog.getByText(`Grade ${fixture.grade}`)).toHaveCount(0);
+    // fixture.grade is 'Grade 1': the stored value already includes "Grade ",
+    // so it must show once, not "Grade Grade 1".
+    await expect(detailsDialog).toContainText(fixture.grade);
+    await expect(detailsDialog).not.toContainText(`Grade ${fixture.grade}`);
+  });
+
+  test('picking a grade on the class track filters the list', async ({ page }) => {
+    const studentsResponse = page.waitForResponse(
+      (res) => res.url().includes('/school-admin/students') && res.request().method() === 'GET',
+    );
+    await page.goto('/lms/school-admin/students');
+    await studentsResponse;
+
+    const filtered = page.waitForResponse(
+      (res) =>
+        res.url().includes('/school-admin/students') &&
+        res.url().includes('grade=') &&
+        res.url().includes('limit=25') &&
+        res.request().method() === 'GET',
+    );
+    await page.getByRole('button', { name: new RegExp(`^${fixture.grade},`) }).click();
+    const res = await filtered;
+    expect(res.ok()).toBeTruthy();
+    await expect(page.getByRole('button', { name: /Show all grades/ })).toBeVisible();
   });
 });

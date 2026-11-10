@@ -1,0 +1,88 @@
+/* Teacher school calendar. Needs portal.css, school-admin/overview.css (hero meta, two-column grid) and teacher/overview/overview.css (day track). */
+
+button.to-node.cd-node { border: 0; background: transparent; font: inherit; cursor: pointer; }
+.cd-node .sd-node { width: 2rem; height: 2rem; font-size: 0.85rem; }
+
+/* Colours, one place. k = what the day is for you, t = entry type, sc = which school. */
+[data-k="work"] { --cd: var(--sd-paper); }
+[data-k="closed"] { --cd: #fde8e4; }
+[data-k="half"] { --cd: rgb(251 191 36 / 0.3); }
+[data-k="comp"] { --cd: #dfe7fb; }
+[data-k="off"], [data-k="unassigned"] { --cd: var(--sd-wash); }
+[data-t="Holiday"] { --ct: var(--sd-late); }
+[data-t="Break"] { --ct: #c46a1a; }
+[data-t="HalfDay"] { --ct: var(--sd-amber-deep); }
+[data-t="CompensatoryWork"] { --ct: var(--sd-blue); }
+[data-sc="0"] { --sc: #0f8f87; } [data-sc="1"] { --sc: #6b4fd1; } [data-sc="2"] { --sc: #c2477a; }
+[data-sc="3"] { --sc: #2f5fd0; } [data-sc="4"] { --sc: #b8601a; } [data-sc="5"] { --sc: #4a5b7c; }
+
+/* Month nav */
+.cd-nav { display: flex; align-items: center; gap: 0.5rem; }
+.cd-nav .sd-btn { min-height: 2.25rem; padding-inline: 0.9rem; }
+.cd-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 1rem; }
+.cd-head h2 { font: 700 1.35rem/1.15 var(--sd-display); letter-spacing: -0.02em; }
+.cd-head p { margin-top: 0.2rem; font-size: 0.92rem; color: var(--sd-ink-soft); }
+
+/* Grid */
+.cd-dow, .cd-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.3rem; }
+.cd-dow span { text-align: center; font: 600 0.78rem/1.6 var(--sd-body); color: var(--sd-ink-soft); }
+.cd-grid { margin: 0.25rem 0 0; padding: 0; list-style: none; }
+.cd-day { position: relative; display: grid; align-content: start; justify-items: start; gap: 0.15rem; width: 100%; min-height: 5rem; padding: 0.4rem 0.45rem; border: 1.5px solid var(--sd-line); border-radius: 0.8rem; background: var(--cd, var(--sd-paper)); color: var(--sd-ink); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.18s ease, transform 160ms var(--sd-ease); }
+.cd-day:active { transform: scale(0.98); }
+@media (hover: hover) { .cd-day:hover { border-color: var(--sd-ink); } }
+.cd-day:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 2px; }
+.cd-day b { font: 800 0.95rem/1.2 var(--sd-display); font-variant-numeric: tabular-nums; }
+.cd-day small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%; font-size: 0.74rem; line-height: 1.25; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.cd-day[data-k="off"] b, .cd-day[data-k="unassigned"] b { color: var(--sd-ink-soft); font-weight: 700; }
+.cd-day[data-k="closed"] { border-color: #e8b4ab; }
+.cd-day[data-today="true"] { box-shadow: 0 0 0 2px var(--sd-paper), 0 0 0 4px var(--sd-ink); }
+.cd-day[aria-pressed="true"] { border-color: var(--sd-ink); border-width: 2.5px; }
+.cd-marks { position: absolute; top: 0.45rem; right: 0.4rem; display: flex; gap: 3px; }
+.cd-marks i { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--ct); }
+.cd-marks em, .cd-where em { display: inline-block; width: 0.55rem; height: 0.55rem; margin-right: 0.3rem; border-radius: 0.15rem; background: var(--sc); }
+.cd-marks em { margin: 0; }
+.cd-key { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; margin-top: 1rem; padding-top: 0.9rem; border-top: 1.5px solid var(--sd-line); font-size: 0.85rem; color: var(--sd-ink-soft); }
+.cd-key span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.cd-key i { width: 0.85rem; height: 0.85rem; border-radius: 0.28rem; border: 1.5px solid var(--sd-line); background: var(--cd); }
+.cd-key i[data-k="closed"] { border-color: #e8b4ab; }
+
+/* Chips */
+.cd-chip { display: inline-flex; align-items: center; padding: 0.05rem 0.7rem; border: 1.5px solid var(--sd-line); border-radius: 999px; font: 700 0.78rem/1.6 var(--sd-body); color: var(--sd-ink-soft); white-space: nowrap; }
+.cd-chip[data-t] { border-color: var(--ct); color: var(--ct); }
+.cd-chip[data-k="work"] { border-color: var(--sd-ink); background: var(--sd-ink); color: var(--sd-amber); }
+.cd-chip[data-k="closed"] { border-color: var(--sd-late); color: var(--sd-late); }
+.cd-chip[data-k="half"] { border-color: var(--sd-amber); background: rgb(251 191 36 / 0.3); color: var(--sd-ink); }
+.cd-chip[data-k="comp"] { border-color: var(--sd-blue); color: var(--sd-blue-deep); }
+.cd-chip[data-k="off"], .cd-chip[data-k="unassigned"] { border-style: dashed; }
+
+/* Picked day */
+.cd-detail { display: grid; gap: 0.6rem; margin-top: 1.1rem; padding: 1rem 1.1rem; border: 1.5px solid var(--sd-line); border-radius: 1rem; background: var(--sd-wash); }
+.cd-detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 1rem; }
+.cd-detail-head h3 { font: 700 1.1rem/1.2 var(--sd-display); }
+.cd-where { font-size: 0.95rem; }
+.cd-where b { font-weight: 700; }
+.cd-fine { font-size: 0.9rem; color: var(--sd-ink-soft); }
+
+/* Events */
+.cd-events { display: grid; margin: 0; padding: 0; list-style: none; }
+.cd-event { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem 0.9rem; padding: 0.7rem 0; border-bottom: 1.5px solid var(--sd-line); }
+.cd-event:first-child { padding-top: 0; }
+.cd-event:last-child { padding-bottom: 0; border-bottom: 0; }
+.cd-event-date { font: 700 0.92rem/1.3 var(--sd-display); font-variant-numeric: tabular-nums; }
+.cd-event-main { display: grid; min-width: 0; }
+.cd-event-main b { font: 700 1rem/1.3 var(--sd-body); overflow-wrap: anywhere; }
+.cd-event-main small { font-size: 0.86rem; color: var(--sd-ink-soft); overflow-wrap: anywhere; }
+.cd-schools { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.cd-schools li { display: flex; align-items: center; gap: 0.6rem; }
+.cd-schools em { width: 0.8rem; height: 0.8rem; border-radius: 0.2rem; background: var(--sc); }
+.cd-schools b { font: 700 0.98rem/1.3 var(--sd-body); }
+.cd-schools small { margin-left: auto; font-size: 0.86rem; color: var(--sd-ink-soft); }
+
+@media (max-width: 640px) {
+  .cd-day { min-height: 3.2rem; padding: 0.3rem; }
+  .cd-day small { display: none; }
+  .cd-marks { top: auto; right: auto; bottom: 0.3rem; left: 0.3rem; }
+  .cd-event { grid-template-columns: minmax(0, 1fr) auto; }
+  .cd-event-date { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { .cd-day { transition: none; } }
