@@ -519,6 +519,8 @@ export function useSubmitReport() {
     mutationFn: async (reportData: {
       school_id: string;
       period_id: string;
+      /** what was taught; required by the server */
+      subject: string;
       grade: string;
       section?: string | null;
       date: string;
@@ -537,6 +539,7 @@ export function useSubmitReport() {
         const { data } = await teacherApi.reports.submit({
           school_id: reportData.school_id,
           period_id: reportData.period_id,
+          subject: reportData.subject,
           grade: reportData.grade,
           section: reportData.section ?? undefined,
           date: reportData.date,

@@ -1,4 +1,5 @@
 import Droid from "../../portal/Droid";
+import { announcementLive } from "./changes";
 import { PARTS, type Controls, type Part } from "./utils";
 
 /**
@@ -20,7 +21,7 @@ export default function ControlRun({
   const flagsOn = Object.values(saved.feature_flags).filter(Boolean).length;
   const state: Record<Part, { on: boolean; node: string; late?: boolean }> = {
     maintenance: { on: saved.maintenance_mode, node: saved.maintenance_mode ? "On" : "Off", late: saved.maintenance_mode },
-    announcement: { on: saved.announcement.enabled, node: saved.announcement.enabled ? "Live" : "Off" },
+    announcement: { on: announcementLive(saved.announcement), node: announcementLive(saved.announcement) ? "Live" : "Off" },
     flags: { on: flagsOn > 0, node: String(flagsOn) },
   };
   const n = PARTS.length;
@@ -45,7 +46,7 @@ export default function ControlRun({
         </ol>
       </div>
       <div className="sd-run-foot">
-        <b>{[saved.maintenance_mode, saved.announcement.enabled, flagsOn > 0].filter(Boolean).length}<small>of 3 in use</small></b>
+        <b>{[saved.maintenance_mode, announcementLive(saved.announcement), flagsOn > 0].filter(Boolean).length}<small>of 3 in use</small></b>
         <span>{caption}</span>
       </div>
     </div>

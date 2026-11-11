@@ -1,5 +1,6 @@
 "use client";
 
+import LastSignIn from "@/components/portal/LastSignIn";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, KeyRound, Loader2, Pencil, Plus, Power, Trash2, Upload, Eye as EyeIcon } from "lucide-react";
@@ -575,6 +576,7 @@ export default function StudentsManagement() {
             <span>Class</span>
             <span>Parent or guardian</span>
             <span>Status</span>
+            <span>Last sign-in</span>
             <span />
           </div>
           {students.map((s) => {
@@ -609,6 +611,7 @@ export default function StudentsManagement() {
                   )}
                 </div>
                 <span className="sm-status"><span className="sm-chip" data-on={s.is_active}>{s.is_active ? "Active" : "Inactive"}</span></span>
+                <span className="sm-seen"><LastSignIn at={s.last_login} /></span>
                 <div className="sm-acts">
                   <button className="pl-ico" onClick={() => openEdit(s)} aria-label={`Edit ${name}`} title="Edit"><Pencil /></button>
                   <RowMenu label={`More actions for ${name}`} items={rowMenu(s)} />
@@ -679,7 +682,7 @@ export default function StudentsManagement() {
         subtitle={
           confirm?.kind === "toggle"
             ? confirm.next ? "They will be able to log in again." : "They will not be able to log in until you activate them again."
-            : "This cannot be undone. Their account and related data will be removed."
+            : "They move to the Trash, where the platform admin can restore them. Until then they cannot sign in."
         }
         confirmLabel={
           confirm?.kind === "delete" ? "Delete student"

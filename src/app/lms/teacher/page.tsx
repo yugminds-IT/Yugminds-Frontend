@@ -262,16 +262,14 @@ export default function TeacherDashboard() {
           <div className="sd-hero-actions">
             <Link href={primary.href} className="sd-btn sd-btn--amber">{primary.icon && <primary.icon aria-hidden="true" />}{primary.label}</Link>
             <Link href="/lms/teacher/leaves?apply=1" className="sd-btn sd-btn--ghost-dark"><CalendarOff aria-hidden="true" />Apply for leave</Link>
-          </div>
-          <div className="so-meta">
-            <p className="so-live" data-on={isConnected}>
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={loadDashboardData} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+            <p className="so-live" style={{ alignSelf: "center", margin: 0 }} data-on={isConnected}>
               <i aria-hidden="true" />
               {isConnected ? "Live" : "Reconnecting…"}
               {lastRefresh > 0 && ` · updated ${new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
             </p>
-            <button className="so-refresh" onClick={loadDashboardData} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
-              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
-            </button>
           </div>
         </div>
         <DayRun rows={day} caption={dayCaption} loading={todayQ.isLoading} empty={emptyDay} />

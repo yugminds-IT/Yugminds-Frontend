@@ -234,9 +234,7 @@ export default function SchoolsManagement() {
             {needSetup > 0 && stage !== "setup" && (
               <button className="sd-btn sd-btn--ghost-dark" onClick={() => pickStage("setup")}>Show {needSetup} to set up</button>
             )}
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void refetch()} aria-label="Refresh" title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void refetch()} aria-label="Refresh" title="Refresh">
               <RefreshCw aria-hidden="true" />
             </button>
           </div>

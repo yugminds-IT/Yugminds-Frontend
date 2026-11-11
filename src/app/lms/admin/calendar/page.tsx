@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { ChevronLeft, ChevronRight, LayoutGrid, List, Pencil, Plus, RefreshCw, Sun, Trash2 } from "lucide-react";
+import ImpactPanel from "@/components/admin/calendar/ImpactPanel";
 import { adminApi } from "@/lib/api/admin.api";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import { toast } from "@/components/ui/toast";
@@ -324,9 +325,7 @@ export default function AdminCalendarPage() {
           <div className="sd-hero-actions">
             <button className="sd-btn sd-btn--amber" onClick={openMarkToday}><Sun aria-hidden="true" />Mark today as a holiday</button>
             <button className="sd-btn sd-btn--ghost-dark" onClick={() => openCreateForm({ date: selected ?? undefined })}><Plus aria-hidden="true" />Add entry</button>
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>
@@ -414,17 +413,20 @@ export default function AdminCalendarPage() {
                 <p className="cd-fine">{pickedCell.kind === "off" ? "Sunday is the weekly off. Add a make-up day to teach on it." : pickedCell.kind === "unassigned" ? "Nobody is scheduled at this school on this day." : "Nothing special on the calendar."}</p>
               ) : (
                 <div>
-                  {pickedGroups.map((g) =>
-                    g.kind === "single" ? entryRow(g.entry, !specific) : (
-                      <div key={g.batchId} className="ac-ev">
+                  {pickedGroups.map((g) => (
+                    <div key={g.kind === "single" ? g.entry.id : g.batchId}>
+                      {g.kind === "single" ? entryRow(g.entry, !specific) : (
+                      <div className="ac-ev">
                         <span className="ac-ev-main"><b>{g.entries[0].name}</b><small>{[rangeLabel(g.entries[0]), `Applied to ${plural(g.entries.length, "school")}`, g.entries[0].description].filter(Boolean).join(" · ")}</small></span>
                         <span className="cd-chip" data-t={g.entries[0].type}>{TYPE_LABEL[g.entries[0].type]}</span>
                         <span className="ac-ev-acts">
                           <button type="button" className="pl-ico" aria-label={`Delete ${g.entries[0].name} from every school`} onClick={() => setDeleteTarget({ kind: "batch", id: g.batchId, label: `${g.entries[0].name} (all schools)` })}><Trash2 /></button>
                         </span>
                       </div>
-                    ),
-                  )}
+                    )}
+                    <ImpactPanel entries={g.kind === "single" ? [g.entry] : g.entries} />
+                    </div>
+                  ))}
                 </div>
               )}
               <div className="ac-detail-acts">
@@ -474,6 +476,7 @@ export default function AdminCalendarPage() {
                       <button type="button" className="pl-ico" aria-label={`Delete ${first.name} from every school`} onClick={() => setDeleteTarget({ kind: "batch", id: row.batchId, label: `${first.name} (all schools)` })}><Trash2 /></button>
                     </span>
                   </div>
+                  {open && <ImpactPanel entries={row.entries} />}
                   {open && row.entries.slice().sort((a, b) => a.school_name.localeCompare(b.school_name)).map((e) => (
                     <div key={e.id} className="ac-sub">
                       <span>{e.school_name}</span>

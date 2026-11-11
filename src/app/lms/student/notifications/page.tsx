@@ -10,6 +10,7 @@ import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { commonApi, studentApi } from "@/lib/api";
 import { getStoredUserId } from "@/lib/session-utils";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
+import { useBulkNotifications } from "@/hooks/useBulkNotifications";
 import { queryKeys } from "@/lib/query-keys";
 import Modal from "@/components/portal/Modal";
 import {
@@ -17,8 +18,10 @@ import {
   groupOf,
   initialsOf,
   InboxRun,
+  BulkBar,
   NotificationRow,
   RepliesModal,
+  SelectStrip,
   type NotifItem,
   type ReplyItem,
 } from "@/components/portal/notifications";
@@ -236,6 +239,20 @@ export default function NotificationsPage() {
     return order.filter((g) => map.has(g)).map((g) => ({ name: g, items: map.get(g)! }));
   }, [list, now, startOfToday]);
 
+  // Select several and mark read / unread, or delete. The list lives in the query cache, so edit it there.
+  const setCached: React.Dispatch<React.SetStateAction<NotifItem[]>> = (update) =>
+    queryClient.setQueryData(queryKeys.student.notifications, (old: unknown) => {
+      const current = (old as NotifItem[] | undefined) ?? [];
+      return typeof update === 'function' ? (update as (prev: NotifItem[]) => NotifItem[])(current) : update;
+    });
+  const bulk = useBulkNotifications({
+    items: list,
+    setItems: setCached,
+    status: filter === 'unread' ? 'unread' : 'all',
+    resetKey: filter,
+    onChanged: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.student.notifications }); },
+  });
+
   const deleteWithExit = (id: string) => {
     setLeaving(id);
     setTimeout(() => { void handleDelete(id); setLeaving(null); }, 260);
@@ -318,6 +335,7 @@ export default function NotificationsPage() {
         </section>
       ) : (
         <div key={filter} className="sd-panel as-list mc-swap">
+          <SelectStrip count={list.length} picked={bulk.selected.size} onToggleAll={bulk.toggleAll} />
           {groups.map((g) => (
             <div key={g.name}>
               <p className="as-group">{g.name}<span>{g.items.length}</span></p>
@@ -328,6 +346,9 @@ export default function NotificationsPage() {
                   now={now || Date.now()}
                   leaving={leaving === n.id}
                   onRead={() => handleMarkAsRead(n.id)}
+                  onUnread={() => void bulk.run('unread', [n.id])}
+                  selected={bulk.selected.has(n.id)}
+                  onSelect={() => bulk.toggleOne(n.id)}
                   onReplies={() => openReplies(n)}
                   onDelete={() => deleteWithExit(n.id)}
                 />
@@ -335,6 +356,17 @@ export default function NotificationsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {bulk.selected.size > 0 && (
+        <BulkBar
+          count={bulk.selected.size}
+          busy={bulk.busy}
+          onRead={() => void bulk.run('read', [...bulk.selected])}
+          onUnread={() => void bulk.run('unread', [...bulk.selected])}
+          onDelete={() => void bulk.remove([...bulk.selected])}
+          onClear={bulk.clear}
+        />
       )}
 
       <Modal

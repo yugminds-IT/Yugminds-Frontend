@@ -93,6 +93,7 @@ export default function ParentsLearn() {
   const pos = ((grade - 0.5) / 12) * 100;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     setMoving(true);
     const id = setTimeout(() => setMoving(false), 500);
     return () => clearTimeout(id);

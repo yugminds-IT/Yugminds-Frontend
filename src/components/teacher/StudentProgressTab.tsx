@@ -1,5 +1,6 @@
 "use client";
 
+import LastSignIn from "../portal/LastSignIn";
 import { useMemo, useState } from "react";
 import { CheckCircle, ChevronDown, Clock, PlayCircle, RefreshCw } from "lucide-react";
 import { useTeacherStudentProgress, type StudentProgressData } from "../../hooks/useStudentProgress";
@@ -230,7 +231,7 @@ export default function StudentProgressTab({ selectedSchoolId, schoolName }: { s
                         <b>{pct}% <small className="sm-muted" style={{ fontFamily: "var(--sd-body)", fontWeight: 600, fontSize: "0.8rem" }}>{STAGE_LABEL[stageOf(pct)].toLowerCase()}</small></b>
                         <i className="tm-bar" aria-hidden="true"><u style={{ width: `${pct}%` }} /></i>
                       </span>
-                      <span className="sp-active">{activeLabel(s.last_activity)}</span>
+                      <span className="sp-active">{activeLabel(s.last_activity)}<small>Signed in: <LastSignIn at={s.last_login} /></small></span>
                       <button className="pl-ico" onClick={() => setExpanded(open ? null : s.student_id)} aria-label={`${open ? "Hide" : "Show"} courses for ${s.full_name}`} aria-expanded={open}>
                         <ChevronDown style={{ transition: "rotate 0.2s ease", rotate: open ? "180deg" : "0deg" }} />
                       </button>

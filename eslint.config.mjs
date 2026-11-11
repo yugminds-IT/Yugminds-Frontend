@@ -26,6 +26,9 @@ const eslintConfig = defineConfig([
     "*.sql",
     "*.sh",
     "*.md",
+    // Generated or vendored files, not our source: the Playwright test report and the minified PDF.js worker.
+    "playwright-report*/**",
+    "public/pdf.worker.min.mjs",
   ]),
 ]);
 

@@ -62,7 +62,7 @@ export default function AdminReportsTab({
       }
 
       const contentDisposition = response.headers['content-disposition'] ?? '';
-      let filename = `${reportType}-report-${new Date().toISOString().split('T')[0]}.pdf`;
+      let filename = `robocoders-${reportType}-report-${new Date().toISOString().split('T')[0]}.pdf`;
       const filenameMatch = contentDisposition.match(/filename="(.+)"/);
       if (filenameMatch) {
         filename = filenameMatch[1];

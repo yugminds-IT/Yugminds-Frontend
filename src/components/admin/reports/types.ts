@@ -8,6 +8,10 @@ export interface TeacherReport {
   grade: string;
   section?: string | null;
   topics_taught: string;
+  /** from the class timetable (not guessed from the topic text); empty when it cannot be matched */
+  subject?: string;
+  /** 'teacher' when the teacher chose it on the report; 'timetable' for older reports filled in from the timetable */
+  subject_source?: string;
   activities?: string;
   student_count: number;
   duration_hours: number;
@@ -45,6 +49,18 @@ export const STATUS_LABEL: Record<ReportStatus, string> = { submitted: "Pending"
 export const statusOf = (r: Pick<TeacherReport, "status">): ReportStatus => {
   const s = (r.status ?? "submitted").toLowerCase();
   return (STATUS_ORDER as string[]).includes(s) ? (s as ReportStatus) : "submitted";
+};
+
+/** YYYY-MM-DD of a report date, read from the text so time zones cannot shift the day. */
+export const dayKey = (iso: string) => {
+  const m = String(iso).match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+export const shiftDayKey = (key: string, days: number) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 };
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

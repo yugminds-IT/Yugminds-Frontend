@@ -1625,18 +1625,55 @@ export default function ClassSchedulingPage() {
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
       
+      // Same look as the admin report PDFs: RoboCoders mark, navy hero, hairline table, Yugminds footer.
+      const NAVY: [number, number, number] = [10, 31, 77];
+      const GRID: [number, number, number] = [18, 48, 111];
+      const INK: [number, number, number] = [11, 27, 58];
+      const SOFT: [number, number, number] = [61, 75, 105];
+      const LINE: [number, number, number] = [211, 220, 239];
+      const AMBER: [number, number, number] = [251, 191, 36];
+      const toDataUrl = async (src: string) => {
+        try {
+          const blob = await (await fetch(src)).blob();
+          return await new Promise<string>((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(String(r.result));
+            r.onerror = rej;
+            r.readAsDataURL(blob);
+          });
+        } catch { return null; }
+      };
+      const [robo, yug] = await Promise.all([toDataUrl('/robocoders-logo.png'), toDataUrl('/Yugminds_Official_Logo-preview.png')]);
+
       const doc = new jsPDF('l', 'mm', 'a4');
-      doc.text(`School Timetable - ${CURRENT_ACADEMIC_YEAR}`, 14, 15);
-      doc.setFontSize(10);
-      doc.text(`Grade: ${selectedGrade === 'all' ? 'All Grades' : selectedGrade}`, 14, 22);
+      const PW = doc.internal.pageSize.getWidth();
+      const PH = doc.internal.pageSize.getHeight();
+      const M = 14;
+      const gradeLabel = selectedGrade === 'all' ? 'All grades' : /^grade/i.test(selectedGrade) ? selectedGrade : `Grade ${selectedGrade}`;
+      const when = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+
+      if (robo) doc.addImage(robo, 'PNG', M - 1, 6, 30, 12.7);
+      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...SOFT);
+      doc.text(`Generated ${when}`, PW - M, 14, { align: 'right' });
+
+      // Navy hero with the blueprint grid
+      doc.setFillColor(...NAVY).roundedRect(M, 22, PW - M * 2, 26, 5, 5, 'F');
+      doc.setDrawColor(...GRID).setLineWidth(0.15);
+      for (let gx = M + 8; gx < PW - M - 4; gx += 8) doc.line(gx, 24, gx, 46);
+      for (let gy = 30; gy < 46; gy += 8) doc.line(M + 4, gy, PW - M - 4, gy);
+      doc.setFillColor(...AMBER).roundedRect(M + 8, 27, 12, 1.4, 0.7, 0.7, 'F');
+      doc.setFont('helvetica', 'bold').setFontSize(20).setTextColor(255, 255, 255);
+      doc.text('School timetable', M + 8, 37);
+      doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(188, 202, 240);
+      doc.text(`${gradeLabel}, academic year ${CURRENT_ACADEMIC_YEAR}`, M + 8, 43.5);
 
       const sortedPeriods = [...periods].sort((a, b) => a.period_number - b.period_number);
-      const head = [['Day \\ Period', ...sortedPeriods.map(p => `P${p.period_number}`)]];
+      const head = [['Day', ...sortedPeriods.map(p => `Period ${p.period_number}`)]];
       const body = GRID_DAYS.map(day => {
         const row = [day];
         sortedPeriods.forEach(period => {
           const cellSchedules = filteredSchedules.filter(s => s.day_of_week === day && s.period_id === period.id);
-          row.push(cellSchedules.map(s => `${s.subject}\n(${s.section ? `${s.grade}-${s.section}` : s.grade})`).join('\n---\n'));
+          row.push(cellSchedules.map(s => `${s.subject}\n(${s.section ? `${s.grade}-${s.section}` : s.grade})`).join('\n\n'));
         });
         return row;
       });
@@ -1644,13 +1681,27 @@ export default function ClassSchedulingPage() {
       autoTable(doc, {
         head,
         body,
-        startY: 30,
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [59, 130, 246] }
+        startY: 56,
+        margin: { left: M, right: M, bottom: 18 },
+        theme: 'plain',
+        styles: { fontSize: 8.5, cellPadding: 2.6, textColor: SOFT, lineColor: LINE, lineWidth: { bottom: 0.2 } },
+        headStyles: { textColor: INK, fontStyle: 'bold', lineColor: INK, lineWidth: { bottom: 0.5 } },
+        columnStyles: { 0: { fontStyle: 'bold', textColor: INK } },
       });
 
-      doc.save(`timetable-${selectedGrade}-${CURRENT_ACADEMIC_YEAR}.pdf`);
+      // Footer on every page, once the page count is known
+      const pages = doc.getNumberOfPages();
+      for (let i = 1; i <= pages; i++) {
+        doc.setPage(i);
+        doc.setDrawColor(...LINE).setLineWidth(0.2).line(M, PH - 14, PW - M, PH - 14);
+        if (yug) doc.addImage(yug, 'PNG', M - 1, PH - 13, 9, 9);
+        doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...INK).text('Yugminds', M + 9, PH - 8.2);
+        doc.setFont('helvetica', 'normal').setTextColor(...SOFT).text('Confidential. For school use only.', M + 9, PH - 4.8);
+        doc.text(`Page ${i} of ${pages}`, PW - M, PH - 6.5, { align: 'right' });
+      }
+
+      const gradeSlug = selectedGrade === 'all' ? 'all-grades' : selectedGrade.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      doc.save(`robocoders-timetable-${gradeSlug}-${CURRENT_ACADEMIC_YEAR}-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (error) {
       console.error('PDF Export Error:', error);
       toast.error('Failed to generate PDF');

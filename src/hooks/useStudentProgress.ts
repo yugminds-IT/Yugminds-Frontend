@@ -36,6 +36,7 @@ export interface StudentProgressData {
   average_progress: number;
   courses: CourseProgress[];
   last_activity: Date | null;
+  last_login?: string | null;
 }
 
 export interface ProgressSummary {

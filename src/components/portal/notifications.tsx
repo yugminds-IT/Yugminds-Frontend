@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Loader2, MessageSquare, Reply, Send, Trash2, UserRound } from "lucide-react";
+import { Check, Loader2, Mail, MessageSquare, Reply, Send, Trash2, UserRound, X } from "lucide-react";
 import { formatNotificationType } from "@/lib/notification-format";
 import Droid from "./Droid";
 import Modal from "./Modal";
@@ -83,8 +83,11 @@ export function NotificationRow({
   meta,
   extra,
   onRead,
+  onUnread,
   onReplies,
   onDelete,
+  selected,
+  onSelect,
 }: {
   n: NotifItem;
   now: number;
@@ -96,8 +99,13 @@ export function NotificationRow({
   /** goes between the message and the time line, e.g. a link to a related page */
   extra?: React.ReactNode;
   onRead?: () => void;
+  /** shown on rows that are already read, to put them back as unread */
+  onUnread?: () => void;
   onReplies?: () => void;
   onDelete?: () => void;
+  /** pass onSelect to show a checkbox for bulk actions */
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const t = formatNotificationType(n.type);
@@ -105,7 +113,10 @@ export function NotificationRow({
   const unread = !n.is_read;
   const long = (n.message?.length ?? 0) > 170 || (n.message?.split("\n").length ?? 0) > 3;
   return (
-    <article className={`nt-row ${leaving ? "nt-exit" : ""}`} data-unread={unread}>
+    <article className={`nt-row ${leaving ? "nt-exit" : ""}`} data-unread={unread} data-selectable={!!onSelect} data-picked={!!selected}>
+      {onSelect && (
+        <input type="checkbox" className="nt-check" checked={!!selected} onChange={onSelect} aria-label={`Select ${n.title}`} />
+      )}
       <span className="nt-ico" aria-hidden="true"><Icon /></span>
       <div className="nt-main">
         <h3 className="nt-title">{n.title}</h3>
@@ -123,6 +134,9 @@ export function NotificationRow({
         {unread && onRead && (
           <button className="pl-ico" data-t="read" onClick={onRead} aria-label="Mark as read" title="Mark as read"><Check /></button>
         )}
+        {!unread && onUnread && (
+          <button className="pl-ico" onClick={onUnread} aria-label="Mark as unread" title="Mark as unread"><Mail /></button>
+        )}
         {onReplies && (
           <button
             className="pl-ico"
@@ -139,6 +153,49 @@ export function NotificationRow({
         )}
       </div>
     </article>
+  );
+}
+
+/** "Select all on this page" strip that sits above a list of selectable rows. */
+export function SelectStrip({ count, picked, onToggleAll }: { count: number; picked: number; onToggleAll: () => void }) {
+  const all = count > 0 && picked === count;
+  return (
+    <label className="nt-strip">
+      <input
+        type="checkbox"
+        className="nt-check"
+        checked={all}
+        ref={(el) => { if (el) el.indeterminate = picked > 0 && !all; }}
+        onChange={onToggleAll}
+      />
+      <span>{picked > 0 ? `${picked} of ${count} selected` : "Select all on this page"}</span>
+    </label>
+  );
+}
+
+/** Floating action bar for the selected notifications. Only render it while something is selected. */
+export function BulkBar({
+  count, busy, onRead, onUnread, onDelete, onClear,
+}: {
+  count: number;
+  busy?: boolean;
+  onRead: () => void;
+  onUnread: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="nt-selbar" role="region" aria-label="Selected notifications">
+      <b>{count} selected</b>
+      <div>
+        <button className="sd-btn sd-btn--line" onClick={onRead} disabled={busy}><Check aria-hidden="true" />Mark as read</button>
+        <button className="sd-btn sd-btn--line" onClick={onUnread} disabled={busy}><Mail aria-hidden="true" />Mark as unread</button>
+        <button className="sd-btn sd-btn--danger" onClick={onDelete} disabled={busy}>
+          {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}Delete
+        </button>
+        <button className="sd-btn sd-btn--line" onClick={onClear} disabled={busy}><X aria-hidden="true" />Clear</button>
+      </div>
+    </div>
   );
 }
 

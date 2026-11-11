@@ -287,9 +287,7 @@ export default function LogoManagementPage() {
             {counts.missing > 0 && !showingMissing && (
               <button className="sd-btn sd-btn--ghost-dark" onClick={() => { setTab("manage"); setView("missing"); }}>Show {plural(counts.missing, "school")} without one</button>
             )}
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={refreshAll} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={refreshAll} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>

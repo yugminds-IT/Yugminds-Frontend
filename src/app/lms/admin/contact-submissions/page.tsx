@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { Archive, CheckCheck, Mail, MailOpen, RefreshCw, Search, Trash2, Undo2 } from "lucide-react";
 import ConfirmModal from "@/components/portal/ConfirmModal";
 import { ChipGroup, Pager } from "@/components/portal/notifications";
 import MessageRun from "@/components/admin/inbox/MessageRun";
@@ -16,6 +16,7 @@ import "@/components/teacher/overview/overview.css"; // track
 import "@/components/school-admin/students.css"; // sm- chips and forms
 import "@/components/school-admin/teachers.css"; // tm- track nodes
 import "@/components/admin/inbox/inbox.css";
+import "@/components/admin/trash/trash.css"; // selection bar
 
 const LIMIT = 20;
 type Filter = View | "all";
@@ -49,6 +50,9 @@ export default function ContactSubmissionsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [purgeTarget, setPurgeTarget] = useState<Message | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [purgeMany, setPurgeMany] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +79,31 @@ export default function ContactSubmissionsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A selection belongs to the list it was made in.
+  useEffect(() => { setPicked(new Set()); }, [view, page, search]);
+
+  const toggle = (id: string) => setPicked((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allPicked = rows.length > 0 && rows.every((m) => picked.has(m.id));
+  const togglePage = () => setPicked(allPicked ? new Set() : new Set(rows.map((m) => m.id)));
+
+  const runBulk = async (action: "new" | "read" | "replied" | "archived" | "delete" | "restore" | "purge", done: string) => {
+    const ids = [...picked];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await adminApi.contactSubmissions.bulk(action, ids);
+      const n = (res.data as { updated?: number }).updated ?? ids.length;
+      toast.success(`${done}: ${plural(n, "message")}`);
+      setPurgeMany(false);
+      setPicked(new Set());
+      await load();
+    } catch {
+      toast.error("We could not update these messages. Try again.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const pickView = (v: Filter) => {
     setView(v);
@@ -261,10 +290,45 @@ export default function ContactSubmissionsPage() {
         </section>
       ) : (
         <>
-          <MessageList rows={rows} view={view} now={now} busyId={busyId} onOpen={(m) => void openMessage(m)} onStatus={(m, s) => void setStatus(m, s)} onDelete={setDeleteTarget} onRestore={(m) => void restore(m)} onPurge={setPurgeTarget} />
+          <MessageList rows={rows} view={view} now={now} busyId={busyId} picked={picked} onPick={toggle} onPickAll={togglePage} onOpen={(m) => void openMessage(m)} onStatus={(m, s) => void setStatus(m, s)} onDelete={setDeleteTarget} onRestore={(m) => void restore(m)} onPurge={setPurgeTarget} />
           <Pager offset={(page - 1) * LIMIT} count={rows.length} total={total} pageSize={LIMIT} busy={loading} noun="messages" onPrev={() => setPage(Math.max(1, page - 1))} onNext={() => setPage(page + 1)} />
         </>
       )}
+
+      {picked.size > 0 && (
+        <div className="tr-selbar" role="region" aria-label="Selected messages">
+          <b>{picked.size} selected</b>
+          <div>
+            <button className="sd-btn sd-btn--line" onClick={() => setPicked(new Set())} disabled={bulkBusy}>Clear</button>
+            {view === "deleted" ? (
+              <>
+                <button className="sd-btn sd-btn--amber" onClick={() => void runBulk("restore", "Restored")} disabled={bulkBusy}><Undo2 aria-hidden="true" />Restore</button>
+                <button className="sd-btn sd-btn--danger" onClick={() => setPurgeMany(true)} disabled={bulkBusy}><Trash2 aria-hidden="true" />Delete forever</button>
+              </>
+            ) : (
+              <>
+                {view !== "read" && <button className="sd-btn sd-btn--line" onClick={() => void runBulk("read", "Marked as read")} disabled={bulkBusy}><MailOpen aria-hidden="true" />Mark as read</button>}
+                {view !== "new" && <button className="sd-btn sd-btn--line" onClick={() => void runBulk("new", "Marked as unread")} disabled={bulkBusy}><Mail aria-hidden="true" />Mark as unread</button>}
+                {view !== "replied" && <button className="sd-btn sd-btn--line" onClick={() => void runBulk("replied", "Marked as replied")} disabled={bulkBusy}><CheckCheck aria-hidden="true" />Mark as replied</button>}
+                {view !== "archived" && <button className="sd-btn sd-btn--line" onClick={() => void runBulk("archived", "Archived")} disabled={bulkBusy}><Archive aria-hidden="true" />Archive</button>}
+                <button className="sd-btn sd-btn--danger" onClick={() => void runBulk("delete", "Moved to Deleted")} disabled={bulkBusy}><Trash2 aria-hidden="true" />Delete</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={purgeMany}
+        onClose={() => { if (!bulkBusy) setPurgeMany(false); }}
+        title={`Delete ${plural(picked.size, "message")} forever?`}
+        confirmLabel={`Delete ${picked.size} forever`}
+        danger
+        busy={bulkBusy}
+        onConfirm={() => void runBulk("purge", "Deleted forever")}
+      >
+        <p style={{ margin: 0 }}>The messages and your notes on them are removed for good. This cannot be undone.</p>
+      </ConfirmModal>
 
       <MessageModal message={selected} status={statusEdit} onStatus={setStatusEdit} notes={notes} onNotes={setNotes} saving={saving} onSave={() => void saveChanges()} onClose={closeMessage} />
 

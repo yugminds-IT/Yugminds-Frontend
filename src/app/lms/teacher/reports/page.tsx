@@ -1,5 +1,6 @@
 "use client";
 
+import { REPORT_SUBJECTS, matchSubject } from "@/lib/report-subjects";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ import "@/components/teacher/reports/reports.css";
 const NOTES_MAX = 1000;
 type FormState = {
   period_id: string;
+  subject: string;
   grade: string;
   section: string;
   date: string;
@@ -39,7 +41,7 @@ type FormState = {
   student_count: string;
 };
 const localToday = () => new Date().toLocaleDateString("en-CA"); // local YYYY-MM-DD
-const blank = (date: string): FormState => ({ period_id: "", grade: "", section: "", date, start_time: "", end_time: "", topics_taught: "", activities: "", notes: "", student_count: "" });
+const blank = (date: string): FormState => ({ period_id: "", subject: "", grade: "", section: "", date, start_time: "", end_time: "", topics_taught: "", activities: "", notes: "", student_count: "" });
 
 /**
  * Submit report. One report per class per day. Submitting every class before 8 PM IST marks the day present,
@@ -129,7 +131,13 @@ export default function SubmitReportPage() {
   const periodId = doneIds.has(typed || fromGrade) ? "" : typed || fromGrade;
   const selected = periods.find((p) => p.id === periodId) ?? null;
 
-  const pick = (id: string) => setFormData((prev) => ({ ...prev, period_id: id, date: today }));
+  // The subject starts as the timetable's subject for this period; the teacher confirms it or changes it.
+  const timetableSubject = selected?.subject ? matchSubject(selected.subject) : "";
+  const subject = formData.subject || timetableSubject;
+  const subjectOptions = subject && !(REPORT_SUBJECTS as readonly string[]).includes(subject) ? [...REPORT_SUBJECTS, subject] : [...REPORT_SUBJECTS];
+
+  // Picking another class resets the subject to that class's timetable subject.
+  const pick = (id: string) => setFormData((prev) => ({ ...prev, period_id: id, subject: "", date: today }));
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => setFormData((prev) => ({ ...prev, [k]: e.target.value }));
 
   const slots: RunSlot[] = periods.map((p) => ({
@@ -146,6 +154,7 @@ export default function SubmitReportPage() {
   const missing: string[] = [];
   if (!selected) missing.push("pick a class");
   else if (!selected.grade) missing.push("this class has no grade on the timetable, ask your admin");
+  if (selected && !subject) missing.push("pick the subject");
   if (!formData.topics_taught.trim()) missing.push("say what you taught");
   const canSend = missing.length === 0 && !closedDay && !!serverToday && !submitReport.isPending;
 
@@ -156,6 +165,7 @@ export default function SubmitReportPage() {
       const result = await submitReport.mutateAsync({
         school_id: selectedSchool.id!,
         period_id: selected.id,
+        subject,
         grade: selected.grade!,
         section: selected.section || undefined,
         date: serverToday!,
@@ -291,6 +301,15 @@ export default function SubmitReportPage() {
                     })}
                   </div>
                 )}
+              </div>
+
+              <div className="sd-field-wrap">
+                <label htmlFor="report_subject">Subject</label>
+                <select id="report_subject" className="sd-field" value={subject} onChange={(e) => setFormData((prev) => ({ ...prev, subject: e.target.value }))} aria-required="true">
+                  <option value="" disabled>Pick the subject you taught</option>
+                  {subjectOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {timetableSubject && subject !== timetableSubject && <small className="sr-hint">The timetable has {timetableSubject} for this class.</small>}
               </div>
 
               <div className="sd-field-wrap">

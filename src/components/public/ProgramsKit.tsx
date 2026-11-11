@@ -30,6 +30,7 @@ export default function ProgramsKit() {
 
   useEffect(() => {
     const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (calm) { setStill(true); setPlaying(false); video.current?.pause(); }
     const el = box.current;
     if (!el) return;

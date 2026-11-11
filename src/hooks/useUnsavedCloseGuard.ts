@@ -61,6 +61,7 @@ export function isStateDirty<T>(current: T, snapshot: T | null): boolean {
 export function useDirtySnapshot<T>(active: boolean, current: T): boolean {
   const [snapshot, setSnapshot] = useState<T | null>(null);
   const currentRef = useRef(current);
+  // eslint-disable-next-line react-hooks/refs -- "latest value" ref, read only later inside the timer
   currentRef.current = current;
   const wasActive = useRef(false);
 

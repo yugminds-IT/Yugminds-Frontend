@@ -33,6 +33,7 @@ export default function HomeNav() {
   const links = useRef<(HTMLAnchorElement | null)[]>([]);
   const loginRef = useRef<HTMLDivElement>(null);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
   useEffect(() => setOnHost(normalizeHost(window.location.host) === ROBOCODERS_HOST), []);
 
   const items = PATH_NAV.map((i) => ({ name: i.name, link: onHost ? i.publicPath : brandHref(i.link), exact: i.exact }));
@@ -81,6 +82,7 @@ export default function HomeNav() {
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", out); document.removeEventListener("keydown", esc); };
   }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
   useEffect(() => setMenu(false), [pathname]);
 
   const lms = brandHref("/lms/login");

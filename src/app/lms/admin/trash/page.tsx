@@ -16,11 +16,10 @@ import "@/components/school-admin/teachers.css"; // tm- track nodes
 import "@/components/admin/trash/trash.css";
 
 type TrashData = Record<Kind, TrashItem[]>;
-const EMPTY: TrashData = { teachers: [], courses: [] };
+const EMPTY: TrashData = { teachers: [], students: [], school_admins: [], courses: [] };
 const PAGE_SIZE = 50;
 
-// Students and schools are deleted at once and for good everywhere else in the admin area (the backend never
-// sets deletedAt for them), so they can never be in the trash and are not shown. Only teachers and courses are.
+// Schools are deleted at once and for good (they are never in the trash). Everything else lands here first.
 
 export default function TrashPage() {
   const [data, setData] = useState<TrashData>(EMPTY);
@@ -45,7 +44,7 @@ export default function TrashPage() {
     try {
       const res = await adminApi.trash.list();
       const p = (res.data ?? {}) as Partial<TrashData>;
-      setData({ teachers: p.teachers ?? [], courses: p.courses ?? [] });
+      setData({ teachers: p.teachers ?? [], students: p.students ?? [], school_admins: p.school_admins ?? [], courses: p.courses ?? [] });
       setNow(Date.now());
       setLoadFailed(false);
     } catch {
@@ -61,10 +60,10 @@ export default function TrashPage() {
   }, [load]);
 
   // Open on whichever tab has something in it.
-  const kind: Kind = tab ?? (data.teachers.length === 0 && data.courses.length > 0 ? "courses" : "teachers");
+  const kind: Kind = tab ?? KINDS.find((k) => data[k.key].length > 0)?.key ?? "teachers";
   const meta = KINDS.find((k) => k.key === kind)!;
   const all = data[kind];
-  const totalCount = data.teachers.length + data.courses.length;
+  const totalCount = KINDS.reduce((n, k) => n + data[k.key].length, 0);
 
   const counts = useMemo(() => {
     const c: Record<Age, number> = { today: 0, week: 0, month: 0, older: 0 };
@@ -135,8 +134,8 @@ export default function TrashPage() {
   let statusLine: React.ReactNode;
   if (dash) statusLine = "The trash did not load. Try refreshing.";
   else if (first) statusLine = "Checking the trash…";
-  else if (totalCount === 0) statusLine = <><strong>The trash is empty.</strong> Deleted teachers and courses wait here.</>;
-  else statusLine = <><strong>{plural(totalCount, "item")}</strong> can be restored.{counts.older > 0 && <> {counts.older} {meta.key === "teachers" ? "teacher" : "course"}{counts.older === 1 ? " has" : "s have"} been here over a month.</>}</>;
+  else if (totalCount === 0) statusLine = <><strong>The trash is empty.</strong> Deleted students, teachers, school admins and courses wait here.</>;
+  else statusLine = <><strong>{plural(totalCount, "item")}</strong> can be restored.{counts.older > 0 && <> {counts.older} {meta.one}{counts.older === 1 ? " has" : "s have"} been here over a month.</>}</>;
 
   const runCaption = first ? "Loading…" : week > 0 ? `${week} deleted this week` : all.length > 0 ? "Nothing recent" : `No ${meta.many}`;
   const purgeCount = purgeTarget?.items.length ?? 0;
@@ -147,7 +146,7 @@ export default function TrashPage() {
       <section className="sd-hero mc-band" aria-labelledby="tr-title">
         <div className="sd-hero-copy">
           <h1 id="tr-title" className="mc-hero-title">Trash</h1>
-          <p className="sd-where">Deleted teachers and courses</p>
+          <p className="sd-where">Deleted students, teachers, school admins and courses</p>
           <p className="sd-status">{statusLine}</p>
           <div className="so-meta">
             <button className="so-refresh" onClick={() => void load()} disabled={refreshing} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
@@ -162,13 +161,12 @@ export default function TrashPage() {
         )}
       </section>
 
-      <div className="sd-ledger" role="group" aria-label="Trash numbers">
-        <button type="button" aria-pressed={kind === "teachers"} onClick={() => pickTab("teachers")}>
-          <span className="sd-l">Teachers</span><b className="sd-n">{dash || first ? "–" : data.teachers.length}</b><small>{dash ? "Not loaded" : first ? " " : data.teachers.length > 0 ? "Tap to see them" : "None deleted"}</small>
-        </button>
-        <button type="button" aria-pressed={kind === "courses"} onClick={() => pickTab("courses")}>
-          <span className="sd-l">Courses</span><b className="sd-n">{dash || first ? "–" : data.courses.length}</b><small>{dash ? "Not loaded" : first ? " " : data.courses.length > 0 ? "Tap to see them" : "None deleted"}</small>
-        </button>
+      <div className="sd-ledger tr-ledger" role="group" aria-label="Trash numbers">
+        {KINDS.map((k) => (
+          <button key={k.key} type="button" aria-pressed={kind === k.key} onClick={() => pickTab(k.key)}>
+            <span className="sd-l">{k.label}</span><b className="sd-n">{dash || first ? "–" : data[k.key].length}</b><small>{dash ? "Not loaded" : first ? " " : data[k.key].length > 0 ? "Tap to see them" : "None deleted"}</small>
+          </button>
+        ))}
         <button type="button" aria-pressed={age === "today" || age === "week"} onClick={() => pickAge(age === "week" ? null : "week")}>
           <span className="sd-l">Deleted this week</span><b className="sd-n">{dash || first ? "–" : week}</b><small>{dash ? "Not loaded" : first ? " " : `Among ${meta.many}`}</small>
         </button>
@@ -212,8 +210,8 @@ export default function TrashPage() {
         <section className="sd-panel">
           <div className="sd-empty">
             <b>No deleted {meta.many}</b>
-            <p>{totalCount === 0 ? "When you delete a teacher or a course it waits here, and you can restore it." : `Nothing deleted here. ${kind === "teachers" ? "Courses" : "Teachers"} in the trash are on the other tab.`}</p>
-            {totalCount > 0 && <button className="sd-btn sd-btn--line" onClick={() => pickTab(kind === "teachers" ? "courses" : "teachers")}>Show {kind === "teachers" ? "courses" : "teachers"}</button>}
+            <p>{totalCount === 0 ? "When you delete a student, teacher, school admin or course it waits here, and you can restore it." : "Nothing deleted here. Other deleted items are on the other tabs."}</p>
+            {totalCount > 0 && (() => { const other = KINDS.find((k) => data[k.key].length > 0)!; return <button className="sd-btn sd-btn--line" onClick={() => pickTab(other.key)}>Show {other.many}</button>; })()}
           </div>
         </section>
       ) : shown.length === 0 ? (
@@ -231,7 +229,7 @@ export default function TrashPage() {
         </>
       )}
 
-      <p className="tr-fine">Students and schools are deleted at once and cannot be recovered, so they never appear here.</p>
+      <p className="tr-fine">Schools are deleted at once and cannot be recovered, so they never appear here.</p>
 
       {selectedItems.length > 0 && (
         <div className="tr-selbar" role="region" aria-label="Selected items">

@@ -544,9 +544,7 @@ export default function SchoolAdminManagement() {
             {counts.none > 0 && !showingGaps && (
               <button className="sd-btn sd-btn--ghost-dark" onClick={() => pickCoverage("none")}>Show {plural(counts.none, "school")} without one</button>
             )}
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void fetchSchoolAdmins()} disabled={isLoading} aria-label={isLoading ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void fetchSchoolAdmins()} disabled={isLoading} aria-label={isLoading ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={isLoading ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>
@@ -750,7 +748,7 @@ export default function SchoolAdminManagement() {
         busy={actionLoading !== null && actionLoading === deleteTarget?.id}
         onConfirm={() => deleteTarget && void handleDeleteAdmin(deleteTarget)}
       >
-        <p>This cannot be undone. Their account and permissions are removed. The school will have no admin until you add one.</p>
+        <p>They move to the Trash and can be restored from there. Until then they cannot sign in, and the school has no admin unless you add one.</p>
       </ConfirmModal>
 
       <ConfirmModal
@@ -762,7 +760,7 @@ export default function SchoolAdminManagement() {
         busy={isBulkDeleting}
         onConfirm={() => void confirmBulkDeleteAdmins()}
       >
-        <p>This cannot be undone. Their accounts and permissions are removed, according to server policy.</p>
+        <p>They move to the Trash and can be restored from there. Until then they cannot sign in.</p>
         <ul className="sa-names">
           {(bulkDeleteTargets ?? []).slice(0, 20).map((t) => <li key={t.id}>{t.full_name} ({t.email})</li>)}
           {(bulkDeleteTargets?.length ?? 0) > 20 && <li style={{ listStyle: "none" }}>…and {(bulkDeleteTargets?.length ?? 0) - 20} more</li>}

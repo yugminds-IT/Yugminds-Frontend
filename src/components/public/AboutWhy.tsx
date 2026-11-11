@@ -37,6 +37,7 @@ export default function AboutWhy() {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setStill(true); setStep(3); setLit(TOTAL); }
     const el = box.current;
     if (!el) return;
@@ -63,6 +64,7 @@ export default function AboutWhy() {
 
   // the ball only turns while the droid travels
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     setMoving(true);
     const id = setTimeout(() => setMoving(false), 450);
     return () => clearTimeout(id);

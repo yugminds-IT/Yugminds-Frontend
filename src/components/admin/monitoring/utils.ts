@@ -21,6 +21,11 @@ export interface ApiMetrics {
   uptimeSeconds: number;
 }
 
+/** Who made a request: one of the four dashboards, or "public" for anyone not signed in. */
+export type Role = "admin" | "school_admin" | "teacher" | "student" | "public";
+export const ROLES: Role[] = ["admin", "school_admin", "teacher", "student", "public"];
+export const ROLE_LABEL: Record<Role, string> = { admin: "Admin", school_admin: "School admin", teacher: "Teacher", student: "Student", public: "Public" };
+
 export interface Request {
   endpoint: string;
   method: string;
@@ -28,6 +33,9 @@ export interface Request {
   statusCode: number;
   timestamp: number;
   userId?: string;
+  role?: Role;
+  schoolId?: string;
+  schoolName?: string | null;
   error?: string;
 }
 
@@ -61,4 +69,17 @@ export function healthOf(recent: Request[]): { state: Health; server: number } {
   if (recent.length === 0) return { state: "waiting", server };
   const rate = server / recent.length;
   return { state: server === 0 ? "healthy" : rate < 0.05 ? "degraded" : "unhealthy", server };
+}
+
+/** One hour of saved traffic. */
+export interface HourPoint { hour: string; requests: number; ok: number; client_errors: number; server_errors: number; avg_ms: number; slow: number; over_1s: number; max_ms: number }
+export interface Breakdown { requests: number; client_errors: number; server_errors: number; avg_ms: number; slow_percent: number }
+export interface History {
+  available: boolean;
+  retention_days: number;
+  hours: number;
+  series: HourPoint[];
+  totals: Breakdown;
+  by_role: (Breakdown & { role: Role })[];
+  by_school: (Breakdown & { school_id: string; school_name: string })[];
 }

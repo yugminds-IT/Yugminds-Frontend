@@ -6,7 +6,7 @@
 .ad-bar-end { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
 .ad-list { padding: 0; overflow: hidden; }
-.ad-head, .ad-row { display: grid; grid-template-columns: 1.5rem 2.5rem minmax(0, 1.4fr) minmax(0, 1.3fr) minmax(7.5rem, 0.8fr) minmax(6.5rem, 0.7fr) 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.ad-head, .ad-row { display: grid; grid-template-columns: 1.5rem 2.5rem minmax(0, 1.4fr) minmax(0, 1.3fr) minmax(7.5rem, 0.8fr) minmax(6.5rem, 0.7fr) minmax(7rem, 0.7fr) 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
 .ad-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
 .ad-row { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
 .ad-row:last-of-type { border-bottom: 0; }
@@ -106,13 +106,14 @@ button.ad-who:focus-visible { outline: 3px solid var(--sd-blue); outline-offset:
 
 @media (max-width: 1100px) {
   .ad-head { display: none; }
-  .ad-row { grid-template-columns: 1.5rem 2.5rem minmax(0, 1fr) 2.25rem; grid-template-areas: "ck av who go" ". . class class" ". . prog prog" ". . courses courses"; gap: 0.4rem 0.8rem; }
+  .ad-row { grid-template-columns: 1.5rem 2.5rem minmax(0, 1fr) 2.25rem; grid-template-areas: "ck av who go" ". . class class" ". . prog prog" ". . courses courses" ". . seen seen"; gap: 0.4rem 0.8rem; }
   .ad-row > .ad-check { grid-area: ck; }
   .ad-row > .sd-avatar { grid-area: av; }
   .ad-row > .ad-who { grid-area: who; }
   .ad-row > .ad-class { grid-area: class; }
   .ad-row > .ad-prog { grid-area: prog; }
   .ad-row > .ad-courses { grid-area: courses; }
+  .ad-row > .ad-seen { grid-area: seen; }
   .ad-row > .ad-menu { grid-area: go; }
 }
 @media (max-width: 700px) { .ad-reports { grid-template-columns: minmax(0, 1fr); } }

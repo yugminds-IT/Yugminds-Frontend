@@ -8,6 +8,7 @@ import MaintenancePanel from "@/components/admin/controls/MaintenancePanel";
 import AnnouncementPanel from "@/components/admin/controls/AnnouncementPanel";
 import FlagsPanel from "@/components/admin/controls/FlagsPanel";
 import { EMPTY, PARTS, plural, type Controls, type Part } from "@/components/admin/controls/utils";
+import { announcementLive, changesFrom } from "@/components/admin/controls/changes";
 import { adminApi } from "@/lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
 import "@/components/school-admin/overview.css"; // hero meta
@@ -49,7 +50,8 @@ export default function SystemControlsPage() {
   const persist = async (next: Controls) => {
     setSaving(true);
     try {
-      const { data } = await adminApi.systemControls.update(next as unknown as Record<string, unknown>);
+      // Only the changes go to the server (see changesFrom), so a stale page cannot undo someone else's change.
+      const { data } = await adminApi.systemControls.update(changesFrom(saved, next) as unknown as Record<string, unknown>);
       const fresh = { ...EMPTY, ...(data as Controls) };
       setControls(fresh);
       setSaved(fresh);
@@ -76,7 +78,7 @@ export default function SystemControlsPage() {
   if (loadError) statusLine = "The controls did not load. Try refreshing.";
   else if (first) statusLine = "Checking the platform…";
   else if (maint) statusLine = <><strong>Maintenance mode is on.</strong> Students, teachers and school admins cannot sign in.</>;
-  else if (saved.announcement.enabled || flagsOn > 0) statusLine = <><strong>Everything is running normally.</strong>{saved.announcement.enabled && <> An announcement is showing.</>}{flagsOn > 0 && <> {plural(flagsOn, "feature flag")} on.</>}</>;
+  else if (announcementLive(saved.announcement) || flagsOn > 0) statusLine = <><strong>Everything is running normally.</strong>{announcementLive(saved.announcement) && <> An announcement is showing.</>}{flagsOn > 0 && <> {plural(flagsOn, "feature flag")} on.</>}</>;
   else statusLine = <><strong>Everything is running normally.</strong> No banner, no flags, no maintenance.</>;
 
   const runCaption = first ? "Loading…" : maint ? "People are locked out" : "Nobody is affected";

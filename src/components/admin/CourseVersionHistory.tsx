@@ -225,7 +225,8 @@ export function CourseVersionHistory({ courseId, courseName, onVersionRevert }: 
   return (
     <div className="flex flex-col h-full">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-1 pb-4 border-b">
+      {/* pr-10: keeps Refresh clear of the dialog's own close (X) button in the top-right corner */}
+      <div className="flex items-center justify-between gap-3 pl-1 pr-10 pb-4 border-b">
         <div>
           <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
             <History className="h-4 w-4 text-blue-600" />

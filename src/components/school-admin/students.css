@@ -22,7 +22,7 @@
 .sm-bulk div { display: flex; gap: 0.5rem; }
 .sm-bulk .sd-btn { min-height: 2.25rem; }
 .sm-bulk .sd-btn--line { color: var(--sd-paper); border-color: var(--sd-navy-line); }
-.sm-head, .sm-row { display: grid; grid-template-columns: 1.25rem 2.5rem minmax(0, 1.5fr) minmax(0, 0.8fr) minmax(0, 1.1fr) 5.5rem 5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.8rem 1.25rem; }
+.sm-head, .sm-row { display: grid; grid-template-columns: 1.25rem 2.5rem minmax(0, 1.5fr) minmax(0, 0.8fr) minmax(0, 1.1fr) 5.5rem minmax(6.5rem, 0.7fr) 5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.8rem 1.25rem; }
 .sm-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
 
 .sm-row { position: relative; border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
@@ -96,13 +96,14 @@
 
 @media (max-width: 860px) {
   .sm-head { display: none; }
-  .sm-row { grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: "chk av who acts" ". . class class" ". . parent parent" ". . status status"; gap: 0.4rem 0.8rem; }
+  .sm-row { grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: "chk av who acts" ". . class class" ". . parent parent" ". . status status" ". . seen seen"; gap: 0.4rem 0.8rem; }
   .sm-row > .sm-check { grid-area: chk; }
   .sm-row > .sd-avatar { grid-area: av; }
   .sm-row > .sm-who { grid-area: who; }
   .sm-row > .sm-class { grid-area: class; }
   .sm-row > .sm-parent { grid-area: parent; }
   .sm-row > .sm-status { grid-area: status; justify-self: start; }
+  .sm-row > .sm-seen { grid-area: seen; }
   .sm-row > .sm-acts { grid-area: acts; }
 }
 @media (max-width: 560px) {

@@ -1,5 +1,6 @@
 "use client";
 
+import LastSignIn from "@/components/portal/LastSignIn";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { CalendarOff, Check, Download, X } from "lucide-react";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
@@ -334,6 +335,7 @@ export default function TeachersManagement() {
                 <span>Classes</span>
                 <span>Attendance</span>
                 <span>Status</span>
+                <span>Last sign-in</span>
               </div>
               {shown.map((t) => {
                 const groups = classGroups(t);
@@ -378,6 +380,7 @@ export default function TeachersManagement() {
                       <small>{leaveDays} {leaveDays === 1 ? "day" : "days"} leave</small>
                     </div>
                     <span className="tm-status"><span className="sm-chip" data-on={statusOf(t) === "active"}>{t.status || "Active"}</span></span>
+                    <span className="tm-seen"><LastSignIn at={t.last_login} /></span>
                   </article>
                 );
               })}

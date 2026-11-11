@@ -238,3 +238,10 @@
   .lg-bar { animation: none; transform: scaleX(0); }
   .lg-check input { transition: none; }
 }
+
+/* Maintenance notice: amber, with the same navy wrench badge the admin controls use, so it reads as planned and calm, not as an error. */
+.lg-maint { align-items: center; gap: 1rem; padding: 1rem 1.1rem; border-color: var(--rh-amber-deep); background: rgb(251 191 36 / 0.14); box-shadow: inset 4px 0 0 var(--rh-amber-deep); }
+.lg-maint-ico { flex: none; display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--rh-navy); color: var(--rh-amber); }
+.lg-maint-ico svg { width: 1.2rem; height: 1.2rem; margin: 0; }
+.lg-maint b { font-size: var(--rh-t-body); }
+.lg-maint small { display: block; margin-top: 0.4rem; color: var(--rh-ink-soft); font-size: 0.85rem; line-height: 1.45; }

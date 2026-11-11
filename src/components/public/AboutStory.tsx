@@ -18,6 +18,7 @@ export default function AboutStory() {
   const refs = useRef<(HTMLLIElement | null)[]>([]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setStill(true); setActive(BEATS.length - 1); return; }
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => e.isIntersecting && setActive(Number((e.target as HTMLElement).dataset.i))),

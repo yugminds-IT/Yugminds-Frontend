@@ -37,6 +37,9 @@ export const commonApi = {
         apiClient.get(withParams('/notifications/unread-count', params)),
       update: (data: Record<string, unknown>) =>
         apiClient.patch('/notifications/user', data),
+      /** Mark many read / unread, or delete them (max 200 ids per call). */
+      bulk: (data: { ids: string[]; action: 'read' | 'unread' | 'delete' }) =>
+        apiClient.patch('/notifications/user/bulk', data),
     },
     reply: (params: { notification_id: string }) =>
       apiClient.get(withParams('/notifications/reply', params)),

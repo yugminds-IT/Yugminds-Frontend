@@ -186,12 +186,10 @@ export default function ClassesPage() {
           <p className="sd-status">{status}</p>
           <div className="sd-hero-actions">
             <Link href="/lms/teacher/reports" className="sd-btn sd-btn--amber"><FileText aria-hidden="true" />Submit report</Link>
-          </div>
-          <div className="so-meta">
-            {lastRefresh > 0 && <p className="cl-updated">Updated {new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>}
-            <button className="so-refresh" onClick={refresh} disabled={refreshing} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={refresh} disabled={refreshing} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
             </button>
+            {lastRefresh > 0 && <p className="cl-updated" style={{ alignSelf: "center", margin: 0 }}>Updated {new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>}
           </div>
         </div>
         {loading ? (

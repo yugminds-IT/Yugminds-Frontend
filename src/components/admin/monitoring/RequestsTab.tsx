@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import { ChipGroup, Pager } from "../../portal/notifications";
-import { SPEED_LABEL, speedOf, type Kind, type Request, type Speed } from "./utils";
+import { ROLE_LABEL, SPEED_LABEL, speedOf, type Kind, type Request, type Speed } from "./utils";
 
 const KINDS = [["all", "All"], ["ok", "Worked"], ["client", "Client errors"], ["server", "Server errors"]] as const;
 const time = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", second: "2-digit" });
@@ -53,7 +53,7 @@ export default function RequestsTab({
         <section className="sd-panel"><div className="sd-empty"><b>No requests match</b><p>Try a different address or clear the filters.</p><button className="sd-btn sd-btn--line" onClick={onClear}>Clear filters</button></div></section>
       ) : (
         <section className="sd-panel mo-list mc-swap" aria-label="Recent requests">
-          <div className="mo-row mo-head" aria-hidden="true"><span>Time</span><span>Method</span><span>Address</span><span>Took</span><span>Result</span></div>
+          <div className="mo-row mo-head" aria-hidden="true"><span>Time</span><span>Method</span><span>Address</span><span>Who</span><span>Took</span><span>Result</span></div>
           {pageRows.map((r, i) => {
             const sp = speedOf(r.duration);
             return (
@@ -61,6 +61,7 @@ export default function RequestsTab({
                 <span className="mo-time">{time.format(new Date(r.timestamp))}</span>
                 <span className="sm-chip">{r.method}</span>
                 <code className="mo-ep">{r.endpoint}</code>
+                <span className="mo-who"><b>{ROLE_LABEL[r.role ?? "public"]}</b>{r.schoolName && <small>{r.schoolName}</small>}</span>
                 <span className="mo-ms" data-s={sp}>{r.duration} ms</span>
                 <span className="mo-code" data-k={r.statusCode >= 500 ? "server" : r.statusCode >= 400 ? "client" : "ok"}>{r.statusCode}</span>
               </article>

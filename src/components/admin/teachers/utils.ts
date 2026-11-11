@@ -2,6 +2,7 @@
 
 export interface TeacherLike {
   id: string | number;
+  last_login?: string | null;
   full_name?: string;
   name?: string;
   email: string;

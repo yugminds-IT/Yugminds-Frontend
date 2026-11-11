@@ -41,3 +41,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .tr-row { transition: none; } }
 .tr-head .sa-check, .tr-row .sa-check { width: 1.15rem; height: 1.15rem; accent-color: var(--sd-ink); cursor: pointer; }
+
+/* five cards: four kinds and the week count */
+.sd-ledger.tr-ledger { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 900px) { .sd-ledger.tr-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sd-ledger.tr-ledger > * { border-left: 0; border-top: 1.5px solid var(--sd-line); } .sd-ledger.tr-ledger > :nth-child(-n+2) { border-top: 0; } .sd-ledger.tr-ledger > :nth-child(even) { border-left: 1.5px solid var(--sd-line); } }

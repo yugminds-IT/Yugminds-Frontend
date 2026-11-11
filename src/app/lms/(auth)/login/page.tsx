@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Eye, EyeOff, Info, ShieldAlert, Clock } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Info, ShieldAlert, Clock, Wrench } from "lucide-react";
 
 import AuthShell from "@/components/public/AuthShell";
 import LoginShowcase from "@/components/public/LoginShowcase";
@@ -12,6 +12,7 @@ import { markFreshLogin } from "@/hooks/useSessionValidation";
 import { shortenUserId } from "@/lib/utils";
 import { setStoredSession, waitForSession, consumeLogoutReason, safeNextPath } from "@/lib/session-utils";
 import { authApi } from "@/lib/api";
+import { getBaseURL } from "@/lib/api/axios";
 
 const LOGOUT_ICONS = {
   logged_out: <Info size={18} aria-hidden="true" />,
@@ -25,7 +26,26 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [logoutNotice, setLogoutNotice] = useState<{ title: string; detail: string; icon: React.ReactNode } | null>(null);
+  // Maintenance (Admin > System controls): shown before anyone types a password, not as an error afterwards.
+  const [maintenance, setMaintenance] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    let off = false;
+    const load = () =>
+      fetch(`${getBaseURL().replace(/\/$/, "")}/system-status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { maintenance_mode?: boolean; maintenance_message?: string } | null) => {
+          if (!off && d) setMaintenance(d.maintenance_mode ? (d.maintenance_message ?? "") : null);
+        })
+        .catch(() => {});
+    void load();
+    window.addEventListener("focus", load); // an admin may switch it off while this page is open
+    return () => {
+      off = true;
+      window.removeEventListener("focus", load);
+    };
+  }, []);
 
   useEffect(() => {
     const reason = consumeLogoutReason();
@@ -117,7 +137,9 @@ export default function LoginPage() {
         ? "Invalid email or password"
         : rawMsg || "Login failed. Please try again.";
 
-      setError(msg);
+      // During maintenance the notice above already says it, so the server's 403 is not shown a second time as an error.
+      const isMaintenanceBlock = apiErr.status === 403 && maintenance !== null && rawMsg.trim() === maintenance.trim();
+      if (!isMaintenanceBlock) setError(msg);
     } finally {
       setLoading(false);
     }
@@ -132,6 +154,17 @@ export default function LoginPage() {
     <AuthShell sideTitle="Pick up where you left off." sideText="Your courses, assignments and certificates are one sign-in away." side={<LoginShowcase />}>
       <h1 id="lg-h1">Sign in to RoboCoders LMS.</h1>
       <p className="rh-lede">Use your school account to reach your courses, assignments and certificates.</p>
+
+      {maintenance !== null && (
+        <div className="lg-note lg-maint" role="status">
+          <span className="lg-maint-ico" aria-hidden="true"><Wrench /></span>
+          <div>
+            <b>Sign-in is paused for maintenance</b>
+            <p>{maintenance.trim() || "Please check back soon."}</p>
+            <small>Admins can still sign in. If you are already signed in, you can keep working.</small>
+          </div>
+        </div>
+      )}
 
       {logoutNotice && (
         <div className="lg-note" data-tone={neutral ? "info" : "warn"} role="status">

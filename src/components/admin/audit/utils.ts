@@ -6,6 +6,10 @@ export interface AuditLogRow {
   actorEmail: string | null;
   actorName: string | null;
   actorRole: string | null;
+  schoolId: string | null;
+  schoolName: string | null;
+  /** set when an admin did this while acting as the person above */
+  impersonatedBy?: { id: number; name: string } | null;
   method: string;
   path: string;
   entityType: string | null;
@@ -17,7 +21,7 @@ export interface AuditLogRow {
   createdAt: string;
 }
 
-/** Only changes are recorded: the server logs admin requests that create, change or delete something, never reads or sign-ins. */
+/** Only changes are recorded: requests that create, change or delete something, by admins, school admins, teachers and (for key actions) students. Never reads or sign-ins. */
 export type Method = "POST" | "PATCH" | "PUT" | "DELETE";
 export const METHODS: Method[] = ["POST", "PATCH", "PUT", "DELETE"];
 export const METHOD_LABEL: Record<Method, string> = { POST: "Added", PATCH: "Changed", PUT: "Replaced", DELETE: "Deleted" };
@@ -49,6 +53,13 @@ const LABELS: Record<string, string> = {
   impersonation: "impersonation",
   "create-account": "new account",
   profile: "profile",
+  assignments: "assignment",
+  schedules: "timetable entry",
+  rooms: "room",
+  periods: "period",
+  attendance: "attendance record",
+  "retake-requests": "retake request",
+  data: "imported data",
 };
 export const entityLabel = (type: string | null) => (type ? (LABELS[type] ?? type.replace(/[-_]/g, " ")) : "record");
 
@@ -72,11 +83,21 @@ export function describe(l: AuditLogRow): { headline: string; id: string | null;
 
 export const whoOf = (l: AuditLogRow) => l.actorName ?? l.actorEmail ?? "Unknown";
 
+/** Who did it: the dashboard they work in. */
+export type ActorRole = "admin" | "school_admin" | "teacher" | "student";
+export const ACTOR_ROLES: ActorRole[] = ["admin", "school_admin", "teacher", "student"];
+export const ROLE_LABEL: Record<string, string> = { admin: "Admin", school_admin: "School admin", teacher: "Teacher", student: "Student" };
+export const roleLabel = (r: string | null) => (r ? (ROLE_LABEL[r] ?? r) : "Not signed in");
+
+export interface ActorSummary { role: string; total: number; failed: number; deleted: number }
+export interface PersonSummary { actor_id: number | null; name: string; email: string | null; role: string | null; total: number; failed: number; deleted: number }
+export interface AuditSummary { by_role: ActorSummary[]; top_people: PersonSummary[] }
+
 export const stamp = (iso: string) =>
   new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
-export interface Filters { search: string; entityType: string; method: string; from: string; to: string }
-export const NO_FILTERS: Filters = { search: "", entityType: "all", method: "all", from: "", to: "" };
+export interface Filters { search: string; entityType: string; method: string; from: string; to: string; role: string; schoolId: string; actorId: string; attention: boolean }
+export const NO_FILTERS: Filters = { search: "", entityType: "all", method: "all", from: "", to: "", role: "all", schoolId: "", actorId: "", attention: false };
 
 /** The query the server understands, from the filters on screen. Dates cover the whole of both days. */
 export function toParams(f: Filters) {
@@ -84,6 +105,10 @@ export function toParams(f: Filters) {
     search: f.search || undefined,
     entityType: f.entityType !== "all" ? f.entityType : undefined,
     method: f.method !== "all" ? f.method : undefined,
+    actorRole: f.role !== "all" ? f.role : undefined,
+    schoolId: f.schoolId || undefined,
+    actorId: f.actorId || undefined,
+    attention: f.attention ? "true" : undefined,
     from: f.from ? new Date(f.from).toISOString() : undefined,
     to: f.to ? new Date(`${f.to}T23:59:59`).toISOString() : undefined,
   };

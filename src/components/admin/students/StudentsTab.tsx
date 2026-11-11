@@ -6,6 +6,7 @@ import RowMenu from "../../portal/RowMenu";
 import { Pager, initialsOf } from "../../portal/notifications";
 import { addedOn, bandOf, classLine, placementsOf, plural, searchBlob, type Band, type StudentLike } from "./utils";
 import { BAND_LABEL } from "./utils";
+import LastSignIn from "../../portal/LastSignIn";
 
 const PAGE_SIZE = 25;
 const SHOWN = 2;
@@ -170,6 +171,7 @@ export default function StudentsTab({
             <span>Class</span>
             <span>Progress</span>
             <span>Courses</span>
+            <span>Last sign-in</span>
             <span />
           </div>
           {visible.map((s) => {
@@ -201,6 +203,7 @@ export default function StudentsTab({
                   {courses > 0 ? <small>{plural(courses, "course")}</small> : <span className="sm-chip" data-on="false">None yet</span>}
                   <small>Added {addedOn(s.created_at)}</small>
                 </span>
+                <span className="ad-seen"><LastSignIn at={s.last_login} /></span>
                 <span className="ad-menu">
                   {enrollingId === s.id ? <span className="sd-skel" style={{ width: "1.5rem", height: "1.5rem", borderRadius: "50%" }} /> : (
                     <RowMenu

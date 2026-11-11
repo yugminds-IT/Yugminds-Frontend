@@ -1,11 +1,4 @@
 import { test, expect } from './base';
-import fs from 'fs';
-import path from 'path';
-import type { QaFixture } from './fixture-client';
-
-const fixture: QaFixture = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, '.fixture.json'), 'utf8'),
-);
 
 
 test.describe('School Admin — Dashboard', () => {

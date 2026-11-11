@@ -9,6 +9,9 @@ export default function MessageList({
   view,
   now,
   busyId,
+  picked,
+  onPick,
+  onPickAll,
   onOpen,
   onStatus,
   onDelete,
@@ -19,6 +22,9 @@ export default function MessageList({
   view: View | "all";
   now: number;
   busyId: string | null;
+  picked: Set<string>;
+  onPick: (id: string) => void;
+  onPickAll: () => void;
   onOpen: (m: Message) => void;
   onStatus: (m: Message, s: Status) => void;
   onDelete: (m: Message) => void;
@@ -28,7 +34,8 @@ export default function MessageList({
   const deleted = view === "deleted";
   return (
     <section className="sd-panel ib-list mc-swap" aria-label={deleted ? "Deleted messages" : "Messages"}>
-      <div className="ib-head" aria-hidden="true">
+      <div className="ib-head">
+        <input type="checkbox" className="sa-check" aria-label="Select everything on this page" checked={rows.length > 0 && rows.every((m) => picked.has(m.id))} onChange={onPickAll} />
         <span />
         <span>Sender</span>
         <span>Message</span>
@@ -51,7 +58,8 @@ export default function MessageList({
             ];
         const phone = phoneOf(m);
         return (
-          <div key={m.id} className="ib-row" data-new={m.status === "new" && !deleted} data-busy={busyId === m.id}>
+          <div key={m.id} className="ib-row" data-new={m.status === "new" && !deleted} data-busy={busyId === m.id} data-picked={picked.has(m.id)}>
+            <input type="checkbox" className="sa-check" aria-label={`Select message from ${nameOf(m)}`} checked={picked.has(m.id)} onChange={() => onPick(m.id)} />
             <span className="sd-avatar" aria-hidden="true">{initialsOf(nameOf(m))}</span>
             <span className="ib-who">
               <b>{nameOf(m)}</b>

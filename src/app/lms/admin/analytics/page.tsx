@@ -114,12 +114,10 @@ export default function AnalyticsDashboard() {
             <button className="sd-btn sd-btn--amber" onClick={() => exportAs("csv")} disabled={!loaded}><Download aria-hidden="true" />Export CSV</button>
             <button className="sd-btn sd-btn--ghost-dark" onClick={() => exportAs("json")} disabled={!loaded}>Export JSON</button>
             <Link className="sd-btn sd-btn--ghost-dark" href="/lms/admin/assignment-analytics">Assignment analytics</Link>
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void load(true)} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void load(true)} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
             </button>
-            {generatedAt && <span className="pa-asof">Updated {stamp.format(new Date(generatedAt))}</span>}
+            {generatedAt && <span className="pa-asof" style={{ alignSelf: "center", margin: 0 }}>Updated {stamp.format(new Date(generatedAt))}</span>}
           </div>
         </div>
         {first ? (

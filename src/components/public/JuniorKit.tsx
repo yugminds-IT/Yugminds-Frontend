@@ -40,6 +40,7 @@ export function JuniorKit() {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (reduced()) { setStill(true); setDemo(false); setPower(true); setPress(true); }
     const el = box.current;
     if (!el) return;
@@ -51,6 +52,7 @@ export function JuniorKit() {
   useEffect(() => {
     if (!demo || still || !inView) return;
     const s = DEMO[d];
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     setPower(s.power); setIp(s.ip); setOp(s.op); setOut(s.out); setPress(s.press);
     const id = setTimeout(() => setD((n) => (n + 1) % DEMO.length), DEMO_MS);
     return () => clearTimeout(id);

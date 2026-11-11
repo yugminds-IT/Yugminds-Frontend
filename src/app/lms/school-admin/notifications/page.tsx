@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import { useDashboardRealtime } from "@/hooks/useDashboardRealtime";
 import { Check, RefreshCw, Send } from "lucide-react";
-import { ChipGroup, NotificationComposer, NotificationRow, NotificationsHero, Pager, RecipientList, RepliesModal } from "@/components/portal/notifications";
+import { BulkBar, ChipGroup, NotificationComposer, NotificationRow, NotificationsHero, Pager, RecipientList, RepliesModal, SelectStrip } from "@/components/portal/notifications";
+import { useBulkNotifications } from "@/hooks/useBulkNotifications";
 import { useSchoolAdmin } from "@/contexts/SchoolAdminContext";
 import { useRouter } from "next/navigation";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
@@ -418,6 +419,15 @@ export default function SchoolAdminNotifications() {
   const myId = typeof window !== 'undefined' ? getStoredUserId() : null;
   const canSend = !sending && !!title.trim() && !!message.trim() && selectedRecipients.length > 0;
 
+
+  // Select several and mark read / unread, or delete (your own inbox only).
+  const bulk = useBulkNotifications({
+    items: notifications,
+    setItems: setNotifications,
+    status: filterStatus,
+    resetKey: `${notificationMode}|${filterStatus}|${searchQuery}|${offset}`,
+    onRemoved: (n) => setTotal((t) => Math.max(0, t - n)),
+  });
   return (
     <div className="sd-page">
       <NotificationsHero
@@ -502,6 +512,9 @@ export default function SchoolAdminNotifications() {
             </section>
           ) : (
             <div className="sd-panel as-list mc-swap">
+              {notificationMode === 'received' && (
+                <SelectStrip count={notifications.length} picked={bulk.selected.size} onToggleAll={bulk.toggleAll} />
+              )}
               {notifications.map((n) => {
                 const who = n.profiles?.full_name || 'Unknown user';
                 const count = (n as Notification & { recipient_count?: number }).recipient_count ?? 1;
@@ -519,6 +532,9 @@ export default function SchoolAdminNotifications() {
                       </button>
                     )}
                     onRead={notificationMode === 'received' ? () => handleMarkAsRead(n.id) : undefined}
+                    onUnread={notificationMode === 'received' ? () => void bulk.run('unread', [n.id]) : undefined}
+                    selected={bulk.selected.has(n.id)}
+                    onSelect={notificationMode === 'received' ? () => bulk.toggleOne(n.id) : undefined}
                     onReplies={() => handleViewReplies(n)}
                     onDelete={notificationMode === 'received' ? () => handleDelete(n.id) : undefined}
                   />
@@ -532,6 +548,17 @@ export default function SchoolAdminNotifications() {
             </div>
           )}
         </>
+      )}
+
+      {notificationMode === 'received' && bulk.selected.size > 0 && (
+        <BulkBar
+          count={bulk.selected.size}
+          busy={bulk.busy}
+          onRead={() => void bulk.run('read', [...bulk.selected])}
+          onUnread={() => void bulk.run('unread', [...bulk.selected])}
+          onDelete={() => void bulk.remove([...bulk.selected])}
+          onClear={bulk.clear}
+        />
       )}
 
       <RepliesModal

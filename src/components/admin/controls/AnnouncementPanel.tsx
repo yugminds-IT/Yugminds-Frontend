@@ -31,6 +31,7 @@ export default function AnnouncementPanel({ value, onChange }: { value: Controls
           <label>How serious is it?</label>
           <ChipGroup label="Severity" value={a.level} options={LEVELS} onChange={(level) => set({ level })} />
         </div>
+        {a.enabled && !a.text.trim() && <p className="ctl-warn" role="status">The banner is switched on but has no text, so nobody will see it. Write the announcement first.</p>}
         <div className="ctl-preview" data-off={!a.enabled || !a.text.trim()}>
           <small>{!a.text.trim() ? "Write some text to see the banner" : a.enabled ? "This is what everyone sees" : "Preview. The banner is switched off, so no one sees it yet"}</small>
           <div className="sd-banner" data-tone={a.level} role="presentation">

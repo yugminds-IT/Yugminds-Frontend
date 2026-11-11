@@ -44,6 +44,7 @@ export default function ResizableNavbar({
   const academyLoginHref = brandHref("/academy/login");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     setOnRobocodersHost(normalizeHost(window.location.host) === ROBOCODERS_HOST);
   }, []);
 

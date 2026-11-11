@@ -10,7 +10,8 @@ import { toast } from "@/components/ui/toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { requestClose } from "@/hooks/useUnsavedCloseGuard";
 import { getStoredUserId } from "@/lib/session-utils";
-import { ChipGroup, NotificationComposer, NotificationRow, NotificationsHero, Pager, RecipientList, RepliesModal } from "@/components/portal/notifications";
+import { BulkBar, ChipGroup, NotificationComposer, NotificationRow, NotificationsHero, Pager, RecipientList, RepliesModal, SelectStrip } from "@/components/portal/notifications";
+import { useBulkNotifications } from "@/hooks/useBulkNotifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ReplyItem {
@@ -350,6 +351,16 @@ export default function NotificationsManagement() {
     }
   }, [loadNotifications, loadUnreadCount]);
 
+  // ── Bulk select: mark read / unread, delete ─────────────────────────────────
+  const bulk = useBulkNotifications({
+    items: notifications,
+    setItems: setNotifications,
+    status: filterStatus,
+    resetKey: `${activeTab}|${filterStatus}|${searchQuery}|${pageOffset}`,
+    onRemoved: (n) => setTotal((t) => Math.max(0, t - n)),
+    onChanged: loadUnreadCount,
+  });
+
   // ── Send notification ───────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!title.trim() || !message.trim()) {
@@ -521,6 +532,9 @@ export default function NotificationsManagement() {
             </section>
           ) : (
             <div className="sd-panel as-list mc-swap">
+              {activeTab === "received" && (
+                <SelectStrip count={notifications.length} picked={bulk.selected.size} onToggleAll={bulk.toggleAll} />
+              )}
               {notifications.map((n) => {
                 const person = n.profiles ? n.profiles.full_name || n.profiles.email : null;
                 const more = (n.recipient_count ?? 1) - 1;
@@ -542,6 +556,9 @@ export default function NotificationsManagement() {
                       )
                     }
                     onRead={activeTab === "received" ? () => handleMarkRead(n.id) : undefined}
+                    onUnread={activeTab === "received" ? () => void bulk.run("unread", [n.id]) : undefined}
+                    selected={bulk.selected.has(n.id)}
+                    onSelect={activeTab === "received" ? () => bulk.toggleOne(n.id) : undefined}
                     onReplies={() => setReplyTarget(n)}
                     onDelete={
                       activeTab === "received"
@@ -565,6 +582,17 @@ export default function NotificationsManagement() {
             </div>
           )}
         </>
+      )}
+
+      {activeTab === "received" && bulk.selected.size > 0 && (
+        <BulkBar
+          count={bulk.selected.size}
+          busy={bulk.busy}
+          onRead={() => void bulk.run("read", [...bulk.selected])}
+          onUnread={() => void bulk.run("unread", [...bulk.selected])}
+          onDelete={() => void bulk.remove([...bulk.selected])}
+          onClear={bulk.clear}
+        />
       )}
 
       <ReplyDialog notification={replyTarget} onClose={() => setReplyTarget(null)} onReplySent={handleReplySent} />

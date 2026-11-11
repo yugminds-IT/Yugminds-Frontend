@@ -543,9 +543,7 @@ export default function CoursesManagement() {
             {counts.ready > 0 && stageFilter !== 'ready' && (
               <button className="sd-btn sd-btn--ghost-dark" onClick={() => setStageFilter('ready')}>Show {counts.ready} ready to publish</button>
             )}
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void loadData()} disabled={loadingCourses} aria-label={loadingCourses ? 'Refreshing' : 'Refresh'} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void loadData()} disabled={loadingCourses} aria-label={loadingCourses ? 'Refreshing' : 'Refresh'} title="Refresh">
               <RefreshCw className={loadingCourses ? 'animate-spin' : ''} aria-hidden="true" />
             </button>
           </div>

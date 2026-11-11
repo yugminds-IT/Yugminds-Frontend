@@ -1,5 +1,6 @@
 "use client";
 
+import { TEACHING_SUBJECTS } from "@/lib/report-subjects";
 import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { frontendLogger, handleApiErrorResponse } from "@/lib/frontend-logger";
@@ -96,6 +97,7 @@ interface AssignedSchool {
 
 interface Teacher {
   id: string | number;
+  last_login?: string | null;
   teacher_id?: string;
   full_name?: string;
   name?: string;
@@ -491,7 +493,7 @@ export default function TeachersManagement() {
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [customSubjectInputs, setCustomSubjectInputs] = useState<Record<string, string>>({});
-  const availableSubjects = ['Robotics', 'Coding', 'AI/ML', 'Python'];
+  const availableSubjects: string[] = [...TEACHING_SUBJECTS];
   // Sync leaveRequests with allLeaveRequests based on current filter
   useEffect(() => {
     if (leaveStatusFilter === 'all') {
@@ -1467,9 +1469,7 @@ export default function TeachersManagement() {
             ) : (
               <button className="sd-btn sd-btn--ghost-dark" onClick={openEmergency}>Record emergency leave</button>
             )}
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={handleRefresh} disabled={refreshing} aria-label={refreshing ? 'Refreshing' : 'Refresh'} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={handleRefresh} disabled={refreshing} aria-label={refreshing ? 'Refreshing' : 'Refresh'} title="Refresh">
               <RefreshCw className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
             </button>
           </div>

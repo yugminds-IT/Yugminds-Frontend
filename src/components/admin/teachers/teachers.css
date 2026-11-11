@@ -10,7 +10,8 @@
 
 /* Teacher rows */
 .at-list { padding: 0; overflow: hidden; }
-.at-head, .at-row { display: grid; grid-template-columns: 1.5rem 2.5rem minmax(0, 1.25fr) minmax(0, 1.6fr) minmax(0, 1fr) minmax(7.5rem, 0.8fr) 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.at-seen { font-size: 0.93rem; min-width: 0; }
+.at-head, .at-row { display: grid; grid-template-columns: 1.5rem 2.5rem minmax(0, 1.25fr) minmax(0, 1.6fr) minmax(0, 1fr) minmax(7.5rem, 0.8fr) minmax(7rem, 0.8fr) 2.25rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
 .at-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
 .at-row { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
 .at-row:last-of-type { border-bottom: 0; }
@@ -68,13 +69,14 @@ button.at-who:focus-visible { outline: 3px solid var(--sd-blue); outline-offset:
 
 @media (max-width: 1100px) {
   .at-head { display: none; }
-  .at-row { grid-template-columns: 1.5rem 2.5rem minmax(0, 1fr) 2.25rem; grid-template-areas: "ck av who go" ". . schools schools" ". . bg bg" ". . today today"; gap: 0.4rem 0.8rem; }
+  .at-row { grid-template-columns: 1.5rem 2.5rem minmax(0, 1fr) 2.25rem; grid-template-areas: "ck av who go" ". . schools schools" ". . bg bg" ". . today today" ". . seen seen"; gap: 0.4rem 0.8rem; }
   .at-row > .at-check { grid-area: ck; }
   .at-row > .sd-avatar { grid-area: av; }
   .at-row > .at-who { grid-area: who; }
   .at-row > .at-schools { grid-area: schools; }
   .at-row > .at-bg { grid-area: bg; }
   .at-row > .at-today { grid-area: today; }
+  .at-row > .at-seen { grid-area: seen; }
   .at-row > .at-menu { grid-area: go; }
   .at-mmain { grid-template-columns: 2.5rem minmax(0, 1fr) 4.5rem; grid-template-areas: "av who pct" ". school school" ". bar bar"; }
   .at-mmain > .sd-avatar { grid-area: av; }

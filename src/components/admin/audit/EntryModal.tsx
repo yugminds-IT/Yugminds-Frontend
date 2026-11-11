@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import Modal from "../../portal/Modal";
-import { describe, entityLabel, stamp, whoOf, type AuditLogRow } from "./utils";
+import { describe, entityLabel, stamp, whoOf, type AuditLogRow, roleLabel } from "./utils";
 
 /** The full record of one change, with the data that was sent. Passwords and tokens were removed before it was saved. */
 export default function EntryModal({ entry, onClose }: { entry: AuditLogRow | null; onClose: () => void }) {
@@ -22,7 +22,9 @@ export default function EntryModal({ entry, onClose }: { entry: AuditLogRow | nu
       {entry && (
         <>
           <dl className="aud-facts">
-            <div><dt>Who</dt><dd>{whoOf(entry)}{entry.actorEmail && entry.actorName ? <small>{entry.actorEmail}</small> : null}{entry.actorRole ? <small>Role: {entry.actorRole}</small> : null}</dd></div>
+            <div><dt>Who</dt><dd>{whoOf(entry)}{entry.actorEmail && entry.actorName ? <small>{entry.actorEmail}</small> : null}<small>{roleLabel(entry.actorRole)}</small></dd></div>
+            {entry.impersonatedBy ? <div><dt>Really done by</dt><dd>{entry.impersonatedBy.name}<small>An admin acting as this person</small></dd></div> : null}
+            {entry.schoolName ? <div><dt>School</dt><dd>{entry.schoolName}</dd></div> : null}
             <div><dt>Result</dt><dd className="aud-result" data-ok={entry.success}>{entry.success ? "Worked" : "Failed"}{entry.statusCode ? <small>HTTP {entry.statusCode}</small> : null}</dd></div>
             <div><dt>What</dt><dd>{entityLabel(entry.entityType)}{d?.id ? <small>Record {d.id}</small> : null}</dd></div>
             <div><dt>From</dt><dd>{entry.ipAddress ?? "Unknown address"}</dd></div>

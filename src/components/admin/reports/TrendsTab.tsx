@@ -38,11 +38,11 @@ export default function TrendsTab({
       </div>
       <div className="so-col">
         <section className="sd-panel" aria-labelledby="ar-t3">
-          <div className="sd-panel-head"><div><h2 id="ar-t3">What is being taught</h2><p>Topics grouped by subject, from what teachers wrote.</p></div></div>
+          <div className="sd-panel-head"><div><h2 id="ar-t3">What is being taught</h2><p>The subject each teacher chose on their report.</p></div></div>
           <SegmentBar parts={parts} empty="No topics to group yet." />
         </section>
         <section className="sd-panel" aria-labelledby="ar-t4">
-          <div className="sd-panel-head"><div><h2 id="ar-t4">How steadily teachers report</h2><p>Share of the last 20 working days with a report.</p></div></div>
+          <div className="sd-panel-head"><div><h2 id="ar-t4">How steadily teachers report</h2><p>Share of the last 20 weekdays with a report.</p></div></div>
           <SegmentBar
             parts={[
               { label: "Excellent, 90% or more", value: count("great"), tone: "ink" },

@@ -355,16 +355,14 @@ export default function SchoolAdminDashboard() {
               <Link href="/lms/school-admin/schedules" className="sd-btn sd-btn--amber">Open the timetable</Link>
             ) : null}
             <Link href="/lms/school-admin/notifications" className={`sd-btn ${lead || hasPeriods ? "sd-btn--ghost-dark" : "sd-btn--amber"}`}><Send aria-hidden="true" />Message the school</Link>
-          </div>
-          <div className="so-meta">
-            <p className="so-live" data-on={isConnected}>
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={refreshDashboard} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+            <p className="so-live" style={{ alignSelf: "center", margin: 0 }} data-on={isConnected}>
               <i aria-hidden="true" />
               {isConnected ? "Live" : "Reconnecting…"}
               {now != null && lastRefresh > 0 && ` · updated ${new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
             </p>
-            <button className="so-refresh" onClick={refreshDashboard} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
-              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
-            </button>
           </div>
         </div>
         <SchoolDayRun

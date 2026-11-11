@@ -7,7 +7,10 @@ import SpeedRun from "@/components/admin/monitoring/SpeedRun";
 import RequestsTab from "@/components/admin/monitoring/RequestsTab";
 import EndpointsTab from "@/components/admin/monitoring/EndpointsTab";
 import SpeedTab from "@/components/admin/monitoring/SpeedTab";
-import { EMPTY, healthOf, kindOf, plural, speedOf, uptimeText, type Alert, type ApiMetrics, type Kind, type Request, type Speed } from "@/components/admin/monitoring/utils";
+import TrendsTab from "@/components/admin/monitoring/TrendsTab";
+import { ChipGroup } from "@/components/portal/notifications";
+import { useAdminSchools } from "@/hooks/useAdminSchools";
+import { EMPTY, ROLES, ROLE_LABEL, healthOf, kindOf, plural, speedOf, uptimeText, type Alert, type ApiMetrics, type Kind, type Request, type Role, type Speed } from "@/components/admin/monitoring/utils";
 import { adminApi } from "@/lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
 import "@/components/school-admin/overview.css"; // hero meta, so- grid
@@ -17,8 +20,8 @@ import "@/components/school-admin/teachers.css"; // tm- track nodes
 import "@/components/admin/overview/overview.css"; // ao-stats rows
 import "@/components/admin/monitoring/monitoring.css";
 
-type Tab = "requests" | "endpoints" | "speed";
-const TABS: [Tab, string][] = [["requests", "Recent requests"], ["endpoints", "Addresses"], ["speed", "Speed"]];
+type Tab = "requests" | "endpoints" | "speed" | "trends";
+const TABS: [Tab, string][] = [["requests", "Recent requests"], ["endpoints", "Addresses"], ["speed", "Speed"], ["trends", "Trends"]];
 const PAGE_SIZE = 25;
 const LIVE_EVERY_MS = 5000;
 const stamp = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", second: "2-digit" });
@@ -26,6 +29,11 @@ const stamp = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-dig
 export default function MonitoringDashboard() {
   const [metrics, setMetrics] = useState<ApiMetrics>(EMPTY);
   const [recent, setRecent] = useState<Request[]>([]);
+  const [byRole, setByRole] = useState<Partial<Record<Role, number>>>({});
+  const [role, setRole] = useState<Role | "all">("all");
+  const [schoolId, setSchoolId] = useState("");
+  const { schools: rawSchools } = useAdminSchools();
+  const schools = useMemo(() => (rawSchools ?? []).map((x) => ({ id: String(x.id), name: x.name })).sort((a, b) => a.name.localeCompare(b.name)), [rawSchools]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -42,11 +50,12 @@ export default function MonitoringDashboard() {
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const [m, a] = await Promise.allSettled([adminApi.dashboard.monitoring(), adminApi.alerts()]);
+      const [m, a] = await Promise.allSettled([adminApi.dashboard.monitoring({ role: role === "all" ? undefined : role, school_id: schoolId || undefined }), adminApi.alerts()]);
       if (m.status === "rejected") throw m.reason;
-      const data = m.value.data as { metrics?: Partial<ApiMetrics>; recent?: Request[] };
+      const data = m.value.data as { metrics?: Partial<ApiMetrics>; recent?: Request[]; byRole?: Partial<Record<Role, number>> };
       setMetrics({ ...EMPTY, ...data?.metrics });
       setRecent(Array.isArray(data?.recent) ? data.recent : []);
+      setByRole(data?.byRole ?? {});
       if (a.status === "fulfilled") setAlerts((a.value.data as { alerts?: Alert[] })?.alerts ?? []);
       setUpdated(new Date());
       setFailed(false);
@@ -56,7 +65,7 @@ export default function MonitoringDashboard() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, []);
+  }, [role, schoolId]);
 
   useEffect(() => {
     void load();
@@ -109,6 +118,10 @@ export default function MonitoringDashboard() {
   else if (state === "healthy") statusLine = <><strong>The server is healthy.</strong> No server errors in the last {plural(recent.length, "request")}. It has been up {uptimeText(metrics.uptimeSeconds)}.</>;
   else statusLine = <><strong>{plural(server, "server error")}</strong> in the last {plural(recent.length, "request")}. Open the list and choose “Server errors” to see which.</>;
 
+  const scope = [role === "all" ? null : ROLE_LABEL[role], schoolId ? schools.find((x) => x.id === schoolId)?.name ?? "one school" : null].filter(Boolean).join(", ");
+  const clearFilters = () => { setRole("all"); setSchoolId(""); };
+  const roleOptions = [["all", "Everyone"], ...ROLES.map((r) => [r, `${ROLE_LABEL[r]}${byRole[r] ? ` (${byRole[r]!.toLocaleString("en-IN")})` : ""}`])] as unknown as readonly (readonly [Role | "all", string])[];
+
   const runCaption = first ? "Loading…" : recent.length === 0 ? "No requests yet" : `${counts.slow + counts.crawl} slower than half a second`;
 
   const tiles = [
@@ -123,19 +136,17 @@ export default function MonitoringDashboard() {
       <section className="sd-hero mc-band" aria-labelledby="mo-title">
         <div className="sd-hero-copy">
           <h1 id="mo-title" className="mc-hero-title">System monitoring</h1>
-          <p className="sd-where">Live traffic since the server last started</p>
+          <p className="sd-where">{scope ? `Live traffic for ${scope}, since the server last started` : "Live traffic since the server last started"}</p>
           <p className="sd-status">{statusLine}</p>
           <div className="sd-hero-actions">
             <button type="button" className={`sd-btn mo-live ${live ? "sd-btn--amber" : "sd-btn--ghost-dark"}`} aria-pressed={live} onClick={() => setLive((v) => !v)}>
               <Activity aria-hidden="true" />{live ? "Live updates on" : "Turn on live updates"}
             </button>
             <button className="sd-btn sd-btn--ghost-dark" onClick={exportJson} disabled={!loaded}><Download aria-hidden="true" />Export</button>
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void load()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
             </button>
-            {updated && <span className="mo-asof">Updated {stamp.format(updated)}</span>}
+            {updated && <span className="mo-asof" style={{ alignSelf: "center", margin: 0 }}>Updated {stamp.format(updated)}</span>}
           </div>
         </div>
         {first ? (
@@ -153,6 +164,15 @@ export default function MonitoringDashboard() {
             <small>{dash ? "Not loaded" : first ? " " : m.hint}</small>
           </div>
         ))}
+      </div>
+
+      <div className="mo-bar" role="group" aria-label="Who made the requests">
+        <ChipGroup label="Who made the requests" value={role} options={roleOptions} onChange={setRole} />
+        <select className="sd-field" aria-label="School" value={schoolId} onChange={(e) => setSchoolId(e.target.value)} style={{ width: "auto", minWidth: "12rem", maxWidth: "20rem" }}>
+          <option value="">All schools</option>
+          {schools.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+        {(role !== "all" || schoolId) && <button className="sm-reset" style={{ color: "var(--sd-ink)" }} onClick={clearFilters}>Clear</button>}
       </div>
 
       {alerts.length > 0 && (
@@ -185,11 +205,13 @@ export default function MonitoringDashboard() {
         </section>
       ) : tab === "requests" ? (
         <>
-          <p className="mo-note">The numbers are kept in memory and start again from zero whenever the server restarts or is redeployed. The list shows the latest 200 requests.</p>
+          <p className="mo-note">These live numbers start again from zero whenever the server restarts. The list shows the latest 200 requests. For history that survives restarts, open Trends.</p>
           <RequestsTab rows={rows} total={recent.length} speed={speed} kind={kind} onKind={setKind} search={search} onSearch={setSearch} onClear={clear} page={page} pageSize={PAGE_SIZE} onPage={(p) => setPageState({ key, page: p })} />
         </>
       ) : tab === "endpoints" ? (
         <EndpointsTab stats={metrics.endpointStats} />
+      ) : tab === "trends" ? (
+        <TrendsTab role={role === "all" ? "" : role} schoolId={schoolId} />
       ) : (
         <SpeedTab metrics={metrics} recent={recent} />
       )}

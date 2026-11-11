@@ -29,6 +29,7 @@ export default function ParentsProgress() {
   const box = useRef<HTMLDivElement>(null);
 
   // reduced motion shows the finished year
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
   useEffect(() => { if (still) setStep(LAST); }, [still]);
 
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function ParentsProgress() {
   }, [step, still, inView, paused]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     setMoving(true);
     const id = setTimeout(() => setMoving(false), 500);
     return () => clearTimeout(id);

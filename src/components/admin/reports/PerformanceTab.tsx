@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Pager, initialsOf } from "../../portal/notifications";
-import { plural, type TeacherPerformance } from "./types";
+import { type TeacherPerformance } from "./types";
 
 const PAGE_SIZE = 20;
 export const levelOf = (rate: number) => (rate >= 90 ? "great" : rate >= 70 ? "good" : "low");
@@ -27,7 +27,7 @@ export default function PerformanceTab({ rows, loading }: { rows: TeacherPerform
   }
   return (
     <section className="sd-panel as-list mc-swap" aria-label="Teacher performance">
-      <p className="ar-cap">Reporting rate is the share of the last 20 working days with a report. It shows how consistent a teacher is, not their attendance record.</p>
+      <p className="ar-cap">Reporting rate is the share of the last 20 weekdays (Monday to Friday) with a report. It shows how consistent a teacher is, not their attendance record.</p>
       <div className="ar-phead">
         <span>Teacher</span><span>Reports</span><span>Hours</span><span>Reporting rate</span><span>Last report</span>
       </div>
@@ -40,7 +40,7 @@ export default function PerformanceTab({ rows, loading }: { rows: TeacherPerform
               <span><b>{t.teacher_name}</b><small>{t.school_name}</small></span>
             </span>
             <span className="ar-num"><b>{t.total_reports}</b><small>{t.avg_students} students each</small></span>
-            <span className="ar-num"><b>{t.total_hours}</b><small>{plural(t.total_hours, "hour")}</small></span>
+            <span className="ar-num"><b>{t.total_hours}</b><small>{t.total_hours === 1 ? "hour" : "hours"}</small></span>
             <span className="ar-rate">
               <b>{Math.round(t.attendance_rate)}%</b>
               <span className="sd-meter" role="img" aria-label={`${Math.round(t.attendance_rate)} percent, ${LEVEL_LABEL[lvl]}`}><i style={{ "--p": `${Math.max(3, t.attendance_rate)}%` } as React.CSSProperties} /></span>

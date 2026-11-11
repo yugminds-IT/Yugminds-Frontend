@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Copy, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import RowMenu from "../../portal/RowMenu";
 import { Pager, initialsOf } from "../../portal/notifications";
+import LastSignIn from "../../portal/LastSignIn";
 import {
   TODAY_LABEL,
   experienceOf,
@@ -156,6 +157,7 @@ export default function TeachersTab({
             <span>Schools</span>
             <span>Background</span>
             <span>Today</span>
+            <span>Last sign-in</span>
             <span />
           </div>
           {visible.map((t) => {
@@ -203,6 +205,9 @@ export default function TeachersTab({
                       {status === "On Leave" || status === "Leave-Approved" ? `On leave${today[id]?.leaveType ? ` (${today[id].leaveType})` : ""}` : status && status !== "Not Marked" ? status : "Not marked"}
                     </span>
                   )}
+                </span>
+                <span className="at-seen">
+                  <LastSignIn at={t.last_login} />
                 </span>
                 <span className="at-menu">
                   {busyId === id ? <span className="sd-skel" style={{ width: "1.5rem", height: "1.5rem", borderRadius: "50%" }} /> : (

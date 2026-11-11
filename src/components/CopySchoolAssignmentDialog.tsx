@@ -66,6 +66,7 @@ export default function CopySchoolAssignmentDialog({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
       setSelectedSchoolIds([]);
       setTargetTeacherId("");
     }

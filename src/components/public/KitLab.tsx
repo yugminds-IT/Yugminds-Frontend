@@ -14,6 +14,7 @@ const seg = (p: number, a: number, b: number) => clamp((p - a) / (b - a));
 function useLoop(period: number, run: boolean, rest: number) {
   const [p, setP] = useState(rest);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (!run) { setP(rest); return; }
     let raf = 0;
     let last = 0;

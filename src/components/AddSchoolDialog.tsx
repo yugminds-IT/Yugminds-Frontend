@@ -264,6 +264,7 @@ export default function AddSchoolDialog({ isOpen, onClose, onSuccess, editingSch
         toast.error('Could not load school details.');
       })
       .finally(() => setEditLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loads once per open/school; the form defaults must not retrigger it
   }, [isOpen, editingSchoolId]);
 
   useEffect(() => {

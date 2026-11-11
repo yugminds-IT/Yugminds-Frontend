@@ -40,6 +40,7 @@ const STEPS = 10; // flag, then (move, turn) x 4, then done
 export function CodingSim({ running = true }: { running?: boolean }) {
   const [step, setStep] = useState(0);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (reduced()) { setStep(STEPS - 1); return; }
     if (!running) return;
     const id = setTimeout(() => setStep((n) => (n + 1) % (STEPS + 2)), step === STEPS - 1 ? 800 : step >= STEPS ? 260 : 340);

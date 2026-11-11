@@ -16,7 +16,12 @@ export const adminApi = {
       apiClient.get(withParams(`${ADMIN}/analytics`, params)),
     assignmentAnalytics: () => apiClient.get(`${ADMIN}/assignment-analytics`),
     refreshViews: () => apiClient.post(`${ADMIN}/refresh-dashboard-views`),
-    monitoring: () => apiClient.get(`${ADMIN}/monitoring-dashboard`),
+    /** Live traffic since the server started, optionally for one role and/or school. */
+    monitoring: (params?: { role?: string; school_id?: string }) =>
+      apiClient.get(withParams(`${ADMIN}/monitoring-dashboard`, params)),
+    /** Hourly totals kept in the database (7 days). */
+    monitoringHistory: (params: { hours?: number; role?: string; school_id?: string }) =>
+      apiClient.get(withParams(`${ADMIN}/monitoring-history`, params)),
     materializedViewStats: () => apiClient.get(`${ADMIN}/materialized-view-stats`),
   },
 
@@ -130,6 +135,8 @@ export const adminApi = {
       apiClient.get(withParams(`${ADMIN}/teacher-reports`, params)),
     update: (body: { id: string; status?: string; admin_notes?: string }) =>
       apiClient.patch(`${ADMIN}/teacher-reports`, body),
+    bulkUpdate: (body: { ids: string[]; status: 'approved' | 'rejected' }) =>
+      apiClient.patch(`${ADMIN}/teacher-reports/bulk`, body),
     cleanupOrphaned: () =>
       apiClient.post(`${ADMIN}/teacher-reports/cleanup-orphaned`, {}),
   },
@@ -170,6 +177,9 @@ export const adminApi = {
     /** Per school: which weekdays (0=Sun..6=Sat) at least one teacher works there. */
     activeWeekdays: (params?: { date?: string }) =>
       apiClient.get(withParams(`${ADMIN}/calendar/active-weekdays`, params)),
+    /** Who an entry affects: its schools, and the teachers with classes on those dates. */
+    impact: (entryIds: string[]) =>
+      apiClient.get(withParams(`${ADMIN}/calendar/impact`, { entry_ids: entryIds.join(',') })),
     /** Per school: exact working-day dates in a given month (day-by-day, history-resolved). */
     activeDates: (params: { year: string; month: string }) =>
       apiClient.get(withParams(`${ADMIN}/calendar/active-dates`, params)),
@@ -372,6 +382,10 @@ export const adminApi = {
       page?: number;
       limit?: number;
       actorEmail?: string;
+      actorId?: string;
+      actorRole?: string;
+      schoolId?: string;
+      attention?: string;
       entityType?: string;
       method?: string;
       search?: string;
@@ -379,9 +393,16 @@ export const adminApi = {
       to?: string;
     }) =>
       apiClient.get(withParams(`${ADMIN}/audit-logs`, params as Record<string, string | number | undefined>)),
+    /** Who is behind the failed attempts and deletions, per role and per person. */
+    summary: (params?: Record<string, string | undefined>) =>
+      apiClient.get(withParams(`${ADMIN}/audit-logs/summary`, params)),
     entityTypes: () => apiClient.get(`${ADMIN}/audit-logs/entity-types`),
     exportCsv: (params?: {
       actorEmail?: string;
+      actorId?: string;
+      actorRole?: string;
+      schoolId?: string;
+      attention?: string;
       entityType?: string;
       method?: string;
       search?: string;
@@ -444,5 +465,8 @@ export const adminApi = {
       apiClient.post(`${ADMIN}/contact-submissions/${id}/restore`),
     purge: (id: string) =>
       apiClient.delete(`${ADMIN}/contact-submissions/${id}/purge`),
+    /** One action for many messages (up to 200). */
+    bulk: (action: "new" | "read" | "replied" | "archived" | "delete" | "restore" | "purge", ids: string[]) =>
+      apiClient.post(`${ADMIN}/contact-submissions/bulk`, { action, ids }),
   },
 };

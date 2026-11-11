@@ -2,6 +2,7 @@
 
 export interface StudentLike {
   id: string;
+  last_login?: string | null;
   full_name: string;
   email: string;
   created_at: string;

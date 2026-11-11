@@ -11,7 +11,7 @@
 .tm-run .sd-day span:last-child { font-size: 0.78rem; text-align: center; }
 
 /* Teacher list */
-.tm-head, .tm-row { display: grid; grid-template-columns: 2.5rem minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.7fr) 8.5rem 6rem; align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
+.tm-head, .tm-row { display: grid; grid-template-columns: 2.5rem minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.7fr) 8.5rem 6rem minmax(6.5rem, 0.8fr); align-items: center; gap: 0.5rem 1rem; padding: 0.85rem 1.25rem; }
 .tm-head { padding-block: 0.6rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); }
 .tm-row { border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.2s ease; }
 .tm-row:last-of-type { border-bottom: 0; }
@@ -64,13 +64,14 @@
 
 @media (max-width: 960px) {
   .tm-head { display: none; }
-  .tm-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "av who status" ". qual qual" ". classes classes" ". att att"; gap: 0.45rem 0.8rem; }
+  .tm-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "av who status" ". qual qual" ". classes classes" ". att att" ". seen seen"; gap: 0.45rem 0.8rem; }
   .tm-row > .sd-avatar { grid-area: av; }
   .tm-row > .sm-who { grid-area: who; }
   .tm-row > .tm-qual { grid-area: qual; }
   .tm-row > .tm-classes { grid-area: classes; }
   .tm-row > .tm-att { grid-area: att; max-width: 14rem; }
   .tm-row > .tm-status { grid-area: status; }
+  .tm-row > .tm-seen { grid-area: seen; }
 }
 @media (max-width: 640px) {
   .tm-leave { grid-template-columns: auto minmax(0, 1fr); }

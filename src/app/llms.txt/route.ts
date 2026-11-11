@@ -6,7 +6,7 @@ import {
   resolveBrand,
   type Brand,
 } from "../../lib/brand-host";
-import { PAGE_SEO, brandSiteName } from "../../lib/page-seo";
+import { PAGE_SEO, PAGES_UPDATED, brandSiteName } from "../../lib/page-seo";
 import { BUSINESS, BUSINESS_ADDRESS_DISPLAY } from "../../lib/business-info";
 
 const contact = (email: string) =>
@@ -22,6 +22,14 @@ const YUGMINDS_SECTIONS =
   "- [About](https://yugminds.org/#about): why build with YugMinds: one brief covers every part, and prototypes go straight to production.\n" +
   "- [What do you need built?](https://yugminds.org/#build): which companies build a robot, a school robotics lab, software, a website or an app, an idea to test, or parts in volume.\n" +
   "- [Contact](https://yugminds.org/#contact): send a project brief or request a call back.";
+
+// Plain facts an AI agent can quote (ai-seo skill). Only facts already on the site.
+const ROBOCODERS_FACTS =
+  "\n\n## Key facts\n\n- Ages: 6 to 18, three tracks: coding, robotics and electronics, AI and machine learning\n" +
+  "- Formats: partner-school programs, online live 1:1 classes, self-paced video courses\n" +
+  "- Free trial class available, no payment needed\n" +
+  "- Serves Hyderabad and Telangana; online classes open to learners across India\n" +
+  "- Updated: " + PAGES_UPDATED;
 
 const SUMMARY: Record<Brand, string> = {
   yugminds:
@@ -44,7 +52,7 @@ export async function GET() {
     .join("\n");
 
   const sections = brand === "yugminds" ? `\n\n## Sections\n\n${YUGMINDS_SECTIONS}` : "";
-  const body = `# ${brandSiteName(brand)}\n\n> ${SUMMARY[brand]}\n\n## Pages\n\n${pages}${sections}\n\n## Contact\n\n${contact(brand === "robocoders" ? BUSINESS.robocodersEmail : BUSINESS.email)}\n`;
+  const body = `# ${brandSiteName(brand)}\n\n> ${SUMMARY[brand]}\n\n## Pages\n\n${pages}${brand === "robocoders" ? ROBOCODERS_FACTS : ""}${sections}\n\n## Contact\n\n${contact(brand === "robocoders" ? BUSINESS.robocodersEmail : BUSINESS.email)}\n`;
 
   return new Response(body, {
     headers: {

@@ -13,7 +13,9 @@ import PerformanceTab from "@/components/admin/reports/PerformanceTab";
 import TrendsTab from "@/components/admin/reports/TrendsTab";
 import ReviewModal from "@/components/admin/reports/ReviewModal";
 import {
+  dayKey,
   plural,
+  shiftDayKey,
   statusOf,
   type ReportStatus,
   type ReportTrend,
@@ -26,6 +28,7 @@ import "@/components/teacher/overview/overview.css"; // track
 import "@/components/school-admin/students.css"; // sm- chips and forms
 import "@/components/school-admin/teachers.css"; // tm- track nodes
 import "@/components/admin/reports/reports.css";
+import "@/components/school-admin/reports/reports.css"; // rp-bulk floating bar
 
 const SUBJECT_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#FF6B6B', '#4ECDC4', '#95E1D3', '#F38181', '#AA96DA'];
 
@@ -93,6 +96,19 @@ export default function TeacherReports() {
       return false;
     }
   };
+  const bulkReview = async (ids: string[], status: "approved" | "rejected") => {
+    try {
+      await adminApi.teacherReports.bulkUpdate({ ids, status });
+      const set = new Set(ids);
+      setReports((prev) => prev.map((r) => (set.has(r.id) ? { ...r, status } : r)));
+      toast.success(`${status === "approved" ? "Approved" : "Rejected"} ${plural(ids.length, "report")}.`);
+      void loadData();
+      return true;
+    } catch (err) {
+      toast.error(`Could not update the reports: ${err instanceof Error ? err.message : "Try again."}`);
+      return false;
+    }
+  };
   { }
   const [reportTrendsData, setReportTrendsData] = useState<ReportTrend[]>([]);
   { }
@@ -103,6 +119,16 @@ export default function TeacherReports() {
 
   const calculatePerformanceMetrics = useCallback((reports: TeacherReport[]) => {
     const teacherMap = new Map();
+    // The last 20 weekdays (Monday to Friday) up to today: the window the reporting rate is measured over.
+    const now = new Date();
+    let cursor = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const window20 = new Set<string>();
+    while (window20.size < 20) {
+      const [y, m, d] = cursor.split('-').map(Number);
+      const dow = new Date(y, m - 1, d).getDay();
+      if (dow !== 0 && dow !== 6) window20.add(cursor);
+      cursor = shiftDayKey(cursor, -1);
+    }
 
     reports.forEach(report => {
       const teacherId = report.teacher_id;
@@ -114,7 +140,7 @@ export default function TeacherReports() {
           total_reports: 0,
           total_hours: 0,
           total_students: 0,
-          attendance_rate: 0,
+          report_days: new Set<string>(),
           last_report_date: report.date
         });
       }
@@ -123,7 +149,8 @@ export default function TeacherReports() {
       teacher.total_reports += 1;
       teacher.total_hours += report.duration_hours || 0;
       teacher.total_students += report.student_count || 0;
-      teacher.attendance_rate = Math.min(100, (teacher.total_reports / 20) * 100); // Assuming 20 working days
+      const day = dayKey(report.date);
+      if (window20.has(day)) teacher.report_days.add(day);
       if (new Date(report.date) > new Date(teacher.last_report_date)) {
         teacher.last_report_date = report.date;
       }
@@ -136,32 +163,36 @@ export default function TeacherReports() {
     total_reports: number;
     total_hours: number;
     total_students: number;
-    attendance_rate: number;
+    report_days: Set<string>;
     last_report_date: string;
   };
   return Array.from(teacherMap.values() as unknown as TeacherPerformanceData[]).map((teacher) => ({
     ...teacher,
+    // days with a report out of the last 20 weekdays
+    attendance_rate: Math.round((teacher.report_days.size / 20) * 100),
+    // summing decimals leaves float noise (48.36999999999998); show one decimal
+    total_hours: Math.round(teacher.total_hours * 10) / 10,
     avg_students: Math.round(teacher.total_students / teacher.total_reports) || 0
   }));
   }, []);
 
   const calculateWeeklyTrends = useCallback((reports: TeacherReport[]) => {
+    // Calendar weeks (Monday to Sunday), compared by day, so a report on a Monday is never left out.
     const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const monday = shiftDayKey(today, 1 - (now.getDay() || 7));
     const weeks: ReportTrend[] = [];
     for (let i = 3; i >= 0; i--) {
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - (i * 7) - (now.getDay() || 7) + 1);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
+      const start = shiftDayKey(monday, -7 * i);
+      const end = shiftDayKey(start, 6);
       const weekReports = reports.filter((report) => {
-        const reportDate = new Date(report.date);
-        return reportDate >= weekStart && reportDate <= weekEnd;
+        const k = dayKey(report.date);
+        return k >= start && k <= end;
       });
-      const totalReports = weekReports.length;
       const totalHours = weekReports.reduce((sum: number, r) => sum + (r.duration_hours || 0), 0);
       weeks.push({
         name: `Week ${4 - i}`,
-        reports: totalReports,
+        reports: weekReports.length,
         hours: Math.round(totalHours * 10) / 10
       });
     }
@@ -169,29 +200,10 @@ export default function TeacherReports() {
   }, []);
 
   const calculateSubjectDistribution = useCallback((reports: TeacherReport[]) => {
+    // The subject comes from the class timetable (set by the server). It is never guessed from the topic text.
     const subjectMap = new Map<string, number>();
     reports.forEach(report => {
-      const topics = report.topics_taught?.toLowerCase() || '';
-      let subject = 'Other';
-      if (topics.includes('math') || topics.includes('algebra') || topics.includes('geometry') || topics.includes('calculus') || topics.includes('arithmetic')) {
-        subject = 'Mathematics';
-      } else if (topics.includes('science') || topics.includes('physics') || topics.includes('chemistry') || topics.includes('biology')) {
-        subject = 'Science';
-      } else if (topics.includes('english') || topics.includes('literature') || topics.includes('grammar') || topics.includes('writing') || topics.includes('reading')) {
-        subject = 'English';
-      } else if (topics.includes('history') || topics.includes('social') || topics.includes('geography')) {
-        subject = 'History';
-      } else if (topics.includes('coding') || topics.includes('programming') || topics.includes('computer') || topics.includes('ai') || topics.includes('python') || topics.includes('java')) {
-        subject = 'Coding/Computer Science';
-      } else if (topics.includes('art') || topics.includes('drawing') || topics.includes('painting')) {
-        subject = 'Arts';
-      } else if (topics.includes('music')) {
-        subject = 'Music';
-      } else if (topics.includes('physical') || topics.includes('pe') || topics.includes('sport')) {
-        subject = 'Physical Education';
-      } else if (report.grade) {
-        subject = formatGradeSection(report.grade, report.section) || report.grade;
-      }
+      const subject = report.subject?.trim() || 'Not recorded';
       subjectMap.set(subject, (subjectMap.get(subject) || 0) + 1);
     });
     const total = reports.length || 1;
@@ -285,12 +297,14 @@ export default function TeacherReports() {
         id: string;
         profile_id?: string | null;
         full_name?: string | null;
+        /** the teachers endpoint sends the name as `name` */
+        name?: string | null;
         email?: string | null;
       };
       const rawTeachers = result?.teachers ?? result;
       const teachersData: Teacher[] = ((Array.isArray(rawTeachers) ? rawTeachers : []) as ApiTeacher[]).map((teacher) => ({
         id: teacher.profile_id || teacher.id,
-        full_name: teacher.full_name || 'Unknown',
+        full_name: teacher.full_name || teacher.name || teacher.email || 'Unknown',
         email: teacher.email || ''
       }));
 
@@ -456,9 +470,7 @@ export default function TeacherReports() {
             <button className="sd-btn sd-btn--ghost-dark" onClick={exportToCSV} disabled={loading || filteredReports.length === 0}>
               <Download aria-hidden="true" />Export {filteredReports.length > 0 ? `(${filteredReports.length})` : ""}
             </button>
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => { void loadData(); void loadAttendance(); }} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => { void loadData(); void loadAttendance(); }} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>
@@ -514,6 +526,7 @@ export default function TeacherReports() {
           cleaningUp={cleaningUp}
           onCleanup={handleCleanupOrphaned}
           onReview={setReviewingReport}
+          onBulk={bulkReview}
           todayKey={getTodayDate()}
         />
       )}

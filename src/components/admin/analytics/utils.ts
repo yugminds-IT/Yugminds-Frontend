@@ -10,7 +10,7 @@ export interface Result {
   /** `engagement` is the school's student count as a share of the largest school's, not a measure of activity */
   topSchools: { name: string; engagement: number }[];
   popularCourses: { name: string; students: number }[];
-  teacherPerformance: { excellent?: number; good?: number; average?: number; needsImprovement?: number };
+  teacherPerformance: { excellent?: number; good?: number; average?: number; needsImprovement?: number; noRecords?: number };
   /** one entry per month: enrollments as a share of all students, and completions as a share of that month's enrollments */
   courseEngagement: { name: string; engagement: number; completion: number }[];
 }

@@ -60,7 +60,7 @@ function rejectRefreshSubscribers(err: unknown) {
   refreshSubscribers = [];
 }
 
-function performLogout(reason?: string): void {
+function performLogout(_reason?: string): void {
   // Don't broadcast — a refresh failure in this tab must not sign out a
   // tab that just rotated the refresh cookie successfully.
   const redirect = loginRedirectUrl('session_expired');

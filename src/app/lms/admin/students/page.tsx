@@ -104,6 +104,7 @@ interface StudentCourse {
 
 interface Student {
   id: string;
+  last_login?: string | null;
   full_name: string;
   email: string;
   role: string;
@@ -2364,9 +2365,7 @@ export default function StudentsManagement() {
             <button className="sd-btn sd-btn--amber" onClick={openAdd}><Plus aria-hidden="true" />Add student</button>
             <button className="sd-btn sd-btn--ghost-dark" onClick={() => setActiveTab('import')}><Upload aria-hidden="true" />Import a class</button>
             <button className="sd-btn sd-btn--ghost-dark" onClick={handleOpenExportDialog}><Download aria-hidden="true" />Export</button>
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void loadData()} disabled={isStudentsLoading} aria-label={isStudentsLoading ? 'Refreshing' : 'Refresh'} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void loadData()} disabled={isStudentsLoading} aria-label={isStudentsLoading ? 'Refreshing' : 'Refresh'} title="Refresh">
               <RefreshCw className={isStudentsLoading ? 'animate-spin' : ''} aria-hidden="true" />
             </button>
           </div>
@@ -3045,7 +3044,7 @@ export default function StudentsManagement() {
         busy={isDeletingStudent}
         onConfirm={() => void confirmDeleteStudent()}
       >
-        <p>This cannot be undone. Their account, enrollment and progress are removed, and their email can be used again.</p>
+        <p>They move to the Trash and can be restored from there, with their enrollment and progress. Until then they cannot sign in.</p>
       </ConfirmModal>
 
       <ConfirmModal
@@ -3057,7 +3056,7 @@ export default function StudentsManagement() {
         busy={isBulkDeletingStudents}
         onConfirm={() => void confirmBulkDeleteStudents()}
       >
-        <p>This cannot be undone. Their accounts, enrollment and progress are removed, and their emails can be used again.</p>
+        <p>They move to the Trash and can be restored from there, with their enrollment and progress. Until then they cannot sign in.</p>
         <ul className="ad-names">
           {(bulkDeleteStudents ?? []).slice(0, 20).map((st) => <li key={st.id}>{st.full_name} ({st.email})</li>)}
           {(bulkDeleteStudents?.length ?? 0) > 20 && <li style={{ listStyle: 'none' }}>…and {(bulkDeleteStudents?.length ?? 0) - 20} more</li>}

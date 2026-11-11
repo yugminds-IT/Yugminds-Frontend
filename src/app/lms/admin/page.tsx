@@ -141,7 +141,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="sd-page">
-      <section className="sd-hero mc-band" aria-labelledby="ao-title">
+      <section className="sd-hero ao-hero mc-band" aria-labelledby="ao-title">
         <div className="sd-hero-copy">
           <h1 id="ao-title" className="mc-hero-title">Admin dashboard</h1>
           <p className="sd-where">{greeting}{firstName ? `, ${firstName}` : ""}</p>
@@ -150,15 +150,13 @@ export default function AdminDashboard() {
             <button className="sd-btn sd-btn--amber" onClick={() => router.push("/lms/admin/schools?action=add")}><School aria-hidden="true" />Add school</button>
             <button className="sd-btn sd-btn--ghost-dark" onClick={() => setCreateOpen(true)}><UserPlus aria-hidden="true" />Create account</button>
             <button className="sd-btn sd-btn--ghost-dark ao-search" onClick={openSearch} aria-label="Search schools, teachers, students and courses"><Search aria-hidden="true" />Search <kbd>⌘K</kbd></button>
-          </div>
-          <div className="so-meta">
-            <p className="so-live" data-on={isConnected}>
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void handleRefresh()} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
+              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
+            </button>
+            <p className="so-live" data-on={isConnected} style={{ alignSelf: "center", margin: 0 }}>
               <i aria-hidden="true" />
               {isConnected ? "Live" : "Reconnecting…"}
             </p>
-            <button className="so-refresh" onClick={() => void handleRefresh()} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
-              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
-            </button>
           </div>
         </div>
         {loading ? (

@@ -71,3 +71,6 @@ a.ao-link:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 3px
 .rt-zero { color: var(--sd-ink-soft); }
 .rt-empty { margin: 0; font-size: 0.95rem; color: var(--sd-ink-soft); }
 @media (max-width: 560px) { .rt-reports li { grid-template-columns: auto minmax(0, 1fr); } .rt-reports li .sm-chip, .rt-reports li .sd-btn { grid-column: 2; justify-self: start; } }
+
+/* A wider copy column on wide screens, so the action buttons, Refresh and the Live badge fit on one row. Below 1100px the hero is a single column already. */
+@media (min-width: 1101px) { .sd-hero.ao-hero { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); } }

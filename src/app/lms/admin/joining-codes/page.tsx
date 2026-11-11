@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { KeyRound, RefreshCw } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, KeyRound, RefreshCw } from "lucide-react";
 import { useAdminSchools } from "@/hooks/useAdminSchools";
 import CodeRun from "@/components/admin/joining-codes/CodeRun";
 import CodesPanel from "@/components/admin/joining-codes/CodesPanel";
@@ -24,6 +24,7 @@ const GUIDE: [string, string][] = [
 
 function JoiningCodesInner() {
   const params = useSearchParams();
+  const router = useRouter();
   const { schools: raw, isLoading: schoolsLoading, error: schoolsError, refetch: refetchSchools } = useAdminSchools();
   const [schoolId, setSchoolId] = useState(() => params.get("school") ?? "");
   const [filter, setFilter] = useState<CodeState | null>(null);
@@ -38,6 +39,8 @@ function JoiningCodesInner() {
   const gradesCovered = new Set(codes.filter((c) => stateOf(c, now) === "active").map((c) => c.grade)).size;
   const gradesOffered = school?.grades_offered?.length ?? 0;
   const pick = (id: string) => { setSchoolId(id); setFilter(null); };
+  // Back to the list of schools. Also drops ?school= from the address so a reload does not reopen it.
+  const backToSchools = () => { pick(""); if (params.get("school")) router.replace("/lms/admin/joining-codes"); };
 
   let status: React.ReactNode;
   if (schoolsLoading) status = "Loading schools…";
@@ -56,8 +59,9 @@ function JoiningCodesInner() {
           <p className="sd-where">How people get into the right class</p>
           <p className="sd-status">{status}</p>
           {school && (
-            <div className="so-meta">
-              <button className="so-refresh" onClick={() => void refetch()} aria-label="Refresh" title="Refresh"><RefreshCw aria-hidden="true" /></button>
+            <div className="sd-hero-actions">
+              <button className="sd-btn sd-btn--ghost-dark" onClick={backToSchools}><ArrowLeft aria-hidden="true" />Back to all schools</button>
+              <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void refetch()} aria-label="Refresh" title="Refresh"><RefreshCw aria-hidden="true" /></button>
             </div>
           )}
         </div>
@@ -73,7 +77,6 @@ function JoiningCodesInner() {
           <option value="">{schoolsLoading ? "Loading schools…" : "Choose a school"}</option>
           {schools.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        {school && <button className="sd-btn sd-btn--line" onClick={() => pick("")}>All schools</button>}
       </div>
 
       {school ? (

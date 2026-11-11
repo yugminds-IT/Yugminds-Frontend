@@ -20,6 +20,7 @@ export default function AboutBuildStage() {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setStill(true); setStep(LAST); }
     const el = box.current;
     if (!el) return;

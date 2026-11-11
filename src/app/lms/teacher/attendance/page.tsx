@@ -101,9 +101,7 @@ export default function AttendancePage() {
               <Link href="/lms/teacher/reports" className="sd-btn sd-btn--amber"><FileText aria-hidden="true" />Submit {plural(left, "report")}</Link>
             ) : null}
             <Link href="/lms/teacher/leaves" className={`sd-btn ${left > 0 && !off && st !== "leave" && today ? "sd-btn--ghost-dark" : "sd-btn--amber"}`}><CalendarOff aria-hidden="true" />Leave requests</Link>
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void refresh()} disabled={refreshing} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void refresh()} disabled={refreshing} aria-label={refreshing ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>

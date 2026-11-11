@@ -31,7 +31,7 @@ const fixture: QaFixture = JSON.parse(
 );
 
 export const test = base.extend<Record<string, never>>({
-  page: async ({ page }, use) => {
+  page: async ({ page }, provide) => {
     await page.goto('/lms/login');
     await page.locator('#email').fill(fixture.teachers[0].email);
     await page.locator('#password').fill(fixture.teachers[0].password);
@@ -39,7 +39,7 @@ export const test = base.extend<Record<string, never>>({
       page.waitForURL(/\/lms\/teacher/, { timeout: 30_000 }),
       page.locator('button[type="submit"]').click(),
     ]);
-    await use(page);
+    await provide(page);
   },
 });
 

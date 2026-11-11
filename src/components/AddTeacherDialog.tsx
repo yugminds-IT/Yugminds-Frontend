@@ -1,5 +1,6 @@
 "use client";
 
+import { TEACHING_SUBJECTS } from "@/lib/report-subjects";
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -117,9 +118,7 @@ const _availableGrades = [
   "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"
 ];
 
-const availableSubjects = [
-  "Robotics", "Coding", "AI/ML", "Python"
-];
+const availableSubjects: string[] = [...TEACHING_SUBJECTS];
 
 export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeacherDialogProps) {
   const [loading, setLoading] = useState(false);

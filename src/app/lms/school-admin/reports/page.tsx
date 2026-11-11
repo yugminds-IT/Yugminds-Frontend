@@ -21,6 +21,7 @@ interface TeacherReport {
   grade: string;
   section?: string | null;
   topics_taught: string;
+  subject?: string;
   activities?: string;
   student_count: number;
   duration_hours: number;
@@ -328,11 +329,6 @@ export default function ReportsManagement() {
           <h1 id="rp-title" className="mc-hero-title">Teacher reports</h1>
           <p className="sd-status">{status}</p>
           <div className="sd-hero-actions">
-            {actionable.length > 0 && tab === "reports" && view === "inbox" && (
-              <button className="sd-btn sd-btn--amber" onClick={toggleAll}>
-                <SquareCheckBig aria-hidden="true" />{allSelected ? "Clear selection" : `Select all ${actionable.length}`}
-              </button>
-            )}
             <button className="sd-btn sd-btn--ghost-dark" onClick={handleExportCSV}><Download aria-hidden="true" />Export</button>
           </div>
         </div>
@@ -376,6 +372,11 @@ export default function ReportsManagement() {
                 <button className="sd-btn sd-btn--line" onClick={() => setFocusDate(todayKey())}>Today</button>
               )}
             </div>
+            {actionable.length > 0 && (
+              <button className="sd-btn sd-btn--amber" onClick={toggleAll}>
+                <SquareCheckBig aria-hidden="true" />{allSelected ? "Clear selection" : `Select all ${actionable.length}`}
+              </button>
+            )}
           </div>
 
           {loading ? (
@@ -426,6 +427,7 @@ export default function ReportsManagement() {
                           <div className="rp-top">
                             <b>{r.teacher.full_name}</b>
                             <span className="sm-chip" data-class="true">{label}</span>
+                            {r.subject && <span className="sm-chip">{r.subject}</span>}
                             {r.status === "Approved" && <span className="sm-chip" data-tone="done">Approved</span>}
                             {r.status === "Rejected" && <span className="sm-chip" data-tone="red">Rejected</span>}
                             {r.status === "Reviewed" && <span className="sm-chip">Looked at by the main admin</span>}

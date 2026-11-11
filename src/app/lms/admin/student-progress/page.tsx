@@ -174,9 +174,7 @@ export default function CourseProgressPage() {
             {counts.none > 0 && stage !== "none" && (
               <button className="sd-btn sd-btn--ghost-dark" onClick={() => pickStage("none")}>Show {plural(counts.none, "student")} with no course</button>
             )}
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void refetch()} disabled={isFetching} aria-label={isFetching ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void refetch()} disabled={isFetching} aria-label={isFetching ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={isFetching ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>

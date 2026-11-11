@@ -27,7 +27,8 @@
 .sp-prog b { font: 800 1.05rem/1 var(--sd-display); font-variant-numeric: tabular-nums; }
 .sp-prog[data-stage="done"] .tm-bar u { background: var(--sd-ink); }
 .sp-prog[data-stage="none"] b { color: var(--sd-ink-soft); }
-.sp-active { font-size: 0.88rem; color: var(--sd-ink-soft); }
+.sp-active { display: grid; gap: 0.15rem; justify-items: start; font-size: 0.88rem; color: var(--sd-ink-soft); }
+.sp-active small { font-size: 0.8rem; color: var(--sd-ink-soft); }
 .sp-detail { padding: 0.2rem 1.25rem 1rem 4.75rem; }
 .sp-detail ol { display: grid; gap: 0.1rem; list-style: none; border: 1.5px solid var(--sd-line); border-radius: 1rem; overflow: clip; }
 .sp-detail li { display: grid; grid-template-columns: minmax(0, 1.4fr) 9rem minmax(7rem, 1fr) 7.5rem; align-items: center; gap: 0.5rem 1rem; padding: 0.65rem 1rem; font-size: 0.92rem; }

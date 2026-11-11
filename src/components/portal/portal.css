@@ -465,6 +465,15 @@ textarea.sd-field { resize: none; }
 .nt-run .sd-day[data-active="false"] .sd-node { border-style: solid; }
 .nt-row { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem 1rem; align-items: start; padding: 1rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); transition: background-color 0.3s ease; }
 .nt-row:last-child { border-bottom: 0; }
+.nt-row[data-selectable="true"] { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+.nt-row[data-picked="true"] { background: var(--sd-wash); }
+.nt-check { width: 1.15rem; height: 1.15rem; margin-top: 0.7rem; accent-color: var(--sd-ink); cursor: pointer; }
+.nt-strip { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1.25rem; border-bottom: 1.5px solid var(--sd-line); background: var(--sd-wash); font: 700 0.85rem/1.2 var(--sd-body); color: var(--sd-ink-soft); cursor: pointer; }
+.nt-strip .nt-check { margin-top: 0; }
+.nt-selbar { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; padding: 0.7rem 1rem; border: 1.5px solid var(--sd-ink); border-radius: 1.1rem; background: var(--sd-paper); box-shadow: 0 0.75rem 2rem rgb(11 27 58 / 0.18); }
+.nt-selbar b { font: 800 1.05rem/1 var(--sd-display); }
+.nt-selbar > div { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.nt-selbar .sd-btn { min-height: 2.25rem; padding-inline: 1rem; }
 .nt-row[data-unread="true"] { background: rgb(251 191 36 / 0.1); }
 .nt-row[data-unread="true"]::before { content: ""; position: absolute; left: 0; top: 0.9rem; bottom: 0.9rem; width: 4px; border-radius: 0 4px 4px 0; background: var(--sd-amber-deep); }
 .nt-ico { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--sd-wash); color: var(--sd-ink-soft); box-shadow: inset 0 0 0 1.5px var(--sd-line); transition: background-color 0.3s ease, color 0.3s ease; }
@@ -502,7 +511,9 @@ textarea.sd-field { resize: none; }
 .nt-exit { animation: nt-out 260ms var(--sd-ease) both; }
 @media (max-width: 640px) {
   .nt-row { grid-template-columns: auto minmax(0, 1fr); }
+  .nt-row[data-selectable="true"] { grid-template-columns: auto auto minmax(0, 1fr); }
   .nt-acts { grid-column: 2; justify-self: start; margin-left: -0.5rem; }
+  .nt-row[data-selectable="true"] .nt-acts { grid-column: 3; }
   .sd-modal-foot .sd-btn { flex: 1; }
 }
 @media (prefers-reduced-motion: reduce) {

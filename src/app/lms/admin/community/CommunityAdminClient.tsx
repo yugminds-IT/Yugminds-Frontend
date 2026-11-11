@@ -312,9 +312,7 @@ export default function CommunityAdminClient() {
             ) : (
               <a className="sd-btn sd-btn--amber" href={PUBLIC_PAGE} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />View live page</a>
             )}
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void loadAll()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void loadAll()} disabled={loading} aria-label={loading ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={loading ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>

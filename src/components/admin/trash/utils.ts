@@ -7,9 +7,11 @@ export interface TrashItem {
   deleted_at: string | null;
 }
 
-export type Kind = "teachers" | "courses";
+export type Kind = "teachers" | "students" | "school_admins" | "courses";
 export const KINDS: { key: Kind; label: string; one: string; many: string }[] = [
   { key: "teachers", label: "Teachers", one: "teacher", many: "teachers" },
+  { key: "students", label: "Students", one: "student", many: "students" },
+  { key: "school_admins", label: "School admins", one: "school admin", many: "school admins" },
   { key: "courses", label: "Courses", one: "course", many: "courses" },
 ];
 
@@ -28,5 +30,7 @@ export function ageOf(iso: string | null, now: number): Age {
 
 export const NOTE: Record<Kind, string> = {
   teachers: "Restoring a teacher turns their account back on straight away.",
+  students: "Restoring a student turns their account back on straight away, with their classes and progress.",
+  school_admins: "Restoring a school admin turns their account back on straight away, linked to the same school.",
   courses: "Courses come back unpublished. Publish them again when you are ready.",
 };

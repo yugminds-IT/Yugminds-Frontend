@@ -13,7 +13,7 @@ export default function FlagsPanel({ value, onChange }: { value: Controls; onCha
     const n = toFlagName(name);
     if (!n) return;
     if (!FLAG_RE.test(n)) return setProblem("Use letters, numbers, dots, dashes and underscores, up to 64 characters.");
-    if (n in value.feature_flags) return setProblem(`"${n}" already exists.`);
+    if (Object.hasOwn(value.feature_flags, n)) return setProblem(`"${n}" already exists.`);
     onChange({ ...value, feature_flags: { ...value.feature_flags, [n]: false } });
     setName("");
     setProblem("");
@@ -52,7 +52,7 @@ export default function FlagsPanel({ value, onChange }: { value: Controls; onCha
             <div key={k} className="ctl-flag" data-on={on}>
               <code>{k}</code>
               <span className="ctl-flag-state">{on ? "On" : "Off"}</span>
-              <button type="button" role="switch" aria-checked={on} aria-label={`${k} is on`} className="st-switch ctl-switch" onClick={() => set(k, !on)} />
+              <button type="button" role="switch" aria-checked={on} aria-label={k} className="st-switch ctl-switch" onClick={() => set(k, !on)} />
               <RowMenu label={`More actions for ${k}`} items={[{ label: "Remove flag", icon: Trash2, onClick: () => remove(k), danger: true }]} />
             </div>
           ))}

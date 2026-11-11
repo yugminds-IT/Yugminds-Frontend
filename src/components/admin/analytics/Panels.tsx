@@ -20,13 +20,13 @@ function Rows({ items, empty }: { items: { key: string; name: string; pct: numbe
   );
 }
 
-/** How the platform is doing right now: teacher attendance, lesson progress, and how often requests succeed. */
+/** How the platform is doing right now: teacher attendance, course progress, and how often requests succeed. */
 export function HealthTab({ data }: { data: Result }) {
   const { analytics: a, teacherPerformance: t } = data;
   const ok = a.systemHealth;
   const rows = [
-    { key: "att", name: "Teachers present", val: a.avgAttendance, note: "Share of teacher attendance records marked present in the last 30 days.", hot: false },
-    { key: "prog", name: "Lesson progress", val: a.completionRate, note: "Average progress across lesson activity in the last 30 days.", hot: false },
+    { key: "att", name: "Teachers present", val: a.avgAttendance, note: "Share of attendance days marked present in the last 30 days. Approved leave is not counted as an absence.", hot: false },
+    { key: "prog", name: "Course progress", val: a.completionRate, note: "Average of how far enrolled students are through their courses.", hot: false },
     { key: "req", name: "Requests that worked", val: ok, note: "Share of recent requests that finished without a server error. It starts again when the server restarts, so it is not an uptime figure.", hot: ok < 95 },
   ];
   const parts: Part[] = [
@@ -34,6 +34,7 @@ export function HealthTab({ data }: { data: Result }) {
     { label: "Good, 75 to 89%", value: t.good ?? 0, tone: "amber" },
     { label: "Average, 50 to 74%", value: t.average ?? 0, tone: "blue" },
     { label: "Needs attention, under 50%", value: t.needsImprovement ?? 0, tone: "red" },
+    { label: "No attendance records yet", value: t.noRecords ?? 0, tone: "line" },
   ];
   return (
     <div className="so-grid mc-swap">
@@ -53,7 +54,7 @@ export function HealthTab({ data }: { data: Result }) {
       </div>
       <div className="so-col">
         <section className="sd-panel" aria-labelledby="pa-h2">
-          <div className="sd-panel-head"><div><h2 id="pa-h2">Teacher attendance</h2><p>Each active teacher, by how often they were marked present in the last 30 days.</p></div></div>
+          <div className="sd-panel-head"><div><h2 id="pa-h2">Teacher attendance</h2><p>Each active teacher, by how often they were marked present in the last 30 days. Teachers with no records are shown apart.</p></div></div>
           <SegmentBar parts={parts} unit="" empty="No active teachers yet." />
         </section>
       </div>

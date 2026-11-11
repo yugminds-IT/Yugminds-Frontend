@@ -30,6 +30,7 @@ export function AcademyHeader() {
     window.addEventListener("scroll", on, { passive: true });
     return () => window.removeEventListener("scroll", on);
   }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
   useEffect(() => setMenu(false), [pathname]);
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);

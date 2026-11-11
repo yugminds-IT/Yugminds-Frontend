@@ -18,6 +18,7 @@ export default function HomeSchools() {
   useEffect(() => {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 12000);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     setState({ status: "loading" });
     apiClient
       .get("/api/logos", { signal: ac.signal })

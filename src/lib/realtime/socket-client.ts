@@ -13,6 +13,8 @@ class RealtimeSocketClient {
   private hasConnectedOnce = false;
   private idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stableTimer: ReturnType<typeof setTimeout> | null = null;
+  private serverRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private serverRetries = 0;
   private state: RealtimeConnectionState = 'idle';
 
   private debug(event: string, payload?: unknown): void {
@@ -38,10 +40,28 @@ class RealtimeSocketClient {
     if (this.stableTimer) clearTimeout(this.stableTimer);
     this.stableTimer = setTimeout(() => {
       if (this.socket?.connected) {
+        this.serverRetries = 0; // it stayed up, so the server accepted us
         this.setState('stable');
       }
       this.stableTimer = null;
     }, 1200);
+  }
+
+  /**
+   * socket.io reconnects by itself after a network drop, but NOT when the server ends the connection.
+   * The server does that when it rejects the token right after the handshake (for example a page that
+   * connected before login finished). Reconnect ourselves, with growing delays; the auth function above
+   * then sends whatever token exists by then.
+   */
+  private retryAfterServerDisconnect(): void {
+    if (this.serverRetryTimer) return;
+    const delay = Math.min(1000 * 2 ** this.serverRetries, 10_000);
+    this.serverRetries += 1;
+    this.serverRetryTimer = setTimeout(() => {
+      this.serverRetryTimer = null;
+      const hasConsumers = Array.from(this.listeners.values()).some((set) => set.size > 0);
+      if (hasConsumers && this.socket && !this.socket.connected) this.socket.connect();
+    }, delay);
   }
 
   private ensureSocket(): Socket {
@@ -51,9 +71,9 @@ class RealtimeSocketClient {
       transports: ['websocket'],
       autoConnect: false,
       withCredentials: true,
-      auth: {
-        token: getAuthToken() ?? '',
-      },
+      // Function form: re-read the in-memory token on every (re)connect attempt, otherwise
+      // a socket created before login/refresh retries forever with an empty token.
+      auth: (cb) => cb({ token: getAuthToken() ?? '' }),
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -86,6 +106,7 @@ class RealtimeSocketClient {
         this.setState('idle');
       } else {
         this.setState('reconnecting');
+        if (reason === 'io server disconnect') this.retryAfterServerDisconnect();
       }
       this.debug('disconnect', { reason });
     });
@@ -115,7 +136,6 @@ class RealtimeSocketClient {
       clearTimeout(this.idleDisconnectTimer);
       this.idleDisconnectTimer = null;
     }
-    socket.auth = { token: getAuthToken() ?? '' };
     if (!socket.connected && !socket.active) {
       this.setState(this.hasConnectedOnce ? 'reconnecting' : 'connecting');
       socket.connect();

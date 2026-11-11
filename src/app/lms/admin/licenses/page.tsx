@@ -167,9 +167,7 @@ export default function LicensesPage() {
             <button className="sd-btn sd-btn--amber" onClick={() => setTab("make")}><Plus aria-hidden="true" />Make keys</button>
             {mismatches > 0 && <button className="sd-btn sd-btn--ghost-dark" onClick={() => goKeys(null, true)}>Show {plural(mismatches, "key")} to redo</button>}
             <button className="sd-btn sd-btn--ghost-dark" onClick={() => setTab("tools")}>Add or check a key</button>
-          </div>
-          <div className="so-meta">
-            <button className="so-refresh" onClick={() => void loadAllLicenses()} disabled={loadingAll} aria-label={loadingAll ? "Refreshing" : "Refresh"} title="Refresh">
+            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={() => void loadAllLicenses()} disabled={loadingAll} aria-label={loadingAll ? "Refreshing" : "Refresh"} title="Refresh">
               <RefreshCw className={loadingAll ? "animate-spin" : ""} aria-hidden="true" />
             </button>
           </div>

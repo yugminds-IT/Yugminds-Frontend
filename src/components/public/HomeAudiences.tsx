@@ -46,6 +46,7 @@ export default function HomeAudiences() {
   // launch steps light up one after another once the schools block is in view
   useEffect(() => {
     if (!schoolSeen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setStep(LAUNCH.length - 1); return; }
     let n = 0;
     setStep(0);

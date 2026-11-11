@@ -11,6 +11,7 @@ export interface TeacherSchool {
 
 export interface Teacher {
   id?: string;
+  last_login?: string | null;
   teacher_id: string;
   full_name: string;
   email: string;

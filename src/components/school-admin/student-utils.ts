@@ -2,6 +2,7 @@
 
 export interface Student {
   id: string;
+  last_login?: string | null;
   profile_id: string;
   student_id?: string;
   school_id: string;

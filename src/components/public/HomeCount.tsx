@@ -10,6 +10,7 @@ export default function HomeCount({ to, suffix = "" }: { to: number; suffix?: st
     const el = ref.current;
     if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let raf = 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
     setN(0);
     const io = new IntersectionObserver(([e]) => {
       if (!e.isIntersecting) return;

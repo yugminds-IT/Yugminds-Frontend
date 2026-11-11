@@ -221,6 +221,8 @@ export function useDashboardRealtime(role: RealtimeRole, options: UseDashboardRe
     const unsubConnect = realtimeSocketClient.on<boolean>('socket:connected', (connected) => {
       setIsConnected(Boolean(connected));
     });
+    // Shared singleton may already be connected (another consumer mounted first); no event will re-fire.
+    setIsConnected(realtimeSocketClient.connected);
 
     const unsubState = realtimeSocketClient.on<RealtimeConnectionState>('socket:state', (state) => {
       connectionStateRef.current = state;
