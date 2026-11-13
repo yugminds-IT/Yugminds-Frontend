@@ -1,5 +1,6 @@
 'use client'
 
+import { REPORT_SUBJECTS } from "@/lib/report-subjects";
 import { Check, TriangleAlert } from 'lucide-react'
 import Modal from '../../portal/Modal'
 import { ChipGroup } from '../../portal/notifications'
@@ -18,12 +19,13 @@ export default function ScheduleFormModal({
   rooms,
   grades,
   sections,
-  subjects,
   teachers,
   teacherCount,
   matchCount,
   isMatch,
   loadOf,
+  windowInfo,
+  periodLocked,
   roomFree,
   suggested,
   conflict,
@@ -40,7 +42,6 @@ export default function ScheduleFormModal({
   rooms: Room[]
   grades: string[]
   sections: string[]
-  subjects: string[]
   /** teachers to offer in the list */
   teachers: Teacher[]
   teacherCount: number
@@ -48,6 +49,10 @@ export default function ScheduleFormModal({
   matchCount: number
   isMatch: (t: Teacher) => boolean
   loadOf: (teacherId: string) => number
+  /** Half-day window check for the chosen day + period. */
+  windowInfo: (t: Teacher) => { fits: boolean; note: string | null }
+  /** Why no teacher can take this period on `day` (null = open). */
+  periodLocked: (day: string, periodId: string) => string | null
   roomFree: (roomId: string) => boolean
   suggested: Teacher | null
   conflict: string | null
@@ -91,7 +96,7 @@ export default function ScheduleFormModal({
               <div className="sd-field-wrap">
                 <label>Day</label>
                 {locked.day_of_week ? <p className="nt-summary"><b>{form.day_of_week}</b></p> : (
-                  <ChipGroup label="Day" value={form.day_of_week} options={days.map((d) => [d, d] as const)} onChange={(d) => set({ day_of_week: d })} />
+                  <ChipGroup label="Day" value={form.day_of_week} options={days.map((d) => [d, d] as const)} onChange={(d) => set({ day_of_week: d, ...(form.period_id && periodLocked(d, form.period_id) ? { period_id: '', start_time: '', end_time: '' } : {}) })} />
                 )}
                 {dayClosed && <p className="sm-warn">Your school is closed on {form.day_of_week}s.</p>}
               </div>
@@ -104,11 +109,15 @@ export default function ScheduleFormModal({
                     label="Period"
                     value={form.period_id}
                     options={sortedPeriods.map((p) => [p.id, `P${p.period_number} · ${formatTime(p.start_time)}`] as const)}
+                    disabledReason={(id) => periodLocked(form.day_of_week, id)}
                     onChange={(id) => {
                       const p = periods.find((x) => x.id === id)
                       set({ period_id: id, start_time: p?.start_time ?? '', end_time: p?.end_time ?? '' })
                     }}
                   />
+                )}
+                {!locked.period_id && sortedPeriods.some((p) => periodLocked(form.day_of_week, p.id)) && (
+                  <p className="as-fine" style={{ margin: '0.35rem 0 0' }}>Greyed periods have no teacher available on {form.day_of_week}. Hover one to see why.</p>
                 )}
               </div>
             </>
@@ -119,8 +128,10 @@ export default function ScheduleFormModal({
           <legend>What</legend>
           <div className="sd-field-wrap">
             <label htmlFor="sc-subject">Subject</label>
-            <input id="sc-subject" className="sd-field" list="sc-subjects" autoComplete="off" placeholder="For example, Robotics" value={form.subject} onChange={(e) => set({ subject: e.target.value })} />
-            <datalist id="sc-subjects">{subjects.map((s) => <option key={s} value={s} />)}</datalist>
+            <select id="sc-subject" className="sd-field" value={form.subject} onChange={(e) => set({ subject: e.target.value })}>
+              <option value="">Select a subject</option>
+              {REPORT_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
           <div className="sd-field-wrap">
             <label>Grade</label>
@@ -141,11 +152,14 @@ export default function ScheduleFormModal({
               <label htmlFor="sc-teacher">Teacher</label>
               <select id="sc-teacher" className="sd-field" value={form.teacher_id} onChange={(e) => set({ teacher_id: e.target.value })}>
                 <option value="">Choose a teacher</option>
-                {teachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.full_name} · {loadOf(t.id).toFixed(1)}h a week{form.grade && !isMatch(t) ? ' · not assigned to this class' : ''}
-                  </option>
-                ))}
+                {teachers.map((t) => {
+                  const w = windowInfo(t)
+                  return (
+                    <option key={t.id} value={t.id} disabled={!w.fits}>
+                      {t.full_name} · {loadOf(t.id).toFixed(1)}h a week{form.grade && !isMatch(t) ? ' · not assigned to this class' : ''}{w.note ? ` · ${w.note}${w.fits ? '' : ' — this period is outside it'}` : ''}
+                    </option>
+                  )
+                })}
               </select>
             </div>
             <div className="sd-field-wrap">

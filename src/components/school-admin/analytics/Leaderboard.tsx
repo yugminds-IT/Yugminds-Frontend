@@ -6,13 +6,16 @@ import { formatGradeBadge, formatSectionLabel } from "../student-utils";
 import { BAND_LABEL, pct, studentBand, type Band, type LeaderboardStudent } from "./types";
 
 const PAGE_SIZE = 25;
-type Sort = "rank" | "course" | "daily" | "name";
+type Sort = "rank" | "course" | "daily" | "graded" | "completion" | "name";
 const SORTS: Record<Sort, string> = {
   rank: "School rank",
   course: "Course score, highest first",
   daily: "Daily score, highest first",
+  completion: "Course completion, highest first",
+  graded: "Most graded, first",
   name: "Name, A to Z",
 };
+const DAILY_SORTS: Sort[] = ["rank", "graded", "completion", "name"];
 
 const schoolRank = (s: LeaderboardStudent) => s.school_rank ?? s.rank;
 const classOf = (s: LeaderboardStudent) => [formatGradeBadge(s.grade), s.section && formatSectionLabel(s.section).replace(/^section\s*/i, "")].filter(Boolean).join(" ");
@@ -31,6 +34,9 @@ export default function Leaderboard({
   section,
   onGrade,
   onSection,
+  completion,
+  daily = false,
+  scope = "school",
 }: {
   students: LeaderboardStudent[];
   band: Band | "all";
@@ -39,7 +45,14 @@ export default function Leaderboard({
   section: string;
   onGrade: (g: string) => void;
   onSection: (s: string) => void;
+  /** student_id → course completion %, from the course-progress endpoint; undefined while loading or unavailable. */
+  completion?: Map<string, number>;
+  /** Daily performance page: scores in `overall_score` are daily-only, so drop course/overall/badge columns. */
+  daily?: boolean;
+  scope?: string;
 }) {
+  const doneOf = (s: LeaderboardStudent) => completion?.get(String(s.student_id));
+  const doneText = (s: LeaderboardStudent) => { const v = doneOf(s); return v == null ? "–" : `${Math.round(v)}%`; };
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<Sort>("rank");
   const [pageState, setPageState] = useState({ key: "", page: 1 });
@@ -63,10 +76,13 @@ export default function Leaderboard({
       .sort((a, b) =>
         sort === "course" ? b.course_assignment_score - a.course_assignment_score
         : sort === "daily" ? b.daily_assignment_score - a.daily_assignment_score
+        : sort === "graded" ? b.graded_assignments_count - a.graded_assignments_count
+        : sort === "completion" ? (doneOf(b) ?? -1) - (doneOf(a) ?? -1)
         : sort === "name" ? a.student_name.localeCompare(b.student_name)
         : schoolRank(a) - schoolRank(b),
       );
-  }, [students, search, grade, section, band, sort]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- doneOf only reads `completion`
+  }, [students, search, grade, section, band, sort, completion]);
 
   const filterKey = `${search}|${grade}|${section}|${band}|${sort}`;
   const page = pageState.key === filterKey ? pageState.page : 1;
@@ -83,7 +99,7 @@ export default function Leaderboard({
   if (students.length === 0) {
     return (
       <section className="sd-panel">
-        <div className="sd-empty"><b>No students yet</b><p>Once students join your school and submit work, their ranking shows up here.</p></div>
+        <div className="sd-empty"><b>No students yet</b><p>Once students join {scope === "school" ? "your school" : "your classes"} and submit work, their ranking shows up here.</p></div>
       </section>
     );
   }
@@ -109,7 +125,7 @@ export default function Leaderboard({
         {grades.length > 1 && <ChipGroup label="Grade" value={grade} options={[["all", "All grades"] as const, ...grades.map((g) => [g, formatGradeBadge(g)] as const)]} onChange={(g) => { onGrade(g); onSection("all"); }} />}
         {sections.length > 1 && <ChipGroup label="Section" value={section} options={[["all", "All sections"] as const, ...sections.map((s) => [s, formatSectionLabel(s)] as const)]} onChange={onSection} />}
         <select className="sd-field" aria-label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-          {(Object.keys(SORTS) as Sort[]).map((k) => <option key={k} value={k}>{SORTS[k]}</option>)}
+          {(daily ? DAILY_SORTS : (Object.keys(SORTS) as Sort[]).filter((k) => k !== "graded")).map((k) => <option key={k} value={k}>{SORTS[k]}</option>)}
         </select>
         {hasFilters && <button className="sd-btn sd-btn--line" onClick={clear}>Clear filters</button>}
       </div>
@@ -123,9 +139,13 @@ export default function Leaderboard({
           </div>
         </section>
       ) : (
-        <section className="sd-panel as-list mc-swap" aria-label="Student ranking">
+        <section className="sd-panel as-list mc-swap" aria-label="Student ranking" data-completion="" data-daily={daily || undefined}>
           <div className="aa-row aa-head">
-            <span>Rank</span><span>Student</span><span>Class</span><span>Course</span><span>Daily</span><span>Overall</span><span>Badge</span>
+            {daily ? (
+              <><span>Rank</span><span>Student</span><span>Class</span><span>Graded</span><span>Completion</span><span>Daily score</span><span>Standing</span></>
+            ) : (
+              <><span>Rank</span><span>Student</span><span>Class</span><span>Course</span><span>Daily</span><span>Completion</span><span>Overall</span><span>Badge</span></>
+            )}
           </div>
           {pageRows.map((s) => {
             const b = studentBand(s);
@@ -137,16 +157,23 @@ export default function Leaderboard({
                 <span className="aa-who">
                   <b>{s.student_name}</b>
                   {ranks && <small>{ranks}</small>}
-                  <small className="aa-split">Course {s.course_assignment_score ? pct(s.course_assignment_score) : "–"} · Daily {s.daily_assignment_score ? pct(s.daily_assignment_score) : "–"}</small>
+                  <small className="aa-split">{daily ? `${s.graded_assignments_count} graded · Completion ${doneText(s)}` : <>Course {s.course_assignment_score ? pct(s.course_assignment_score) : "–"} · Daily {s.daily_assignment_score ? pct(s.daily_assignment_score) : "–"} · Completion {doneText(s)}</>}</small>
                 </span>
                 <span className="sm-chip" data-class={classOf(s) ? "true" : undefined}>{classOf(s) || "No class"}</span>
-                <span className="aa-part" data-empty={!s.course_assignment_score}>{s.course_assignment_score ? pct(s.course_assignment_score) : "–"}</span>
-                <span className="aa-part" data-empty={!s.daily_assignment_score}>{s.daily_assignment_score ? pct(s.daily_assignment_score) : "–"}</span>
+                {daily ? (
+                  <span className="aa-part" data-empty={!s.graded_assignments_count}>{s.graded_assignments_count || "–"}</span>
+                ) : (
+                  <>
+                    <span className="aa-part" data-empty={!s.course_assignment_score}>{s.course_assignment_score ? pct(s.course_assignment_score) : "–"}</span>
+                    <span className="aa-part" data-empty={!s.daily_assignment_score}>{s.daily_assignment_score ? pct(s.daily_assignment_score) : "–"}</span>
+                  </>
+                )}
+                <span className="aa-part" data-empty={doneOf(s) == null}>{doneText(s)}</span>
                 <span className="aa-score" data-band={b}>
                   {b === "none" ? <b>No scores yet</b> : <><b>{pct(s.overall_score)}</b><Bar value={s.overall_score} /></>}
                 </span>
                 <span className="aa-badge-cell">
-                  {s.badge !== "NONE" ? <span className="aa-badge" data-badge={s.badge}>{BADGE_LABEL[s.badge]}</span> : <span className="sm-muted">–</span>}
+                  {daily ? <span className="sm-muted">{b === "none" ? "–" : b === "high" ? "Strong" : b === "mid" ? "Getting there" : "Needs help"}</span> : s.badge !== "NONE" ? <span className="aa-badge" data-badge={s.badge}>{BADGE_LABEL[s.badge]}</span> : <span className="sm-muted">–</span>}
                 </span>
               </article>
             );

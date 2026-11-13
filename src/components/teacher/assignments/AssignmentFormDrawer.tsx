@@ -1,5 +1,6 @@
 "use client";
 
+import { REPORT_SUBJECTS } from "@/lib/report-subjects";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Loader2, Lock, Send, X } from "lucide-react";
 import {
@@ -18,9 +19,14 @@ import {
 } from "@/hooks/useUnsavedCloseGuard";
 import { sumQuestionMarks } from "@/lib/assignment-marks";
 import { toast } from "@/components/ui/toast";
+import { EXAM_TYPE_LABEL } from "@/lib/assignment-types";
 
 export type CreatePayload = {
   dueDate: string;
+  /** DAILY/COURSE: what happens after the due day ends. */
+  lateSubmissionPolicy: "allow" | "close";
+  /** Optional (policy "allow"): last day late submissions are accepted. "" = never closes. */
+  closeDate: string;
   /** One or more schools to publish this assignment to (create mode). */
   schoolIds: string[];
   subject: string;
@@ -28,6 +34,11 @@ export type CreatePayload = {
   academicYear: string;
   entireSchool: boolean;
   gradeTargets: GradeAudienceTarget[];
+  /** EXAM only. startsAt/endsAt are datetime-local strings; durationMinutes is "" for none. */
+  examType: string;
+  startsAt: string;
+  endsAt: string;
+  durationMinutes: string;
 };
 
 type SchoolOption = { id?: string; name?: string };
@@ -41,6 +52,7 @@ const STEPS: Array<{ id: WizardStep; label: string }> = [
 ];
 
 type Props = {
+  kind?: "DAILY" | "EXAM";
   mode: "create" | "edit";
   payload: CreatePayload;
   onPayloadChange: (patch: Partial<CreatePayload>) => void;
@@ -61,6 +73,7 @@ type Props = {
 };
 
 export default function AssignmentFormDrawer({
+  kind = "DAILY",
   mode,
   payload,
   onPayloadChange,
@@ -140,7 +153,14 @@ export default function AssignmentFormDrawer({
   const audienceOk =
     schoolsOk &&
     (payload.entireSchool || missingAudienceSchools.length === 0);
-  const canNextFromDetails = title.length > 0 && schoolsOk;
+  const isExam = kind === "EXAM";
+  const examWindowOk = !isExam || (
+    !!payload.examType && !!payload.startsAt && !!payload.endsAt &&
+    new Date(payload.endsAt) > new Date(payload.startsAt) &&
+    (!payload.durationMinutes || (Number.isInteger(Number(payload.durationMinutes)) && Number(payload.durationMinutes) > 0 &&
+      Number(payload.durationMinutes) * 60000 <= new Date(payload.endsAt).getTime() - new Date(payload.startsAt).getTime()))
+  );
+  const canNextFromDetails = title.length > 0 && schoolsOk && examWindowOk;
   const canNextFromAudience = audienceOk;
   const canSubmit = canNextFromDetails && canNextFromAudience;
 
@@ -234,15 +254,15 @@ export default function AssignmentFormDrawer({
     payload.schoolIds.filter((id) => id !== lockedSchoolId).length;
 
   const nextDisabled = (step === 1 && !canNextFromDetails) || (step === 2 && !canNextFromAudience);
-  const missing = step === 1 && !canNextFromDetails ? (title ? "choose a school" : "give it a title") : step === 2 && !canNextFromAudience ? "choose who sees it" : "";
+  const missing = step === 1 && !canNextFromDetails ? (!title ? "give it a title" : !examWindowOk ? "set a valid exam window" : "choose a school") : step === 2 && !canNextFromAudience ? "choose who sees it" : "";
 
   return (
-    <div className="tg-drawer" role="dialog" aria-modal="true" aria-label={mode === "edit" ? "Edit assignment" : "New assignment"} onClick={handleRequestClose}>
+    <div className="tg-drawer" role="dialog" aria-modal="true" aria-label={`${mode === "edit" ? "Edit" : "New"} ${isExam ? "exam" : "assignment"}`} onClick={handleRequestClose}>
       <div className="tg-drawer-card" onClick={(e) => e.stopPropagation()}>
         <div className="tg-drawer-head">
           <div className="tg-drawer-top">
             <div>
-              <h2>{mode === "edit" ? "Edit assignment" : "New assignment"}</h2>
+              <h2>{mode === "edit" ? "Edit" : "New"} {isExam ? "exam" : "assignment"}</h2>
               <p>Step {step} of 3: {STEPS[step - 1].label}</p>
             </div>
             <button type="button" className="pl-ico" onClick={handleRequestClose} aria-label="Close"><X aria-hidden="true" /></button>
@@ -280,15 +300,60 @@ export default function AssignmentFormDrawer({
                   <label htmlFor="as-marks">Maximum marks</label>
                   <input id="as-marks" className="sd-field" type="number" min="1" value={builderAssignment?.max_score ?? 100} onChange={(e) => syncMaxScore(e.target.value)} />
                 </div>
+                {!isExam && (
                 <div className="sd-field-wrap">
                   <label htmlFor="as-due">Due date</label>
-                  <input id="as-due" className="sd-field" type="date" value={payload.dueDate} onChange={(e) => onPayloadChange({ dueDate: e.target.value })} />
+                  <input id="as-due" className="sd-field" type="date" value={payload.dueDate} onChange={(e) => onPayloadChange({ dueDate: e.target.value, ...(payload.closeDate && e.target.value > payload.closeDate ? { closeDate: "" } : {}) })} />
                 </div>
+                )}
               </div>
+              {!isExam && payload.dueDate && (
+                <div className="sd-field-wrap">
+                  <label htmlFor="as-late">After the due date</label>
+                  <select id="as-late" className="sd-field" value={payload.lateSubmissionPolicy} onChange={(e) => onPayloadChange({ lateSubmissionPolicy: e.target.value as "allow" | "close" })}>
+                    <option value="allow">Accept late submissions (marked Late)</option>
+                    <option value="close">Close submissions</option>
+                  </select>
+                  <p className="sd-hint">The due date runs to the end of that day. To reopen a closed assignment, move the due date forward.</p>
+                </div>
+              )}
+              {!isExam && payload.dueDate && payload.lateSubmissionPolicy === "allow" && (
+                <div className="sd-field-wrap">
+                  <label htmlFor="as-close">Close date <span className="sd-opt">(optional)</span></label>
+                  <input id="as-close" className="sd-field" type="date" min={payload.dueDate} value={payload.closeDate} onChange={(e) => onPayloadChange({ closeDate: e.target.value })} />
+                  <p className="sd-hint">Late submissions are accepted until the end of this day, then it closes. Leave empty to never close.</p>
+                </div>
+              )}
+              {isExam && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))", gap: "0.9rem" }}>
+                  <div className="sd-field-wrap">
+                    <label htmlFor="ex-type">Exam type</label>
+                    <select id="ex-type" className="sd-field" value={payload.examType} onChange={(e) => onPayloadChange({ examType: e.target.value })}>
+                      {Object.entries(EXAM_TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="sd-field-wrap">
+                    <label htmlFor="ex-dur">Duration in minutes <small>(optional)</small></label>
+                    <input id="ex-dur" className="sd-field" type="number" min="1" placeholder="No limit within the window" value={payload.durationMinutes} onChange={(e) => onPayloadChange({ durationMinutes: e.target.value })} />
+                  </div>
+                  <div className="sd-field-wrap">
+                    <label htmlFor="ex-start">Opens</label>
+                    <input id="ex-start" className="sd-field" type="datetime-local" value={payload.startsAt} onChange={(e) => onPayloadChange({ startsAt: e.target.value })} />
+                  </div>
+                  <div className="sd-field-wrap">
+                    <label htmlFor="ex-end">Closes</label>
+                    <input id="ex-end" className="sd-field" type="datetime-local" value={payload.endsAt} onChange={(e) => onPayloadChange({ endsAt: e.target.value })} />
+                  </div>
+                  <p className="tg-fine" style={{ gridColumn: "1 / -1", margin: 0 }}>Students can start any time in the window. The timer runs on the server, so each student gets the full duration, but never past the closing time.</p>
+                </div>
+              )}
               <p className="tg-fine" style={{ marginTop: "-0.5rem" }}>Question marks cannot add up to more than the maximum.</p>
               <div className="sd-field-wrap">
                 <label htmlFor="as-subject">Subject</label>
-                <input id="as-subject" className="sd-field" placeholder="For example: Mathematics" value={payload.subject} onChange={(e) => onPayloadChange({ subject: e.target.value })} />
+                <select id="as-subject" className="sd-field" value={payload.subject} onChange={(e) => onPayloadChange({ subject: e.target.value })}>
+                  <option value="">Select a subject</option>
+                  {REPORT_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
 
               {showSchoolSelect && (
@@ -369,7 +434,7 @@ export default function AssignmentFormDrawer({
               <div className="tg-builder">
                 <AssignmentBuilder
                   chapterId={primarySchoolId || "daily-school-assignment"}
-                  chapterName="Daily Assignment"
+                  chapterName={isExam ? "Exam" : "Daily Assignment"}
                   assignment={builderAssignment}
                   onAssignmentChange={onBuilderChange}
                   disabled={questionsLocked}
@@ -393,7 +458,7 @@ export default function AssignmentFormDrawer({
                 {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : mode === "edit" ? <Check aria-hidden="true" /> : <Send aria-hidden="true" />}
                 {mode === "edit"
                   ? loading ? "Saving" : extraSchoolsOnEdit ? `Save and copy to ${extraSchoolsOnEdit} ${extraSchoolsOnEdit === 1 ? "school" : "schools"}` : "Save changes"
-                  : loading ? "Creating" : multiSchool ? `Create ${schoolCount} assignments` : "Create assignment"}
+                  : loading ? "Creating" : multiSchool ? `Create ${schoolCount} assignments` : isExam ? "Create exam" : "Create assignment"}
               </button>
             )}
           </div>

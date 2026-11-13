@@ -1,5 +1,6 @@
 "use client";
 
+import { slotName } from "@/lib/weekday-utils";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -75,7 +76,8 @@ export default function TeacherCalendarPage() {
   const inDays = nextClosure ? Math.round((new Date(`${nextClosure.date}T12:00:00`).getTime() - new Date(`${today}T12:00:00`).getTime()) / 86_400_000) : 0;
   const caption = nextClosure ? `Next closure: ${nextClosure.e.name}, ${shortDate(nextClosure.date)}${inDays > 0 ? ` (in ${plural(inDays, "day")})` : ""}` : "No holidays or breaks coming up";
 
-  const names = (list: { school_name: string }[]) => [...new Set(list.map((s) => s.school_name || "your school"))].join(" and ");
+  const names = (list: { school_name: string; slot?: { slot: "MORNING" | "AFTERNOON"; start: string; end: string } }[]) =>
+    [...new Set(list.map((s) => (s.school_name || "your school") + (s.slot ? ` (${slotName(s.slot).toLowerCase()})` : "")))].join(" and ");
   let status: React.ReactNode;
   if (currentQ.isLoading) status = "Loading your calendar…";
   else if (currentQ.isError) status = "Your calendar did not load. Try again.";

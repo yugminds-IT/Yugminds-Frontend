@@ -2,6 +2,7 @@
 
 import { CalendarOff } from 'lucide-react'
 import Modal from '../portal/Modal'
+import { formatWorkingSchedule } from '@/lib/weekday-utils'
 import { attendanceBand, classGroups, classLabel, teacherSubjects, type Teacher } from './teacher-utils'
 
 const BAND_TONE = { low: 'low', watch: 'watch', good: 'good', none: 'none' } as const
@@ -40,7 +41,7 @@ export default function TeacherDetailModal({
           <dl>
             <div><dt>Status</dt><dd><span className="sm-chip" data-on={t.status.toLowerCase() === 'active'}>{t.status || 'Active'}</span></dd></div>
             <div>
-              <dt>Attendance, last 30 days</dt>
+              <dt>Attendance, this month</dt>
               <dd>
                 {band === 'none' ? <span className="sm-muted">Nothing recorded yet</span> : (
                   <span className="tm-att" data-band={BAND_TONE[band]}>
@@ -64,6 +65,12 @@ export default function TeacherDetailModal({
               <p className="sm-muted">No classes assigned yet. The main admin assigns them.</p>
             )}
           </section>
+          {t?.teacher_schools?.[0]?.working_days && (
+            <section aria-label="Working days">
+              <h3>Days at your school</h3>
+              <p className="sm-muted">{formatWorkingSchedule(t.teacher_schools[0].working_days, t.teacher_schools[0].day_slots)}</p>
+            </section>
+          )}
           <section aria-label="Subjects">
             <h3>Subjects</h3>
             {subjects.length ? (

@@ -29,7 +29,7 @@ test.describe('School Admin — Student Progress', () => {
     const res = await progressResponse;
     expect(res.ok()).toBeTruthy();
 
-    await expect(page.getByRole('heading', { name: /Student progress/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Course progress/i })).toBeVisible();
 
     // Summary tiles: 3 students, 0 started/finished, 3 courses is not asserted (fixture course is a Draft).
     const tiles = page.getByRole('group', { name: 'Progress summary' });

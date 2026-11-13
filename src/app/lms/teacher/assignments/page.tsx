@@ -6,7 +6,6 @@ import { confirmDialog, choiceDialog } from "@/components/ui/confirm-dialog";
 import { useTeacherSchools } from "@/hooks/useTeacherData";
 import { useTeacherSchool } from "../context";
 import { type Assignment as BuilderAssignment } from "@/components/admin/AssignmentBuilder";
-import AssignmentAnalyticsPanel, { type AssignmentAnalyticsData } from "@/components/teacher/AssignmentAnalyticsPanel";
 import TeacherRetakeRequestsPanel from "@/components/teacher/TeacherRetakeRequestsPanel";
 import {
   audienceFromAssignment,
@@ -62,21 +61,24 @@ function findMatchingDaily(
   return list.find(
     (a) =>
       a.id !== excludeId &&
-      (a.assignment_type ?? "DAILY").toUpperCase() === "DAILY" &&
       titlesMatch(a.title, title),
   );
 }
 
-type AnalyticsData = AssignmentAnalyticsData;
-
 const emptyCreatePayload: CreatePayload = {
   dueDate: "",
+  lateSubmissionPolicy: "allow",
+  closeDate: "",
   schoolIds: [],
   subject: "",
   isPublished: false,
   academicYear: "2024-25",
   entireSchool: true,
   gradeTargets: [] as GradeAudienceTarget[],
+  examType: "UNIT_TEST",
+  startsAt: "",
+  endsAt: "",
+  durationMinutes: "",
 };
 
 function toDateInputValue(iso?: string | null): string {
@@ -86,8 +88,18 @@ function toDateInputValue(iso?: string | null): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** ISO → value for <input type="datetime-local"> in the viewer's timezone. */
+function toLocalInput(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+const NO_SCHOOLS: never[] = [];
+
 export default function TeacherAssignmentsPage() {
-  const { data: schools = [] } = useTeacherSchools();
+  const { data: schools = NO_SCHOOLS } = useTeacherSchools(); // stable default: a fresh [] each render re-fired effects that depend on `schools`
   // Follow the active school chosen in the dashboard topbar so assignments,
   // analytics, and new-assignment defaults all stay scoped to one school.
   const { selectedSchool } = useTeacherSchool();
@@ -97,6 +109,7 @@ export default function TeacherAssignmentsPage() {
   const [now] = useState(() => Date.now());
   const [dailyAssignments, setDailyAssignments] = useState<TeacherAssignment[]>([]);
   const [courseAssignments, setCourseAssignments] = useState<TeacherAssignment[]>([]);
+  const [examAssignments, setExamAssignments] = useState<TeacherAssignment[]>([]);
   const [pendingRetakeRequestCount, setPendingRetakeRequestCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string>("");
   const [detailTab, setDetailTab] = useState<DetailTab>("submissions");
@@ -115,8 +128,6 @@ export default function TeacherAssignmentsPage() {
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
   const [editingSchoolId, setEditingSchoolId] = useState<string | null>(null);
   const [builderAssignment, setBuilderAssignment] = useState<BuilderAssignment | null>(null);
-  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [teacherClasses, setTeacherClasses] = useState<TeacherClass[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [subSearch, setSubSearch] = useState("");
@@ -125,7 +136,15 @@ export default function TeacherAssignmentsPage() {
   const [createPayload, setCreatePayload] = useState(emptyCreatePayload);
   const [schoolsWithExistingCopy, setSchoolsWithExistingCopy] = useState<string[]>([]);
 
-  const assignments = tab === "daily" ? dailyAssignments : courseAssignments;
+  const assignments = tab === "daily" ? dailyAssignments : tab === "exam" ? examAssignments : courseAssignments;
+  const kind: "DAILY" | "EXAM" = tab === "exam" ? "EXAM" : "DAILY";
+  const reloadTab = () => loadAssignments(tab === "exam" ? "EXAM" : tab === "daily" ? "DAILY" : "COURSE");
+  const examBody = () => kind === "EXAM" ? {
+    examType: createPayload.examType,
+    startsAt: new Date(createPayload.startsAt).toISOString(),
+    endsAt: new Date(createPayload.endsAt).toISOString(),
+    durationMinutes: createPayload.durationMinutes ? Number(createPayload.durationMinutes) : null,
+  } : {};
   const selectedAssignment = useMemo(
     () => assignments.find((a) => a.id === selectedId),
     [assignments, selectedId]
@@ -287,11 +306,12 @@ export default function TeacherAssignmentsPage() {
   }, [assignments]);
 
   /* ─── data loaders ─── */
-  const loadAssignments = useCallback(async (type: "DAILY" | "COURSE") => {
+  const loadAssignments = useCallback(async (type: "DAILY" | "COURSE" | "EXAM") => {
     try {
       const { data } = await teacherApi.assignments.list({ type, school_id: activeSchoolId });
       const list = (data as { assignments?: TeacherAssignment[] }).assignments ?? [];
       if (type === "DAILY") setDailyAssignments(list);
+      else if (type === "EXAM") setExamAssignments(list);
       else setCourseAssignments(list);
       setError(null);
     } catch {
@@ -362,26 +382,16 @@ export default function TeacherAssignmentsPage() {
     }
   }, []);
 
-  useEffect(() => { void loadAssignments("DAILY"); void loadAssignments("COURSE"); }, [loadAssignments]);
+  useEffect(() => { void loadAssignments("DAILY"); void loadAssignments("COURSE"); void loadAssignments("EXAM"); }, [loadAssignments]);
 
   // Pending-request badge on the tab itself — fetched independently of which
   // tab is active so it's visible before the teacher ever opens the tab.
   useEffect(() => {
     teacherApi.retakeRequests
-      .list({ status: "pending" })
+      .list({ status: "pending", school_id: activeSchoolId })
       .then(({ data }) => setPendingRetakeRequestCount(((data as { requests?: unknown[] })?.requests ?? []).length))
       .catch(() => setPendingRetakeRequestCount(0));
-  }, [tab]);
-
-  useEffect(() => {
-    if (tab === "analytics" && !analyticsData) {
-      setAnalyticsLoading(true);
-      teacherApi.assignments.analytics({ school_id: activeSchoolId })
-        .then(({ data }) => setAnalyticsData((data as { analytics?: AnalyticsData }).analytics ?? null))
-        .catch(() => setAnalyticsData(null))
-        .finally(() => setAnalyticsLoading(false));
-    }
-  }, [tab, analyticsData, activeSchoolId]);
+  }, [tab, activeSchoolId]);
 
   // When the active school changes, drop school-specific selections and cached
   // analytics so everything reloads scoped to the newly selected school.
@@ -390,7 +400,6 @@ export default function TeacherAssignmentsPage() {
     setSubmissions([]);
     setNotSubmitted([]);
     setAssignmentDetail(null);
-    setAnalyticsData(null);
   }, [activeSchoolId]);
 
   useEffect(() => {
@@ -450,7 +459,7 @@ export default function TeacherAssignmentsPage() {
         otherSchoolIds.map(async (schoolId) => {
           try {
             const { data } = await teacherApi.assignments.list({
-              type: "DAILY",
+              type: kind,
               school_id: schoolId,
             });
             const list =
@@ -470,6 +479,7 @@ export default function TeacherAssignmentsPage() {
     };
   }, [
     modalMode,
+    kind,
     editingSchoolId,
     editingAssignmentId,
     builderAssignment?.title,
@@ -514,7 +524,7 @@ export default function TeacherAssignmentsPage() {
   };
 
   const openEditModal = async () => {
-    if (!selectedId || tab !== "daily") return;
+    if (!selectedId || (tab !== "daily" && tab !== "exam")) return;
     setLoading(true);
     setError(null);
     try {
@@ -552,12 +562,18 @@ export default function TeacherAssignmentsPage() {
       const audience = audienceFromAssignment(detail, classesForAudience);
       setCreatePayload({
         dueDate: toDateInputValue(detail.due_date),
+        lateSubmissionPolicy: detail.late_policy === "close" ? "close" : "allow",
+        closeDate: toDateInputValue(detail.close_date),
         schoolIds: schoolId ? [schoolId] : [],
         subject: detail.subject ?? "",
         isPublished: !!detail.is_published,
         academicYear: detail.academic_year || "2024-25",
         entireSchool: audience.entireSchool,
         gradeTargets: audience.gradeTargets,
+        examType: detail.exam_type || "UNIT_TEST",
+        startsAt: toLocalInput(detail.starts_at),
+        endsAt: toLocalInput(detail.ends_at),
+        durationMinutes: detail.duration_minutes ? String(detail.duration_minutes) : "",
       });
       setBuilderAssignment({
         id: detail.id,
@@ -633,14 +649,17 @@ export default function TeacherAssignmentsPage() {
         title: builderAssignment?.title || "Daily Assignment",
         description: builderAssignment?.description || undefined,
         dueDate: createPayload.dueDate || undefined,
+        lateSubmissionPolicy: createPayload.lateSubmissionPolicy,
+        closeDate: createPayload.lateSubmissionPolicy === "allow" ? createPayload.closeDate || null : null,
         subject: createPayload.subject || undefined,
         totalMarks: builderAssignment?.max_score
           ? Number(builderAssignment.max_score)
           : undefined,
         questions: questionPayload,
         isPublished: createPayload.isPublished,
-        assignmentType: "DAILY",
+        assignmentType: kind,
         academicYear: createPayload.academicYear,
+        ...examBody(),
       };
 
       await Promise.all(
@@ -667,7 +686,7 @@ export default function TeacherAssignmentsPage() {
         }),
       );
       closeAssignmentModal();
-      await loadAssignments("DAILY");
+      await loadAssignments(kind);
       setError(null);
     } catch (e: unknown) {
       setError(typeof e === "object" && e !== null && "message" in e ? String((e as { message?: unknown }).message) : "Failed to create assignment");
@@ -725,7 +744,7 @@ export default function TeacherAssignmentsPage() {
         let existing: TeacherAssignment | undefined;
         try {
           const { data } = await teacherApi.assignments.list({
-            type: "DAILY",
+            type: kind,
             school_id: schoolId,
           });
           const list =
@@ -789,9 +808,12 @@ export default function TeacherAssignmentsPage() {
 
       const updateAudience = audienceFor(updateSchoolId);
       await teacherApi.assignments.update(assignmentId, {
+        ...examBody(),
         title: title || "Daily Assignment",
         description: builderAssignment?.description || undefined,
         dueDate: createPayload.dueDate || undefined,
+        lateSubmissionPolicy: createPayload.lateSubmissionPolicy,
+        closeDate: createPayload.lateSubmissionPolicy === "allow" ? createPayload.closeDate || null : null,
         subject: createPayload.subject || undefined,
         totalMarks: lockQuestions
           ? undefined
@@ -814,6 +836,8 @@ export default function TeacherAssignmentsPage() {
             title: title || "Daily Assignment",
             description: builderAssignment?.description || undefined,
             dueDate: createPayload.dueDate || undefined,
+            lateSubmissionPolicy: createPayload.lateSubmissionPolicy,
+            closeDate: createPayload.lateSubmissionPolicy === "allow" ? createPayload.closeDate || null : null,
             schoolId: item.schoolId,
             subject: createPayload.subject || undefined,
             totalMarks: builderAssignment?.max_score
@@ -821,8 +845,9 @@ export default function TeacherAssignmentsPage() {
               : undefined,
             questions: questionPayload,
             isPublished: createPayload.isPublished,
-            assignmentType: "DAILY",
+            assignmentType: kind,
             academicYear: createPayload.academicYear,
+            ...examBody(),
             publishScope: audience.publishScope,
             gradeId: audience.gradeId,
             publishedGradeIds: audience.publishedGradeIds,
@@ -836,9 +861,12 @@ export default function TeacherAssignmentsPage() {
           !!item.existing.is_published ||
           (item.existing.submission_count ?? 0) > 0;
         await teacherApi.assignments.update(item.existingId, {
+          ...examBody(),
           title: title || "Daily Assignment",
           description: builderAssignment?.description || undefined,
           dueDate: createPayload.dueDate || undefined,
+          lateSubmissionPolicy: createPayload.lateSubmissionPolicy,
+          closeDate: createPayload.lateSubmissionPolicy === "allow" ? createPayload.closeDate || null : null,
           subject: createPayload.subject || undefined,
           totalMarks: copyLocked
             ? undefined
@@ -855,7 +883,7 @@ export default function TeacherAssignmentsPage() {
       }
 
       closeAssignmentModal();
-      await loadAssignments("DAILY");
+      await loadAssignments(kind);
       await loadAssignmentDetail(assignmentId);
       setError(null);
     } catch (e: unknown) {
@@ -867,7 +895,7 @@ export default function TeacherAssignmentsPage() {
     setLoading(true);
     try {
       await teacherApi.assignments.update(a.id, { isPublished: !a.is_published });
-      await loadAssignments(tab === "daily" ? "DAILY" : "COURSE");
+      await reloadTab();
       if (selectedId === a.id) await loadAssignmentDetail(a.id);
       setError(null);
     } catch { setError("Failed to update assignment"); }
@@ -885,7 +913,7 @@ export default function TeacherAssignmentsPage() {
         status: "graded",
       });
       await loadSubmissions(selectedId);
-      if (tab === "daily") await loadAssignments("DAILY"); else await loadAssignments("COURSE");
+      await reloadTab();
     } finally { setLoading(false); }
   };
 
@@ -926,7 +954,7 @@ export default function TeacherAssignmentsPage() {
         setNotSubmitted([]);
         setAssignmentDetail(null);
       }
-      await loadAssignments("DAILY");
+      await reloadTab();
     } catch { setError("Failed to delete assignment"); }
     finally { setLoading(false); }
   };
@@ -993,11 +1021,10 @@ export default function TeacherAssignmentsPage() {
     }
   };
 
-  const listTab = tab === "daily" || tab === "course";
+  const listTab = tab === "daily" || tab === "course" || tab === "exam";
   const status: React.ReactNode =
-    tab === "analytics" ? "Scores and rankings across your assignments."
-    : tab === "requests" ? pendingRetakeRequestCount > 0 ? <><strong>{plural(pendingRetakeRequestCount, "student")}</strong> {pendingRetakeRequestCount === 1 ? "is" : "are"} asking for a retake.</> : "No retake requests are waiting."
-    : assignments.length === 0 ? (tab === "daily" ? "You have not set any daily assignments yet." : "No course assignments are set for your classes yet.")
+    tab === "requests" ? pendingRetakeRequestCount > 0 ? <><strong>{plural(pendingRetakeRequestCount, "student")}</strong> {pendingRetakeRequestCount === 1 ? "is" : "are"} asking for a retake.</> : "No retake requests are waiting."
+    : assignments.length === 0 ? (tab === "daily" ? "You have not set any daily assignments yet." : tab === "exam" ? "You have not scheduled any exams yet." : "No course assignments are set for your classes yet.")
     : <><strong>{stageCounts.live} live</strong>, {stageCounts.draft} {stageCounts.draft === 1 ? "draft" : "drafts"}, {plural(statsBar.totalSubs, "submission")} so far.{pendingRetakeRequestCount > 0 ? ` ${plural(pendingRetakeRequestCount, "retake request")} waiting.` : ""}</>;
 
   const ledger = [
@@ -1015,7 +1042,7 @@ export default function TeacherAssignmentsPage() {
           <p className="sd-where">{selectedSchool?.name ?? "All your schools"}</p>
           <p className="sd-status">{status}</p>
           <div className="sd-hero-actions">
-            {tab === "daily" && <button className="sd-btn sd-btn--amber" onClick={openCreateModal}><Plus aria-hidden="true" />New assignment</button>}
+            {(tab === "daily" || tab === "exam") && <button className="sd-btn sd-btn--amber" onClick={openCreateModal}><Plus aria-hidden="true" />{tab === "exam" ? "New exam" : "New assignment"}</button>}
             {pendingRetakeRequestCount > 0 && tab !== "requests" && <button className={`sd-btn ${tab === "daily" ? "sd-btn--ghost-dark" : "sd-btn--amber"}`} onClick={() => setTab("requests")}>Retake requests ({pendingRetakeRequestCount})</button>}
           </div>
         </div>
@@ -1044,9 +1071,8 @@ export default function TeacherAssignmentsPage() {
       )}
 
       <div id="tg-panel" role="tabpanel" aria-labelledby={`tg-tab-${tab}`} className="mc-swap" key={tab}>
-        {tab === "analytics" && <AssignmentAnalyticsPanel loading={analyticsLoading} data={analyticsData} />}
 
-        {tab === "requests" && <TeacherRetakeRequestsPanel />}
+        {tab === "requests" && <TeacherRetakeRequestsPanel schoolId={activeSchoolId} />}
 
         {listTab && (
           <div className="tg-split" data-has={!!selectedId}>
@@ -1058,7 +1084,7 @@ export default function TeacherAssignmentsPage() {
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               onSelect={setSelectedId}
-              onCreate={tab === "daily" ? openCreateModal : undefined}
+              onCreate={tab === "daily" || tab === "exam" ? openCreateModal : undefined}
               teacherClasses={teacherClasses}
               now={now}
               filtered={!!stage}
@@ -1127,6 +1153,7 @@ export default function TeacherAssignmentsPage() {
 
       {modalMode && (
         <AssignmentFormDrawer
+          kind={kind}
           mode={modalMode}
           payload={createPayload}
           onPayloadChange={(patch) =>

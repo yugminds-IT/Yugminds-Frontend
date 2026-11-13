@@ -31,6 +31,8 @@ export const studentApi = {
       apiClient.get(`${STUDENT}/assignments/${assignmentId}`),
     submit: (assignmentId: string, data: Record<string, unknown>) =>
       apiClient.post(`${STUDENT}/assignments/${assignmentId}/submit`, data),
+    start: (assignmentId: string) =>
+      apiClient.post(`${STUDENT}/assignments/${assignmentId}/start`, {}),
     requestRetake: (assignmentId: string, data: { reason?: string }) =>
       apiClient.post(`${STUDENT}/assignments/${assignmentId}/retake-request`, data),
   },

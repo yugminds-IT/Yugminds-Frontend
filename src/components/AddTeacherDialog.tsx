@@ -28,7 +28,6 @@ import {
   Checkbox 
 } from "./ui/checkbox";
 import { 
-  Plus,
   User,
   Mail,
   Phone,
@@ -39,13 +38,15 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  Copy
+  Copy,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { validatePasswordClient } from "../lib/password-validation";
 import { useAutoSaveForm } from "../hooks/useAutoSaveForm";
 import { clearFormData } from "../lib/form-persistence";
 import { adminApi } from "../lib/api/admin.api";
-import WeekdayPicker from "./WeekdayPicker";
+import WeekdayPicker, { type DaySlotsInput } from "./WeekdayPicker";
 import { useAdminSchools } from "../hooks/useAdminSchools";
 import { toast } from "./ui/toast";
 import { isAxiosError } from "axios";
@@ -87,6 +88,8 @@ interface SchoolAssignment {
   working_days_per_week: number;
   /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
   working_days: number[];
+  /** Half-day windows per weekday; a day not listed is a full day. */
+  day_slots?: DaySlotsInput | null;
   /** When this working-days pattern takes effect (YYYY-MM-DD). */
   effective_from: string;
   /** Calendar date the teacher's assignment to this school begins (YYYY-MM-DD). Optional. */
@@ -114,7 +117,7 @@ interface TeacherFormData {
 }
 
 const _availableGrades = [
-  "Pre-K", "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5",
+  "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5",
   "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"
 ];
 
@@ -124,7 +127,6 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
-  const [customSubjectInputs, setCustomSubjectInputs] = useState<Record<string, string>>({});
   
   const initialFormData: TeacherFormData = {
     // Basic Information
@@ -396,46 +398,8 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     }));
   };
 
-  const handleAddCustomSubject = (schoolId: string) => {
-    const customSubject = customSubjectInputs[schoolId]?.trim();
-    if (!customSubject) {
-      return;
-    }
-
-    // Check if subject already exists (case-insensitive)
-    const assignment = formData.school_assignments.find((a: SchoolAssignment) => a.school_id === schoolId);
-    if (assignment) {
-      const subjectExists = assignment.subjects.some(
-        s => s.toLowerCase() === customSubject.toLowerCase()
-      );
-      if (subjectExists) {
-        setErrors(prev => ({
-          ...prev,
-          [`custom_subject_${schoolId || 'undefined'}`]: 'This subject is already added'
-        }));
-        return;
-      }
-    }
-
-    // Add custom subject
-    handleSubjectSelection(schoolId, customSubject, true);
-    
-    // Clear input
-    setCustomSubjectInputs(prev => ({
-      ...prev,
-      [schoolId]: ''
-    }));
-    
-    // Clear error
-    setErrors(prev => {
-      const newErrors = { ...prev };
-      delete newErrors[`custom_subject_${schoolId || 'undefined'}`];
-      return newErrors;
-    });
-  };
-
    
-  const handleAssignmentChange = (schoolId: string, field: keyof SchoolAssignment, value: string | number | string[] | number[] | GradeSectionAssignment[]) => {
+  const handleAssignmentChange = (schoolId: string, field: keyof SchoolAssignment, value: string | number | string[] | number[] | GradeSectionAssignment[] | DaySlotsInput | null) => {
     setFormData(prev => ({
       ...prev,
       school_assignments: prev.school_assignments.map((assignment: SchoolAssignment) => {
@@ -569,7 +533,6 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
     clearFormData('add-teacher-dialog-form');
     clearSavedData();
     resetForm();
-    setCustomSubjectInputs({});
     onClose();
   };
 
@@ -801,7 +764,7 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                       </div>
 
               {/* Grade Selection for Each School */}
-              {formData.school_assignments.map((assignment) => (
+              {formData.school_assignments.map((assignment, index) => (
                 <Card key={assignment.school_id} className="border-l-4 border-l-blue-500 bg-white">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
@@ -813,6 +776,26 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                         )}
                       </CardTitle>
                       <div className="flex items-center gap-2">
+                        {([-1, 1] as const).map((dir) => (
+                          <Button
+                            key={dir}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            aria-label={dir === -1 ? "Move school up" : "Move school down"}
+                            title={dir === -1 ? "Move up" : "Move down"}
+                            disabled={index + dir < 0 || index + dir >= formData.school_assignments.length}
+                            onClick={() =>
+                              setFormData(prev => {
+                                const next = [...prev.school_assignments];
+                                [next[index], next[index + dir]] = [next[index + dir], next[index]];
+                                return { ...prev, school_assignments: next };
+                              })
+                            }
+                          >
+                            {dir === -1 ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                          </Button>
+                        ))}
                         {!assignment.is_primary && (
                           <Button
                             variant="outline"
@@ -981,55 +964,7 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                             </Label>
                           </div>
                         ))}
-                        {/* Display custom subjects */}
-                        {assignment.subjects
-                          .filter((subject: string) => !availableSubjects.includes(subject))
-                          .map((subject) => (
-                            <div key={subject} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`subject-${assignment.school_id}-${subject}`}
-                                checked={assignment.subjects.includes(subject)}
-                                onCheckedChange={(checked) => handleSubjectSelection(assignment.school_id, subject, checked as boolean)}
-                              />
-                              <Label htmlFor={`subject-${assignment.school_id}-${subject}`} className="text-sm cursor-pointer">
-                                {subject}
-                              </Label>
-                            </div>
-                          ))}
                       </div>
-                      {/* Add Custom Subject */}
-                      <div className="mt-2 flex gap-2">
-                        <Input
-                          placeholder="Enter custom subject"
-                          value={customSubjectInputs[assignment.school_id] || ''}
-                          onChange={(e) => setCustomSubjectInputs(prev => ({
-                            ...prev,
-                            [assignment.school_id]: e.target.value
-                          }))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddCustomSubject(assignment.school_id);
-                            }
-                          }}
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleAddCustomSubject(assignment.school_id)}
-                          className="flex items-center gap-1"
-                        >
-                          <Plus className="h-4 w-4" />
-                          Add
-                        </Button>
-                      </div>
-                      {errors[`custom_subject_${assignment.school_id}`] && (
-                        <p className="text-sm text-red-500 mt-1">
-                          {errors[`custom_subject_${assignment.school_id}`]}
-                        </p>
-                      )}
             </div>
 
                     {/* Working Details */}
@@ -1039,6 +974,8 @@ export default function AddTeacherDialog({ isOpen, onClose, onSuccess }: AddTeac
                         idPrefix={`working_days_${assignment.school_id}`}
                         value={assignment.working_days ?? [1, 2, 3, 4, 5]}
                         allowedDays={schools.find((s: School) => s.id === assignment.school_id)?.operatingDays}
+                        slots={assignment.day_slots}
+                        onSlotsChange={(slots) => handleAssignmentChange(assignment.school_id, 'day_slots', slots)}
                         onChange={(days) => {
                           handleAssignmentChange(assignment.school_id, 'working_days', days);
                           handleAssignmentChange(assignment.school_id, 'working_days_per_week', days.length);

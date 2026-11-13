@@ -81,3 +81,5 @@
   .so-run .sd-droid { transition: none; }
   .so-todo, .so-refresh { transition: none; }
 }
+/* School-admin hero: wider copy column so refresh + live status sit on the button row. */
+@media (min-width: 1101px) { .so-hero { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); } }

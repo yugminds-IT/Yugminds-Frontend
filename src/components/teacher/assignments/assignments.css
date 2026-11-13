@@ -257,3 +257,38 @@ button.tg-who:focus-visible { outline: 3px solid var(--sd-blue); outline-offset:
 .tg-builder [class*="bg-emerald-50"], .tg-builder [class*="bg-green-50"], .tg-builder [class*="bg-amber-50"], .tg-builder [class*="bg-yellow-50"] { background-color: rgb(251 191 36 / 0.2); }
 .tg-builder [class*="bg-red-50"] { background-color: #fff7f5; }
 .tg-builder [class*="rounded-md"], .tg-builder [class*="rounded-lg"] { border-radius: 0.9rem; }
+
+/* Report dialog: summary strip, scale cards, live grade distribution */
+.rd-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin: 0 0 0.6rem; }
+.rd-stats > div { display: grid; gap: 0.1rem; padding: 0.7rem 0.9rem; border-radius: 1rem; background: var(--sd-wash); }
+.rd-stats dt { font-size: 0.82rem; color: var(--sd-ink-soft); }
+.rd-stats dd { margin: 0; font: 700 1.5rem/1.2 var(--sd-display); color: var(--sd-ink); }
+.rd-stats > div[data-hot="true"] dd { color: var(--sd-late); }
+.rd-note { margin: 0 0 1rem; font-size: 0.88rem; color: var(--sd-ink-soft); }
+.rd-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.rd-modes .tg-opt + .tg-opt { margin-top: 0; }
+.rd-table { table-layout: auto; }
+.rd-pill { display: inline-block; min-width: 2.2rem; padding: 0.1rem 0.55rem; border-radius: 999px; text-align: center; font: 700 0.85rem/1.5 var(--sd-body); background: #d1fae5; color: #065f46; }
+.rd-pill[data-t="FFFEF3C7"] { background: #fef3c7; color: #92400e; }
+.rd-pill[data-t="FFFEE2E2"] { background: #fee2e2; color: #991b1b; }
+.rd-bar { position: relative; min-width: 7rem; }
+.rd-bar i { position: absolute; inset: 0.55rem auto 0.55rem 0.6rem; max-width: calc(100% - 2.4rem); border-radius: 999px; background: var(--sd-blue); opacity: 0.22; transition: width 0.3s var(--sd-ease); }
+.rd-bar span { position: relative; font-weight: 700; font-size: 0.88rem; }
+@media (max-width: 560px) { .rd-stats, .rd-modes { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .rd-bar i { transition: none; } }
+
+/* Retake requests: one colour per assignment type (Daily blue, Course green, Exam amber) */
+.rq-types { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.rq-type { --rt: var(--sd-ink); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.8rem; border: 1.5px solid var(--sd-line); border-radius: 999px; background: transparent; font: 700 0.85rem/1.4 var(--sd-body); color: var(--sd-ink); cursor: pointer; }
+.rq-type svg { width: 1rem; height: 1rem; color: var(--rt); }
+.rq-type b { min-width: 1.4rem; padding: 0 0.4rem; border-radius: 999px; background: var(--sd-wash); text-align: center; font-size: 0.78rem; }
+.rq-type[data-on="true"] { border-color: var(--rt); background: var(--rt); color: #fff; }
+.rq-type[data-on="true"] svg { color: #fff; }
+.rq-type[data-on="true"] b { background: rgb(255 255 255 / 0.22); }
+.rq-type:focus-visible { outline: 2px solid var(--rt); outline-offset: 2px; }
+[data-t="DAILY"] { --rt: #2563eb; }
+[data-t="COURSE"] { --rt: #0f766e; }
+[data-t="EXAM"] { --rt: #b45309; }
+.tg-req[data-t] { border-left: 4px solid var(--rt); }
+.rq-badge { display: inline-flex; align-items: center; gap: 0.3rem; margin-bottom: 0.3rem; padding: 0.05rem 0.6rem; border-radius: 999px; background: color-mix(in srgb, var(--rt) 12%, transparent); color: var(--rt); font: 700 0.75rem/1.6 var(--sd-body); }
+.rq-badge svg { width: 0.85rem; height: 0.85rem; }

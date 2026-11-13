@@ -97,7 +97,7 @@ export default function AdminOverviewTab({
             )}
             {attendance > 0 && (
               <li>
-                <span><b>Teacher attendance</b><small>Average over the last 30 days</small></span>
+                <span><b>Teacher attendance</b><small>Average this month</small></span>
                 <span className="ao-val">{attendance}%</span>
                 <span className="sd-meter" data-t={attendance < 75 ? "low" : undefined}><i style={{ "--p": `${Math.min(100, attendance)}%` } as React.CSSProperties} /></span>
               </li>

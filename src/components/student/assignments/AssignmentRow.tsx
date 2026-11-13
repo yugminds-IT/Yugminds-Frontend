@@ -12,6 +12,7 @@ export interface AssignmentRowData {
   href: string
   state: RowState
   dueDate?: string
+  duePhase?: string
   daysUntilDue?: number | null
   /** true once something has been handed in, so the due chip stops nagging */
   handedIn?: boolean
@@ -25,10 +26,11 @@ export interface AssignmentRowData {
 const TAG: Record<RowState, string> = { todo: 'To do', submitted: 'Handed in', graded: 'Graded', late: 'Overdue' }
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 
-function DueChip({ a }: { a: Pick<AssignmentRowData, 'dueDate' | 'daysUntilDue' | 'handedIn' | 'state'> }) {
+function DueChip({ a }: { a: Pick<AssignmentRowData, 'dueDate' | 'duePhase' | 'daysUntilDue' | 'handedIn' | 'state'> }) {
   if (!a.dueDate || a.daysUntilDue == null) return <span className="as-due">No due date</span>
   const date = new Date(a.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
   if (a.handedIn) return <span className="as-due">Due {date}</span>
+  if (a.duePhase === 'closed') return <span className="as-due" data-t="late">Closed</span>
   if (a.state === 'late') return <span className="as-due" data-t="late">{plural(Math.abs(a.daysUntilDue), 'day')} late</span>
   if (a.daysUntilDue === 0) return <span className="as-due" data-t="soon">Due today</span>
   if (a.daysUntilDue <= 3) return <span className="as-due" data-t="soon">Due in {plural(a.daysUntilDue, 'day')}</span>

@@ -51,6 +51,7 @@ const PAGES: Array<{ label: string; href: string; keywords: string }> = [
   { label: "Community Management", href: "/lms/admin/community", keywords: "community cms" },
   { label: "Performance Analytics", href: "/lms/admin/analytics", keywords: "analytics performance charts" },
   { label: "Assignment Analytics", href: "/lms/admin/assignment-analytics", keywords: "assignments analytics" },
+  { label: "Exam Performance", href: "/lms/admin/exam-performance", keywords: "exams tests annual semester" },
   { label: "System Monitoring", href: "/lms/admin/monitoring", keywords: "monitoring health cache" },
   { label: "Audit Log", href: "/lms/admin/audit-log", keywords: "audit log history changes who" },
   { label: "System Controls", href: "/lms/admin/system-controls", keywords: "maintenance feature flags announcement controls" },

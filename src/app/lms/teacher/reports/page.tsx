@@ -1,7 +1,8 @@
 "use client";
 
-import { REPORT_SUBJECTS, matchSubject } from "@/lib/report-subjects";
+import { REPORT_SUBJECTS } from "@/lib/report-subjects";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, RefreshCw, Send } from "lucide-react";
@@ -132,9 +133,8 @@ export default function SubmitReportPage() {
   const selected = periods.find((p) => p.id === periodId) ?? null;
 
   // The subject starts as the timetable's subject for this period; the teacher confirms it or changes it.
-  const timetableSubject = selected?.subject ? matchSubject(selected.subject) : "";
+  const timetableSubject = selected?.subject ?? "";
   const subject = formData.subject || timetableSubject;
-  const subjectOptions = subject && !(REPORT_SUBJECTS as readonly string[]).includes(subject) ? [...REPORT_SUBJECTS, subject] : [...REPORT_SUBJECTS];
 
   // Picking another class resets the subject to that class's timetable subject.
   const pick = (id: string) => setFormData((prev) => ({ ...prev, period_id: id, subject: "", date: today }));
@@ -307,7 +307,7 @@ export default function SubmitReportPage() {
                 <label htmlFor="report_subject">Subject</label>
                 <select id="report_subject" className="sd-field" value={subject} onChange={(e) => setFormData((prev) => ({ ...prev, subject: e.target.value }))} aria-required="true">
                   <option value="" disabled>Pick the subject you taught</option>
-                  {subjectOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {REPORT_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {timetableSubject && subject !== timetableSubject && <small className="sr-hint">The timetable has {timetableSubject} for this class.</small>}
               </div>
@@ -349,7 +349,7 @@ export default function SubmitReportPage() {
         </section>
 
         <section className="sd-panel" aria-labelledby="sr-recent">
-          <div className="sd-panel-head"><div><h2 id="sr-recent">Recent reports</h2><p>Your latest, and where each one stands</p></div></div>
+          <div className="sd-panel-head"><div><h2 id="sr-recent">Recent reports</h2><p>Your latest, and where each one stands</p></div><Link href="/lms/teacher/reports/history" className="sd-btn sd-btn--line">View all</Link></div>
           {recentLoading ? (
             <><div className="sd-skel" /><div className="sd-skel" /></>
           ) : recent.length === 0 ? (

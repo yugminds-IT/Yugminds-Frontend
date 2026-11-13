@@ -183,7 +183,7 @@ export default function TeachersTab({
                   ) : (
                     <>
                       {schools.slice(0, SHOWN_SCHOOLS).map((s) => (
-                        <span key={s.id} className="at-school"><b>{s.name}</b><small>{schoolLine(s)}</small></span>
+                        <span key={s.id} className="at-school"><b>{s.name}</b><small>{schoolLine(s)}</small>{s.schedule && <small>{s.schedule}</small>}</span>
                       ))}
                       {schools.length > SHOWN_SCHOOLS && <small className="at-more">and {plural(schools.length - SHOWN_SCHOOLS, "more school")}</small>}
                     </>
@@ -198,7 +198,7 @@ export default function TeachersTab({
                     <span className="sm-chip" data-on="false">Inactive</span>
                   ) : per && per.length > 1 ? (
                     per.map((s) => (
-                      <span key={s.school_id} className="at-per"><small>{s.school_name}</small><span className="at-chip" data-k={todayKey(s.status)}>{s.status}</span></span>
+                      <span key={s.school_id} className="at-per"><small>{s.school_name}{s.slot ? ` · ${s.slot.slot === "MORNING" ? "AM" : "PM"}` : ""}</small><span className="at-chip" data-k={todayKey(s.status)}>{s.status}</span></span>
                     ))
                   ) : (
                     <span className="at-chip" data-k={key} title={status === "Not Marked" || !status ? "No attendance mark yet today" : undefined}>

@@ -1,6 +1,6 @@
 'use client'
 
-import { ClipboardCopy, Copy, Pencil, Plus, Repeat, Trash2, Clock } from 'lucide-react'
+import { ClipboardCopy, Copy, Lock, Pencil, Plus, Repeat, Trash2, Clock } from 'lucide-react'
 import RowMenu from '../../portal/RowMenu'
 import type { Period, Schedule } from './types'
 import { DAY_NAME_TO_NUMBER, GRID_DAYS, formatTime, gradeSectionLabel, subjectHue } from './utils'
@@ -13,6 +13,7 @@ export default function ScheduleGrid({
   focus,
   busy,
   onAdd,
+  locked,
   onEdit,
   onCopyClass,
   onRepeat,
@@ -27,6 +28,8 @@ export default function ScheduleGrid({
   focus: string
   busy: boolean
   onAdd: (day: string, periodId: string) => void
+  /** A reason when no teacher can take this day+period (the cell is locked), else null. */
+  locked: (day: string, periodId: string) => string | null
   onEdit: (s: Schedule) => void
   onCopyClass: (s: Schedule) => void
   onRepeat: (s: Schedule) => void
@@ -90,6 +93,7 @@ export default function ScheduleGrid({
                 {days.map((day) => {
                   const open = isOpen(day)
                   const cell = schedules.filter((s) => s.day_of_week === day && s.period_id === period.id)
+                  const lockedWhy = open ? locked(day, period.id) : null
                   return (
                     <td key={day} data-closed={!open}>
                       {!open ? (
@@ -97,7 +101,7 @@ export default function ScheduleGrid({
                       ) : (
                         <div className="ts-cell">
                           {cell.map((s) => (
-                            <div key={s.id} className="ts-card" data-h={subjectHue(s.subject)}>
+                            <div key={s.id} className="ts-card" data-h={subjectHue(s.subject)} data-flag={!!lockedWhy} title={lockedWhy ? `Outside the teacher's hours — ${lockedWhy}. Move or delete it.` : undefined}>
                               <button type="button" className="ts-card-main" onClick={() => onEdit(s)} aria-label={`Edit ${s.subject || 'class'}, ${gradeSectionLabel(s)}`}>
                                 <b>{s.subject || 'Class'}</b>
                                 <span>{gradeSectionLabel(s)}</span>
@@ -120,16 +124,23 @@ export default function ScheduleGrid({
                               </span>
                             </div>
                           ))}
-                          <button
-                            type="button"
-                            className="ts-add"
-                            data-empty={cell.length === 0}
-                            onClick={() => onAdd(day, period.id)}
-                            aria-label={`Add a class on ${day}, period ${period.period_number}`}
-                          >
-                            <Plus aria-hidden="true" />
-                            {cell.length === 0 && <span>Add</span>}
-                          </button>
+                          {lockedWhy ? (
+                            <span className="ts-locked" data-empty={cell.length === 0} title={lockedWhy} role="note" aria-label={`Locked, no teacher available on ${day}, period ${period.period_number}: ${lockedWhy}`}>
+                              <Lock aria-hidden="true" />
+                              {cell.length === 0 && <><span>Locked</span><small>{lockedWhy}</small></>}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="ts-add"
+                              data-empty={cell.length === 0}
+                              onClick={() => onAdd(day, period.id)}
+                              aria-label={`Add a class on ${day}, period ${period.period_number}`}
+                            >
+                              <Plus aria-hidden="true" />
+                              {cell.length === 0 && <span>Add</span>}
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>

@@ -11,8 +11,8 @@ type Props = {
 const TABS: Array<{ key: AssignmentsTab; label: string }> = [
   { key: "daily", label: "Daily" },
   { key: "course", label: "Course" },
+  { key: "exam", label: "Exams" },
   { key: "requests", label: "Retake requests" },
-  { key: "analytics", label: "Analytics" },
 ];
 
 /** The four views of the assignments page. The page's own hero carries the title and the new-assignment button. */

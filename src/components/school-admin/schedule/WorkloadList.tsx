@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import { initialsOf } from '../../portal/notifications'
 import type { Teacher } from './types'
 import { subjectHue } from './utils'
+import { formatWorkingSchedule } from '@/lib/weekday-utils'
 
 export interface WorkloadRow {
   teacher: Teacher
@@ -41,6 +42,11 @@ export default function WorkloadList({ rows, year, onOpen }: { rows: WorkloadRow
             <button className="sm-who" onClick={() => onOpen(t)} aria-label={`See ${t.full_name}'s week`}>
               <b>{t.full_name}</b>
               <small>{t.email}</small>
+              {t.teacher_schools?.[0]?.day_slots && Object.keys(t.teacher_schools[0].day_slots).length > 0 && (
+                <small title="Half-day hours set by the main admin">
+                  {formatWorkingSchedule(t.teacher_schools[0].working_days, t.teacher_schools[0].day_slots)}
+                </small>
+              )}
             </button>
             <div className="tm-chips">
               {subjects.slice(0, 3).map((s) => <span key={s} className="ts-tag" data-h={subjectHue(s)}>{s}</span>)}

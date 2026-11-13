@@ -1,7 +1,9 @@
 "use client";
 
+import { typeLabel } from "@/lib/assignment-types";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { useReport, type ReportData } from "@/components/teacher/assignments/ReportDownloadDialog";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
 import { ChipGroup, Pager, initialsOf } from "../portal/notifications";
 import { bandOf } from "./analytics/types";
@@ -42,7 +44,20 @@ const classLabel = (s: MarksStudent) =>
   [formatGradeBadge(s.grade), s.section && formatSectionLabel(s.section).replace(/^section\s*/i, "")].filter(Boolean).join(" ");
 
 /** Every student who has submitted this assignment, with their mark. Opens from the Assignments tab. */
-export function AssignmentMarksPanel({ assignmentId, onBack }: { assignmentId: string; onBack: () => void }) {
+export function AssignmentMarksPanel({
+  assignmentId,
+  onBack,
+  fetchMarks = (id) => schoolAdminApi.stats.assignmentMarks(id),
+  loadReport,
+}: {
+  assignmentId: string;
+  onBack: () => void;
+  /** Defaults to the school-admin endpoint; the teacher portal passes its own. */
+  fetchMarks?: (id: string) => Promise<{ data: unknown }>;
+  /** When given, the header shows a Download report button (teacher portal). */
+  loadReport?: (id: string) => Promise<ReportData>;
+}) {
+  const report = useReport(loadReport);
   const [data, setData] = useState<MarksData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -53,12 +68,12 @@ export function AssignmentMarksPanel({ assignmentId, onBack }: { assignmentId: s
 
   useEffect(() => {
     let cancelled = false;
-    schoolAdminApi.stats
-      .assignmentMarks(assignmentId)
+    fetchMarks(assignmentId)
       .then(({ data: res }) => { if (!cancelled) setData(res as MarksData); })
       .catch(() => { if (!cancelled) setError(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchMarks is fixed per page
   }, [assignmentId]);
 
   const students = useMemo(() => data?.students ?? [], [data]);
@@ -104,10 +119,16 @@ export function AssignmentMarksPanel({ assignmentId, onBack }: { assignmentId: s
           <header className="aa-marks-head">
             <h2>{a.title}</h2>
             <p>
-              <span className="sm-chip" data-class="true">{a.assignment_type === "COURSE" ? "Course" : "Daily"}</span>
+              <span className="sm-chip" data-class="true">{typeLabel(a.assignment_type)}</span>
               {a.subject && <span>{a.subject}</span>}
               {a.total_marks != null && <span>{a.total_marks} marks</span>}
             </p>
+            {loadReport && (
+              <button type="button" className="sd-btn sd-btn--line" onClick={() => report.open(assignmentId)} disabled={report.busyId !== null}>
+                {report.busyId ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}Download report
+              </button>
+            )}
+            {report.dialog}
           </header>
 
           <div className="sd-ledger" data-cols="3" role="group" aria-label="Marks summary">

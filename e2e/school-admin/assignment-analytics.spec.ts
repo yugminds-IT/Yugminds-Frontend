@@ -35,7 +35,7 @@ test.describe('School Admin — Assignment Analytics', () => {
     const res = await leaderboardResponse;
     expect(res.ok()).toBeTruthy();
 
-    await expect(page.getByRole('heading', { name: 'Assignment analytics' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Student performance' })).toBeVisible();
 
     // Summary ledger: 3 real students, 0 assignments published, no average yet.
     const ledger = page.getByRole('group', { name: 'Score summary' });

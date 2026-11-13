@@ -8,6 +8,11 @@ export type Leave = TeacherLeave & {
   school_admin_status?: Stage;
   admin_status?: Stage;
   substitute_required?: boolean;
+  admin_remarks?: string | null;
+  reviewer?: { name: string; role: string } | null;
+  reviewed_at?: string | null;
+  school_admin_by?: string | null;
+  admin_by?: string | null;
   created_at?: string;
 };
 
@@ -55,3 +60,12 @@ export function waitingHint(l: Leave): string | null {
 
 /** `YYYY-MM-DD` shifted by whole days, with no timezone surprises */
 export const shiftDate = (s: string, days: number) => new Date(parse(s).getTime() + days * MS).toLocaleDateString("en-CA");
+
+/** "Approved by Priya (School admin), 12 Nov" for a decided ordinary leave; "Cancelled by you" when withdrawn. */
+export function decidedLine(l: Leave): string | null {
+  const s = statusOf(l);
+  if (s === "cancelled") return l.reviewer ? `Approved by ${l.reviewer.name} (${l.reviewer.role}), then cancelled by you` : "Cancelled by you before anyone decided";
+  if (l.is_emergency || !l.reviewer || (s !== "approved" && s !== "rejected")) return null;
+  const on = l.reviewed_at ? `, ${new Date(l.reviewed_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : "";
+  return `${STATUS_LABEL[s]} by ${l.reviewer.name} (${l.reviewer.role})${on}`;
+}

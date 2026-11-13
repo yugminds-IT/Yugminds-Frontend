@@ -15,6 +15,7 @@ export type LeaderboardStudent = {
   assignments_attempted: number;
   graded_assignments_count: number;
   badge: Badge;
+  daily_graded_count?: number;
 };
 
 export type GradeBreakdown = {
@@ -57,6 +58,7 @@ export type LeaderboardData = {
   grade_breakdown: GradeBreakdown[];
   section_breakdown: SectionBreakdown[];
   subject_breakdown: SubjectBreakdown[];
+  daily_subject_breakdown?: SubjectBreakdown[];
   assignment_table: AssignmentRow[];
 };
 
@@ -77,3 +79,44 @@ export const studentBand = (s: Pick<LeaderboardStudent, "overall_score" | "grade
   bandOf(s.overall_score, s.graded_assignments_count);
 
 export const pct = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("en-IN")}%`;
+
+/**
+ * Re-cut a leaderboard so only daily work counts: the daily score stands in for "overall",
+ * ranks are recomputed on it, and course-only rows, subjects and badges drop out.
+ * Lets the Daily performance page reuse every overall-score component unchanged.
+ */
+export function toDailyView(d: LeaderboardData): LeaderboardData {
+  const rows = d.leaderboard.map((s) => ({
+    ...s,
+    overall_score: s.daily_assignment_score,
+    course_assignment_score: 0,
+    graded_assignments_count: s.daily_graded_count ?? 0,
+    assignments_attempted: s.daily_graded_count ?? 0,
+    badge: "NONE" as Badge,
+  }));
+  rows.sort((a, b) => Number(b.graded_assignments_count > 0) - Number(a.graded_assignments_count > 0) || b.overall_score - a.overall_score);
+  const seen = new Map<string, number>();
+  const next = (k: string) => { const n = (seen.get(k) ?? 0) + 1; seen.set(k, n); return n; };
+  rows.forEach((r, i) => {
+    r.rank = r.school_rank = i + 1;
+    r.grade_rank = next(`g\0${r.grade}`);
+    r.section_rank = next(`s\0${r.grade}\0${r.section}`);
+  });
+  const scored = rows.filter((r) => r.graded_assignments_count > 0);
+  const daily = d.assignment_table.filter((a) => a.assignment_type === "DAILY");
+  return {
+    ...d,
+    summary: {
+      ...d.summary,
+      total_assignments_published: daily.length,
+      course_assignments_published: 0,
+      daily_assignments_published: daily.length,
+      overall_avg_score: scored.length ? scored.reduce((n, r) => n + r.overall_score, 0) / scored.length : 0,
+    },
+    leaderboard: rows,
+    grade_breakdown: d.grade_breakdown.map((g) => ({ ...g, avg_overall: g.avg_daily_score })),
+    section_breakdown: d.section_breakdown.map((g) => ({ ...g, avg_overall: g.avg_daily_score })),
+    subject_breakdown: d.daily_subject_breakdown ?? [],
+    assignment_table: daily,
+  };
+}

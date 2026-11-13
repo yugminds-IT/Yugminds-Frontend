@@ -5,7 +5,7 @@ import type { TeacherClass } from "@/components/teacher/AssignmentAudiencePicker
 import { StatusPill, audienceChipLabel, stageOf, type TeacherAssignment } from "./assignments-shared";
 
 type Props = {
-  tab: "daily" | "course";
+  tab: "daily" | "course" | "exam";
   assignments: TeacherAssignment[];
   filteredAssignments: TeacherAssignment[];
   selectedId: string;
@@ -44,11 +44,11 @@ export default function AssignmentListPane({
       <div className="tg-list-scroll">
         {filteredAssignments.length === 0 ? (
           <div className="sd-empty" style={{ padding: "1.25rem 1rem" }}>
-            <b>{searchQuery || filtered ? "No matches" : `No ${tab} assignments yet`}</b>
-            <p>{searchQuery ? "Try a different search." : filtered ? "Nothing is in that stage." : tab === "daily" ? "Create one and it shows up here." : "Course assignments are set up by your admin."}</p>
+            <b>{searchQuery || filtered ? "No matches" : `No ${tab === "exam" ? "exams" : `${tab} assignments`} yet`}</b>
+            <p>{searchQuery ? "Try a different search." : filtered ? "Nothing is in that stage." : tab !== "course" ? "Create one and it shows up here." : "Course assignments are set up by your admin."}</p>
             {filtered ? (
               <button className="sd-btn sd-btn--line" onClick={onClearFilter}>Show all</button>
-            ) : !searchQuery && tab === "daily" && onCreate ? (
+            ) : !searchQuery && tab !== "course" && onCreate ? (
               <button className="sd-btn sd-btn--amber" onClick={onCreate}><Plus aria-hidden="true" />New assignment</button>
             ) : null}
           </div>

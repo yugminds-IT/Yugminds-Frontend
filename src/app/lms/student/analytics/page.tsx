@@ -1,5 +1,6 @@
 "use client";
 
+import { typeLabel } from "@/lib/assignment-types";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
@@ -88,6 +89,11 @@ type AnalyticsData = {
   subject_breakdown: SubjectBreakdown[];
   score_history: ScoreHistoryEntry[];
   school_leaderboard: LeaderboardEntry[];
+  /** Exams are scored and ranked on their own, never in the overall score. */
+  exam?: {
+    score: number | null; rank: number | null; ranked_students: number; exams_taken: number;
+    history: Array<{ assignment_id: string; title: string; subject: string; score: number; max_score: number; percentage: number; attempt: number }>;
+  };
 };
 
 // ── Badges ───────────────────────────────────────────────────────────────────
@@ -281,7 +287,7 @@ function HistoryRow({ entry }: { entry: ScoreHistoryEntry }) {
     <div className="an-hist-row" data-open={open}>
       <button className="an-head" disabled={!entry.feedback} aria-expanded={entry.feedback ? open : undefined} onClick={() => setOpen((o) => !o)}>
         <span className="an-hist-main">
-          <p>{entry.title}<span className="an-kind" data-k={entry.assignment_type === "COURSE" ? "course" : "daily"}>{entry.assignment_type === "COURSE" ? "Course" : "Daily"}</span></p>
+          <p>{entry.title}<span className="an-kind" data-k={entry.assignment_type === "COURSE" ? "course" : "daily"}>{typeLabel(entry.assignment_type)}</span></p>
           <small>
             {entry.submitted_at ? new Date(entry.submitted_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}
             {entry.attempt > 1 ? ` • Try ${entry.attempt}` : ""}
@@ -514,6 +520,21 @@ export default function StudentAnalyticsPage() {
                     </div>
                   </>
                 )}
+              </section>
+            )}
+
+            {analytics?.exam && analytics.exam.history.length > 0 && (
+              <section className="sd-panel" aria-labelledby="an-exam">
+                <div className="sd-panel-head"><div><h2 id="an-exam">Exams</h2><p>Scored and ranked on their own. They do not change your overall score.{analytics.exam.rank ? ` You are ranked ${analytics.exam.rank} of ${analytics.exam.ranked_students} for exams, with an average of ${analytics.exam.score}%.` : ""}</p></div></div>
+                <div className="an-hist">
+                  {analytics.exam.history.map((e) => (
+                    <div key={`${e.assignment_id}-${e.attempt}`} className="an-hrow">
+                      <p>{e.title}<span className="an-kind" data-k="exam">Exam</span></p>
+                      <small>{e.subject}{e.attempt > 1 ? `, try ${e.attempt}` : ""}</small>
+                      <b>{e.score} / {e.max_score} ({Math.round(e.percentage)}%)</b>
+                    </div>
+                  ))}
+                </div>
               </section>
             )}
           </div>

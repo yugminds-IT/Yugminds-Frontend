@@ -10,6 +10,7 @@ import "@/components/portal/portal.css";
 import "@/components/teacher/chrome.css";
 import StatusScreen from "@/components/public/StatusScreen";
 import { TeacherSchoolContext, type TeacherSchool } from "./context";
+import { pickCurrentSchoolId, type DaySlotMap } from "@/lib/weekday-utils";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { startActivityTracking, stopActivityTracking } from "@/lib/activity-tracker";
 import { waitForSession } from "@/lib/session-utils";
@@ -33,6 +34,12 @@ const ALL_SCHOOLS_VALUE = "__all__";
  * Provides authentication, school selection, and consistent layout
  * consistent with School Admin and Admin dashboards
  */
+// Among today's working schools, those with real timetable classes win.
+const preferWithClasses = (working: string[], withClasses: string[]) => {
+  const hit = working.filter((id) => withClasses.includes(id));
+  return hit.length ? hit : working;
+};
+
 export default function TeacherLayout({
   children,
 }: {
@@ -54,8 +61,10 @@ export default function TeacherLayout({
   // no relation to the actual weekly schedule).
   const [todayWorkStatus, setTodayWorkStatus] = useState<{
     working: string[];
+    withClasses: string[];
     holiday: string[];
     off: string[];
+    slots: Record<string, { slot: string; start: string; end: string }>;
   } | null>(null);
   const [status, setStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const router = useRouter();
@@ -293,16 +302,43 @@ export default function TeacherLayout({
                 const meta = (data as {
                   meta?: {
                     working_school_ids_today?: string[];
+                    class_school_ids_today?: string[];
                     holiday_school_ids_today?: string[];
                     off_schedule_school_ids_today?: string[];
+                    day_slots_today?: Record<string, { slot: string; start: string; end: string }>;
                   };
                 })?.meta;
                 if (meta && mounted) {
                   setTodayWorkStatus({
                     working: meta.working_school_ids_today ?? [],
+                    withClasses: meta.class_school_ids_today ?? [],
                     holiday: meta.holiday_school_ids_today ?? [],
                     off: meta.off_schedule_school_ids_today ?? [],
+                    slots: meta.day_slots_today ?? {},
                   });
+                }
+                // Once per login, open the school the teacher is at right now
+                // (weekday + time window); manual switches stick afterwards.
+                if (meta && mounted) {
+                  try {
+                    const d = new Date();
+                    const today = d.toDateString();
+                    // once per calendar day: a manual switch sticks for the day,
+                    // a new day (or fresh login) opens that day's school again.
+                    if (sessionStorage.getItem('teacherAutoSchoolDone') !== today) {
+                      sessionStorage.setItem('teacherAutoSchoolDone', today);
+                      const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                      const id = pickCurrentSchoolId(preferWithClasses(meta.working_school_ids_today ?? [], meta.class_school_ids_today ?? []), (meta.day_slots_today ?? {}) as DaySlotMap, hhmm);
+                      const target = schoolsData.find((s: School) => s.id === id);
+                      if (target) {
+                        setSelectedSchool(target);
+                        localStorage.setItem('teacherSelectedSchoolId', target.id);
+                        sessionStorage.setItem('selectedSchoolId', target.id);
+                      }
+                    }
+                  } catch {
+                    /* storage unavailable — keep the restored selection */
+                  }
                 }
               })
               .catch(() => {
@@ -396,6 +432,7 @@ export default function TeacherLayout({
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem('selectedSchoolId');
+        sessionStorage.removeItem('teacherAutoSchoolDone');
         localStorage.removeItem('teacherSelectedSchoolId');
       } catch (err) {
         console.warn('Error clearing school selection:', err);
@@ -485,8 +522,17 @@ export default function TeacherLayout({
               <option value={ALL_SCHOOLS_VALUE}>All schools (combined)</option>
               {schools.map((school) => {
                 const isSunday = new Date().getDay() === 0;
-                const status = todayWorkStatus?.working.includes(school.id)
-                  ? ' — working today'
+                const half = todayWorkStatus?.slots[school.id];
+                const noClasses =
+                  !!todayWorkStatus?.working.includes(school.id) &&
+                  todayWorkStatus.withClasses.length > 0 &&
+                  !todayWorkStatus.withClasses.includes(school.id);
+                const status = noClasses
+                  ? ' — no classes today'
+                  : todayWorkStatus?.working.includes(school.id)
+                  ? half
+                    ? ` — ${half.slot === 'MORNING' ? 'morning' : 'afternoon'} today (${half.start}–${half.end})`
+                    : ' — working today'
                   : todayWorkStatus?.holiday.includes(school.id)
                     ? ' — holiday today'
                     : todayWorkStatus?.off.includes(school.id)
@@ -503,23 +549,28 @@ export default function TeacherLayout({
               })}
             </select>
             {!selectedSchool && <p className="to-pill">Showing combined data across all {schools.length} of your schools.</p>}
-            {todayWorkStatus &&
-              selectedSchool &&
-              !todayWorkStatus.working.includes(selectedSchool.id) &&
-              todayWorkStatus.working.length > 0 && (
+            {todayWorkStatus && schools.length > 0 && (() => {
+              const d = new Date();
+              const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+              const todayId = pickCurrentSchoolId(preferWithClasses(todayWorkStatus.working, todayWorkStatus.withClasses), todayWorkStatus.slots as DaySlotMap, hhmm);
+              const todaySchool = schools.find((s) => s.id === todayId);
+              if (!todaySchool) {
+                return <p className="to-pill">You have no school scheduled today.</p>;
+              }
+              const half = todayWorkStatus.slots[todaySchool.id];
+              const when = half ? ` (${half.slot === 'MORNING' ? 'morning' : 'afternoon'}, ${half.start}–${half.end})` : '';
+              if (selectedSchool?.id === todaySchool.id) {
+                return <p className="to-pill">Today&apos;s school{when}</p>;
+              }
+              return (
                 <p className="to-pill" data-tone="warn">
-                  Not scheduled here today.
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const workingSchool = schools.find((s) => s.id === todayWorkStatus.working[0]);
-                      if (workingSchool) handleSchoolChange(workingSchool);
-                    }}
-                  >
-                    Switch to {schools.find((s) => s.id === todayWorkStatus.working[0])?.name}
+                  Today you are at {todaySchool.name}{when}.
+                  <button type="button" onClick={() => handleSchoolChange(todaySchool)}>
+                    Switch to today&apos;s school
                   </button>
                 </p>
-              )}
+              );
+            })()}
           </div>
         )}
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Check, FileText } from "lucide-react";
 import { classLabel, clock, plural, toMin } from "../overview/utils";
+import { formatWindow, slotName } from "@/lib/weekday-utils";
 import { dayStatus, STATUS_LABEL } from "./utils";
 
 type Period = { period_id?: string; grade?: string; section?: string | null; subject?: string; start_time?: string; end_time?: string };
@@ -13,6 +14,8 @@ export type TodayStatus = {
   submittedPeriods?: Period[];
   pendingPeriods?: Period[];
   notScheduledToday?: boolean;
+  /** Half-day window per school today (schoolId -> slot); only present for split-day teachers. */
+  daySlots?: Record<string, { slot: "MORNING" | "AFTERNOON"; start: string; end: string }>;
   before_cutoff?: boolean;
 };
 
@@ -20,7 +23,8 @@ const byStart = (a: Period, b: Period) => String(a.start_time ?? "").localeCompa
 const when = (p: Period) => (Number.isFinite(toMin(p.start_time)) ? clock(toMin(p.start_time)) : "");
 
 /** Today's attendance: how it is marked, and what is still needed to be marked present. */
-export default function TodayPanel({ today }: { today: TodayStatus | undefined }) {
+export default function TodayPanel({ today, schools = [] }: { today: TodayStatus | undefined; schools?: { id?: string; name?: string }[] }) {
+  const split = Object.entries(today?.daySlots ?? {}).sort((a, b) => a[1].start.localeCompare(b[1].start));
   const st = dayStatus(today?.attendance?.status);
   const total = today?.totalPeriods ?? 0;
   const done = today?.periodsWithReports ?? 0;
@@ -55,6 +59,12 @@ export default function TodayPanel({ today }: { today: TodayStatus | undefined }
         </div>
       ) : (
         <>
+          {split.length > 0 && (
+            <p className="sd-where" data-testid="split-day-note">
+              Split day: {split.map(([id, s], i) => `${i > 0 ? ", " : ""}${slotName(s).toLowerCase()} at ${schools.find((x) => x.id === id)?.name ?? "your school"} (${formatWindow(s)})`).join("")}.
+              Each school&apos;s reports count for its own half of the day.
+            </p>
+          )}
           <div className="at-progress">
             <p><b>{done}</b> of {total} reports in{left > 0 ? `, ${left} to go` : ""}</p>
             <div className="sd-meter" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Reports submitted today"><i style={{ "--p": `${(done / total) * 100}%` } as React.CSSProperties} /></div>

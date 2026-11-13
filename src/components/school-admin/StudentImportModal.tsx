@@ -15,8 +15,8 @@ interface ImportResults {
 
 const TEMPLATE_HEADERS = ['email', 'full_name', 'grade', 'section', 'joining_code', 'parent_name', 'parent_phone', 'password', 'is_active']
 const TEMPLATE_ROWS = [
-  ['student1@example.com', 'Student One', 'Grade 5', 'A', 'ABC123', 'Parent One', '9999999999', '', 'true'],
-  ['student2@example.com', 'Student Two', 'Grade 6', 'B', '', 'Parent Two', '', 'StrongPass1!', 'true'],
+  ['student1@example.com', 'Student One', 'Grade 5', 'Section A', 'ABC123', 'Parent One', '9999999999', '', 'true'],
+  ['student2@example.com', 'Student Two', 'Grade 6', 'Section B', '', 'Parent Two', '', 'StrongPass1!', 'true'],
 ]
 
 function parseCsv(text: string): Row[] {

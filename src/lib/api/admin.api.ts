@@ -15,6 +15,10 @@ export const adminApi = {
     analytics: (params?: { from?: string; to?: string; force?: boolean }) =>
       apiClient.get(withParams(`${ADMIN}/analytics`, params)),
     assignmentAnalytics: () => apiClient.get(`${ADMIN}/assignment-analytics`),
+    examAnalytics: (params?: { school_id?: string }) =>
+      apiClient.get(withParams(`${ADMIN}/exam-analytics`, params)),
+    assignmentReport: (assignmentId: string) =>
+      apiClient.get(`${ADMIN}/assignments/${assignmentId}/report-data`),
     refreshViews: () => apiClient.post(`${ADMIN}/refresh-dashboard-views`),
     /** Live traffic since the server started, optionally for one role and/or school. */
     monitoring: (params?: { role?: string; school_id?: string }) =>

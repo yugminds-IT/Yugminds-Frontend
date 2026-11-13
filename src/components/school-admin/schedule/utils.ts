@@ -161,8 +161,6 @@ export function buildDayPreview(opts: {
 }
 
 export const AVAILABLE_GRADES = [
-  'Pre-K',
-  'Kindergarten', 
   'Grade 1', 
   'Grade 2', 
   'Grade 3', 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarOff, FileText, RefreshCw } from "lucide-react";
@@ -10,7 +10,7 @@ import { useSmartRefresh } from "@/hooks/useSmartRefresh";
 import AttendanceRun from "@/components/teacher/attendance/AttendanceRun";
 import MonthGrid from "@/components/teacher/attendance/MonthGrid";
 import TodayPanel, { type TodayStatus } from "@/components/teacher/attendance/TodayPanel";
-import { dayStatus, lastMonths, monthName, rollUp, STATUS_LABEL, type DayRecord, type MonthRow } from "@/components/teacher/attendance/utils";
+import { dayStatus, lastMonths, monthName, rollUp, STATUS_LABEL, type DayRecord, type Month, type MonthRow } from "@/components/teacher/attendance/utils";
 import { plural } from "@/components/teacher/overview/utils";
 import "@/components/school-admin/overview.css"; // hero meta, rows, two-column grid
 import "@/components/teacher/overview/overview.css"; // day track
@@ -30,12 +30,26 @@ export default function AttendancePage() {
   const [ym, setYm] = useState(keys[keys.length - 1]);
 
   const school = selectedSchool?.id;
+  // School attendance (selected school) vs overall attendance (all schools); only the Monthly tab shows overall.
   const monthlyQ = useTeacherMonthlyAttendance(school, 12);
+  const overallQ = useTeacherMonthlyAttendance(undefined, 12);
+  const [tab, setTab] = useState<"overview" | "monthly">("overview");
   const dailyQ = useTeacherAttendance(school, ym);
   const todayQ = useTodayAttendanceStatus(school);
 
-  const months = useMemo(() => rollUp(monthlyQ.data as MonthRow[] | undefined), [monthlyQ.data]);
-  const cur = months.get(ym);
+  // School figures (hero, ledger) follow the switcher; the Monthly tab is the overall total across every school.
+  const months = useMemo(() => rollUp(overallQ.data as MonthRow[] | undefined), [overallQ.data]);
+  const schoolMonths = useMemo(() => rollUp(monthlyQ.data as MonthRow[] | undefined), [monthlyQ.data]);
+  const cur = schoolMonths.get(ym);
+  const allKeys = useMemo(() => lastMonths(now, 12).reverse(), [now]);
+  const bySchool = useMemo(() => {
+    const m = new Map<string, Array<[string, Month]>>();
+    for (const r of (overallQ.data as MonthRow[] | undefined) ?? []) {
+      const key = String(r.month ?? "").slice(0, 7);
+      m.set(key, (r.by_school ?? []).flatMap((b) => { const x = rollUp([b]).get(key); return b.school_id && x ? [[b.school_id, x] as [string, Month]] : []; }));
+    }
+    return m;
+  }, [overallQ.data]);
   const records = useMemo(
     () => ((dailyQ.data ?? []) as DayRecord[]).filter((r) => r.date?.startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date)),
     [dailyQ.data, ym],
@@ -51,14 +65,14 @@ export default function AttendancePage() {
     ]);
   };
   useSmartRefresh({ customRefresh: refresh, minRefreshInterval: 60000 });
-  const refreshing = monthlyQ.isFetching || dailyQ.isFetching || todayQ.isFetching;
+  const refreshing = monthlyQ.isFetching || overallQ.isFetching || dailyQ.isFetching || todayQ.isFetching;
 
   /* ───────── what the hero says about today ───────── */
   const st = dayStatus(today?.attendance?.status);
   const total = today?.totalPeriods ?? 0;
   const left = total - (today?.periodsWithReports ?? 0);
   const off = !!today && (today.notScheduledToday || today.attendance?.status === "Holiday" || today.attendance?.status === "Not-Scheduled");
-  const failed = monthlyQ.isError || todayQ.isError;
+  const failed = monthlyQ.isError || overallQ.isError || todayQ.isError;
 
   let status: React.ReactNode;
   if (failed) status = "Your attendance did not load. Try again.";
@@ -114,11 +128,58 @@ export default function AttendancePage() {
             <button className="sd-btn sd-btn--amber" onClick={() => void monthlyQ.refetch()}>Try again</button>
           </div>
         ) : (
-          <AttendanceRun keys={keys} data={months} selected={ym} onSelect={setYm} />
+          <AttendanceRun keys={keys} data={schoolMonths} selected={ym} onSelect={setYm} />
         )}
       </section>
 
-      <div className="sd-ledger" role="group" aria-label={`Attendance in ${monthName(ym)}`}>
+      <div className="mc-tabs" role="tablist" aria-label="Views" style={{ margin: "0.5rem 0" }}>
+        {([["overview", "Overview"], ["monthly", "Overall attendance"]] as const).map(([id, label]) => (
+          <button key={id} role="tab" id={`at-tab-${id}`} aria-selected={tab === id} aria-controls={`at-panel-${id}`} className="mc-tab" onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "monthly" ? (
+        <section className="sd-panel" id="at-panel-monthly" role="tabpanel" aria-labelledby="at-tab-monthly">
+          <div className="sd-panel-head"><div><h2>Overall attendance</h2><p>All your schools combined{schools.length > 1 ? ", with each school underneath" : ""}, last 12 months</p></div></div>
+          {overallQ.isLoading ? (
+            <div style={{ padding: "0 1.25rem 1.25rem" }}><div className="sd-skel" /><div className="sd-skel" /></div>
+          ) : (
+            <div style={{ overflowX: "auto", padding: "0 1.25rem 1.25rem" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+                <thead>
+                  <tr style={{ textAlign: "left" }}>
+                    {["Month", "Present", "Absent", "Leave", "Not reported", "Working days", "Attendance"].map((h) => <th key={h} style={{ padding: "0.5rem 0.6rem", fontWeight: 600 }}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {allKeys.map((k) => {
+                    const m = months.get(k);
+                    const parts = bySchool.get(k) ?? [];
+                    const cell = { padding: "0.5rem 0.6rem" } as const;
+                    return (
+                      <React.Fragment key={k}>
+                        <tr style={{ borderTop: "1px solid var(--border, #e5e7eb)", cursor: "pointer" }} onClick={() => { if (keys.includes(k)) setYm(k); }}>
+                          <td style={cell}><b>{monthName(k)}</b></td>
+                          <td style={cell}>{m?.present ?? "–"}</td><td style={cell}>{m?.absent ?? "–"}</td><td style={cell}>{m?.leave ?? "–"}</td><td style={cell}>{m?.unreported ?? "–"}</td>
+                          <td style={cell}>{m?.total ?? "–"}</td>
+                          <td style={cell}>{m && m.total > 0 ? <b>{m.pct}%</b> : "–"}</td>
+                        </tr>
+                        {parts.length > 1 && parts.map(([sid, p]) => (
+                          <tr key={`${k}-${sid}`} style={{ opacity: 0.7, fontSize: "0.82rem" }}>
+                            <td style={{ ...cell, paddingLeft: "1.4rem" }}>{schools.find((s) => s.id === sid)?.name ?? "School"}</td>
+                            <td style={cell}>{p.present}</td><td style={cell}>{p.absent}</td><td style={cell}>{p.leave}</td><td style={cell}>{p.unreported}</td><td style={cell}>{p.total}</td><td style={cell}>{p.total > 0 ? `${p.pct}%` : "–"}</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : (<>
+      <div className="sd-ledger" role="group" aria-label={`Attendance in ${monthName(ym)}, ${selectedSchool?.name ?? "selected school"}`}>
         {ledger.map((m) => (
           <div key={m.label}>
             <span className="sd-l">{m.label}</span>
@@ -130,7 +191,7 @@ export default function AttendancePage() {
 
       <div className="so-grid">
         <div className="so-col">
-          <TodayPanel today={todayQ.isLoading ? undefined : today} />
+          <TodayPanel today={todayQ.isLoading ? undefined : today} schools={schools} />
 
           <section className="sd-panel as-list" aria-labelledby="at-days">
             <div className="sd-panel-head" style={{ margin: 0, padding: "1.25rem 1.25rem 0.9rem" }}>
@@ -185,6 +246,7 @@ export default function AttendancePage() {
           </section>
         </div>
       </div>
+      </>)}
     </div>
   );
 }

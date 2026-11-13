@@ -19,6 +19,7 @@ type AssignmentRowRaw = {
   retake_granted?: boolean
   due_date?: string
   days_until_due?: number | null
+  due_phase?: string
   is_overdue?: boolean
   max_marks?: number
   submission?: { grade?: number | null; submitted_at?: string } | null
@@ -35,6 +36,7 @@ function rowFor(a: AssignmentRowRaw): AssignmentRowData {
     href: submitted && !a.retake_available ? `/lms/student/assignments/${a.id}/view` : `/lms/student/assignments/${a.id}`,
     state,
     dueDate: a.due_date || undefined,
+    duePhase: a.due_phase,
     daysUntilDue: a.days_until_due,
     handedIn: submitted || !!a.submission,
     marks: a.max_marks,

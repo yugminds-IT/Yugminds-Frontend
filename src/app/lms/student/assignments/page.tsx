@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { BookOpen, Play, Search } from "lucide-react";
+import { BookOpen, GraduationCap, Play, Search } from "lucide-react";
 import { studentApi } from "@/lib/api/student.api";
 import MonthCalendar, { type ActivityDay } from "@/components/portal/MonthCalendar";
 import DueRun, { type DueNode } from "@/components/portal/DueRun";
@@ -26,6 +26,7 @@ interface Assignment {
     status: string;
   } | null;
   is_overdue: boolean;
+  due_phase?: string;
   /** null when the assignment has no deadline. */
   days_until_due: number | null;
   chapter_title?: string | null;
@@ -33,6 +34,11 @@ interface Assignment {
   unlocks_in_days?: number | null;
   retake_available?: boolean;
   retake_granted?: boolean;
+  exam_type?: string | null;
+  exam_phase?: "upcoming" | "open" | "closed" | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  duration_minutes?: number | null;
 }
 
 type StatusFilter = "all" | "pending" | "submitted" | "graded" | "overdue";
@@ -70,6 +76,7 @@ function toRow(a: Assignment): AssignmentRowData {
     href,
     state: stateOf(a),
     dueDate: a.due_date || undefined,
+    duePhase: a.due_phase,
     daysUntilDue: a.days_until_due,
     handedIn: !!a.submission,
     marks: a.max_marks,
@@ -98,12 +105,18 @@ function normalizeAssignment(raw: Record<string, unknown>): Assignment {
     status: (raw.status ?? "not_started") as Assignment["status"],
     submission: (raw.submission as Assignment["submission"]) ?? null,
     is_overdue: Boolean(raw.is_overdue ?? false),
+    due_phase: raw.due_phase != null ? String(raw.due_phase) : undefined,
     days_until_due: raw.days_until_due != null ? Number(raw.days_until_due) : null,
     chapter_title: raw.chapter_title != null ? String(raw.chapter_title) : null,
     is_locked: Boolean(raw.is_locked ?? false),
     unlocks_in_days: raw.unlocks_in_days != null ? Number(raw.unlocks_in_days) : null,
     retake_available: Boolean(raw.retake_available ?? false),
     retake_granted: Boolean(raw.retake_granted ?? false),
+    exam_type: raw.exam_type != null ? String(raw.exam_type) : null,
+    exam_phase: (raw.exam_phase as Assignment["exam_phase"]) ?? null,
+    starts_at: raw.starts_at != null ? String(raw.starts_at) : null,
+    ends_at: raw.ends_at != null ? String(raw.ends_at) : null,
+    duration_minutes: raw.duration_minutes != null ? Number(raw.duration_minutes) : null,
   };
 }
 
@@ -361,6 +374,9 @@ export default function StudentAssignmentsPage() {
             ) : null}
             <Link href="/lms/student/assignments/hierarchy" className="sd-btn sd-btn--ghost-dark">
               <BookOpen aria-hidden="true" />By course
+            </Link>
+            <Link href="/lms/student/exams" className="sd-btn sd-btn--ghost-dark">
+              <GraduationCap aria-hidden="true" />Exams
             </Link>
           </div>
         </div>

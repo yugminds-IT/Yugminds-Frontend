@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, History } from "lucide-react";
 import { adminApi } from "@/lib/api/admin.api";
-import { formatWorkingDays } from "@/lib/weekday-utils";
+import { formatWorkingDays, WEEKDAY_LABELS } from "@/lib/weekday-utils";
 
 interface HistoryEntry {
   effective_from: string;
   working_days: number[];
+  day_slots?: Record<string, { slot: string; start: string; end: string }> | null;
 }
 
 function formatDate(d: string) {
@@ -77,6 +78,12 @@ export default function WorkingDaysHistoryPanel({
             entries.map((e, i) => (
               <p key={`${e.effective_from}-${i}`} className="text-xs text-gray-600">
                 <span className="font-medium">{formatWorkingDays(e.working_days)}</span>
+                {e.day_slots && Object.keys(e.day_slots).length > 0 && (
+                  <span className="text-gray-500">
+                    {" · half-days: "}
+                    {Object.entries(e.day_slots).map(([d, s]) => `${WEEKDAY_LABELS[Number(d)]} ${s.slot === "MORNING" ? "AM" : "PM"} ${s.start}–${s.end}`).join(", ")}
+                  </span>
+                )}
                 {" — since "}
                 {formatDate(e.effective_from)}
               </p>

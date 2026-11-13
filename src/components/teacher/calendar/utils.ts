@@ -10,7 +10,8 @@ export interface CalendarEntry {
   type: EntryType;
   description: string | null;
 }
-export interface ScheduleDay { date: string; school_id: string; school_name: string }
+/** slot = the half-day window at this school that day (absent = full day) */
+export interface ScheduleDay { date: string; school_id: string; school_name: string; slot?: { slot: "MORNING" | "AFTERNOON"; start: string; end: string } }
 export interface MonthData { calendar: CalendarEntry[]; schedule: ScheduleDay[]; unassignedDates: string[] }
 
 export const TYPE_LABEL: Record<EntryType, string> = {
@@ -72,7 +73,8 @@ export type DayInfo = { kind: DayKind; scheduled: ScheduleDay[]; entries: Calend
 
 export function dayInfo(ix: Index, date: string): DayInfo {
   const entries = ix.entries.get(date) ?? [];
-  const scheduled = ix.schedule.get(date) ?? [];
+  // Earliest half-day first, so a split day reads morning school then afternoon school.
+  const scheduled = [...(ix.schedule.get(date) ?? [])].sort((a, b) => (a.slot?.start ?? "00:00").localeCompare(b.slot?.start ?? "00:00"));
   const closedEntries = entries.filter((e) => e.type === "Holiday" || e.type === "Break");
   const closedAt = closedEntries.filter((e) => scheduled.some((s) => s.school_id === e.school_id));
   let kind: DayKind;

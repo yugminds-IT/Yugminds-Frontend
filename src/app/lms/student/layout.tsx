@@ -318,7 +318,7 @@ export default function StudentLayoutWrapper({
             userName={userName}
             userEmail={userEmail}
             onLogout={handleLogout}
-            badges={{ "/lms/student/assignments": pendingAssignmentsCount, "/lms/student/notifications": unreadNotificationCount }}
+            badges={{ "/lms/student/assignments": pendingAssignmentsCount, "/lms/student/exams": dashboardStats?.pendingExams ?? 0, "/lms/student/notifications": unreadNotificationCount }}
           />
         )
       }

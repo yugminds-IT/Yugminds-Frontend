@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Bell, ChevronDown, Clock, Download, FileSpreadsheet, FileText, Plus, Printer, ShieldCheck } from "lucide-react";
-import { DEFAULT_OPERATING_DAYS } from "@/lib/weekday-utils";
+import { DEFAULT_OPERATING_DAYS, formatWindow, lockReason, periodFits, slotName } from "@/lib/weekday-utils";
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 import { useSchoolAdmin } from "@/contexts/SchoolAdminContext";
 import { schoolAdminApi } from "@/lib/api/school-admin.api";
@@ -145,16 +145,6 @@ export default function ClassSchedulingPage() {
   const [validationModalOpen, setValidationModalOpen] = useState(false);
   const [validationResults, setValidationResults] = useState<{ errors: string[]; warnings: string[]; info: string[] } | null>(null);
   const [selectedTeacherWorkload, setSelectedTeacherWorkload] = useState<Teacher | null>(null);
-
-  // Helper function to normalize grade for comparison
-  const normalizeGradeForComparison = (grade: string): string => {
-    // Remove "Grade " prefix and convert to lowercase for comparison
-    const normalized = grade.replace(/^Grade\s+/i, '').trim().toLowerCase();
-    // Handle special cases
-    if (normalized === 'pre-k' || normalized === 'prek') return 'pre-k';
-    if (normalized === 'k' || normalized === 'kindergarten') return 'kindergarten';
-    return normalized;
-  };
 
   // Load data
   const loadData = useCallback(async () => {
@@ -322,8 +312,6 @@ export default function ClassSchedulingPage() {
   });
 
   // Section 5: Add Schedule Modal Derivatives
-  const uniqueSubjects = [...new Set(schedules.map((s: Schedule) => s.subject))].filter(Boolean).sort();
-
   const sectionsForSelectedGrade = (() => {
     if (!scheduleForm.grade) return [] as string[];
     const g = schoolGradesDetailed.find((x) => x.name === scheduleForm.grade);
@@ -362,12 +350,8 @@ export default function ClassSchedulingPage() {
   const isTeacherAssigned = (t: Teacher, sub: string, gr: string, sec?: string) => {
     if (!gr) return true;
 
-    const normalizeGrade = (g: string) => g.toLowerCase().replace(/grade\s+/g, '').trim();
-    const normalizeSection = (s: string) =>
-      s.toLowerCase().replace(/^section\s+/i, '').trim();
-    const normGr = normalizeGrade(gr);
     const normSub = sub.toLowerCase().trim();
-    const normSec = normalizeSection(sec ?? '');
+    const normSec = (sec ?? '').trim(); // sections are always the standard "Section A"
 
     const subjects = t.subjects || t.teacher_schools?.[0]?.subjects || [];
     // Subject list is often empty on TeacherSchool — don't block grade/section matches.
@@ -383,16 +367,16 @@ export default function ClassSchedulingPage() {
       [];
 
     if (gsa.length) {
-      const row = gsa.find((g) => normalizeGrade(g.grade) === normGr);
+      const row = gsa.find((g) => g.grade === gr);
       if (!row) return false;
       if (normSec && row.sections?.length) {
-        return row.sections.some((s) => normalizeSection(s) === normSec);
+        return row.sections.some((s) => s === normSec);
       }
       return true;
     }
 
     const grades = t.grades_assigned || t.teacher_schools?.[0]?.grades_assigned || [];
-    return grades.some((g: string) => normalizeGrade(g) === normGr);
+    return grades.includes(gr);
   };
 
   // Client-side hints only — the backend (assertTeacherSchedulable in
@@ -416,6 +400,37 @@ export default function ClassSchedulingPage() {
     if (schoolData.assigned_until && today > schoolData.assigned_until) return false;
     return true;
   };
+
+  // Split-day teachers are only at this school inside a half-day window
+  // (set by the main admin). `fits` is false when the chosen day+period lies
+  // outside it; `note` always describes the window so the admin sees why.
+  const windowInfo = (t: Teacher): { fits: boolean; note: string | null } => {
+    const dayNum = DAY_NAME_TO_NUMBER[scheduleForm.day_of_week];
+    const slot = dayNum === undefined ? undefined : t.teacher_schools?.[0]?.day_slots?.[String(dayNum)];
+    if (!slot) return { fits: true, note: null };
+    const chosen = periods.find((p) => p.id === scheduleForm.period_id);
+    return {
+      fits: !chosen || periodFits(chosen, [slot.start, slot.end]),
+      note: `${slotName(slot).toLowerCase()}s only (${formatWindow(slot)})`,
+    };
+  };
+
+  // Periods no teacher can take (not working that day / outside every half-day
+  // window / assignment ended). Locked cells can't be added to; "key" is "Day|periodId".
+  const lockedCells = useMemo(() => {
+    const out = new Map<string, string>();
+    const today = new Date().toISOString().split('T')[0];
+    for (const day of GRID_DAYS) {
+      const dayNum = DAY_NAME_TO_NUMBER[day];
+      if (!schoolOperatingDays.includes(dayNum)) continue;
+      for (const p of periods) {
+        const reason = lockReason(teachers, dayNum, p, today);
+        if (reason) out.set(`${day}|${p.id}`, reason);
+      }
+    }
+    return out;
+  }, [teachers, periods, schoolOperatingDays]);
+  const lockedReason = (day: string, periodId: string) => lockedCells.get(`${day}|${periodId}`) ?? null;
 
   const filteredTeachers = useMemo(
     () =>
@@ -458,8 +473,10 @@ export default function ClassSchedulingPage() {
   
   let suggestedTeacher: Teacher | null = null;
   if (scheduleForm.grade && scheduleForm.day_of_week && scheduleForm.period_id) {
-    const availableFiltered = filteredTeachers.filter((t) =>
-      isTeacherAvailable(t.id, scheduleForm.day_of_week, scheduleForm.period_id),
+    const availableFiltered = filteredTeachers.filter(
+      (t) =>
+        isTeacherAvailable(t.id, scheduleForm.day_of_week, scheduleForm.period_id) &&
+        windowInfo(t).fits,
     );
     if (availableFiltered.length > 0) {
       suggestedTeacher = availableFiltered.sort(
@@ -475,7 +492,7 @@ export default function ClassSchedulingPage() {
     if (sectionsForSelectedGrade.length > 0 && !scheduleForm.section) return;
     if (filteredTeachers.length !== 1) return;
     const only = filteredTeachers[0];
-    if (!only?.id) return;
+    if (!only?.id || !windowInfo(only).fits) return;
     if (scheduleForm.teacher_id === only.id) return;
     if (
       scheduleForm.teacher_id &&
@@ -551,8 +568,11 @@ export default function ClassSchedulingPage() {
       if (scheduleForm.period_id) {
         const sortedPeriods = [...periods].sort((a, b) => a.period_number - b.period_number);
         const currentIndex = sortedPeriods.findIndex(p => p.id === scheduleForm.period_id);
-        if (currentIndex !== -1 && currentIndex < sortedPeriods.length - 1) {
-          const nextPeriod = sortedPeriods[currentIndex + 1];
+        // Next period that someone can actually teach — never land on a locked one.
+        const nextPeriod = currentIndex === -1
+          ? undefined
+          : sortedPeriods.slice(currentIndex + 1).find(p => !lockedReason(scheduleForm.day_of_week, p.id));
+        if (nextPeriod) {
           setScheduleForm(prev => ({
             ...prev,
             period_id: nextPeriod.id,
@@ -690,6 +710,11 @@ export default function ClassSchedulingPage() {
 
   const handleAddScheduleGrid = (day: string, periodId: string) => {
     if (!schoolOperatingDays.includes(DAY_NAME_TO_NUMBER[day])) return;
+    const locked = lockedReason(day, periodId);
+    if (locked) {
+      toast.info(`This period is locked: ${locked}.`);
+      return;
+    }
     const period = periods.find(p => p.id === periodId);
     setScheduleForm({
       class_id: '',
@@ -1162,7 +1187,7 @@ export default function ClassSchedulingPage() {
     await loadData();
     setIsCopying(false);
     if (errors.length > 0) {
-      toast.warning(`Repeat complete: ${successCount} days added, ${skippedCount} skipped, ${errors.length} error(s).`);
+      toast.warning(`Repeat complete: ${successCount} days added, ${skippedCount} skipped, ${errors.length} error(s). First: ${errors[0]}`);
     } else {
       toast.success(`Repeat complete: ${successCount} days added, ${skippedCount} skipped.`);
     }
@@ -1276,11 +1301,7 @@ export default function ClassSchedulingPage() {
   const getAvailableGrades = () => {
     if (schoolGrades.length > 0) {
       // Filter AVAILABLE_GRADES to only include grades assigned to the school
-      const normalizedSchoolGrades = schoolGrades.map((g: string) => normalizeGradeForComparison(g));
-      return AVAILABLE_GRADES.filter((grade: string) => {
-        const normalizedGrade = normalizeGradeForComparison(grade);
-        return normalizedSchoolGrades.includes(normalizedGrade);
-      });
+      return AVAILABLE_GRADES.filter((grade: string) => schoolGrades.includes(grade));
     }
     // Fallback to all available grades if school grades not loaded yet
     return AVAILABLE_GRADES;
@@ -1533,6 +1554,13 @@ export default function ClassSchedulingPage() {
       const workingDays = schoolData.working_days;
       if (dayNum !== undefined && workingDays && workingDays.length > 0 && !workingDays.includes(dayNum)) {
         errors.push(`${teacherName} doesn't work at your school on ${s.day_of_week}s, but is scheduled for ${s.subject} (${gradeSectionLabel(s)})`);
+      }
+      // Half-day teacher scheduled outside their window (e.g. the main admin
+      // shortened it after this class was created).
+      const slot = dayNum !== undefined ? schoolData.day_slots?.[String(dayNum)] : undefined;
+      const per = periods.find((p) => p.id === s.period_id);
+      if (slot && per && !periodFits(per, [slot.start, slot.end])) {
+        errors.push(`${teacherName} is only at your school ${formatWindow(slot)} on ${s.day_of_week}s, but P${per.period_number} (${formatWindow({ start: per.start_time, end: per.end_time })}) ${s.subject} (${gradeSectionLabel(s)}) is outside that`);
       }
     });
 
@@ -1963,6 +1991,7 @@ export default function ClassSchedulingPage() {
                 focus={dayFocus}
                 busy={isCopying}
                 onAdd={handleAddScheduleGrid}
+                locked={lockedReason}
                 onEdit={handleEditSchedule}
                 onCopyClass={openCopyClass}
                 onRepeat={(s) => void handleRepeatAcrossWeek(s)}
@@ -1990,12 +2019,13 @@ export default function ClassSchedulingPage() {
         rooms={rooms}
         grades={availableGrades.length > 0 ? availableGrades : AVAILABLE_GRADES}
         sections={sectionsForSelectedGrade}
-        subjects={uniqueSubjects}
         teachers={displayTeachers}
         teacherCount={teachers.length}
         matchCount={filteredTeachers.length}
         isMatch={(t) => (scheduleForm.grade ? isTeacherAssigned(t, scheduleForm.subject, scheduleForm.grade, scheduleForm.section) : true)}
         loadOf={getTeacherLoad}
+        windowInfo={windowInfo}
+        periodLocked={lockedReason}
         roomFree={(id) => isRoomAvailable(id, scheduleForm.day_of_week, scheduleForm.period_id || "")}
         suggested={suggestedTeacher}
         conflict={conflictWarning}

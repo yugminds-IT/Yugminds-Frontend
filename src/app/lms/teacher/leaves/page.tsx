@@ -11,7 +11,7 @@ import ConfirmModal from "@/components/portal/ConfirmModal";
 import LeaveStages from "@/components/school-admin/LeaveStages";
 import LeaveRun from "@/components/teacher/leaves/LeaveRun";
 import ApplyModal from "@/components/teacher/leaves/ApplyModal";
-import { daysBetween, daysWithin, rangeLabel, statusOf, STATUS_LABEL, waitingHint, type Leave, type LeaveStatus } from "@/components/teacher/leaves/utils";
+import { daysBetween, decidedLine, daysWithin, rangeLabel, statusOf, STATUS_LABEL, waitingHint, type Leave, type LeaveStatus } from "@/components/teacher/leaves/utils";
 import { plural } from "@/components/teacher/overview/utils";
 import "@/components/school-admin/overview.css"; // hero meta, two-column grid
 import "@/components/school-admin/teachers.css"; // emergency approval steps
@@ -153,6 +153,8 @@ export default function LeavesPage() {
                 {visible.slice(0, shown).map((l) => {
                   const s = statusOf(l);
                   const hint = waitingHint(l);
+                  const decided = decidedLine(l);
+                  const remark = (s === "approved" || s === "rejected") && l.admin_remarks ? l.admin_remarks : null;
                   const school = schools.length > 1 ? schoolName(l.school_id) : undefined;
                   return (
                     <article key={l.id} className="lv-row" data-s={s}>
@@ -173,10 +175,12 @@ export default function LeavesPage() {
                       <span className="lv-acts">
                         {canCancel(l) && <button type="button" className="lv-cancel" onClick={() => setCancelId(l.id)}>Cancel request</button>}
                       </span>
-                      {(l.is_emergency || hint) && (
+                      {(l.is_emergency || hint || decided || remark) && (
                         <div className="lv-extra">
                           <LeaveStages leave={l as unknown as Parameters<typeof LeaveStages>[0]["leave"]} />
                           {hint && <p className="lv-hint">{hint}</p>}
+                          {decided && <p className="lv-hint" data-s={s}><b>{decided}</b></p>}
+                          {remark && <p className="lv-hint">Remark: {remark}</p>}
                         </div>
                       )}
                     </article>

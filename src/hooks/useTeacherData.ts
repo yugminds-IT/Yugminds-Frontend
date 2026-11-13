@@ -108,6 +108,8 @@ export interface MonthlyDataItem {
   unreported_days?: number;
   total_working_days?: number;
   attendance_percentage?: number;
+  /** Overall (all-schools) mode only: the same figures per school. */
+  by_school?: MonthlyDataItem[];
 }
 
 // ==================== Shared helpers ====================
@@ -270,14 +272,19 @@ export function useTeacherMonthlyAttendance(schoolId?: string, months?: number) 
       
       // Transform to match expected format with present_count, absent_count, etc.
       // Data is already sorted descending (most recent first) by the API
-      const transformed = filteredData.map((item: MonthlyDataItem) => ({
-        month: item.month,
+      const toRow = (item: MonthlyDataItem, month = item.month) => ({
+        month,
+        school_id: item.school_id,
         present_count: item.present_days || 0,
         absent_count: item.absent_days || 0,
         leave_count: item.leave_days || 0,
         unreported_count: item.unreported_days || 0,
         total_days: item.total_working_days || 0,
-        attendance_percentage: item.attendance_percentage || 0
+        attendance_percentage: item.attendance_percentage || 0,
+      });
+      const transformed = filteredData.map((item: MonthlyDataItem) => ({
+        ...toRow(item),
+        by_school: item.by_school?.map((b) => toRow(b, item.month)),
       }));
       
       return transformed;

@@ -1,4 +1,5 @@
 /** Shared by the admin Teachers page and its tabs. Loose shapes: the API returns a few spellings of the same fields. */
+import { formatWorkingSchedule, type DaySlotMap } from "@/lib/weekday-utils";
 
 export interface TeacherLike {
   id: string | number;
@@ -24,7 +25,13 @@ export interface TodayStatus {
   leaveType?: string;
   attendanceRate?: number;
 }
-export interface SchoolToday { school_id: string; school_name: string; status: string }
+export interface SchoolToday {
+  school_id: string;
+  school_name: string;
+  status: string;
+  /** Half-day window today (absent = full day). */
+  slot?: { slot: "MORNING" | "AFTERNOON"; start: string; end: string } | null;
+}
 
 export const nameOf = (t: Pick<TeacherLike, "full_name" | "name" | "email">) => t.full_name || t.name || t.email || "Unnamed";
 export const idOf = (t: Pick<TeacherLike, "id">) => String(t.id ?? "");
@@ -48,12 +55,18 @@ export function todayKey(status?: string): TodayKey {
   }
 }
 
-export interface SchoolBrief { id: string; name: string; grades: number; sections: number; subjects: string[] }
+export interface SchoolBrief {
+  id: string; name: string; grades: number; sections: number; subjects: string[];
+  /** "Mon, Tue · Thu AM 8:00 AM–12:30 PM" — only set when the teacher has half-day slots here. */
+  schedule?: string;
+}
 
 type RawGrade = { gradeName?: string; grade?: string; sectionsAssigned?: string[]; sections?: string[] };
 type RawSchool = {
   schoolId?: string; school_id?: string; schoolName?: string; schools?: { id?: string; name?: string };
   gradesAssigned?: RawGrade[]; grade_sections_assigned?: RawGrade[]; grades_assigned?: string[]; subjects?: string[];
+  workingDays?: number[]; working_days?: number[];
+  daySlots?: DaySlotMap | null; day_slots?: DaySlotMap | null;
 };
 
 /** One short record per school the teacher works at, whichever shape the API used. */
@@ -68,6 +81,12 @@ export function schoolsOf(t: Pick<TeacherLike, "assignedSchools" | "teacher_scho
       grades: grades.length || (Array.isArray(s.grades_assigned) ? s.grades_assigned.length : 0),
       sections,
       subjects: Array.isArray(s.subjects) ? s.subjects.map(String) : [],
+      schedule: (() => {
+        const slots = s.daySlots ?? s.day_slots;
+        return slots && Object.keys(slots).length > 0
+          ? formatWorkingSchedule(s.workingDays ?? s.working_days, slots)
+          : undefined;
+      })(),
     };
   });
 }

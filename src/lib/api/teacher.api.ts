@@ -105,6 +105,14 @@ export const teacherApi = {
       apiClient.get(withParams(`${TEACHER}/student-progress`, params)),
   },
 
+  /** Student performance (same payload as school-admin, limited to the teacher's own sections) */
+  leaderboard: {
+    get: (schoolId?: string) =>
+      apiClient.get(withParams(`${TEACHER}/leaderboard`, { school_id: schoolId })),
+    assignmentMarks: (assignmentId: string, schoolId?: string) =>
+      apiClient.get(withParams(`${TEACHER}/leaderboard/assignments/${assignmentId}/marks`, { school_id: schoolId })),
+  },
+
   /** Analytics */
   analytics: {
     get: (params?: Record<string, string | number | undefined>) =>
@@ -139,13 +147,13 @@ export const teacherApi = {
       apiClient.get(`${TEACHER}/assignments/${assignmentId}/attempt-history/${studentId}`),
     progressDashboard: (assignmentId: string) =>
       apiClient.get(`${TEACHER}/assignments/${assignmentId}/progress-dashboard`),
-    analytics: (params?: Record<string, string | number | undefined>) =>
-      apiClient.get(withParams(`${TEACHER}/assignment-analytics`, params)),
+    examAnalytics: (params?: Record<string, string | number | undefined>) =>
+      apiClient.get(withParams(`${TEACHER}/exam-analytics`, params)),
   },
 
   /** Student-initiated retake requests, routed to the teacher(s) mapped to that student's grade/section */
   retakeRequests: {
-    list: (params?: { status?: string }) =>
+    list: (params?: { status?: string; school_id?: string }) =>
       apiClient.get(withParams(`${TEACHER}/retake-requests`, params)),
     decide: (requestId: string, data: { action: "approve" | "reject"; remarks?: string }) =>
       apiClient.patch(`${TEACHER}/retake-requests/${requestId}`, data),

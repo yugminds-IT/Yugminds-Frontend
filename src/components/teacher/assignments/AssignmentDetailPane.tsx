@@ -1,11 +1,13 @@
 "use client";
 
+import { typeLabel, EXAM_TYPE_LABEL, fmtWindow } from "@/lib/assignment-types";
 import { useState } from "react";
 import { ArrowLeft, Check, ChevronDown, Download, Eye, EyeOff, Loader2, Lock, Pencil, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import type { TeacherClass } from "@/components/teacher/AssignmentAudiencePicker";
 import { classLabel, plural } from "@/components/teacher/overview/utils";
 import {
   StatusPill,
+  dueClosesAtMs,
   Avatar,
   audienceChipLabel,
   stageOf,
@@ -19,7 +21,7 @@ import {
 import ReportDownloadDialog from "./ReportDownloadDialog";
 
 type Props = {
-  tab: "daily" | "course";
+  tab: "daily" | "course" | "exam";
   selectedAssignment: TeacherAssignment | null;
   assignmentDetail: AssignmentDetail | null;
   detailLoading: boolean;
@@ -109,7 +111,7 @@ export default function AssignmentDetailPane(props: Props) {
   const audience = audienceChipLabel(a, teacherClasses);
   const filterCounts = { all: studentRows.length, graded: studentRows.filter((r) => r.best).length, pending: studentRows.filter((r) => !r.best).length };
   const subFilterCounts = { ...filterCounts, not_submitted: notSubmitted.length };
-  const locked = tab === "daily" && !detailLoading && (a.is_published || (a.submission_count ?? 0) > 0 || (assignmentDetail?.submission_count ?? 0) > 0);
+  const locked = tab !== "course" && !detailLoading && (a.is_published || (a.submission_count ?? 0) > 0 || (assignmentDetail?.submission_count ?? 0) > 0);
   const hasSubs = (a.submission_count ?? assignmentDetail?.submission_count ?? 0) > 0;
   const questions = assignmentDetail?.questions ?? [];
 
@@ -121,19 +123,21 @@ export default function AssignmentDetailPane(props: Props) {
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="tg-badges">
             <StatusPill stage={stageOf(a, now)} />
-            <span className="tg-chip">{a.assignment_type?.toLowerCase() === "course" || tab === "course" ? "Course" : "Daily"}</span>
+            {stageOf(a, now) === "past" && a.assignment_type !== "EXAM" && <span className="tg-chip" data-s="draft">{a.late_policy === "close" || (a.close_date && dueClosesAtMs(a.close_date) < now) ? "Closed to submissions" : a.close_date ? `Late until ${new Date(a.close_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}` : "Accepting late"}</span>}
+            <span className="tg-chip">{typeLabel(tab === "course" ? "COURSE" : a.assignment_type ?? tab.toUpperCase())}</span>
+            {tab === "exam" && <span className="tg-chip">{EXAM_TYPE_LABEL[a.exam_type ?? "OTHER"] ?? "Exam"}</span>}
           </div>
           <h2>{a.title}</h2>
           <p>
-            {[a.subject ?? "General", audience, a.total_marks ? `${a.total_marks} marks` : null, a.due_date ? `Due ${new Date(a.due_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : null].filter(Boolean).join(", ")}
+            {[a.subject ?? "General", audience, a.total_marks ? `${a.total_marks} marks` : null, tab === "exam" ? `${fmtWindow(a.starts_at, a.ends_at)}${a.duration_minutes ? `, ${a.duration_minutes} min` : ""}` : a.due_date ? `Due ${new Date(a.due_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : null].filter(Boolean).join(", ")}
           </p>
         </div>
         <div className="tg-acts">
-          {tab === "daily" && <button type="button" className="sd-btn sd-btn--line" onClick={onEdit} disabled={loading}><Pencil aria-hidden="true" />Edit</button>}
+          {tab !== "course" && <button type="button" className="sd-btn sd-btn--line" onClick={onEdit} disabled={loading}><Pencil aria-hidden="true" />Edit</button>}
           <button type="button" className="sd-btn sd-btn--line" onClick={onTogglePublish} disabled={loading}>
             {a.is_published ? <><EyeOff aria-hidden="true" />Unpublish</> : <><Eye aria-hidden="true" />Publish</>}
           </button>
-          {tab === "daily" && <button type="button" className="sd-btn sd-btn--danger" onClick={onDelete} disabled={loading}><Trash2 aria-hidden="true" />Delete</button>}
+          {tab !== "course" && <button type="button" className="sd-btn sd-btn--danger" onClick={onDelete} disabled={loading}><Trash2 aria-hidden="true" />Delete</button>}
         </div>
       </div>
 
@@ -218,7 +222,7 @@ export default function AssignmentDetailPane(props: Props) {
                           {row.attempts.map((att) => (
                             <li key={att.id} className="tg-att" data-best={att.id === best?.id}>
                               <span><b>Attempt {att.attempt_number}</b><small>{when(att.submitted_at)}</small></span>
-                              <span>{att.is_retake ? "Retake" : "First try"}</span>
+                              <span>{att.is_retake ? "Retake" : "First try"}{att.is_late && <small> · Late</small>}</span>
                               <span>{att.status === "graded" ? <b>{att.score}/{att.max_score}</b> : "–"}{att.id === best?.id && <small>Counts: {retakeRuleLabel.toLowerCase()}</small>}</span>
                               {att.status !== "graded" ? (
                                 <span className="tg-grade">
@@ -250,13 +254,13 @@ export default function AssignmentDetailPane(props: Props) {
               {assignmentDetail?.description && <p className="tg-note">{assignmentDetail.description}</p>}
               {locked && <p className="tg-lock"><Lock aria-hidden="true" />Questions are locked {hasSubs ? "because students have handed this in" : "while it is published"}.</p>}
             </div>
-            {tab === "daily" && <button type="button" className="sd-btn sd-btn--line" onClick={onEdit} disabled={loading || detailLoading}><Pencil aria-hidden="true" />Edit</button>}
+            {tab !== "course" && <button type="button" className="sd-btn sd-btn--line" onClick={onEdit} disabled={loading || detailLoading}><Pencil aria-hidden="true" />Edit</button>}
           </div>
 
           {detailLoading ? (
             <div className="sd-skel" style={{ height: "8rem" }} />
           ) : questions.length === 0 ? (
-            <div className="sd-empty"><b>No questions yet</b><p>{tab === "daily" ? "Edit this assignment to add questions." : "This course assignment has no questions attached."}</p></div>
+            <div className="sd-empty"><b>No questions yet</b><p>{tab !== "course" ? "Edit this assignment to add questions." : "This course assignment has no questions attached."}</p></div>
           ) : (
             <ol className="tg-qs">
               {questions.map((q, i) => {

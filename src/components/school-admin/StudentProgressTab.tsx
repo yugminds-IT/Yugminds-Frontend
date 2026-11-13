@@ -152,7 +152,7 @@ export default function StudentProgressTab() {
     <div className="sd-page">
       <section className="sd-hero mc-band" aria-labelledby="sp-title">
         <div className="sd-hero-copy">
-          <h1 id="sp-title" className="mc-hero-title">Student progress</h1>
+          <h1 id="sp-title" className="mc-hero-title">Course progress</h1>
           <p className="sd-status">{status}</p>
           <div className="sd-hero-actions">
             <button className="sd-btn sd-btn--ghost-dark" onClick={() => void refetch()} disabled={isFetching}>

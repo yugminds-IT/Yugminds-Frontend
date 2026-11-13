@@ -221,9 +221,9 @@ interface BulkImportData {
 /** Same rule the backend enforces on `email_domain` (e.g. "snt.edu.in"). */
 const EMAIL_DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
-/** Standard grades from Pre-K to Grade 12, used when a school has not set up its own. */
+/** Standard grades, Grade 1 to Grade 12, used when a school has not set up its own. */
 const availableGrades = [
-  'Pre-K', 'Kindergarten', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5',
+  'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5',
   'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'
 ];
 
@@ -538,7 +538,7 @@ export default function StudentsManagement() {
         return gradeObj.sections.map((s) => s.name);
       }
     }
-    return ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+    return 'ABCDEFGHIJKL'.split('').map((l) => `Section ${l}`);
   }, [selectedSchoolGrades, formData.grade]);
 
   useEffect(() => {
@@ -849,7 +849,7 @@ export default function StudentsManagement() {
       const gradeObj = (editSchool?.grades ?? []).find((g) => g.name === editGrade);
       return gradeObj && gradeObj.sections.length > 0
         ? gradeObj.sections.map((s) => s.name)
-        : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+        : 'ABCDEFGHIJKL'.split('').map((l) => `Section ${l}`);
     })();
     const isPredefined = gradeSections.includes(sectionValue);
 
@@ -1240,7 +1240,7 @@ export default function StudentsManagement() {
       email: student.email?.trim() || '',
       password: student.password?.trim() || undefined,
       grade: student.grade.trim(),
-      section: student.section.trim().toUpperCase(),
+      section: student.section.trim(),
       parent_name: student.father_name?.trim() || null,
       parent_phone: student.phone_number?.trim() || null,
     });
@@ -1312,7 +1312,7 @@ export default function StudentsManagement() {
                 email: r.email ?? student.email ?? '',
                 password: r.generated_password,
                 grade: student.grade.trim(),
-                section: student.section.trim().toUpperCase(),
+                section: student.section.trim(),
                 school: importSchoolName,
               });
             }
@@ -1750,7 +1750,7 @@ export default function StudentsManagement() {
                 .map((item: BulkImportData) => ({
                   ...item,
                   grade: normalizeGrade(item.grade || ''),
-                  section: (item.section || '').trim().toUpperCase(), // Normalize section to uppercase
+                  section: (item.section || '').trim(),
                   school_id: selectedSchoolForImport || undefined, // Set school_id from selection
                 }))
                 .filter((item: BulkImportData) =>
@@ -1900,7 +1900,7 @@ export default function StudentsManagement() {
               .map((item: BulkImportData) => ({
                 ...item,
                 grade: normalizeGrade(item.grade || ''),
-                section: (item.section || '').trim().toUpperCase(), // Normalize section to uppercase
+                section: (item.section || '').trim(),
                 school_id: selectedSchoolForImport || undefined, // Set school_id from selection
               }))
               .filter((item: BulkImportData) => {
@@ -2022,21 +2022,21 @@ export default function StudentsManagement() {
     // Includes different grades and sections to demonstrate the format
     const sampleData = [
       ['Student Name', 'Father Name', 'Phone Number', 'Grade', 'Section'],
-      ['Aarav Sharma', 'Rohit Sharma', '+919876543210', 'Grade 4', 'A'],
-      ['Anaya Patel', 'Vivek Patel', '+919876543211', 'Grade 4', 'B'],
-      ['Vihaan Reddy', 'Suresh Reddy', '+919876543212', 'Grade 4', 'C'],
-      ['Diya Gupta', 'Amit Gupta', '+919876543213', 'Grade 5', 'A'],
-      ['Arjun Singh', 'Raj Singh', '+919876543214', 'Grade 5', 'B'],
-      ['Ishita Nair', 'Manoj Nair', '+919876543215', 'Grade 5', 'C'],
-      ['Reyansh Iyer', 'Kiran Iyer', '+919876543216', 'Grade 6', 'A'],
-      ['Meera Das', 'Sanjay Das', '+919876543217', 'Grade 6', 'B'],
-      ['Kabir Khan', 'Imran Khan', '+919876543218', 'Grade 7', 'A'],
-      ['Saanvi Joshi', 'Nitin Joshi', '+919876543219', 'Grade 7', 'B'],
-      ['Aditya Verma', 'Ramesh Verma', '+919876543220', 'Grade 8', 'A'],
-      ['Priya Mehta', 'Sunil Mehta', '+919876543221', 'Grade 8', 'C'],
-      ['Rohan Kapoor', 'Vikram Kapoor', '+919876543222', 'Grade 9', 'A'],
-      ['Sneha Agarwal', 'Anil Agarwal', '+919876543223', 'Grade 9', 'B'],
-      ['Karan Malhotra', 'Deepak Malhotra', '+919876543224', 'Grade 10', 'A'],
+      ['Aarav Sharma', 'Rohit Sharma', '+919876543210', 'Grade 4', 'Section A'],
+      ['Anaya Patel', 'Vivek Patel', '+919876543211', 'Grade 4', 'Section B'],
+      ['Vihaan Reddy', 'Suresh Reddy', '+919876543212', 'Grade 4', 'Section C'],
+      ['Diya Gupta', 'Amit Gupta', '+919876543213', 'Grade 5', 'Section A'],
+      ['Arjun Singh', 'Raj Singh', '+919876543214', 'Grade 5', 'Section B'],
+      ['Ishita Nair', 'Manoj Nair', '+919876543215', 'Grade 5', 'Section C'],
+      ['Reyansh Iyer', 'Kiran Iyer', '+919876543216', 'Grade 6', 'Section A'],
+      ['Meera Das', 'Sanjay Das', '+919876543217', 'Grade 6', 'Section B'],
+      ['Kabir Khan', 'Imran Khan', '+919876543218', 'Grade 7', 'Section A'],
+      ['Saanvi Joshi', 'Nitin Joshi', '+919876543219', 'Grade 7', 'Section B'],
+      ['Aditya Verma', 'Ramesh Verma', '+919876543220', 'Grade 8', 'Section A'],
+      ['Priya Mehta', 'Sunil Mehta', '+919876543221', 'Grade 8', 'Section C'],
+      ['Rohan Kapoor', 'Vikram Kapoor', '+919876543222', 'Grade 9', 'Section A'],
+      ['Sneha Agarwal', 'Anil Agarwal', '+919876543223', 'Grade 9', 'Section B'],
+      ['Karan Malhotra', 'Deepak Malhotra', '+919876543224', 'Grade 10', 'Section A'],
     ];
 
     downloadCsv('student_import_sample.csv', sampleData);
@@ -3106,7 +3106,7 @@ export default function StudentsManagement() {
                   const school = schools.find((sc: School) => sc.id === bulkMoveSchoolId);
                   const gradeObj = (school?.grades ?? []).find((g) => g.name === bulkMoveGrade);
                   const names = (gradeObj?.sections ?? []).map((x) => x.name);
-                  return (names.length > 0 ? names : ["A", "B", "C", "D", "E", "F", "G", "H"]).map((x) => <option key={x} value={x}>{x}</option>);
+                  return (names.length > 0 ? names : "ABCDEFGH".split("").map((l) => `Section ${l}`)).map((x) => <option key={x} value={x}>{x}</option>);
                 })()}
               </select>
             </div>

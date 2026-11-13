@@ -6,7 +6,7 @@ import { CheckCircle, ChevronDown, Clock, PlayCircle, RefreshCw } from "lucide-r
 import { useTeacherStudentProgress, type StudentProgressData } from "../../hooks/useStudentProgress";
 import { ChipGroup, Pager, initialsOf } from "../portal/notifications";
 import ProgressRun, { STAGE_LABEL, stageOf, type Stage } from "../school-admin/progress/ProgressRun";
-import { formatSectionLabel } from "../school-admin/student-utils";
+import { formatGradeBadge, formatSectionLabel } from "../school-admin/student-utils";
 import { classLabel, plural } from "./overview/utils";
 import "../school-admin/students.css"; // chips, who button
 import "../school-admin/teachers.css"; // progress bar
@@ -16,7 +16,7 @@ import "./studentProgress.css";
 const PAGE_SIZE = 25;
 type Tab = "students" | "courses" | "sections";
 type Sort = "name" | "high" | "low" | "recent" | "stale";
-type Known = { sections: string[]; courses: { id: string; name: string }[] };
+type Known = { grades: string[]; sections: string[]; courses: { id: string; name: string }[] };
 
 const SORTS: Record<Sort, { label: string; key: keyof StudentProgressData; dir: 1 | -1 }> = {
   name: { label: "Name, A to Z", key: "full_name", dir: 1 },
@@ -46,6 +46,7 @@ const courseState = (status: string) =>
 export default function StudentProgressTab({ selectedSchoolId, schoolName }: { selectedSchoolId?: string; schoolName?: string }) {
   const [tab, setTab] = useState<Tab>("students");
   const [search, setSearch] = useState("");
+  const [grade, setGrade] = useState("all");
   const [section, setSection] = useState("all");
   const [course, setCourse] = useState("all");
   const [stage, setStage] = useState<Stage | "all">("all");
@@ -53,7 +54,7 @@ export default function StudentProgressTab({ selectedSchoolId, schoolName }: { s
   const [expanded, setExpanded] = useState<string | null>(null);
   const [pageState, setPageState] = useState({ key: "", page: 1 });
   // The server narrows the list as you filter, so the choices are remembered from everything seen.
-  const [known, setKnown] = useState<Known>({ sections: [], courses: [] });
+  const [known, setKnown] = useState<Known>({ grades: [], sections: [], courses: [] });
 
   const { data, isLoading, isFetching, error, refetch } = useTeacherStudentProgress(selectedSchoolId, {
     courseId: course !== "all" ? course : undefined,
@@ -67,10 +68,11 @@ export default function StudentProgressTab({ selectedSchoolId, schoolName }: { s
   if (data !== seenData) {
     setSeenData(data);
     setKnown((prev) => {
+      const grades = [...new Set([...prev.grades, ...students.map((s) => s.grade ?? "").filter(Boolean)])];
       const sections = [...new Set([...prev.sections, ...students.map((s) => s.section ?? "").filter(Boolean)])];
       const courses = new Map(prev.courses.map((c) => [c.id, c]));
       students.forEach((s) => s.courses?.forEach((c) => { if (!courses.has(c.course_id)) courses.set(c.course_id, { id: c.course_id, name: c.course_name }); }));
-      return sections.length === prev.sections.length && courses.size === prev.courses.length ? prev : { sections: sections.sort(byNumber), courses: [...courses.values()] };
+      return grades.length === prev.grades.length && sections.length === prev.sections.length && courses.size === prev.courses.length ? prev : { grades: grades.sort(byNumber), sections: sections.sort(byNumber), courses: [...courses.values()] };
     });
   }
 
@@ -84,17 +86,17 @@ export default function StudentProgressTab({ selectedSchoolId, schoolName }: { s
     const q = search.trim().toLowerCase();
     const { key, dir } = SORTS[sort];
     return students
-      .filter((s) => (!q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q)) && (stage === "all" || stageOf(s.average_progress ?? 0) === stage))
+      .filter((s) => (grade === "all" || s.grade === grade) && (!q || s.full_name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q)) && (stage === "all" || stageOf(s.average_progress ?? 0) === stage))
       .sort((a, b) => {
         let av: string | number = key === "last_activity" ? (a.last_activity ? +new Date(a.last_activity) : 0) : ((a[key] as string | number | null | undefined) ?? "");
         let bv: string | number = key === "last_activity" ? (b.last_activity ? +new Date(b.last_activity) : 0) : ((b[key] as string | number | null | undefined) ?? "");
         if (typeof av === "string") { av = av.toLowerCase(); bv = String(bv).toLowerCase(); }
         return av === bv ? 0 : av > bv ? dir : -dir;
       });
-  }, [students, search, stage, sort]);
+  }, [students, search, stage, sort, grade]);
 
   // Changing any filter or the sort goes back to page 1.
-  const filterKey = `${search}|${stage}|${sort}|${section}|${course}`;
+  const filterKey = `${search}|${stage}|${sort}|${grade}|${section}|${course}`;
   const page = pageState.key === filterKey ? pageState.page : 1;
   const setPage = (p: number) => setPageState({ key: filterKey, page: p });
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -126,8 +128,8 @@ export default function StudentProgressTab({ selectedSchoolId, schoolName }: { s
     return [...map.values()].map((r) => ({ ...r, label: classLabel(r.grade, r.section) || "No class", avg: r.students ? Math.round(r.sum / r.students) : 0 })).sort((a, b) => byNumber(a.label, b.label));
   }, [students]);
 
-  const hasFilters = !!search || section !== "all" || course !== "all" || stage !== "all";
-  const clearFilters = () => { setSearch(""); setSection("all"); setCourse("all"); setStage("all"); };
+  const hasFilters = !!search || grade !== "all" || section !== "all" || course !== "all" || stage !== "all";
+  const clearFilters = () => { setSearch(""); setGrade("all"); setSection("all"); setCourse("all"); setStage("all"); };
   const total = summary?.total_students ?? 0;
   const finished = summary?.students_completed ?? 0;
   const avg = summary ? Math.round(summary.average_school_progress ?? summary.average_system_progress ?? 0) : null;
@@ -149,7 +151,7 @@ export default function StudentProgressTab({ selectedSchoolId, schoolName }: { s
     <div className="sd-page tp">
       <section className="sd-hero mc-band" aria-labelledby="sp-title">
         <div className="sd-hero-copy">
-          <h1 id="sp-title" className="mc-hero-title">Student progress</h1>
+          <h1 id="sp-title" className="mc-hero-title">Course progress</h1>
           <p className="sd-where">{schoolName ?? "All your schools"}</p>
           <p className="sd-status">{status}</p>
           <div className="sd-hero-actions">
@@ -187,6 +189,7 @@ export default function StudentProgressTab({ selectedSchoolId, schoolName }: { s
         <>
           <div className="sp-bar">
             <input type="search" className="sd-field" placeholder="Search by name or email" aria-label="Search students" value={search} onChange={(e) => setSearch(e.target.value)} />
+            {known.grades.length > 1 && <ChipGroup label="Grade" value={grade} options={[["all", "All grades"] as const, ...known.grades.map((g) => [g, formatGradeBadge(g)] as const)]} onChange={setGrade} />}
             {known.sections.length > 1 && <ChipGroup label="Section" value={section} options={[["all", "All sections"] as const, ...known.sections.map((s) => [s, formatSectionLabel(s)] as const)]} onChange={setSection} />}
             {known.courses.length > 1 && (
               <select className="sd-field" aria-label="Course" value={course} onChange={(e) => setCourse(e.target.value)}>

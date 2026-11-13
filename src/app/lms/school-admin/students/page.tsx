@@ -77,6 +77,7 @@ export default function StudentsManagement() {
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const selectAll = useRef<HTMLInputElement>(null);
+  const latestLoad = useRef(0);
 
   /* ───────── school setup: grades and sections ───────── */
   const gradeList = useMemo(() => [...selectChoicesFrom(schoolGrades, false)].sort(natural), [schoolGrades]);
@@ -133,10 +134,12 @@ export default function StudentsManagement() {
   );
 
   const loadStudents = useCallback(async () => {
+    const req = ++latestLoad.current; // a slower, older response must not overwrite a newer filter's rows
     try {
       setLoading(true);
       setLoadFailed(false);
       const data = unwrap(await schoolAdminApi.students.list({ limit: pageSize, page, ...filterParams() }));
+      if (req !== latestLoad.current) return;
       type Api = {
         id?: string;
         profile?: { id?: string; full_name?: string; email?: string; created_at?: string; parent_name?: string; parent_phone?: string };
@@ -147,6 +150,7 @@ export default function StudentsManagement() {
         joining_code?: string;
         is_active?: boolean;
         enrolled_at?: string;
+        last_login?: string | null;
         parent_name?: string;
         parent_phone?: string;
       };
@@ -161,6 +165,7 @@ export default function StudentsManagement() {
         joining_code: s.joining_code ?? "",
         is_active: s.is_active ?? true,
         enrolled_at: s.enrolled_at ?? "",
+        last_login: s.last_login ?? null,
         profile: {
           full_name: s.profile?.full_name ?? "",
           email: s.profile?.email ?? "",
@@ -173,10 +178,11 @@ export default function StudentsManagement() {
       const t = (data as { total?: number }).total;
       setTotal(typeof t === "number" ? t : rows.length);
     } catch (error) {
+      if (req !== latestLoad.current) return;
       console.error("Error loading students:", error);
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (req === latestLoad.current) setLoading(false);
     }
   }, [pageSize, page, filterParams]);
 
@@ -522,6 +528,14 @@ export default function StudentsManagement() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
+        {gradeList.length > 0 && (
+          <ChipGroup
+            label="Grade"
+            value={gradeFilter}
+            options={[["all", "All grades"] as const, ...gradeList.map((g) => [g, g] as const)]}
+            onChange={(g) => { setGradeFilter(g); setSectionFilter("all"); }}
+          />
+        )}
         {sectionChoices.length > 0 && (
           <ChipGroup
             label="Section"

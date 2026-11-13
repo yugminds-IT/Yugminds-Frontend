@@ -334,17 +334,23 @@ export function ChipGroup<T extends string>({
   value,
   options,
   onChange,
+  disabledReason,
 }: {
   label: string;
   value: T;
   options: readonly (readonly [T, string])[];
   onChange: (v: T) => void;
+  /** Return a reason to grey an option out (it can't be picked); null/undefined keeps it selectable. */
+  disabledReason?: (v: T) => string | null | undefined;
 }) {
   return (
     <div className="as-chips" role="group" aria-label={label}>
-      {options.map(([v, l]) => (
-        <button key={v} type="button" className="as-chip" aria-pressed={value === v} onClick={() => onChange(v)}>{l}</button>
-      ))}
+      {options.map(([v, l]) => {
+        const why = disabledReason?.(v);
+        return (
+          <button key={v} type="button" className="as-chip" aria-pressed={value === v} disabled={!!why} title={why ?? undefined} onClick={() => onChange(v)}>{l}</button>
+        );
+      })}
     </div>
   );
 }

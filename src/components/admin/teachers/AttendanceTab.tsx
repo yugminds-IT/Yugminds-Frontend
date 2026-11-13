@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, ClockAlert, RefreshCw, Search } from "lucide
 import ConfirmModal from "../../portal/ConfirmModal";
 import { Pager, initialsOf } from "../../portal/notifications";
 import { MiniSeg } from "../../teacher/analytics/Charts";
-import { formatWorkingDays } from "@/lib/weekday-utils";
+import { formatWorkingSchedule, type DaySlotMap } from "@/lib/weekday-utils";
 import { band, plural } from "./utils";
 import "../../teacher/analytics/analytics.css"; // segmented bar
 
@@ -28,6 +28,7 @@ export interface MonthlyRow {
     school_id: string;
     school_name: string;
     working_days?: number[];
+    day_slots?: DaySlotMap | null;
     present_days: number;
     absent_days: number;
     leave_days: number;
@@ -180,7 +181,7 @@ export default function AttendanceTab({
                   <div className="at-sub">
                     {m.by_school!.map((s) => (
                       <div key={s.school_id} className="at-subrow">
-                        <span className="at-who at-who--static"><b>{s.school_name}</b><small>{formatWorkingDays(s.working_days)}</small></span>
+                        <span className="at-who at-who--static"><b>{s.school_name}</b><small>{formatWorkingSchedule(s.working_days, s.day_slots)}</small></span>
                         <span className="at-mbar">
                           <MiniSeg parts={parts(s.present_days, s.absent_days, s.leave_days, s.unreported_days)} />
                           <small>{s.present_days} present · {s.absent_days} absent · {s.leave_days} leave · {s.unreported_days} unreported · {plural(s.total_working_days, "working day")}</small>

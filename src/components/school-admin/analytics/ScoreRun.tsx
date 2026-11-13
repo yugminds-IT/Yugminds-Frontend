@@ -10,11 +10,13 @@ export default function ScoreRun({
   selected,
   onSelect,
   average,
+  averageLabel = "school average",
 }: {
   counts: Record<Band, number>;
   selected: Band | "all";
   onSelect: (b: Band | "all") => void;
   average: number | null;
+  averageLabel?: string;
 }) {
   const biggest = BANDS.reduce((best, b, i) => (counts[b] > counts[BANDS[best]] ? i : best), 0);
   const sel = BANDS.indexOf(selected as Band);
@@ -43,7 +45,7 @@ export default function ScoreRun({
         </ol>
       </div>
       <div className="sd-run-foot">
-        <b>{average == null ? "–" : `${Math.round(average)}%`}<small>school average</small></b>
+        <b>{average == null ? "–" : `${Math.round(average)}%`}<small>{averageLabel}</small></b>
         {selected !== "all" ? (
           <button type="button" className="sm-reset" onClick={() => onSelect("all")}>Show every student</button>
         ) : (

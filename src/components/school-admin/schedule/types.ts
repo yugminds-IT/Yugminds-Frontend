@@ -76,6 +76,8 @@ export interface Teacher {
     working_days_per_week: number;
     /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
     working_days?: number[];
+    /** Half-day windows per weekday (0=Sun..6=Sat); a day not listed is a full day. */
+    day_slots?: Record<string, { slot: 'MORNING' | 'AFTERNOON'; start: string; end: string }> | null;
     /** Calendar date range the teacher is assigned to this school (YYYY-MM-DD); null = no bound. */
     assigned_from?: string | null;
     assigned_until?: string | null;

@@ -54,11 +54,9 @@ export function formatGradeBadge(grade: string | undefined | null): string {
   return /^grade\b/i.test(g) ? g : `Grade ${g}`;
 }
 
-/** Sections may be stored as "A" or as "Section A"; show "Section A" either way, never "Section Section A". */
+/** Sections are always stored as "Section A"; show as-is. */
 export function formatSectionLabel(section: string | undefined | null): string {
-  const s = String(section ?? "").trim();
-  if (!s) return "";
-  return /^section\b/i.test(s) ? s : `Section ${s}`;
+  return String(section ?? "").trim();
 }
 
 /** "Grade 5" becomes "5" for tight spaces; other names are cut to three letters. */

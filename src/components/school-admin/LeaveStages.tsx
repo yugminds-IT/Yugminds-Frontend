@@ -7,7 +7,7 @@ const WORD: Record<Stage, string> = { pending: 'Waiting', approved: 'Approved', 
  * Emergency leave needs two approvals in order: the school admin, then the main admin.
  * (The order is real, so the steps are numbered.) Renders nothing for ordinary leave.
  */
-export default function LeaveStages({ leave }: { leave: Pick<LeaveRequest, 'is_emergency' | 'status' | 'school_admin_status' | 'admin_status'> }) {
+export default function LeaveStages({ leave }: { leave: Pick<LeaveRequest, 'is_emergency' | 'status' | 'school_admin_status' | 'admin_status' | 'school_admin_by' | 'admin_by'> }) {
   if (!leave.is_emergency) return null
   const rejected = (leave.status ?? '').toLowerCase() === 'rejected'
   const school: Stage = leave.school_admin_status ?? 'pending'
@@ -17,8 +17,8 @@ export default function LeaveStages({ leave }: { leave: Pick<LeaveRequest, 'is_e
     <div className="tm-stages" role="group" aria-label="Emergency leave approvals">
       <b>Emergency leave needs two approvals, in order</b>
       <ol>
-        <li data-s={school}><span>School admin</span><i>{WORD[school]}</i></li>
-        <li data-s={admin ?? 'none'}><span>Main admin</span><i>{admin ? WORD[admin] : 'Not needed'}</i></li>
+        <li data-s={school}><span>School admin{leave.school_admin_by && school !== 'pending' ? <em> ({leave.school_admin_by})</em> : null}</span><i>{WORD[school]}</i></li>
+        <li data-s={admin ?? 'none'}><span>Main admin{leave.admin_by && admin && admin !== 'pending' ? <em> ({leave.admin_by})</em> : null}</span><i>{admin ? WORD[admin] : 'Not needed'}</i></li>
       </ol>
     </div>
   )

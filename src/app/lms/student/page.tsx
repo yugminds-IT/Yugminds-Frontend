@@ -30,6 +30,7 @@ interface Assignment {
   due_date?: string;
   status?: string;
   is_overdue?: boolean;
+  due_phase?: string;
   days_until_due?: number | null;
   is_locked?: boolean;
   submission?: {
@@ -126,7 +127,7 @@ export default function StudentDashboard() {
     const seen = new Set<string>();
     const pending = [...course, ...daily]
       .filter((a) => {
-        if (!a.id || seen.has(a.id) || a.is_locked) return false;
+        if (!a.id || seen.has(a.id) || a.is_locked || a.due_phase === "closed") return false;
         seen.add(a.id);
         return a.status === "not_started" || a.status === "pending" || a.status == null;
       })
@@ -224,12 +225,15 @@ export default function StudentDashboard() {
     completedCourses?: number;
     completedAssignments?: number;
     unreadNotifications?: number;
+    pendingExams?: number;
+    upcomingExams?: number;
   } | undefined;
 
   const ledger = [
     { label: "Active courses", value: studentStats?.activeCourses || 0, hint: "In progress", href: "/lms/student/my-courses" },
     { label: "Pending assignments", value: studentStats?.pendingAssignments || 0, hint: pendingGroups.overdue > 0 ? `${pendingGroups.overdue} overdue` : "To do", href: "/lms/student/assignments?filter=pending", hot: pendingGroups.overdue > 0 },
     { label: "Courses completed", value: studentStats?.completedCourses || 0, hint: "Finished", href: "/lms/student/my-courses?tab=completed" },
+    ...((studentStats?.pendingExams || studentStats?.upcomingExams) ? [{ label: "Exams", value: studentStats?.pendingExams || 0, hint: studentStats?.upcomingExams ? `${studentStats.upcomingExams} upcoming` : "Open now", href: "/lms/student/exams", hot: (studentStats?.pendingExams ?? 0) > 0 }] : []),
     { label: "Assignments done", value: studentStats?.completedAssignments || 0, hint: "Submitted and graded", href: "/lms/student/assignments?filter=graded" },
   ];
 

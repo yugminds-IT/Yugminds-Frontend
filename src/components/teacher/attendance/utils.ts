@@ -1,10 +1,13 @@
 export type MonthRow = {
   month?: string;
+  school_id?: string;
   present_count: number;
   absent_count: number;
   leave_count: number;
   unreported_count: number;
   total_days?: number;
+  /** Overall mode only: the same month split per school. */
+  by_school?: MonthRow[];
 };
 
 /** One month, summed over every school in view (a combined "All schools" view returns a row per school). */

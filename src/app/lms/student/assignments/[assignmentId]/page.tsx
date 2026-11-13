@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, CheckCircle, Clock, AlertCircle, Loader2, RotateCcw, FileText, Play } from "lucide-react";
@@ -24,6 +24,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { studentApi } from "@/lib/api/student.api";
 import { useBeforeUnloadWhenDirty } from "@/hooks/useUnsavedCloseGuard";
 import { useAssignmentLeaveGuard } from "@/hooks/useAssignmentLeaveGuard";
+import { fmtWindow } from "@/lib/assignment-types";
 
 interface Question {
   id: string;
@@ -48,6 +49,12 @@ type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+function fmtClock(ms: number): string {
+  const t = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return `${h ? `${h}:${String(m).padStart(2, "0")}` : m}:${String(s).padStart(2, "0")}`;
+}
+
 function formatDue(date: Date | null): string {
   if (!date) return "No due date";
   return date.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -59,7 +66,7 @@ export default function AssignmentDetailPage(props: PageProps) {
   const assignmentId = params.assignmentId;
   const toast = useToast();
 
-  const { data, isLoading } = useStudentAssignment(assignmentId);
+  const { data, isLoading, refetch } = useStudentAssignment(assignmentId);
   const submitAssignment = useSubmitAssignment();
   const requestRetake = useRequestRetake();
 
@@ -86,6 +93,11 @@ export default function AssignmentDetailPage(props: PageProps) {
   const [showRetakeRequestForm, setShowRetakeRequestForm] = useState(false);
   const [retakeReason, setRetakeReason] = useState("");
   const [requestingRetake, setRequestingRetake] = useState(false);
+  // Exam timing. The deadline comes from the server; `skew` corrects for a wrong device clock.
+  const [examStart, setExamStart] = useState<{ deadline: string | null; skew: number } | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [tick, setTick] = useState(() => Date.now());
+  const autoSubmitted = useRef(false);
 
   const assignment = (data as any)?.assignment as any;
   const submission = (data as any)?.submission as any;
@@ -108,6 +120,12 @@ export default function AssignmentDetailPage(props: PageProps) {
     decided_at?: string | null;
   } | null | undefined;
   const questions: Question[] = useMemo(() => assignment?.questions ?? [], [assignment?.questions]);
+  const isExam = assignment?.kind === "EXAM";
+  const isClosed = assignment?.due_phase === "closed";
+  const examPhase = (assignment?.exam_phase ?? null) as "upcoming" | "open" | "closed" | null;
+  const deadlineIso: string | null = examStart?.deadline ?? assignment?.deadline ?? null;
+  const skew = examStart?.skew ?? (assignment?.server_now ? Date.parse(assignment.server_now) - Date.now() : 0);
+  const remainingMs = isExam && deadlineIso ? Date.parse(deadlineIso) - (tick + skew) : null;
 
   const effectiveType = useMemo(() => {
     if (assignment?.assignment_type) return assignment.assignment_type.toLowerCase();
@@ -244,8 +262,9 @@ export default function AssignmentDetailPage(props: PageProps) {
     return url;
   };
 
-  const handleSubmit = async () => {
-    if (questions.length > 0 && answeredCount === 0) {
+  const handleSubmit = async (force = false) => {
+    if (force) { /* time is up: send whatever is answered */ }
+    else if (questions.length > 0 && answeredCount === 0) {
       if (!(await confirmDialog({
         title: "Submit without answers?",
         description: "You haven't answered any questions.",
@@ -281,7 +300,7 @@ export default function AssignmentDetailPage(props: PageProps) {
       await submitAssignment.mutateAsync({ assignmentId, answers: finalAnswers, fileUrl, textContent: essayContent });
       clearFormData(draftFormId, true);
       clearSavedData();
-      toast.success("Assignment submitted!");
+      toast.success(isExam ? "Exam submitted!" : "Assignment submitted!");
       const courseId = assignment?.course_id;
       if (courseId) studentApi.progress.simpleSave({ courseId, isCompleted: true }).catch(() => {});
       router.push(`/lms/student/assignments/${assignmentId}/view`);
@@ -290,6 +309,40 @@ export default function AssignmentDetailPage(props: PageProps) {
       toast.error(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isExam || mode !== "taking") return;
+    const id = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isExam, mode]);
+
+  useEffect(() => {
+    if (mode === "taking" && remainingMs !== null && remainingMs <= 0 && !autoSubmitted.current && !submitting) {
+      autoSubmitted.current = true;
+      toast.error("Time is up. Submitting your answers.");
+      void handleSubmit(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once when the clock runs out
+  }, [remainingMs, mode]);
+
+  /** Exams must be started on the server first: it records the start time and then reveals the questions. */
+  const startExam = async (fresh: boolean) => {
+    setStarting(true);
+    try {
+      const { data: s } = await studentApi.assignments.start(assignmentId);
+      const r = s as { deadline: string | null; server_now: string };
+      setExamStart({ deadline: r.deadline, skew: Date.parse(r.server_now) - Date.now() });
+      setTick(Date.now());
+      autoSubmitted.current = false;
+      await refetch();
+      if (fresh) { setAnswers({}); setFileUpload(null); setFileUploadName(null); clearSavedData(); }
+      setMode("taking");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not start the exam.");
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -388,8 +441,10 @@ export default function AssignmentDetailPage(props: PageProps) {
       const d = new Date(assignment.due_date);
       if (!isNaN(d.getTime())) {
         dueDate = d;
-        daysLeft = Math.ceil((d.getTime() - Date.now()) / 86400000);
-        isOverdue = d < new Date() && !submission;
+        const istDay = (t: number) => Math.floor((t + 19800000) / 86400000);
+        daysLeft = assignment.kind === "EXAM" ? Math.ceil((d.getTime() - Date.now()) / 86400000) : istDay(d.getTime()) - istDay(Date.now());
+        // DAILY/COURSE: the server decides (due date runs to the end of the day in IST).
+        isOverdue = !submission && (assignment.kind === "EXAM" || !assignment.due_phase ? d < new Date() : assignment.due_phase !== "open");
       }
     } catch { /* ignore */ }
   }
@@ -438,7 +493,9 @@ export default function AssignmentDetailPage(props: PageProps) {
               {isSaving ? <><Loader2 className="animate-spin" aria-hidden="true" />Saving</> : lastSaved ? <><CheckCircle aria-hidden="true" />Saved</> : "Saves as you go"}
             </span>
             {questions.length > 0 && <span className="wr-chip">{answeredCount} of {questions.length}</span>}
-            {dueDate && <span className="wr-chip wr-due"><Clock aria-hidden="true" />Due {formatDue(dueDate)}</span>}
+            {isExam && remainingMs !== null
+              ? <span className="wr-chip wr-due" role="timer" aria-label="Time left" data-low={remainingMs < 300000 ? "true" : undefined}><Clock aria-hidden="true" />{fmtClock(remainingMs)} left</span>
+              : dueDate && <span className="wr-chip wr-due"><Clock aria-hidden="true" />Due {formatDue(dueDate)}</span>}
           </div>
         </header>
 
@@ -447,7 +504,7 @@ export default function AssignmentDetailPage(props: PageProps) {
             count={questions.length}
             isAnswered={(i) => isQuestionAnswered(questions[i])}
             renderQuestion={(i) => renderQuestion(questions[i], i)}
-            onSubmit={handleSubmit}
+            onSubmit={() => void handleSubmit()}
             submitting={submitting}
             statusBarClassName=""
             lastStepExtra={fileUploadSection}
@@ -455,7 +512,7 @@ export default function AssignmentDetailPage(props: PageProps) {
         ) : (
           <div className="ls">
             {fileUploadSection}
-            <button onClick={handleSubmit} disabled={submitting} className="sd-btn sd-btn--amber sd-btn--lg ls-big">
+            <button onClick={() => void handleSubmit()} disabled={submitting} className="sd-btn sd-btn--amber sd-btn--lg ls-big">
               {submitting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <CheckCircle aria-hidden="true" />}
               {submitting ? "Handing in" : "Hand it in"}
             </button>
@@ -481,7 +538,7 @@ export default function AssignmentDetailPage(props: PageProps) {
   return (
     <div className="wr sd-player">
       <div className="ls">
-        <Link href="/lms/student/assignments" className="ls-link"><ArrowLeft className="mr-1 inline h-4 w-4" />Back to assignments</Link>
+        <Link href={isExam ? "/lms/student/exams" : "/lms/student/assignments"} className="ls-link"><ArrowLeft className="mr-1 inline h-4 w-4" />Back to {isExam ? "exams" : "assignments"}</Link>
       </div>
       <LessonStage
         kind="assignment"
@@ -492,6 +549,13 @@ export default function AssignmentDetailPage(props: PageProps) {
         {assignment.description && <p className="ls-prose" style={{ fontSize: "1.1rem" }}>{assignment.description}</p>}
 
         <div className="sd-ledger" data-cols="3">
+          {isExam ? (
+            <div>
+              <span className="sd-l">{examPhase === "upcoming" ? "Opens" : "Closes"}</span>
+              <b className="sd-n" style={{ fontSize: "1.35rem" }}>{formatDue(new Date((examPhase === "upcoming" ? assignment.starts_at : assignment.ends_at) ?? Date.now()))}</b>
+              <small>{examPhase === "upcoming" ? "Not open yet" : examPhase === "closed" ? "Closed" : assignment.duration_minutes ? `${assignment.duration_minutes} minutes once you start` : "Open now"}</small>
+            </div>
+          ) : (
           <div>
             <span className="sd-l">Due</span>
             <b className="sd-n" style={{ fontSize: "1.35rem", color: isOverdue ? "var(--sd-late)" : undefined }}>{dueDate ? formatDue(dueDate) : "No due date"}</b>
@@ -499,6 +563,7 @@ export default function AssignmentDetailPage(props: PageProps) {
               {dueDate && !isOverdue && daysLeft >= 0 ? (daysLeft === 0 ? "Today" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`) : isOverdue ? `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} late` : "\u00a0"}
             </small>
           </div>
+          )}
           <div><span className="sd-l">Tries</span><b className="sd-n" style={{ fontSize: "1.35rem" }}>{attemptsText}</b><small>&nbsp;</small></div>
           <div><span className="sd-l">Points</span><b className="sd-n">{assignment.max_marks ?? "—"}</b><small>&nbsp;</small></div>
         </div>
@@ -517,15 +582,28 @@ export default function AssignmentDetailPage(props: PageProps) {
         )}
 
         <div className="wr-acts">
-          {!isSubmitted && (
+          {!isSubmitted && isExam && examPhase === "open" && (
+            <button onClick={() => void startExam(false)} disabled={starting} className="sd-btn sd-btn--amber sd-btn--lg max-sm:w-full">
+              {starting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Play aria-hidden="true" />}
+              {assignment.started_at ? "Continue the exam" : "Start the exam"}
+            </button>
+          )}
+          {!isSubmitted && assignment?.due_phase === "late" && (
+            <p role="status" className="sd-hint">This is past its due date and will be marked late{assignment?.closes_at ? `. It closes on ${new Date(assignment.closes_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}.</p>
+          )}
+          {isClosed && (
+            <p role="status" className="sd-hint">This assignment closed on {assignment?.closes_at ? new Date(assignment.closes_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "its due date"} and no longer accepts submissions. Ask your teacher if you need more time.</p>
+          )}
+          {!isSubmitted && !isExam && !isClosed && (
             <button onClick={() => setMode("taking")} className="sd-btn sd-btn--amber sd-btn--lg max-sm:w-full">
               <Play aria-hidden="true" />
               {draftAnsweredCount > 0 ? "Keep going" : "Start the assignment"}
             </button>
           )}
-          {isSubmitted && canRetake && (
+          {isSubmitted && canRetake && !isClosed && (!isExam || examPhase === "open") && (
             <button
               onClick={() => {
+                if (isExam) { void startExam(true); return; }
                 setAnswers({});
                 setFileUpload(null);
                 setFileUploadName(null);
@@ -614,7 +692,21 @@ export default function AssignmentDetailPage(props: PageProps) {
 
         {attempts.length > 1 && <AttemptHistory attempts={attempts} />}
 
-        {isOverdue && (
+        {isExam && !isSubmitted && examPhase !== "open" && (
+          <div className="ls-note" data-t={examPhase === "closed" ? "late" : "warn"} role="status">
+            <b>{examPhase === "upcoming" ? "This exam has not opened yet" : "This exam is closed"}</b>
+            <p>{examPhase === "upcoming" ? `It opens ${fmtWindow(assignment.starts_at, null).split(" → ")[0]}. Come back then.` : "The window has ended. Talk to your teacher if you missed it."}</p>
+          </div>
+        )}
+
+        {isExam && examPhase === "open" && !isSubmitted && (
+          <div className="ls-note" role="note">
+            <b>Before you start</b>
+            <p>{assignment.duration_minutes ? `You get ${assignment.duration_minutes} minutes from the moment you press start. ` : ""}The exam closes for everyone at {formatDue(new Date(assignment.ends_at))}. Your answers are sent automatically when time runs out.</p>
+          </div>
+        )}
+
+        {isOverdue && !isExam && (
           <div className="ls-note" data-t="late" role="alert">
             <b><AlertCircle className="mr-1.5 inline h-4 w-4" aria-hidden="true" />This assignment is late</b>
             <p>Late work may not be accepted. Tell your teacher if you need more time.</p>

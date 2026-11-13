@@ -331,7 +331,7 @@ export default function SchoolAdminDashboard() {
     {
       label: "Teacher attendance",
       value: `${stats.averageAttendance}%`,
-      hint: stats.averageAttendance >= 90 ? "Last 30 days, healthy" : stats.averageAttendance > 0 ? "Last 30 days, worth a look" : "No attendance recorded yet",
+      hint: stats.averageAttendance >= 90 ? "This month, healthy" : stats.averageAttendance > 0 ? "This month, worth a look" : "No working days yet this month",
       href: "/lms/school-admin/reports",
     },
   ];
@@ -341,7 +341,7 @@ export default function SchoolAdminDashboard() {
 
   return (
     <div className="sd-page">
-      <section className="sd-hero mc-band" aria-labelledby="so-title">
+      <section className="sd-hero mc-band so-hero" aria-labelledby="so-title">
         <div className="sd-hero-copy">
           <h1 id="so-title" className="mc-hero-title">{schoolInfo?.name ?? "Your school"}</h1>
           <p className="sd-where">{greeting}{firstName ? `, ${firstName}` : ""}</p>
@@ -355,14 +355,16 @@ export default function SchoolAdminDashboard() {
               <Link href="/lms/school-admin/schedules" className="sd-btn sd-btn--amber">Open the timetable</Link>
             ) : null}
             <Link href="/lms/school-admin/notifications" className={`sd-btn ${lead || hasPeriods ? "sd-btn--ghost-dark" : "sd-btn--amber"}`}><Send aria-hidden="true" />Message the school</Link>
-            <button className="so-refresh" style={{ alignSelf: "center" }} onClick={refreshDashboard} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
-              <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
-            </button>
-            <p className="so-live" style={{ alignSelf: "center", margin: 0 }} data-on={isConnected}>
-              <i aria-hidden="true" />
-              {isConnected ? "Live" : "Reconnecting…"}
-              {now != null && lastRefresh > 0 && ` · updated ${new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
-            </p>
+            <span className="so-meta" style={{ margin: 0, gap: "0.6rem", whiteSpace: "nowrap" }}>
+              <button className="so-refresh" onClick={refreshDashboard} disabled={isRefreshing} aria-label={isRefreshing ? "Refreshing" : "Refresh"} title="Refresh">
+                <RefreshCw className={isRefreshing ? "animate-spin" : ""} aria-hidden="true" />
+              </button>
+              <p className="so-live" style={{ margin: 0 }} data-on={isConnected}>
+                <i aria-hidden="true" />
+                {isConnected ? "Live" : "Reconnecting…"}
+                {now != null && lastRefresh > 0 && ` · updated ${new Date(lastRefresh).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+              </p>
+            </span>
           </div>
         </div>
         <SchoolDayRun

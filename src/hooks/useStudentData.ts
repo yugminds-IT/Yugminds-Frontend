@@ -229,6 +229,8 @@ export function useStudentDashboardStats() {
       return {
         activeCourses: Number((stats as { activeCourses?: unknown }).activeCourses ?? 0),
         pendingAssignments: Number((stats as { pendingAssignments?: unknown }).pendingAssignments ?? 0),
+        pendingExams: Number((stats as { pendingExams?: unknown }).pendingExams ?? 0),
+        upcomingExams: Number((stats as { upcomingExams?: unknown }).upcomingExams ?? 0),
         attendancePercentage: 0,
         averageGrade: 0,
         completedAssignments: Number((stats as { completedAssignments?: unknown }).completedAssignments ?? 0),

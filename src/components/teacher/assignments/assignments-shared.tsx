@@ -6,10 +6,16 @@ export type TeacherAssignment = {
   title: string;
   subject?: string | null;
   due_date?: string | null;
+  late_policy?: string;
+  close_date?: string | null;
   total_marks?: number | null;
   retake_enabled?: boolean;
   retake_rule?: string;
   assignment_type?: string;
+  exam_type?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  duration_minutes?: number | null;
   avg_score?: number;
   submission_count?: number;
   grade_name?: string;
@@ -33,6 +39,7 @@ export type Submission = {
   submitted_at?: string | null;
   graded_at?: string | null;
   is_retake?: boolean;
+  is_late?: boolean;
   grade?: string | null;
   section?: string | null;
   school_name?: string | null;
@@ -77,11 +84,18 @@ export type AssignmentDetail = {
   title: string;
   description?: string | null;
   due_date?: string | null;
+  late_policy?: string;
+  close_date?: string | null;
   total_marks?: number | null;
   subject?: string | null;
   school_id?: string | null;
   is_published?: boolean;
   academic_year?: string | null;
+  assignment_type?: string;
+  exam_type?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  duration_minutes?: number | null;
   publish_scope?: string | null;
   published_grade_ids?: string[];
   published_section_ids?: string[];
@@ -90,7 +104,7 @@ export type AssignmentDetail = {
   questions: AssignmentQuestionDetail[];
 };
 
-export type AssignmentsTab = "daily" | "course" | "requests" | "analytics";
+export type AssignmentsTab = "daily" | "course" | "exam" | "requests";
 export type DetailTab = "submissions" | "questions" | "retake";
 
 export function audienceChipLabel(
@@ -121,10 +135,20 @@ export function audienceChipLabel(
 export type Stage = "draft" | "live" | "past";
 export const STAGE_LABEL: Record<Stage, string> = { draft: "Draft", live: "Live", past: "Past due" };
 
-export function stageOf(a: Pick<TeacherAssignment, "is_published" | "due_date">, now: number): Stage {
+/** Due date is date-only (UTC midnight) and runs to the end of that day in IST. */
+export function dueClosesAtMs(due: string): number {
+  const d = new Date(due);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 18, 29, 59, 999);
+}
+
+export function stageOf(a: Pick<TeacherAssignment, "is_published" | "due_date" | "assignment_type">, now: number): Stage {
   if (!a.is_published) return "draft";
-  const due = a.due_date ? new Date(a.due_date).getTime() : NaN;
-  return Number.isFinite(due) && due < now ? "past" : "live";
+  if (a.assignment_type === "EXAM") {
+    const due = a.due_date ? new Date(a.due_date).getTime() : NaN;
+    return Number.isFinite(due) && due < now ? "past" : "live";
+  }
+  const end = a.due_date ? dueClosesAtMs(a.due_date) : NaN;
+  return Number.isFinite(end) && end < now ? "past" : "live";
 }
 
 export function StatusPill({ published, stage }: { published?: boolean; stage?: Stage }) {

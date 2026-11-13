@@ -17,7 +17,7 @@ export interface JoiningCode {
 
 /** Every grade a code can be made for. */
 export const ALL_GRADES = [
-  "Pre-K", "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6",
+  "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6",
   "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12",
 ];
 
@@ -36,7 +36,7 @@ export function stateOf(c: JoiningCode, now: number): CodeState {
   return "active";
 }
 
-/** Pre-K, Kindergarten, then Grade 1 to 12, then sections. */
+/** Grade 1 to 12, then sections. */
 export function gradeRank(g: string): number {
   const i = ALL_GRADES.indexOf(g);
   return i >= 0 ? i : ALL_GRADES.length + 1;

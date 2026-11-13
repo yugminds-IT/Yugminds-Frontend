@@ -6,6 +6,10 @@ export interface TeacherSchool {
   grade_sections_assigned?: string | Array<{ grade: string; sections?: string[] }>;
   subjects?: string[];
   working_days_per_week?: number;
+  /** Weekdays (0=Sun..6=Sat) the teacher works at this school. */
+  working_days?: number[];
+  /** Half-day windows per weekday; a day not listed is a full day. */
+  day_slots?: Record<string, { slot: "MORNING" | "AFTERNOON"; start: string; end: string }> | null;
   max_students_per_session?: number;
 }
 
@@ -40,6 +44,8 @@ export interface LeaveRequest {
   is_emergency?: boolean;
   school_admin_status?: "pending" | "approved" | "rejected";
   admin_status?: "pending" | "approved" | "rejected";
+  school_admin_by?: string | null;
+  admin_by?: string | null;
   created_at: string;
   approved_by?: string;
   approved_at?: string;

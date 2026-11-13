@@ -123,13 +123,14 @@ export default function AssignmentContentViewer({
 
   /* ── Derived state ── */
   const isSubmitted = !!(submission && (submission.status === 'submitted' || submission.status === 'graded' || submission.submitted_at))
-  const canRetake = !!retake?.allowed
+  const isClosed = assignment?.due_phase === 'closed'
+  const canRetake = !!retake?.allowed && !isClosed
   const hasGrade = submission?.grade !== null && submission?.grade !== undefined
   const gradeNum = submission?.grade != null
     ? typeof submission.grade === 'number' ? submission.grade : parseFloat(String(submission.grade))
     : null
   const dueDate = assignment?.due_date ? new Date(assignment.due_date) : null
-  const isOverdue = dueDate ? dueDate < new Date() && !isSubmitted : false
+  const isOverdue = dueDate ? (assignment?.due_phase ? assignment.due_phase !== 'open' : dueDate < new Date()) && !isSubmitted : false
 
   /* ── Mark viewed on existing submission ── */
   useEffect(() => {
@@ -483,7 +484,10 @@ export default function AssignmentContentViewer({
         <div><span className="sd-l">Points</span><b className="sd-n">{assignment.max_marks ?? '—'}</b><small>&nbsp;</small></div>
       </div>
 
-      {!isSubmitted && (
+      {!isSubmitted && isClosed && (
+        <p role="status" className="sd-hint">This assignment is closed and no longer accepts submissions. Ask your teacher if you need more time.</p>
+      )}
+      {!isSubmitted && !isClosed && (
         <button onClick={handleStart} className="sd-btn sd-btn--amber sd-btn--lg ls-big"><Play aria-hidden="true" />Start the assignment</button>
       )}
       {isSubmitted && canRetake && (

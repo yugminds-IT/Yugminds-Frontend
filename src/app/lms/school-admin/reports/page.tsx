@@ -114,7 +114,7 @@ export default function ReportsManagement() {
       ]);
 
       const reportsData = reportsRes.data ?? {};
-      setReports(((reportsData as { reports?: unknown[] }).reports ?? (Array.isArray(reportsData) ? reportsData : [])) as TeacherReport[]);
+      setReports((((reportsData as { reports?: unknown[] }).reports ?? (Array.isArray(reportsData) ? reportsData : [])) as TeacherReport[]).map((r) => ({ ...r, teacher_id: String(r.teacher_id) }))); // API may send a number; ids are compared as strings
       setStats((reportsData as { stats?: typeof stats }).stats ?? { total: 0, pending: 0, approved: 0, rejected: 0 });
 
       const schedulesData = schedulesRes.data ?? {};
@@ -138,7 +138,7 @@ export default function ReportsManagement() {
             const profile = t.profile ?? {};
             const teacher = t.teacher ?? {};
             return {
-              id: String(profile.id || t.teacher_id || teacher.profile_id || t.id || ""),
+              id: String(t.id || profile.id || teacher.profile_id || t.teacher_id || ""),
               full_name: t.full_name || profile.full_name || profile.fullName || teacher.full_name || "Unknown",
               email: t.email || profile.email || teacher.email || "",
             };

@@ -57,6 +57,14 @@
 .ts-add[data-empty="true"] { min-height: 3.2rem; flex-direction: column; }
 .ts-add[data-empty="false"] { min-height: 1.7rem; border-color: transparent; }
 .ts-add svg { width: 1rem; height: 1rem; }
+/* A period no teacher can take (outside every half-day window / day off): not clickable, says why. */
+.ts-locked { display: flex; align-items: center; justify-content: center; gap: 0.25rem; width: 100%; border-radius: 0.75rem; color: var(--sd-ink-soft); cursor: not-allowed; user-select: none; background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--sd-line) 55%, transparent) 7px 8px); opacity: 0.85; }
+.ts-locked[data-empty="true"] { min-height: 3.2rem; flex-direction: column; padding: 0.35rem 0.5rem; text-align: center; font: 600 0.78rem/1.15 var(--sd-body); }
+.ts-locked[data-empty="false"] { min-height: 1.4rem; }
+.ts-locked small { font-weight: 500; font-size: 0.68rem; line-height: 1.2; opacity: 0.85; }
+.ts-locked svg { width: 0.9rem; height: 0.9rem; }
+/* An existing class sitting in a locked period (the teacher's hours changed after it was made) */
+.ts-card[data-flag="true"] { box-shadow: inset 3px 0 0 #c0392b; outline: 1.5px solid color-mix(in srgb, #c0392b 55%, transparent); }
 .ts-cell:hover .ts-add, .ts-add:focus-visible, .ts-cell:focus-within .ts-add { opacity: 1; }
 .ts-add:hover { border-color: var(--sd-ink); color: var(--sd-ink); background: var(--sd-wash); }
 .ts-add:focus-visible { outline: 3px solid var(--sd-blue); outline-offset: 1px; }

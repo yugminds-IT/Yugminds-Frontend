@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/label";
 import AddTeacherDialog from "@/components/AddTeacherDialog";
 import CopySchoolAssignmentDialog from "@/components/CopySchoolAssignmentDialog";
-import WeekdayPicker from "@/components/WeekdayPicker";
+import WeekdayPicker, { type DaySlotsInput } from "@/components/WeekdayPicker";
 import WorkingDaysHistoryPanel from "@/components/admin/WorkingDaysHistoryPanel";
 import { formatWorkingDays } from "@/lib/weekday-utils";
 import TeacherProfileView from "@/components/TeacherProfileView";
@@ -49,6 +49,8 @@ import {
   ChevronDown,
   ChevronRight,
   AlertTriangle,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
@@ -90,6 +92,10 @@ interface AssignedSchool {
   subjects?: string[];
   /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
   workingDays?: number[];
+  /** Half-day windows per weekday; a day not listed is a full day. */
+  daySlots?: DaySlotsInput | null;
+  /** True for the school saved as the teacher's primary (User.tenantId). */
+  isPrimary?: boolean;
   assignedFrom?: string | null;
   assignedUntil?: string | null;
   sectionsAssignedToOtherTeachers?: SectionAssignedToOther[];
@@ -118,6 +124,13 @@ interface Teacher {
   assignedSchools?: AssignedSchool[];
 }
 
+interface ScheduleWarning {
+  schoolId: string;
+  schoolName: string;
+  count: number;
+  examples: string[];
+}
+
 interface TeacherSchool {
   id?: string;
   teacher_id?: string;
@@ -130,6 +143,7 @@ interface TeacherSchool {
   working_days_per_week?: number;
   /** Which weekdays this teacher works at this school — 0=Sun..6=Sat. */
   working_days?: number[];
+  day_slots?: DaySlotsInput | null;
   /** When this working-days pattern takes effect (YYYY-MM-DD). */
   effective_from?: string;
   /** Calendar date the teacher's assignment to this school begins (YYYY-MM-DD). Optional. */
@@ -209,7 +223,7 @@ interface AttendanceSummary {
   totalTeachers?: number;
   teacherTodayStatus?: Record<string, { status: string; isOnLeave: boolean; leaveType?: string; attendanceRate?: number }>;
   /** Only present for teachers scheduled at 2+ schools the same day — see getStatusBadge below. */
-  teacherTodaySchoolStatuses?: Record<string, Array<{ school_id: string; school_name: string; status: string }>>;
+  teacherTodaySchoolStatuses?: Record<string, Array<{ school_id: string; school_name: string; status: string; slot?: { slot: "MORNING" | "AFTERNOON"; start: string; end: string } | null }>>;
 }
 
 interface MonthlyAttendanceData {
@@ -492,7 +506,6 @@ export default function TeachersManagement() {
   const [_showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [customSubjectInputs, setCustomSubjectInputs] = useState<Record<string, string>>({});
   const availableSubjects: string[] = [...TEACHING_SUBJECTS];
   // Sync leaveRequests with allLeaveRequests based on current filter
   useEffect(() => {
@@ -958,11 +971,12 @@ export default function TeachersManagement() {
           subjects: Array.isArray(a.subjects) ? a.subjects : [],
           working_days: a.workingDays?.length ? a.workingDays : [1, 2, 3, 4, 5],
           working_days_per_week: a.workingDays?.length ? a.workingDays.length : 5,
+          day_slots: a.daySlots ?? null,
           effective_from: todayStr(),
           assigned_from: a.assignedFrom ?? "",
           assigned_until: a.assignedUntil ?? "",
           max_students_per_session: 30,
-          is_primary: i === 0,
+          is_primary: !!a.isPrimary,
         };
       }
       const t = assignment as TeacherSchool;
@@ -976,6 +990,7 @@ export default function TeachersManagement() {
         subjects: Array.isArray(t.subjects) ? t.subjects : [],
         working_days: workingDays,
         working_days_per_week: t.working_days_per_week ?? workingDays.length,
+        day_slots: t.day_slots ?? null,
         effective_from: todayStr(),
         assigned_from: t.assigned_from ?? "",
         assigned_until: t.assigned_until ?? "",
@@ -995,13 +1010,16 @@ export default function TeachersManagement() {
       qualification: teacher.qualification ?? '',
       experience_years: experienceYears,
       specialization: teacher.specialization ?? '',
-      school_assignments: schoolAssignments,
+      // Exactly one primary: the saved one, else the first (also covers copied rows from another teacher).
+      school_assignments: schoolAssignments.map((a, i, all) => ({
+        ...a,
+        is_primary: i === Math.max(0, all.findIndex((x) => x.is_primary)),
+      })),
       temp_password: teacher.temp_password ?? '',
     });
     setShowPassword(false);
     setNewPassword(""); // Reset new password
     setShowNewPassword(false); // Reset new password visibility
-    setCustomSubjectInputs({}); // Reset custom subject inputs
     setShowEditDialog(true);
   };
 
@@ -1141,10 +1159,23 @@ export default function TeachersManagement() {
     try {
       setActionLoading('edit');
       // Don't include temp_password in regular update (only use it for password change)
-      const { temp_password: _temp_password, ...updateData } = formData;
-      await adminApi.teachers.update(String(editingTeacher.id), updateData as Record<string, unknown>);
+      const { temp_password: _temp_password, ...rest } = formData;
+      const primaryIdx = Math.max(0, formData.school_assignments.findIndex((a) => a.is_primary));
+      const updateData = {
+        ...rest,
+        school_assignments: formData.school_assignments.map((a, i) => ({ ...a, is_primary: i === primaryIdx })),
+      };
+      const { data: updated } = await adminApi.teachers.update(String(editingTeacher.id), updateData as Record<string, unknown>);
 
       toast.success('Teacher updated successfully');
+      // Classes already in a school's timetable that the new days/half-day window no longer allows.
+      const warnings = ((updated as { scheduleWarnings?: ScheduleWarning[]; data?: { scheduleWarnings?: ScheduleWarning[] } })?.scheduleWarnings
+        ?? (updated as { data?: { scheduleWarnings?: ScheduleWarning[] } })?.data?.scheduleWarnings) ?? [];
+      for (const w of warnings) {
+        toast.warning(
+          `${w.schoolName}: ${w.count} existing class${w.count === 1 ? '' : 'es'} now fall outside this teacher's days/hours (e.g. ${w.examples.join('; ')}). The school admin should reschedule ${w.count === 1 ? 'it' : 'them'} in Class scheduling.`,
+        );
+      }
       
       if (selectedTeacher && selectedTeacher.id === editingTeacher.id) {
         setProfileRefreshTrigger(prev => prev + 1);
@@ -1156,7 +1187,6 @@ export default function TeachersManagement() {
       setShowPassword(false);
       setNewPassword("");
       setShowNewPassword(false);
-      setCustomSubjectInputs({});
       loadAllData();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1317,7 +1347,6 @@ export default function TeachersManagement() {
     setShowPassword(false);
     setNewPassword("");
     setShowNewPassword(false);
-    setCustomSubjectInputs({});
   };
 
   const requestCloseEditTeacher = () => {
@@ -1342,49 +1371,6 @@ export default function TeachersManagement() {
     setFormData(prev => ({ ...prev, temp_password: password }));
   };
 
-  // Handle add custom subject
-  const handleAddCustomSubject = (assignmentIndex: number) => {
-    const assignmentId = formData.school_assignments[assignmentIndex]?.id || `assignment-${assignmentIndex}`;
-    const customSubject = customSubjectInputs[assignmentId]?.trim();
-    
-    if (!customSubject) {
-      return;
-    }
-
-    // Check if subject already exists (case-insensitive)
-    const assignment = formData.school_assignments[assignmentIndex];
-    if (assignment) {
-      const subjectExists = (assignment.subjects ?? []).some(
-        (s: string) => s.toLowerCase() === customSubject.toLowerCase(),
-      );
-      if (subjectExists) {
-        toast.warning('This subject is already added');
-        return;
-      }
-
-      // Add custom subject
-      const updatedAssignments = [...formData.school_assignments];
-      updatedAssignments[assignmentIndex] = {
-        ...updatedAssignments[assignmentIndex],
-        subjects: [
-          ...(updatedAssignments[assignmentIndex].subjects ?? []),
-          customSubject,
-        ],
-      };
-      
-      setFormData(prev => ({
-        ...prev,
-        school_assignments: updatedAssignments
-      }));
-
-      // Clear input
-      setCustomSubjectInputs(prev => ({
-        ...prev,
-        [assignmentId]: ''
-      }));
-    }
-  };
-
   // A teacher physically can't be in two schools on the same weekday, so
   // flag it (as a warning, not a hard block — the admin may still have a
   // legitimate reason, e.g. a half-day arrangement) whenever two
@@ -1396,7 +1382,18 @@ export default function TeachersManagement() {
     const conflicts: string[] = [];
     formData.school_assignments.forEach((other, j) => {
       if (j === index || !other.school_id || other.school_id === current.school_id) return;
-      const commonDays = currentDays.filter((d) => (other.working_days ?? []).includes(d));
+      // Same weekday only clashes when the hours overlap — a morning half
+      // here + an afternoon half there is the supported split-day setup.
+      const win = (a: TeacherSchool, d: number): [string, string] => {
+        const sl = a.day_slots?.[String(d)];
+        return sl ? [sl.start, sl.end] : ["00:00", "24:00"];
+      };
+      const commonDays = currentDays.filter((d) => {
+        if (!(other.working_days ?? []).includes(d)) return false;
+        const [as, ae] = win(current, d);
+        const [bs, be] = win(other, d);
+        return as < be && bs < ae;
+      });
       if (commonDays.length > 0) {
         const otherSchoolName = schools.find((s) => s.id === other.school_id)?.name ?? 'another school';
         conflicts.push(`${formatWorkingDays(commonDays)} — also assigned at ${otherSchoolName}`);
@@ -1825,6 +1822,10 @@ export default function TeachersManagement() {
               ) : (
                 <div className="space-y-4">
                   {formData.school_assignments.map((assignment, index) => {
+                    // One primary only, derived from the data: the first flagged school (or the first school).
+                    // Guards against stale state with several flagged — otherwise they'd all show "Primary" and be locked.
+                    const isPrimarySchool =
+                      index === Math.max(0, formData.school_assignments.findIndex((a) => a.is_primary));
                     const assignmentKey = assignment.id ?? `assignment-${assignment.school_id ?? index}-${index}`;
                     const assignedSchool = schools.find((s) => s.id === assignment.school_id);
                     const assignedSchoolName = assignedSchool?.name;
@@ -1873,7 +1874,7 @@ export default function TeachersManagement() {
                     return (
                     <div
                       key={assignmentKey}
-                      className={`border rounded-lg p-4 space-y-4 border-l-4 ${assignment.is_primary ? 'border-l-blue-500 bg-blue-50/30' : 'border-l-gray-300'}`}
+                      className={`border rounded-lg p-4 space-y-4 border-l-4 ${isPrimarySchool ? 'border-l-blue-500 bg-blue-50/30' : 'border-l-gray-300'}`}
                     >
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2">
@@ -1885,7 +1886,7 @@ export default function TeachersManagement() {
                               {assignedSchoolName || `School ${index + 1}`}
                             </h4>
                             <div className="flex items-center gap-1.5 mt-0.5">
-                              {assignment.is_primary && (
+                              {isPrimarySchool && (
                                 <Badge className="bg-blue-600 hover:bg-blue-600 text-[10px] h-4 px-1.5">Primary</Badge>
                               )}
                               {(assignment.working_days ?? []).length > 0 && (
@@ -1903,16 +1904,14 @@ export default function TeachersManagement() {
                           <Label className="flex items-center gap-1.5 text-sm">
                             <input
                               type="checkbox"
-                              checked={assignment.is_primary}
-                              onChange={(e) => {
-                                const updatedAssignments = [...formData.school_assignments];
-                                updatedAssignments[index].is_primary = e.target.checked;
-                                // If this is set as primary, unset others
-                                if (e.target.checked) {
-                                  updatedAssignments.forEach((a, i) => {
-                                    if (i !== index) a.is_primary = false;
-                                  });
-                                }
+                              checked={isPrimarySchool}
+                              // Exactly one primary school: you switch it by ticking another school, never by unticking.
+                              disabled={isPrimarySchool}
+                              onChange={() => {
+                                const updatedAssignments = formData.school_assignments.map((a, i) => ({
+                                  ...a,
+                                  is_primary: i === index,
+                                }));
                                 setFormData(prev => ({
                                   ...prev,
                                   school_assignments: updatedAssignments
@@ -1921,6 +1920,26 @@ export default function TeachersManagement() {
                             />
                             Primary School
                           </Label>
+                          {([-1, 1] as const).map((dir) => (
+                            <Button
+                              key={dir}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              aria-label={dir === -1 ? 'Move school up' : 'Move school down'}
+                              title={dir === -1 ? 'Move up' : 'Move down'}
+                              disabled={index + dir < 0 || index + dir >= formData.school_assignments.length}
+                              onClick={() =>
+                                setFormData(prev => {
+                                  const next = [...prev.school_assignments];
+                                  [next[index], next[index + dir]] = [next[index + dir], next[index]];
+                                  return { ...prev, school_assignments: next };
+                                })
+                              }
+                            >
+                              {dir === -1 ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                            </Button>
+                          ))}
                           <Button
                             type="button"
                             variant="outline"
@@ -1928,7 +1947,13 @@ export default function TeachersManagement() {
                             onClick={() => {
                               setFormData(prev => ({
                                 ...prev,
-                                school_assignments: prev.school_assignments.filter((_, i) => i !== index)
+                                // Removing the primary school hands "primary" to the next one.
+                                school_assignments: prev.school_assignments
+                                  .filter((_, i) => i !== index)
+                                  .map((a, i, rest) => ({
+                                    ...a,
+                                    is_primary: rest.some((x) => x.is_primary) ? a.is_primary : i === 0,
+                                  }))
                               }));
                             }}
                             className="text-red-600 hover:text-red-700"
@@ -1979,6 +2004,12 @@ export default function TeachersManagement() {
                           idPrefix={`working_days_${index}`}
                           value={assignment.working_days ?? [1, 2, 3, 4, 5]}
                           allowedDays={schools.find((s) => s.id === assignment.school_id)?.operatingDays}
+                          slots={assignment.day_slots}
+                          onSlotsChange={(slots) => {
+                            const updatedAssignments = [...formData.school_assignments];
+                            updatedAssignments[index].day_slots = slots;
+                            setFormData(prev => ({ ...prev, school_assignments: updatedAssignments }));
+                          }}
                           onChange={(days) => {
                             const updatedAssignments = [...formData.school_assignments];
                             updatedAssignments[index].working_days = days;
@@ -1994,7 +2025,7 @@ export default function TeachersManagement() {
                             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                             <span>
                               <span className="font-medium">Schedule conflict:</span> {scheduleWarning}.
-                              A teacher can&apos;t physically be at two schools on the same day — double-check this is intentional.
+                              The hours overlap — make one a morning and the other an afternoon half-day slot (or use different days).
                             </span>
                           </div>
                         )}
@@ -2272,59 +2303,6 @@ export default function TeachersManagement() {
                                   <span className="text-sm">{subject}</span>
                                 </Label>
                               ))}
-                              {/* Display custom subjects */}
-                              {(assignment.subjects ?? [])
-                                .filter((subject: string) => !availableSubjects.includes(subject))
-                                .map((subject) => (
-                                  <Label key={subject} className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={(assignment.subjects ?? []).includes(subject)}
-                                      onChange={(e) => {
-                                        const updatedAssignments = [...formData.school_assignments];
-                                        const subj = updatedAssignments[index].subjects ?? [];
-                                        if (e.target.checked) {
-                                          updatedAssignments[index].subjects = [...subj, subject];
-                                        } else {
-                                          updatedAssignments[index].subjects = subj.filter((s: string) => s !== subject);
-                                        }
-                                        setFormData(prev => ({
-                                          ...prev,
-                                          school_assignments: updatedAssignments
-                                        }));
-                                      }}
-                                    />
-                                    <span className="text-sm">{subject}</span>
-                                  </Label>
-                                ))}
-                            </div>
-                            {/* Add Custom Subject */}
-                            <div className="mt-2 flex gap-2">
-                              <Input
-                                placeholder="Enter custom subject"
-                                value={customSubjectInputs[assignment.id ?? `assignment-${index}`] || ''}
-                                onChange={(e) => setCustomSubjectInputs(prev => ({
-                                  ...prev,
-                                  [assignment.id ?? `assignment-${index}`]: e.target.value
-                                }))}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleAddCustomSubject(index);
-                                  }
-                                }}
-                                className="flex-1"
-                              />
-                              <Button
-                                type="button"
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleAddCustomSubject(index)}
-                                className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                              >
-                                <Plus className="h-4 w-4" />
-                                Add
-                              </Button>
                             </div>
                           </div>
                           

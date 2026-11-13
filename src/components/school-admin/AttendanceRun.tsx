@@ -32,7 +32,7 @@ export default function AttendanceRun({
       >
         <div className="sd-droid"><Droid /></div>
         <div className="sd-run-line" />
-        <ol className="sd-days" aria-label="Teachers by attendance over the last 30 days">
+        <ol className="sd-days" aria-label="Teachers by attendance this month">
           {ORDER.map((b) => (
             <li key={b} className="sd-day" data-active={counts[b] > 0 && b !== 'low'} data-late={b === 'low' && counts[b] > 0} data-today={selected === b} data-future={counts[b] === 0}>
               <button
@@ -54,7 +54,7 @@ export default function AttendanceRun({
         {selected !== 'all' ? (
           <button type="button" className="sm-reset" onClick={() => onSelect('all')}>Show all teachers</button>
         ) : (
-          <span>Last 30 days. Pick a band to filter</span>
+          <span>This month. Pick a band to filter</span>
         )}
       </div>
     </div>

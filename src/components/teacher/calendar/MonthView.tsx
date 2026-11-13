@@ -1,3 +1,4 @@
+import { formatWindow, slotName } from "@/lib/weekday-utils";
 import { dayInfo, KIND_LABEL, TYPE_LABEL, ymd, longDate, rangeLabel, type CalendarEntry, type DayInfo, type Index } from "./utils";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -84,6 +85,7 @@ export function DayDetail({ date, info, schoolIdx, multi }: { date: string; info
               {i > 0 && ", "}
               {multi && <em data-sc={(schoolIdx.get(s.school_id) ?? 0) % 6} />}
               <b>{s.school_name || "your school"}</b>
+              {s.slot && <> ({slotName(s.slot).toLowerCase()} {formatWindow(s.slot)})</>}
             </span>
           ))}
           .

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, X } from "lucide-react";
+import { BookOpen, CalendarDays, Check, GraduationCap, Loader2, X } from "lucide-react";
 import { teacherApi } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { classLabel } from "./overview/utils";
@@ -11,6 +11,7 @@ interface RetakeRequestRow {
   id: string;
   assignment_id: string;
   assignment_title: string;
+  assignment_type: "DAILY" | "COURSE" | "EXAM" | null;
   course_title: string | null;
   student_id: number;
   student_name: string;
@@ -28,28 +29,35 @@ const TABS = [
   { key: "approved", label: "Approved" },
   { key: "rejected", label: "Declined" },
 ] as const;
+const TYPES = {
+  DAILY: { label: "Daily", Icon: CalendarDays },
+  COURSE: { label: "Course", Icon: BookOpen },
+  EXAM: { label: "Exam", Icon: GraduationCap },
+} as const;
+type TypeKey = keyof typeof TYPES;
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
 /** Students asking for another try. Approve to let them retake, or decline with a note. */
-export default function TeacherRetakeRequestsPanel() {
+export default function TeacherRetakeRequestsPanel({ schoolId }: { schoolId?: string }) {
   const [statusFilter, setStatusFilter] = useState<"pending" | "approved" | "rejected">("pending");
+  const [typeFilter, setTypeFilter] = useState<"all" | TypeKey>("all");
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [remarksById, setRemarksById] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["teacher", "retake-requests", statusFilter],
+    queryKey: ["teacher", "retake-requests", statusFilter, schoolId ?? "all"],
     queryFn: async () => {
-      const { data } = await teacherApi.retakeRequests.list({ status: statusFilter });
+      const { data } = await teacherApi.retakeRequests.list({ status: statusFilter, school_id: schoolId });
       return ((data as { requests?: RetakeRequestRow[] })?.requests ?? []) as RetakeRequestRow[];
     },
   });
 
   // Waiting count independent of the active filter, for the tab badge.
   const { data: pendingCount } = useQuery({
-    queryKey: ["teacher", "retake-requests", "pending-count"],
+    queryKey: ["teacher", "retake-requests", "pending-count", schoolId ?? "all"],
     queryFn: async () => {
-      const { data } = await teacherApi.retakeRequests.list({ status: "pending" });
+      const { data } = await teacherApi.retakeRequests.list({ status: "pending", school_id: schoolId });
       return ((data as { requests?: RetakeRequestRow[] })?.requests ?? []).length;
     },
   });
@@ -73,7 +81,9 @@ export default function TeacherRetakeRequestsPanel() {
     }
   };
 
-  const requests = data ?? [];
+  const all = data ?? [];
+  const requests = typeFilter === "all" ? all : all.filter((r) => r.assignment_type === typeFilter);
+  const countOf = (t: TypeKey) => all.filter((r) => r.assignment_type === t).length;
 
   return (
     <div className="tg-detail" style={{ gap: "1rem" }}>
@@ -86,18 +96,31 @@ export default function TeacherRetakeRequestsPanel() {
         ))}
       </div>
 
+      <div className="rq-types" role="group" aria-label="Assignment type">
+        <button type="button" className="rq-type" data-on={typeFilter === "all"} aria-pressed={typeFilter === "all"} onClick={() => setTypeFilter("all")}>All types<b>{all.length}</b></button>
+        {(Object.keys(TYPES) as TypeKey[]).map((t) => {
+          const { label, Icon } = TYPES[t];
+          return (
+            <button key={t} type="button" className="rq-type" data-t={t} data-on={typeFilter === t} aria-pressed={typeFilter === t} onClick={() => setTypeFilter(t)}>
+              <Icon aria-hidden="true" />{label}<b>{countOf(t)}</b>
+            </button>
+          );
+        })}
+      </div>
+
       {isLoading ? (
         <div className="sd-panel"><div className="sd-skel" /><div className="sd-skel" /></div>
       ) : isError ? (
         <div className="sd-panel"><div className="sd-empty"><b>Could not load requests</b><p>Check your connection and try again.</p><button className="sd-btn sd-btn--ink" onClick={() => void refetch()}>Try again</button></div></div>
       ) : requests.length === 0 ? (
-        <div className="sd-panel"><div className="sd-empty"><b>{statusFilter === "pending" ? "No retake requests waiting" : `No ${statusFilter === "approved" ? "approved" : "declined"} requests`}</b><p>{statusFilter === "pending" ? "When a student asks for another try, it shows up here." : "Nothing here yet."}</p></div></div>
+        <div className="sd-panel"><div className="sd-empty"><b>{typeFilter !== "all" ? `No ${TYPES[typeFilter].label.toLowerCase()} requests here` : statusFilter === "pending" ? "No retake requests waiting" : `No ${statusFilter === "approved" ? "approved" : "declined"} requests`}</b><p>{statusFilter === "pending" ? "When a student asks for another try, it shows up here." : "Nothing here yet."}</p></div></div>
       ) : (
         <div className="sd-panel as-list tg-line">
           {requests.map((r) => (
-            <article key={r.id} className="tg-req">
+            <article key={r.id} className="tg-req" data-t={r.assignment_type ?? undefined}>
               <div className="tg-req-top">
                 <div>
+                  {r.assignment_type && (() => { const { label, Icon } = TYPES[r.assignment_type]; return <span className="rq-badge" data-t={r.assignment_type}><Icon aria-hidden="true" />{label}</span>; })()}
                   <b>{r.student_name}</b>
                   <small>{[r.assignment_title, r.course_title, classLabel(r.grade, r.section)].filter(Boolean).join(", ")}</small>
                 </div>
