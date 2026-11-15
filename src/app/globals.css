@@ -155,7 +155,7 @@ section, main, article, aside {
   .ym-rise { animation: ym-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 }
 @keyframes ym-line { from { transform: translateY(105%); } }
-@keyframes ym-rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes ym-rise { from { transform: translateY(12px); } } /* slide only: a fade made PageSpeed sample half-transparent text and fail contrast */
 /* Project picker auto-tour: the active option's timer bar. */
 @keyframes ym-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .ym-progress { transform-origin: left; animation: ym-progress var(--ym-tour, 4500ms) linear both; }

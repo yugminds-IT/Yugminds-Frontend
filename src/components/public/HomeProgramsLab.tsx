@@ -282,7 +282,7 @@ export default function HomeProgramsLab() {
                 onClick={() => pick(i)}
                 onKeyDown={(e) => onKey(e, i)}
               >
-                <h3>{t.name}</h3>
+                <span className="rh-lab-name">{t.name}</span>
                 <p>{t.text}</p>
                 <span className="rh-lab-track" aria-hidden="true">
                   {active === i && (

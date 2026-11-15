@@ -80,6 +80,7 @@ const nextConfig = {
   // Optimize bundle splitting
   experimental: {
     optimizeCss: true, // Optimize CSS
+    inlineCss: true, // inline CSS in the HTML: removes the render-blocking stylesheet requests PageSpeed flags
     // Cap the static-generation worker pool. Next.js defaults to one worker
     // per CPU core, which is fine on a dedicated build machine but OOMs on a
     // shared VPS that's also running Postgres/Redis/MinIO/the backend at the

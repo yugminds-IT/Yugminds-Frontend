@@ -291,8 +291,6 @@ function Nav() {
 const HERO_STAGE = "absolute inset-x-0 bottom-0 top-0 lg:top-16";
 
 const LeadBot = dynamic(() => import("./LeadBot").then((m) => m.LeadBot), { ssr: false });
-// Start downloading the car's code (three.js and all) while the page hydrates, not after.
-if (typeof window !== "undefined") void import("./HeroRobot");
 const HeroRobot = dynamic(() => import("./HeroRobot").then((m) => m.HeroRobot), {
   ssr: false,
   loading: () => <div className="h-full w-full" />,
@@ -395,6 +393,9 @@ function HeroPoster() {
   }, []);
   if (gone) return null;
   return (
+    <>
+    {/* Hoisted into <head> by React 19 so the phone poster (the LCP) starts downloading before the large body is parsed. */}
+    <link rel="preload" as="image" href="/hero-poster-narrow.webp" media="(max-width: 639px)" fetchPriority="high" />
     <div aria-hidden className={`pointer-events-none absolute inset-0 z-[5] overflow-hidden transition-opacity duration-500 ease-out sm:max-lg:hidden ${fading ? "opacity-0" : "opacity-100"}`}>
       <picture>
         <source media="(min-width: 1024px)" srcSet="/hero-poster-wide.webp" />
@@ -409,16 +410,27 @@ function HeroPoster() {
         />
       </picture>
     </div>
+    </>
   );
 }
 
 function Hero() {
   // The car starts once the page has a quiet moment, so the headline and buttons are usable first.
-  // The car mounts as soon as the page has hydrated (its heavy work yields between steps, so the
-  // headline and buttons stay usable); the three.js chunk is already downloading by then.
+  // The car (three.js: ~600 KB of script to download and run) mounts on the first interaction (or 10 s after load) so the
+  // headline, buttons and scrolling are responsive first; the poster shows meanwhile.
   const [heroReady, setHeroReady] = useState(false);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: this effect syncs state from the browser or props; existing behavior kept
-  useEffect(() => setHeroReady(true), []);
+  useEffect(() => {
+    // Mount on the first sign of a real visitor (mouse, touch, scroll, key), or 10 s after load as a fallback.
+    const evs = ["pointermove", "pointerdown", "scroll", "keydown", "touchstart"] as const;
+    let t: number;
+    const go = () => { cleanup(); setHeroReady(true); };
+    const cleanup = () => { evs.forEach((e) => window.removeEventListener(e, go)); window.removeEventListener("load", arm); window.clearTimeout(t); };
+    const arm = () => { t = window.setTimeout(go, 10000); };
+    evs.forEach((e) => window.addEventListener(e, go, { once: true, passive: true }));
+    if (document.readyState === "complete") arm();
+    else window.addEventListener("load", arm, { once: true });
+    return cleanup;
+  }, []);
   return (
     <section id="top" aria-labelledby="hero-title" className="relative flex flex-col bg-white pt-[calc(4rem+env(safe-area-inset-top))] lg:block">
       {/* The car's stage fills the whole hero on large screens; the copy sits over its left side. */}
@@ -1445,7 +1457,7 @@ function BriefRow({ k, v, wide = false }: { k: string; v: string; wide?: boolean
           {v}
         </dd>
       ) : (
-        <dd className="mt-2 h-2.5 w-3/4 rounded-full border border-dashed border-white/30" aria-label="Not filled in yet" />
+        <dd className="mt-2 h-2.5 w-3/4 rounded-full border border-dashed border-white/30"><span className="sr-only">Not filled in yet</span></dd>
       )}
     </div>
   );

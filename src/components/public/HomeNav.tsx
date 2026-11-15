@@ -92,7 +92,7 @@ export default function HomeNav() {
     <header className="hn" data-scrolled={scrolled}>
       <div className="hn-bar">
         <Link href={items[0].link} className="hn-logo" aria-label="RoboCoders home">
-          <Image src="/robocoders-logo.png" alt="RoboCoders — An EdTech initiative by YugMinds" width={803} height={341} priority />
+          <Image src="/robocoders-logo.png" alt="RoboCoders — An EdTech initiative by YugMinds" width={803} height={341} sizes="(max-width: 1179px) 112px, 92px" priority />
         </Link>
 
         <nav className="hn-nav" aria-label="Main" onMouseLeave={() => place(activeIdx)}>

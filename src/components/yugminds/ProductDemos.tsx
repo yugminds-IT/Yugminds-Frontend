@@ -31,11 +31,11 @@ function useTimers() {
 type BlockKind = "move" | "turn" | "say" | "wait" | "ledOn" | "ledOff";
 type Blk = { id: number; kind: BlockKind };
 type Cat = "motion" | "looks" | "control" | "pins";
-const CATS: { id: Cat; name: string; color: string; edge: string }[] = [
-  { id: "motion", name: "Motion", color: "#4c97ff", edge: "#3373cc" },
-  { id: "looks", name: "Looks", color: "#9966ff", edge: "#774dcb" },
-  { id: "control", name: "Control", color: "#ffab19", edge: "#cf8b17" },
-  { id: "pins", name: "ESP32", color: "#0fbd8c", edge: "#0b8e69" },
+const CATS: { id: Cat; name: string; color: string; edge: string; ink: string }[] = [
+  { id: "motion", name: "Motion", color: "#006afc", edge: "#0050c0", ink: "#fff" },
+  { id: "looks", name: "Looks", color: "#864aff", edge: "#6a38cc", ink: "#fff" },
+  { id: "control", name: "Control", color: "#ffab19", edge: "#cf8b17", ink: "#0f172a" },
+  { id: "pins", name: "ESP32", color: "#0a8260", edge: "#07654a", ink: "#fff" },
 ];
 const BLOCKS: Record<BlockKind, { cat: Cat; before: string; value: string; after?: string; ms: number }> = {
   move: { cat: "motion", before: "move", value: "30", after: "steps", ms: 380 },
@@ -54,12 +54,12 @@ function ScratchBlock({ kind, active = false }: { kind: BlockKind; active?: bool
   const c = CAT(b.cat);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-[5px] border-b-[3px] px-2 py-1 text-[12px] font-semibold text-white ${active ? "outline outline-[3px] outline-amber-300" : ""}`}
-      style={{ background: c.color, borderColor: c.edge }}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-[5px] border-b-[3px] px-2 py-1 text-[12px] font-semibold ${active ? "outline outline-[3px] outline-amber-300" : ""}`}
+      style={{ background: c.color, borderColor: c.edge, color: c.ink }}
     >
-      {b.before}
+      {b.before}{" "}
       <span className="rounded-full bg-white px-1.5 text-[11px] font-semibold text-slate-700">{b.value}</span>
-      {b.after}
+      {" "}{b.after}
     </span>
   );
 }
@@ -125,7 +125,7 @@ export function StudioDemo() {
   return (
     <div className="overflow-hidden rounded-md bg-[#e9f0fb] text-ym-text">
       {/* Top bar, as in the app. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-[#3d6ae0] px-3 py-2 text-white">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-[#2a4fb8] px-3 py-2 text-white">
         <span className="font-acdisplay text-lg font-bold tracking-tight text-amber-300">ROBOCODERS</span>
         <span className="text-sm opacity-90 max-sm:hidden">File</span>
         <span className="text-sm opacity-90 max-sm:hidden">Edit</span>
@@ -192,7 +192,7 @@ export function StudioDemo() {
                   setBody((b) => [...b, { id: nextId.current, kind: k }]);
                   nextId.current += 1;
                 }}
-                aria-label={`Add block: ${BLOCKS[k].before} ${BLOCKS[k].value} ${BLOCKS[k].after ?? ""}`}
+                aria-label={`${BLOCKS[k].before} ${BLOCKS[k].value} ${BLOCKS[k].after ?? ""}`.trim()}
                 className="w-fit rounded-[5px] outline-none transition-transform enabled:hover:-translate-y-0.5 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ym-blue"
               >
                 <ScratchBlock kind={k} />
@@ -202,12 +202,12 @@ export function StudioDemo() {
         </div>
         {/* Script area. */}
         <div className="min-w-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] p-3 [background-size:14px_14px]">
-          <span className={`inline-flex rounded-t-[14px] rounded-b-[5px] border-b-[3px] px-2.5 pb-1 pt-2 text-[12px] font-semibold text-white ${active === "hat" ? "outline outline-[3px] outline-amber-300" : ""}`} style={{ background: "#ffbf00", borderColor: "#cc9900" }}>
+          <span className={`inline-flex rounded-t-[14px] rounded-b-[5px] border-b-[3px] px-2.5 pb-1 pt-2 text-[12px] font-semibold text-slate-900 ${active === "hat" ? "outline outline-[3px] outline-amber-300" : ""}`} style={{ background: "#ffbf00", borderColor: "#cc9900" }}>
             when green flag clicked
           </span>
           {/* repeat (C-block) */}
           <div className={`mt-0.5 w-fit min-w-[190px] rounded-[5px] ${active === "loop" ? "outline outline-[3px] outline-amber-300" : ""}`} style={{ background: "#ffab19" }}>
-            <div className="flex items-center gap-1.5 px-2 py-1 text-[12px] font-semibold text-white">
+            <div className="flex items-center gap-1.5 px-2 py-1 text-[12px] font-semibold text-slate-900">
               repeat
               <span className="flex items-center rounded-full bg-white px-1 text-[11px] text-slate-700">
                 <button type="button" aria-label="Repeat fewer times" disabled={running} onClick={() => setTimes((n) => Math.max(1, n - 1))} className="px-1 outline-none focus-visible:ring-2 focus-visible:ring-ym-blue">

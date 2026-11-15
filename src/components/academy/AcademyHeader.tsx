@@ -45,7 +45,7 @@ export function AcademyHeader() {
     <header className="hn" data-scrolled={scrolled}>
       <div className="hn-bar">
         <Link href="/academy" className="hn-logo" aria-label="RoboCoders Academy home">
-          <Image src="/robocoders-logo.png" alt="RoboCoders Academy" width={803} height={341} priority />
+          <Image src="/robocoders-logo.png" alt="RoboCoders Academy" width={803} height={341} sizes="(max-width: 1179px) 112px, 92px" priority />
         </Link>
 
         <nav className="hn-nav" aria-label="Main">

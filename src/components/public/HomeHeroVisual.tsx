@@ -66,7 +66,7 @@ export default function HomeHeroVisual() {
             <li key={id} className={`rh-mod rh-mod--${id}`}>
               <div className="rh-mod-head">
                 <span className="rh-mod-ico"><Icon size={20} aria-hidden="true" /></span>
-                <h3>{name}</h3>
+                <p className="rh-mod-name">{name}</p>
               </div>
               <p>{text}</p>
               {id === "coding" && (

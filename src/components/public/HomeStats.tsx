@@ -25,8 +25,10 @@ export default function HomeStats() {
         <dl className="rh-stats">
           {stats.map(({ to, suffix, label, Icon }) => (
             <div key={label} className="rh-stat">
-              <span className="rh-stat-ico"><Icon size={20} aria-hidden="true" /></span>
-              <dt><HomeCount to={to} suffix={suffix} /></dt>
+              <dt>
+                <span className="rh-stat-ico"><Icon size={20} aria-hidden="true" /></span>
+                <HomeCount to={to} suffix={suffix} />
+              </dt>
               <dd>{label}</dd>
             </div>
           ))}

@@ -79,5 +79,11 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.0",
     "typescript": "^5"
-  }
+  },
+  "browserslist": [
+    "chrome >= 111",
+    "edge >= 111",
+    "firefox >= 111",
+    "safari >= 16.4"
+  ]
 }

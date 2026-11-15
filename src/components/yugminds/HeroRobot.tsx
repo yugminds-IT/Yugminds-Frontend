@@ -1368,7 +1368,7 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
     const randKind = () => Math.floor(Math.random() * 3) as Kind;
     obstacles.forEach((o, i) => {
       o.x = (Math.random() - 0.5) * 2.4;
-      o.z = 11 + i * 12;
+      o.z = 7 + i * 12;
       setKind(o, i as Kind);
     });
 
@@ -1644,7 +1644,7 @@ export function HeroRobot({ className = "", children }: { className?: string; ch
       stateT += dt;
 
       // Apart once, a moment after its first successful dodge; the visitor's choice wins after that.
-      const auto = live ? (firstClearAt && now > firstClearAt + 1500 && now < firstClearAt + 10500 ? 1 : 0) : 1;
+      const auto = live ? (firstClearAt && now > firstClearAt + 500 && now < firstClearAt + 9500 ? 1 : 0) : 1;
       const target = userRef.current ?? auto;
       if (target === 1 !== shownApart) {
         shownApart = target === 1;
