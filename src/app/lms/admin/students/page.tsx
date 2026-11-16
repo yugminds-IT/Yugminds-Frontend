@@ -11,7 +11,7 @@ import BulkDeleteStudentsButton from "@/components/admin/BulkDeleteStudentsButto
 import { requestClose, useDirtySnapshot } from "@/hooks/useUnsavedCloseGuard";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { escapeHtml } from "@/lib/escape-html";
+import { buildStudentPdfHtml } from "./student-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -183,6 +183,22 @@ function mapStudentToTableRow(student: Student): StudentTableRow {
   };
 }
 
+// Bulk-import helpers: header match ignores case and punctuation (e.g. "Father's Name"); sections stored as "Section X".
+const normKey = (k: string) => String(k || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+const pickCol = (row: Record<string, unknown>, names: string[]) => {
+  const byKey: Record<string, unknown> = {};
+  Object.keys(row || {}).forEach((k) => { byKey[normKey(k)] = row[k]; });
+  for (const n of names) {
+    const v = byKey[normKey(n)];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+};
+const toSectionName = (v: string) => {
+  const t = (v || '').trim().replace(/^section\s*/i, '');
+  return t ? `Section ${t.toUpperCase()}` : '';
+};
+
 interface SchoolSection {
   id: string;
   name: string;
@@ -335,6 +351,8 @@ export default function StudentsManagement() {
   const [isBulkImporting, setIsBulkImporting] = useState(false);
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [bulkImportError, setBulkImportError] = useState<string | null>(null);
+  // Server-side validation failures per row id, shown inline on the offending row.
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [bulkImportResults, setBulkImportResults] = useState<{ success: number; failed: number; errors: string[] } | null>(null);
   const [bulkImportCredentials, setBulkImportCredentials] = useState<Array<{ name: string; email: string; password: string; grade: string; section: string; school: string }> | null>(null);
   const [credentialsGradeFilter, setCredentialsGradeFilter] = useState<string>('all');
@@ -1211,6 +1229,7 @@ export default function StudentsManagement() {
     setBulkImportError(null);
     setBulkImportResults(null);
     setBulkImportCredentials(null);
+    setRowErrors({});
 
     // The backend caps bulk-import requests at 500 rows, so a large file is
     // split into sequential chunks — this is what makes "large data" work
@@ -1254,9 +1273,11 @@ export default function StudentsManagement() {
       // Auto-generated emails that collide with an existing account (another
       // student with the same surname) are renumbered and re-checked.
       let dryRunErrors: string[] = [];
+      let failedById: Record<string, string> = {};
       let renumbered = false;
       for (let round = 0; round < 10; round++) {
         dryRunErrors = [];
+        failedById = {};
         let bumped = false;
         for (const chunk of chunks) {
           const res = await adminApi.students.bulkImport({
@@ -1274,6 +1295,7 @@ export default function StudentsManagement() {
               bumped = true;
               return;
             }
+            if (student.id) failedById[student.id] = r.error ?? 'Invalid row';
             dryRunErrors.push(`${student.student_name} (${r.email ?? 'no email'}): ${r.error}`);
           });
         }
@@ -1283,6 +1305,8 @@ export default function StudentsManagement() {
       if (renumbered) setBulkData(working);
 
       if (dryRunErrors.length > 0) {
+        setRowErrors(failedById);
+        setTimeout(() => document.querySelector('[data-row-error]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
         setBulkImportError(
           `${dryRunErrors.length} row(s) failed validation — nothing was imported yet. Fix these and try again:\n${dryRunErrors.slice(0, 10).join('\n')}${dryRunErrors.length > 10 ? `\n... and ${dryRunErrors.length - 10} more` : ''}`
         );
@@ -1431,12 +1455,16 @@ export default function StudentsManagement() {
       iframeDoc.close();
 
       // Wait for content to load, then print/save as PDF
-      setTimeout(() => {
+      const printNow = () => {
         iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      }, 500);
+        setTimeout(() => document.body.removeChild(iframe), 1000);
+      };
+      // Give the web fonts a moment to load so the PDF matches the portal.
+      setTimeout(() => {
+        const ready = iframeDoc.fonts?.ready;
+        if (ready) Promise.race([ready, new Promise((r) => setTimeout(r, 2500))]).then(printNow);
+        else printNow();
+      }, 300);
     }
   };
 
@@ -1462,59 +1490,16 @@ export default function StudentsManagement() {
       return;
     }
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          h1 { color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background-color: #2563eb; color: white; padding: 12px; text-align: left; border: 1px solid #1e40af; }
-          td { padding: 10px; border: 1px solid #e5e7eb; }
-          tr:nth-child(even) { background-color: #f9fafb; }
-          .summary { margin-top: 20px; padding: 15px; background-color: #eff6ff; border-left: 4px solid #2563eb; }
-        </style>
-      </head>
-      <body>
-        <h1>Student Import Credentials</h1>
-        <div class="summary">
-          <p><strong>Total Students:</strong> ${filtered.length}</p>
-          <p><strong>Grade:</strong> ${escapeHtml(credentialsGradeFilter === 'all' ? 'All grades' : credentialsGradeFilter)}</p>
-          <p><strong>Section:</strong> ${escapeHtml(credentialsSectionFilter === 'all' ? 'All sections' : credentialsSectionFilter)}</p>
-          <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
-          <p><strong>Note:</strong> These are newly generated passwords from this import — save this file securely.</p>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Password</th>
-              <th>School</th>
-              <th>Grade</th>
-              <th>Section</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${filtered.map((c, index) => `
-              <tr>
-                <td>${index + 1}</td>
-                <td>${escapeHtml(c.name)}</td>
-                <td>${escapeHtml(c.email)}</td>
-                <td>${escapeHtml(c.password)}</td>
-                <td>${escapeHtml(c.school)}</td>
-                <td>${escapeHtml(c.grade)}</td>
-                <td>${escapeHtml(c.section)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
+    const htmlContent = buildStudentPdfHtml({
+      title: 'Student login details',
+      facts: [
+        ['Grade', credentialsGradeFilter === 'all' ? 'All grades' : credentialsGradeFilter],
+        ['Section', credentialsSectionFilter === 'all' ? 'All sections' : credentialsSectionFilter],
+      ],
+      note: 'These passwords were generated for this import. Save this file securely.',
+      rows: filtered,
+      showPassword: true,
+    });
     printHtmlAsPdf(htmlContent);
   };
 
@@ -1677,6 +1662,7 @@ export default function StudentsManagement() {
 
     setUploadFile(file);
     setBulkImportError(null);
+    setRowErrors({});
     setBulkImportResults(null);
     setIsParsingFile(true);
 
@@ -1684,7 +1670,7 @@ export default function StudentsManagement() {
       let parsedData: BulkImportData[] = [];
 
       if (fileExtension === 'csv') {
-        const normalizeKey = (k: string) => String(k || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+        const normalizeKey = (k: string) => String(k || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
         const getValue = (row: Record<string, unknown>, candidates: string[]) => {
           const byNormalized: Record<string, unknown> = {};
           Object.keys(row || {}).forEach((key) => {
@@ -1709,8 +1695,8 @@ export default function StudentsManagement() {
               parsedData = rows.map((row: Record<string, unknown>, index: number) => {
                 // Flexible column mapping (case-insensitive, ignores spaces/underscores/dashes)
                 const studentName = getValue(row, ['Student Name', 'student_name', 'StudentName', 'Name', 'Full Name', 'full_name']);
-                const fatherName = getValue(row, ['Father Name', 'father_name', 'Father', 'Parent Name', 'parent_name']);
-                const phoneNumber = getValue(row, ['Phone Number', 'phone_number', 'Phone', 'phone', 'Contact', 'contact']);
+                const fatherName = getValue(row, ['Father Name', 'Fathers Name', 'Father', 'Parent Name', 'Parents Name', 'Guardian Name']);
+                const phoneNumber = getValue(row, ['Phone Number', 'Phone', 'Mobile', 'Contact', 'Contact Number', 'Parent Phone']);
                 const grade = getValue(row, ['Grade', 'grade', 'Class', 'class', 'Level', 'level']);
                 const section = getValue(row, ['Section', 'section', 'Class Section', 'class_section', 'Section Name', 'section_name']);
                 const schoolName = getValue(row, ['School', 'school', 'School Name', 'school_name', 'SchoolName']);
@@ -1750,7 +1736,7 @@ export default function StudentsManagement() {
                 .map((item: BulkImportData) => ({
                   ...item,
                   grade: normalizeGrade(item.grade || ''),
-                  section: (item.section || '').trim(),
+                  section: toSectionName(item.section || ''),
                   school_id: selectedSchoolForImport || undefined, // Set school_id from selection
                 }))
                 .filter((item: BulkImportData) =>
@@ -1857,12 +1843,12 @@ export default function StudentsManagement() {
              
             parsedData = jsonData.map((row: Record<string, string>, index: number) => {
               // Flexible column mapping for Excel - try multiple variations
-              const studentName = row['Student Name'] || row['student_name'] || row['StudentName'] || row['Name'] || row['name'] || row['Full Name'] || row['full_name'] || '';
-              const fatherName = row['Father Name'] || row['father_name'] || row['FatherName'] || row['Father'] || row['father'] || row['Parent Name'] || row['parent_name'] || '';
-              const phoneNumber = row['Phone Number'] || row['phone_number'] || row['PhoneNumber'] || row['Phone'] || row['phone'] || row['Contact'] || row['contact'] || '';
-              const grade = row['Grade'] || row['grade'] || row['Class'] || row['class'] || row['Level'] || row['level'] || '';
-              const section = row['Section'] || row['section'] || row['Class Section'] || row['class_section'] || row['Section Name'] || row['section_name'] || '';
-              const schoolName = row['School'] || row['school'] || row['School Name'] || row['school_name'] || row['SchoolName'] || '';
+              const studentName = pickCol(row, ['Student Name', 'StudentName', 'Name', 'Full Name']);
+              const fatherName = pickCol(row, ['Father Name', 'Fathers Name', 'Father', 'Parent Name', 'Parents Name', 'Guardian Name']);
+              const phoneNumber = pickCol(row, ['Phone Number', 'Phone', 'Mobile', 'Contact', 'Contact Number', 'Parent Phone']);
+              const grade = pickCol(row, ['Grade', 'Class', 'Level']);
+              const section = pickCol(row, ['Section', 'Class Section', 'Section Name']);
+              const schoolName = pickCol(row, ['School', 'School Name']);
               const selectedSchoolName = selectedSchoolForImport
                 ? (schools.find((s: School) => s.id === selectedSchoolForImport)?.name || '')
                 : '';
@@ -1900,7 +1886,7 @@ export default function StudentsManagement() {
               .map((item: BulkImportData) => ({
                 ...item,
                 grade: normalizeGrade(item.grade || ''),
-                section: (item.section || '').trim(),
+                section: toSectionName(item.section || ''),
                 school_id: selectedSchoolForImport || undefined, // Set school_id from selection
               }))
               .filter((item: BulkImportData) => {
@@ -1960,6 +1946,7 @@ export default function StudentsManagement() {
   };
 
   const handleEditBulkData = (id: string, field: keyof BulkImportData, value: string) => {
+    setRowErrors((prev) => { if (!prev[id]) return prev; const { [id]: _drop, ...rest } = prev; return rest; });
     setBulkData(prevData => 
       prevData.map((item: BulkImportData) => 
         item.id === id
@@ -2140,90 +2127,20 @@ export default function StudentsManagement() {
         a.click();
         window.URL.revokeObjectURL(url);
       } else if (exportFormat === 'pdf') {
-        const htmlContent = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <style>
-              body {
-                font-family: Arial, sans-serif;
-                margin: 20px;
-              }
-              h1 {
-                color: #2563eb;
-                border-bottom: 2px solid #2563eb;
-                padding-bottom: 10px;
-              }
-              table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-              }
-              th {
-                background-color: #2563eb;
-                color: white;
-                padding: 12px;
-                text-align: left;
-                border: 1px solid #1e40af;
-              }
-              td {
-                padding: 10px;
-                border: 1px solid #e5e7eb;
-              }
-              tr:nth-child(even) {
-                background-color: #f9fafb;
-              }
-              .summary {
-                margin-top: 20px;
-                padding: 15px;
-                background-color: #eff6ff;
-                border-left: 4px solid #2563eb;
-              }
-            </style>
-          </head>
-          <body>
-            <h1>Student Info Export</h1>
-            <div class="summary">
-              <p><strong>Total Students:</strong> ${credentials.length}</p>
-              <p><strong>Schools:</strong> ${escapeHtml(exportSelectedSchools.length === 0 ? 'All Schools' : exportSelectedSchools.map((id: string) => schools.find((s: School) => s.id === id)?.name).filter(Boolean).join(', '))}</p>
-              <p><strong>Grades:</strong> ${escapeHtml(exportClassesLabel)}</p>
-              <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
-              ${resetPasswordsOnExport
-                ? '<p><strong>Note:</strong> Every password below is brand new, generated for this export. Previous passwords no longer work.</p>'
-                : showPasswordColumn
-                  ? '<p><strong>Note:</strong> Passwords shown are the original ones issued at account creation, for students who haven\'t changed them yet. Blank means they\'ve already set their own.</p>'
-                  : '<p><strong>Note:</strong> Passwords are not included — they cannot be retrieved once set. Use "Reset Password" on a student\'s profile to issue a new one.</p>'}
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Name</th>
-                  <th>Email</th>
-                  ${showPasswordColumn ? '<th>Password</th>' : ''}
-                  <th>School</th>
-                  <th>Grade</th>
-                  <th>Section</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${credentials.map((c, index) => `
-                  <tr>
-                    <td>${index + 1}</td>
-                    <td>${escapeHtml(c.name)}</td>
-                    <td>${escapeHtml(c.email)}</td>
-                    ${showPasswordColumn ? `<td>${escapeHtml(c.password)}</td>` : ''}
-                    <td>${escapeHtml(c.school)}</td>
-                    <td>${escapeHtml(c.grade)}</td>
-                    <td>${escapeHtml(c.section)}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </body>
-          </html>
-        `;
+        const htmlContent = buildStudentPdfHtml({
+          title: 'Student info export',
+          facts: [
+            ['Schools', exportSelectedSchools.length === 0 ? 'All schools' : exportSelectedSchools.map((id: string) => schools.find((s: School) => s.id === id)?.name).filter(Boolean).join(', ')],
+            ['Grades', exportClassesLabel],
+          ],
+          note: resetPasswordsOnExport
+            ? 'Every password below is new, generated for this export. Previous passwords no longer work.'
+            : showPasswordColumn
+              ? "Passwords shown are the original ones issued at account creation, for students who haven't changed them yet. Students who set their own show \"own password\"."
+              : 'Passwords are not included because they cannot be retrieved once set. Use Reset password on a student\'s profile to issue a new one.',
+          rows: credentials,
+          showPassword: showPasswordColumn,
+        });
 
         printHtmlAsPdf(htmlContent);
       }
@@ -2637,14 +2554,17 @@ export default function StudentsManagement() {
                                   )}
                                   {subgroup.rows.map(({ student, index }) => {
                                 const gradeUnknown = !!student.grade?.trim() && !availableGradesForSchool.includes(student.grade.trim());
+                                const rowErr = student.id ? rowErrors[student.id] : undefined;
+                                const bad = (re: RegExp) => (rowErr && re.test(rowErr) ? ' border-red-500 ring-2 ring-red-200 bg-red-50' : '');
                                 return (
-                                <TableRow key={student.id || index}>
+                                <Fragment key={student.id || index}>
+                                <TableRow className={rowErr ? 'bg-red-50 hover:bg-red-50 border-l-4 border-l-red-500' : ''} {...(rowErr ? { 'data-row-error': '' } : {})}>
                                   <TableCell className="font-medium">{index + 1}</TableCell>
                                   <TableCell>
                                     <Input
                                       value={student.student_name}
                                       onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'student_name', e.target.value)}
-                                      className={`h-8 text-sm ${!student.student_name?.trim() ? 'border-red-300' : ''}`}
+                                      className={`h-8 text-sm ${!student.student_name?.trim() ? 'border-red-300' : ''}${bad(/name/i)}`}
                                       placeholder="Required"
                                     />
                                   </TableCell>
@@ -2660,7 +2580,7 @@ export default function StudentsManagement() {
                                     <Input
                                       value={student.phone_number || ''}
                                       onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'phone_number', e.target.value)}
-                                      className={`h-8 text-sm ${!student.phone_number?.trim() ? 'border-amber-300' : ''}`}
+                                      className={`h-8 text-sm ${!student.phone_number?.trim() ? 'border-amber-300' : ''}${bad(/phone/i)}`}
                                       placeholder="Optional"
                                     />
                                   </TableCell>
@@ -2688,7 +2608,7 @@ export default function StudentsManagement() {
                                     <Input
                                       value={student.section || ''}
                                       onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'section', e.target.value)}
-                                      className={`h-8 text-sm ${!student.section?.trim() ? 'border-red-300' : ''}`}
+                                      className={`h-8 text-sm ${!student.section?.trim() ? 'border-red-300' : ''}${bad(/section/i)}`}
                                       placeholder="Required (e.g., A, B, C)"
                                     />
                                   </TableCell>
@@ -2697,7 +2617,7 @@ export default function StudentsManagement() {
                                       type="email"
                                       value={student.email || ''}
                                       onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'email', e.target.value)}
-                                      className={`h-8 text-sm ${!student.email?.trim() ? 'border-red-300' : ''}`}
+                                      className={`h-8 text-sm ${!student.email?.trim() ? 'border-red-300' : ''}${bad(/email/i)}`}
                                       placeholder="Required"
                                     />
                                   </TableCell>
@@ -2707,7 +2627,7 @@ export default function StudentsManagement() {
                                         type={showStudentPasswords[student.id || `temp-${index}`] ? "text" : "password"}
                                         value={student.password || ''}
                                         onChange={(e) => handleEditBulkData(student.id || `temp-${index}`, 'password', e.target.value)}
-                                        className="h-8 text-sm pr-10"
+                                        className={`h-8 text-sm pr-10${bad(/password/i)}`}
                                         placeholder="Optional — auto-generated if blank"
                                       />
                                       <Button
@@ -2742,6 +2662,14 @@ export default function StudentsManagement() {
                                     </Button>
                                   </TableCell>
                                 </TableRow>
+                                {rowErr && (
+                                  <TableRow className="bg-red-50 hover:bg-red-50 border-l-4 border-l-red-500">
+                                    <TableCell colSpan={9} className="py-1.5 pl-8 text-xs font-medium text-red-700">
+                                      ⚠ Row {index + 1}: {rowErr}
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                                </Fragment>
                                 );
                                   })}
                                 </Fragment>
@@ -2807,7 +2735,7 @@ export default function StudentsManagement() {
                                   </select>
                                   <select className="sd-field" aria-label="Section" value={credentialsSectionFilter} onChange={(e) => setCredentialsSectionFilter(e.target.value)}>
                                     <option value="all">All sections</option>
-                                    {sectionsPresent.map((section) => <option key={section} value={section}>Section {section}</option>)}
+                                    {sectionsPresent.map((section) => <option key={section} value={section}>{/^section\s/i.test(section) ? section : `Section ${section}`}</option>)}
                                   </select>
                                   <span className="st-hint">{filteredCount} student{filteredCount !== 1 ? 's' : ''} match</span>
                                 </div>
