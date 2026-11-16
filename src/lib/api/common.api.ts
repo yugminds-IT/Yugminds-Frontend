@@ -51,6 +51,15 @@ export const commonApi = {
   contact: (data: Record<string, unknown>) =>
     apiClient.post('/contact', data),
 
+  /** Careers: apply for a role (multipart: `data` JSON + `resume` file) */
+  careers: {
+    openings: () => apiClient.get('/careers/openings'),
+    status: (ref: string, email: string) => apiClient.post('/careers/status', { ref, email }),
+    withdraw: (ref: string, email: string) => apiClient.post('/careers/withdraw', { ref, email }),
+    apply: (slug: string, form: FormData) =>
+      apiClient.post(`/careers/openings/${slug}/apply`, form),
+  },
+
   /** Call-back request from the YugMinds site assistant */
   callback: (data: { name: string; phone: string; topic: string }) =>
     apiClient.post('/contact/callback', data),

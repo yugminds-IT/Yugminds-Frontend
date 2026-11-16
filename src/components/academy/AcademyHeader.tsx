@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Instagram, Youtube, Facebook, MessageCircle, Mail, Phone, MapPin } from "lucide-react";
+import { SOCIAL_LINKS } from "@/lib/social-links";
+import FooterTop from "@/components/FooterTop";
+import FooterLogo from "@/components/FooterLogo";
+import "../public/droid.css";
 import { academy } from "@/lib/academy/api";
 import { brandHref } from "@/lib/brand-host";
 
@@ -98,41 +102,60 @@ export function AcademyHeader() {
   );
 }
 
+const SOCIAL_ICON = { instagram: Instagram, youtube: Youtube, facebook: Facebook, whatsapp: MessageCircle } as const;
+
+/* Same footer as the RoboCoders site (rf-* styles in robo-home.css), with the Academy's own links. */
 export function AcademyFooter() {
   return (
-    <footer className="rh-dark ac-foot">
-      <div className="rh-wrap">
-        <div className="ac-foot-grid">
-          <div>
-            <Image src="/robocoders-logo.png" alt="RoboCoders Academy" width={803} height={341} style={{ filter: "brightness(0) invert(1)" }} />
+    <footer className="rf">
+      <FooterTop />
+      <div className="rf-wrap">
+        <div className="rf-grid">
+          <div className="rf-brand">
+            <FooterLogo />
             <p>Online coding, robotics and AI. Self-paced courses and live 1:1 classes, from YugMinds in Hyderabad.</p>
           </div>
-          <div>
+
+          <nav aria-label="Learn">
             <h3>Learn</h3>
-            <ul>
+            <ul className="rf-links">
               <li><Link href="/academy/courses">All courses</Link></li>
               <li><Link href="/academy/tutors">1:1 classes</Link></li>
               <li><Link href="/academy/learn">My account</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3>Account</h3>
-            <ul>
               <li><Link href="/academy/login">Log in</Link></li>
               <li><Link href="/academy/signup">Create a free account</Link></li>
               <li><Link href="/academy#verify">Verify a certificate</Link></li>
             </ul>
-          </div>
+          </nav>
+
           <div>
-            <h3>Talk to us</h3>
-            <ul>
-              <li><a href="mailto:info@yugminds.org">info@yugminds.org</a></li>
-              <li><a href="tel:+918500345655">+91 85003 45655</a></li>
-              <li><a href={brandHref("/robocoders/contact")}>Contact RoboCoders</a></li>
+            <h3>Contact</h3>
+            <ul className="rf-contact">
+              <li><Mail size={16} aria-hidden="true" /><a href="mailto:info@yugminds.org">info@yugminds.org</a></li>
+              <li><Phone size={16} aria-hidden="true" /><a href="tel:+918500345655">+91 85003 45655</a></li>
+              <li><MapPin size={16} aria-hidden="true" /><a href={brandHref("/robocoders/contact")}>Contact RoboCoders</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h3>Follow us</h3>
+            <ul className="rf-social">
+              {SOCIAL_LINKS.map(({ platform, label, url }) => {
+                const Icon = SOCIAL_ICON[platform as keyof typeof SOCIAL_ICON];
+                return (
+                  <li key={label}>
+                    <a href={url} target="_blank" rel="noopener noreferrer" aria-label={label}><Icon size={20} aria-hidden="true" /></a>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>
-        <p className="ac-foot-legal">© {new Date().getFullYear()} YugMinds Private Limited</p>
+
+        <div className="rf-base">
+          <p>© {new Date().getFullYear()} YugMinds Private Limited</p>
+          <p>Privacy Policy · Terms of Service</p>
+        </div>
       </div>
     </footer>
   );

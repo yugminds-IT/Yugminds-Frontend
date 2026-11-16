@@ -14,14 +14,22 @@ const CATS: { id: Cat; label: string; Icon: LucideIcon }[] = [
 ];
 
 
-/* FAQ: filter by topic and one answer open at a time with a smooth slide. Click, tap or keyboard toggles; hover never
-   does, because the rows move as answers open and a passing cursor would chain-open them. The heading, topics,
+/* FAQ: filter by topic and one answer open at a time with a smooth slide. A mouse opens a row when it moves over it
+   (after a short intent delay) and closes it when it leaves the list; reacting to movement, not "enter", stops rows
+   that slide under a still cursor from chain-opening. Tap and keyboard still toggle on click. The heading, topics,
    questions and the ask bar rise in once as the section scrolls into view. */
 export default function HomeFaq() {
   const [cat, setCat] = useState<Cat>("start");
   const [open, setOpen] = useState<number | null>(null);
   const [seen, setSeen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const mouse = useRef(false);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const hover = (i: number | null, delay: number) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(i), delay);
+  };
 
   useEffect(() => {
     const el = box.current;
@@ -53,13 +61,14 @@ export default function HomeFaq() {
           </div>
         </div>
 
-        <ul className="rh-faq2-list" key={cat}>
+        <ul className="rh-faq2-list" key={cat} onMouseLeave={() => mouse.current && hover(null, 200)}>
           {shown.map((f, k) => {
             const isOpen = open === f.i;
             return (
-              <li key={f.q} className="rh-faq2-item" data-open={isOpen} style={{ "--i": k } as React.CSSProperties}>
+              <li key={f.q} className="rh-faq2-item" data-open={isOpen} style={{ "--i": k } as React.CSSProperties}
+                onPointerMove={(e) => { mouse.current = e.pointerType === "mouse"; if (mouse.current && !isOpen) hover(f.i, 120); else if (mouse.current) clearTimeout(timer.current); }}>
                 <h3>
-                  <button type="button" aria-expanded={isOpen} aria-controls={`faq-a-${f.i}`} id={`faq-q-${f.i}`} onClick={() => setOpen(isOpen ? null : f.i)}>
+                  <button type="button" aria-expanded={isOpen} aria-controls={`faq-a-${f.i}`} id={`faq-q-${f.i}`} onClick={(e) => { if (!mouse.current || e.detail === 0) setOpen(isOpen ? null : f.i); }}>
                     <span className="rh-faq2-ico"><Icon size={16} aria-hidden="true" /></span>
                     <span className="rh-faq2-q">{f.q}</span>
                     <span className="rh-faq2-plus"><Plus size={18} aria-hidden="true" /></span>

@@ -202,6 +202,13 @@ export const PAGE_SEO: Record<string, PageSeo> = {
   },
 };
 
+PAGE_SEO["/careers/apply"] = {
+  primaryKeyword: "apply robotics trainer",
+  title: "Apply: Robotics Trainer | YugMinds Careers",
+  description: "Apply for the Robotics Trainer role at YugMinds, Hyderabad. Takes about 5 minutes.",
+  keywords: ["apply robotics trainer", "YugMinds careers"],
+};
+
 export function lookupPageSeo(internalPath: string): PageSeo | null {
   const clean = internalPath.replace(/\/$/, "") || "/";
   if (PAGE_SEO[clean]) return PAGE_SEO[clean];

@@ -3,6 +3,7 @@ import { ArrowRight, Award, BadgeCheck } from "lucide-react";
 import { fetchCatalog } from "@/components/academy/catalog";
 import { ProductRow } from "@/components/academy/ProductCard";
 import { TutorAvatar } from "@/components/academy/TutorAvatar";
+import AcademyHeroVisual from "@/components/academy/AcademyHeroVisual";
 import LessonOne from "@/components/academy/LessonOne";
 import { VerifyForm } from "@/components/academy/VerifyForm";
 import ProductsFaq from "@/components/public/ProductsFaq";
@@ -36,8 +37,8 @@ export default async function AcademyHome() {
       <section className="ac-top ac-hero">
         <div className="rh-wrap">
           <div className="ac-hero-grid">
-            <h1>Teach a robot to move. Then build your own.</h1>
-            <div className="ac-hero-side">
+            <div className="ac-hero-copy">
+              <h1>Teach a robot to move. Then build your own.</h1>
               <p className="rh-lede">Self-paced coding, robotics and AI courses, plus live 1:1 classes with RoboCoders tutors.</p>
               <div className="rh-actions">
                 <Link href="/academy/signup" className="rh-btn rh-btn--primary">Start free</Link>
@@ -49,6 +50,7 @@ export default async function AcademyHome() {
                 <div><dt>Verified</dt><dd>certificate for every course</dd></div>
               </dl>
             </div>
+            <AcademyHeroVisual />
           </div>
         </div>
       </section>

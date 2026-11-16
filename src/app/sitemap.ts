@@ -39,7 +39,9 @@ function mapRoutes(origin: string, routes: Route[]): MetadataRoute.Sitemap {
 }
 
 // YugMinds is a single page; its sections are named in the page's structured data.
-const YUGMINDS_ROUTES: Route[] = [{ path: "/", changeFrequency: "weekly", priority: 1.0 }];
+const YUGMINDS_ROUTES: Route[] = [
+  { path: "/", changeFrequency: "weekly", priority: 1.0 },
+];
 
 const ROBOCODERS_ROUTES: Route[] = [
   { path: "/", changeFrequency: "weekly", priority: 1.0 },

@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  Briefcase,
   Calendar,
   CalendarCheck,
   CalendarDays,
@@ -65,6 +66,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "System controls", icon: SlidersHorizontal, href: "/lms/admin/system-controls" },
   { label: "Trash", icon: Trash2, href: "/lms/admin/trash" },
   { label: "Contact submissions", icon: MessageSquare, href: "/lms/admin/contact-submissions" },
+  { label: "Careers", icon: Briefcase, href: "/lms/admin/careers" },
   { label: "Settings", icon: Settings, href: "/lms/admin/settings" },
 ];
 

@@ -41,13 +41,14 @@ export default function HomeNav() {
     const l = i.link.replace(/^https?:\/\/[^/]+/, "") || "/";
     return i.exact ? pathname === l : pathname === l || pathname.startsWith(l + "/");
   };
-  const activeIdx = Math.max(0, items.findIndex(isActive));
+  const activeIdx = items.findIndex(isActive); // -1 on pages outside the nav (e.g. the login page): nothing highlighted
 
   const place = (i: number) => {
     const el = links.current[i];
-    if (el) setHl({ left: (el.parentElement as HTMLElement).offsetLeft, width: el.offsetWidth });
+    setHl(el ? { left: (el.parentElement as HTMLElement).offsetLeft, width: el.offsetWidth } : null);
   };
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- measures the DOM after layout, then stores it
     place(activeIdx);
     const on = () => place(activeIdx);
     window.addEventListener("resize", on);

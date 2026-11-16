@@ -162,7 +162,7 @@ export function StudioDemo() {
         </span>
       </div>
 
-      <div className="grid md:grid-cols-[52px_minmax(0,150px)_minmax(0,1fr)_minmax(0,200px)]">
+      <div className="grid md:grid-cols-[52px_auto_minmax(0,1fr)_minmax(0,200px)]">
         {/* Categories. */}
         <div className="flex gap-1 bg-white p-1.5 md:flex-col" role="group" aria-label="Block categories">
           {CATS.map((c) => (
@@ -201,7 +201,7 @@ export function StudioDemo() {
           <p className="mt-auto pt-2 text-[11px] leading-snug text-slate-500">Click a block to add it.</p>
         </div>
         {/* Script area. */}
-        <div className="min-w-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] p-3 [background-size:14px_14px]">
+        <div className="min-w-0 overflow-hidden bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] p-3 [background-size:14px_14px]">
           <span className={`inline-flex rounded-t-[14px] rounded-b-[5px] border-b-[3px] px-2.5 pb-1 pt-2 text-[12px] font-semibold text-slate-900 ${active === "hat" ? "outline outline-[3px] outline-amber-300" : ""}`} style={{ background: "#ffbf00", borderColor: "#cc9900" }}>
             when green flag clicked
           </span>

@@ -457,6 +457,24 @@ export const adminApi = {
     delete: (id: string) => apiClient.delete(`${ADMIN}/saved-views/${id}`),
   },
 
+  /** Careers: trainer applications */
+  careers: {
+    list: (params?: { stage?: string; page?: number; limit?: number; search?: string; opening?: string }) =>
+      apiClient.get(withParams(`${ADMIN}/careers`, params as Record<string, string | number | undefined>)),
+    get: (id: string) => apiClient.get(`${ADMIN}/careers/${id}`),
+    update: (id: string, data: { stage?: string; rating?: number | null; note?: string; notify?: boolean; message?: string }) =>
+      apiClient.patch(`${ADMIN}/careers/${id}`, data),
+    resume: (id: string) => apiClient.get(`${ADMIN}/careers/${id}/resume`, { responseType: "blob" }),
+    delete: (id: string) => apiClient.delete(`${ADMIN}/careers/${id}`),
+    purge: (id: string) => apiClient.delete(`${ADMIN}/careers/${id}/purge`),
+    openings: {
+      list: () => apiClient.get(`${ADMIN}/job-openings`),
+      create: (data: Record<string, unknown>) => apiClient.post(`${ADMIN}/job-openings`, data),
+      update: (id: string, data: Record<string, unknown>) => apiClient.patch(`${ADMIN}/job-openings/${id}`, data),
+      delete: (id: string) => apiClient.delete(`${ADMIN}/job-openings/${id}`),
+    },
+  },
+
   /** Contact Submissions */
   contactSubmissions: {
     list: (params?: { status?: string; page?: number; limit?: number; search?: string }) =>

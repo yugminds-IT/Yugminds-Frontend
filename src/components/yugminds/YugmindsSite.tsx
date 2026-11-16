@@ -30,6 +30,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import CareersSection from "./CareersSection";
 import { brandHref } from "@/lib/brand-host";
 import { commonApi } from "@/lib/api/common.api";
 import { BUSINESS, BUSINESS_ADDRESS_DISPLAY } from "@/lib/business-info";
@@ -80,15 +81,17 @@ type DivisionKey = "labs" | "hardware" | "software" | "manufacturing" | "robocod
    NAV
 ───────────────────────────────────────────── */
 const NAV_LINKS = [
+  { label: "Home", href: "/#top" },
   { label: "Divisions", href: "/#divisions" },
   { label: "Products", href: "/#products" },
   { label: "About", href: "/#about" },
   { label: "Robocoders", href: brandHref("/robocoders") },
+  { label: "Careers", href: "/#careers" },
   { label: "Contact", href: "/#contact" },
 ];
 
 // The page's named sections, in order. Each has a matching id and nav/footer link.
-const SECTION_IDS = ["divisions", "products", "about", "build", "contact"];
+const SECTION_IDS = ["top", "divisions", "products", "about", "build", "careers", "contact"];
 
 /* On the home page, "/#section" links glide straight to the section without a
    router navigation (which fights the smooth scroll); elsewhere they load home. */
@@ -161,8 +164,8 @@ function Nav() {
         let current = "";
         for (const id of SECTION_IDS) if (visible.has(id)) current = id;
         setSection(current);
-        if (window.location.pathname === "/" && window.location.hash !== (current ? `#${current}` : "")) {
-          window.history.replaceState(null, "", current ? `#${current}` : "/");
+        if (window.location.pathname === "/" && window.location.hash !== (current && current !== "top" ? `#${current}` : "")) {
+          window.history.replaceState(null, "", current && current !== "top" ? `#${current}` : "/");
         }
       },
       { rootMargin: "0px 0px -67% 0px", threshold: 0 },
@@ -194,7 +197,7 @@ function Nav() {
     const n = nav.getBoundingClientRect();
     setPill({ left: a.left - n.left, width: a.width });
   };
-  const isActive = (href: string) => href.startsWith("/#") && href.slice(2) === section;
+  const isActive = (href: string) => href.startsWith("/#") && href.slice(2) === (section || (scrolled ? "" : "top"));
 
   return (
     <header className={`fixed inset-x-0 top-0 border-b bg-white pt-[env(safe-area-inset-top)] transition-colors duration-300 ${open ? "z-[80]" : "z-[60]"} ${scrolled ? "border-slate-200" : "border-transparent"}`}>
@@ -1972,6 +1975,7 @@ const FOOTER_COLS = [
       { label: "About us", href: "/#about" },
       { label: "Products", href: "/#products" },
       { label: "What we build", href: "/#build" },
+      { label: "Careers", href: "/#careers" },
       { label: "Contact", href: "/#contact" },
     ],
   },
@@ -2137,6 +2141,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The nav + footer shell, reused by the careers pages. */
+export { Shell as YugmindsShell };
+
 export function YugmindsHomePage() {
   return (
     <Shell>
@@ -2146,6 +2153,7 @@ export function YugmindsHomePage() {
       <Products />
       <About />
       <ProjectPicker />
+      <CareersSection />
       <ContactBlock />
     </Shell>
   );

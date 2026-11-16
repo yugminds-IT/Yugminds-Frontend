@@ -469,7 +469,7 @@
 }
 
 /* Below 1280px the label cards stack under the droid instead of sitting around it */
-@media (max-width: 1280px) {
+@media (max-width: 1240px) {
   .droid-wrap { --size: min(3.6vw, 40px); width: 100%; height: auto; }
   .droid { position: relative; margin-left: calc(50% - 6.8em); }
   .droid__leaders { display: none; }

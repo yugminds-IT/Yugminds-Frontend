@@ -79,8 +79,8 @@ const nextConfig = {
   // swcMinify: true,
   // Optimize bundle splitting
   experimental: {
-    optimizeCss: true, // Optimize CSS
-    inlineCss: true, // inline CSS in the HTML: removes the render-blocking stylesheet requests PageSpeed flags
+    optimizeCss: process.env.NODE_ENV === 'production', // prod only: Critters pass slows every dev compile
+    inlineCss: process.env.NODE_ENV === 'production', // inline CSS in the HTML: removes the render-blocking stylesheet requests PageSpeed flags
     // Cap the static-generation worker pool. Next.js defaults to one worker
     // per CPU core, which is fine on a dedicated build machine but OOMs on a
     // shared VPS that's also running Postgres/Redis/MinIO/the backend at the
