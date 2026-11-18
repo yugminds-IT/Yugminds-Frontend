@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, Eye, Mail, MapPin, Phone, RefreshCw, Search, Star, Trash2, Video } from "lucide-react";
+import { ArrowLeft, Check, Download, Eye, HelpCircle, Mail, MapPin, Phone, RefreshCw, Search, Star, Trash2, Video, X } from "lucide-react";
 import Modal from "@/components/portal/Modal";
 import ConfirmModal from "@/components/portal/ConfirmModal";
 import { ChipGroup, Pager } from "@/components/portal/notifications";
+import RowMenu from "@/components/portal/RowMenu";
+import "./careers.css";
 import OpeningsPanel, { type Opening } from "./OpeningsPanel";
 import { adminApi } from "@/lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
@@ -20,7 +22,8 @@ const LABEL: Record<string, string> = {
 
 type Row = {
   id: string; ref: string; role: string | null; full_name: string; email: string; phone: string; city: string;
-  stage: string; rating: number | null; experience_years: number; qualification: string; created_at: string;
+  stage: string; rating: number | null; experience_years: number; qualification: string; created_at: string; updated_at?: string;
+  english_level: number; has_two_wheeler: boolean; will_travel: boolean; skills: string[];
 };
 type Event = { id: string; type: string; from_stage: string | null; to_stage: string | null; body: string | null; created_at: string };
 type Detail = Row & {
@@ -30,6 +33,7 @@ type Detail = Row & {
   has_resume: boolean; resume_name: string | null; events: Event[];
 };
 
+const STAGE_COLOR: Record<string, string> = { new: "var(--sd-amber-deep)", screening: "#93b4f5", interview: "var(--sd-blue)", demo_class: "var(--sd-blue-deep)", offer: "var(--sd-navy)", hired: "#1f8a4c", rejected: "var(--sd-late)", on_hold: "#b88a1b", withdrawn: "var(--sd-ink-soft)" };
 const PIPE = ["new", "screening", "interview", "demo_class", "offer", "hired"] as const;
 const MAILED = ["screening", "interview", "demo_class", "offer", "hired", "on_hold", "rejected"];
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -44,6 +48,9 @@ export default function CareersAdminPage() {
   const [opLoading, setOpLoading] = useState(true);
   const [opFailed, setOpFailed] = useState(false);
   const [stage, setStage] = useState("all");
+  const [city, setCity] = useState("");
+  const [sort, setSort] = useState("newest");
+  const [cities, setCities] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -68,17 +75,18 @@ export default function CareersAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await adminApi.careers.list({ stage, page, limit: LIMIT, search: search || undefined, opening: roleId || undefined });
+      const { data } = await adminApi.careers.list({ stage, page, limit: LIMIT, search: search || undefined, opening: roleId || undefined, city: city || undefined, sort });
       setRows(data.applications);
       setTotal(data.total);
       setCounts(data.stage_counts);
+      setCities(data.cities ?? []);
       setFailed(false);
     } catch {
       setFailed(true);
     } finally {
       setLoading(false);
     }
-  }, [stage, page, search, roleId]);
+  }, [stage, page, search, roleId, city, sort]);
   useEffect(() => { void load(); }, [load]);
 
   const loadOpenings = useCallback(async () => {
@@ -115,6 +123,15 @@ export default function CareersAdminPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function quick(r: Row, to: string) {
+    if (to === "rejected" && !window.confirm(`Reject ${r.full_name}? They are not emailed from here. Open the application to send a message.`)) return;
+    try {
+      await adminApi.careers.update(r.id, { stage: to, notify: false });
+      toast.success(`${r.full_name} moved to ${LABEL[to]}`);
+      await load();
+    } catch { toast.error("That did not save. Try again."); }
   }
 
   async function purge() {
@@ -164,9 +181,10 @@ export default function CareersAdminPage() {
   }
 
   const total_all = Object.values(counts).reduce((a, b) => a + b, 0);
-  const options = (["all", ...STAGES] as const).map(
-    (s) => [s, `${LABEL[s]} ${s === "all" ? total_all : counts[s] ?? 0}`] as const,
-  );
+  const role = openings.find((o) => o.id === roleId);
+  const reset = () => { setRoleId(""); setStage("all"); setCity(""); setSort("newest"); setSearchInput(""); setPage(1); };
+  const nextStage = (st: string) => PIPE[PIPE.indexOf(st as (typeof PIPE)[number]) + 1];
+  const ago = (iso?: string) => { const d = iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 864e5) : 0; return d < 1 ? "today" : `${d} ${d === 1 ? "day" : "days"} ago`; };
 
   return (
     <div className="sd-page">
@@ -193,53 +211,106 @@ export default function CareersAdminPage() {
 
       <ChipGroup label="View" value={tab} options={[["applications", "Applications"], ["openings", "Openings"]] as const} onChange={(v) => setTab(v as "applications" | "openings")} />
       {tab === "openings" ? (
-        <OpeningsPanel openings={openings} loading={opLoading} failed={opFailed} onChanged={() => { void loadOpenings(); void load(); }} />
+        <OpeningsPanel openings={openings} loading={opLoading} failed={opFailed} onChanged={() => { void loadOpenings(); void load(); }} onViewApplicants={(id, st) => { setRoleId(id); setStage(st); setPage(1); setTab("applications"); }} />
       ) : (<>
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <ChipGroup label="Stage" value={stage} options={options} onChange={(v) => { setStage(v); setPage(1); }} />
-        {openings.length > 1 && (
-          <select value={roleId} onChange={(e) => { setRoleId(e.target.value); setPage(1); }} aria-label="Filter by role" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+      <div className="cr">
+      {roleId && (
+        <div className="cr-role">
+          <button onClick={() => { setRoleId(""); setPage(1); }} className="cr-link inline-flex items-center gap-1.5"><ArrowLeft className="h-4 w-4" aria-hidden="true" />All openings</button>
+          <h2>{role?.title ?? "Role"}</h2>
+          <p className="cr-muted">{role?.location}</p>
+        </div>
+      )}
+
+      <nav aria-label="Stage" className="cr-tabs">
+        {(["all", ...STAGES] as const).map((s) => {
+          const n = s === "all" ? total_all : counts[s] ?? 0;
+          return (
+            <button key={s} className="cr-tab" onClick={() => { setStage(s); setPage(1); }} aria-current={stage === s ? "true" : undefined} data-hot={s === "new" && n > 0}>
+              {s === "all" ? "All applications" : LABEL[s]}<span>{n}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="cr-filters">
+        <select value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }} aria-label="Sort by" className="sd-field">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+        <select value={city} onChange={(e) => { setCity(e.target.value); setPage(1); }} aria-label="Location" className="sd-field">
+          <option value="">All locations</option>
+          {cities.map((c) => <option key={c}>{c}</option>)}
+        </select>
+        {openings.length > 0 && (
+          <select value={roleId} onChange={(e) => { setRoleId(e.target.value); setCity(""); setPage(1); }} aria-label="Filter by role" className="sd-field">
             <option value="">All roles</option>
             {openings.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
           </select>
         )}
-        <label className="relative ml-auto block">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 opacity-60" aria-hidden="true" />
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search name, email, phone, ref"
-            aria-label="Search applications"
-            className="w-64 rounded-md border border-slate-300 bg-white py-2 pl-8 pr-3 text-sm"
-          />
+        <label className="cr-search">
+          <Search aria-hidden="true" />
+          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search name, email, phone" aria-label="Search applications" className="sd-field" />
         </label>
+        <button className="cr-link" onClick={reset} disabled={stage === "all" && !city && !roleId && !searchInput && sort === "newest"}>Clear filters</button>
+        <span className="cr-count" aria-live="polite">{total} {total === 1 ? "candidate" : "candidates"}</span>
       </div>
 
       {failed ? (
-        <p role="alert" className="mt-6">Could not load applications. <button className="underline" onClick={() => void load()}>Try again</button></p>
-      ) : !loading && rows.length === 0 ? (
-        <p className="mt-6 opacity-70">{search || stage !== "all" ? "No applications match." : "No applications yet. They appear here when someone applies on yugminds.org/careers."}</p>
+        <div className="cr-empty" role="alert"><b>Could not load applications</b><p>Check your connection and try again.</p><button className="sd-btn sd-btn--ink" onClick={() => void load()}>Try again</button></div>
+      ) : loading && rows.length === 0 ? (
+        <div className="cr-list" aria-hidden="true"><div className="cr-skel" /><div className="cr-skel" /><div className="cr-skel" /></div>
+      ) : rows.length === 0 ? (
+        <div className="cr-empty">
+          <b>{search || city || stage !== "all" ? "No candidates match" : "No applications yet"}</b>
+          <p>{search || city || stage !== "all" ? "Try another stage, location or search." : "They appear here when someone applies on yugminds.org/careers."}</p>
+        </div>
       ) : (
-        <ul className="mt-5 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
-          {rows.map((r) => (
-            <li key={r.id} className="flex items-center hover:bg-slate-50">
-              <button onClick={() => void show(r.id)} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left">
-                <span className="min-w-40 font-semibold">{r.full_name}</span>
-                {openings.length > 1 && r.role && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{r.role}</span>}
-                <span className="text-sm opacity-70">{r.city} · {r.experience_years} yr · {r.qualification}</span>
-                <span className="ml-auto flex items-center gap-3 text-sm">
-                  {r.rating ? <span className="flex items-center gap-0.5"><Star className="h-3.5 w-3.5 fill-current" aria-hidden="true" />{r.rating}</span> : null}
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold">{LABEL[r.stage] ?? r.stage}</span>
-                  <span className="opacity-60">{day(r.created_at)}</span>
-                </span>
-              </button>
-              <button onClick={() => setRowDel(r)} aria-label={`Delete ${r.full_name}'s application`} title="Delete" className="mr-3 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-700">
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="cr-list">
+          <div className="cr-head cr-cd-head"><span>Candidate</span><span>Matches the role</span><span>Stage</span><span>Your call</span></div>
+          {rows.map((r) => {
+            const nxt = nextStage(r.stage);
+            const tags = [
+              r.english_level >= 3 && `English ${r.english_level} of 5`,
+              r.has_two_wheeler && "Two-wheeler",
+              r.will_travel && "Can travel",
+              ...(r.skills ?? []).slice(0, 2),
+            ].filter(Boolean) as string[];
+            const initials = r.full_name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+            return (
+              <div key={r.id} className="cr-row cr-cd" data-hot={r.stage === "new"}>
+                <div className="cr-who">
+                  <span className="sd-avatar" aria-hidden="true">{initials}</span>
+                  <div className="cr-name">
+                    <button onClick={() => void show(r.id)}>{r.full_name}</button>
+                    <small>{r.city} · {r.experience_years} yr · {r.qualification}</small>
+                    <small>Applied {day(r.created_at)}{!roleId && openings.length > 1 && r.role ? ` · ${r.role}` : ""}</small>
+                  </div>
+                </div>
+                <div className="cr-match">
+                  {tags.length ? tags.map((c) => <span key={c} className="cr-tag"><Check aria-hidden="true" />{c}</span>) : <span className="cr-muted">No matches noted</span>}
+                </div>
+                <div>
+                  <span className="cr-stage" style={{ ["--c" as string]: STAGE_COLOR[r.stage] }}>{LABEL[r.stage] ?? r.stage}</span>
+                  <p className="cr-stage-sub">Updated {ago(r.updated_at ?? r.created_at)}{r.rating ? <><Star aria-hidden="true" />{r.rating}</> : null}</p>
+                </div>
+                <div className="cr-act">
+                  <div className="cr-judge" role="group" aria-label={`Decide on ${r.full_name}`}>
+                    <button data-t="yes" disabled={!nxt} onClick={() => nxt && void quick(r, nxt)} aria-label={nxt ? `Move ${r.full_name} to ${LABEL[nxt]}` : "Already at the last step"} title={nxt ? `Move to ${LABEL[nxt]}` : ""}><Check aria-hidden="true" /></button>
+                    <button data-t="hold" disabled={r.stage === "on_hold"} onClick={() => void quick(r, "on_hold")} aria-label={`Put ${r.full_name} on hold`} title="Put on hold"><HelpCircle aria-hidden="true" /></button>
+                    <button data-t="no" disabled={r.stage === "rejected"} onClick={() => void quick(r, "rejected")} aria-label={`Reject ${r.full_name}`} title="Reject"><X aria-hidden="true" /></button>
+                  </div>
+                  <RowMenu label={`Actions for ${r.full_name}`} items={[
+                    { label: "View application", icon: Eye, onClick: () => void show(r.id) },
+                    { label: "Delete", icon: Trash2, onClick: () => setRowDel(r), danger: true, separatorBefore: true },
+                  ]} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
+      </div>
 
       <Pager
         offset={(page - 1) * LIMIT}

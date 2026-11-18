@@ -459,7 +459,7 @@ export const adminApi = {
 
   /** Careers: trainer applications */
   careers: {
-    list: (params?: { stage?: string; page?: number; limit?: number; search?: string; opening?: string }) =>
+    list: (params?: { stage?: string; page?: number; limit?: number; search?: string; opening?: string; city?: string; sort?: string }) =>
       apiClient.get(withParams(`${ADMIN}/careers`, params as Record<string, string | number | undefined>)),
     get: (id: string) => apiClient.get(`${ADMIN}/careers/${id}`),
     update: (id: string, data: { stage?: string; rating?: number | null; note?: string; notify?: boolean; message?: string }) =>

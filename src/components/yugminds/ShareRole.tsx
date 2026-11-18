@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link2 } from "lucide-react";
 import { focus } from "./JobDetail";
 
-const btn = `inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-300 px-4 text-sm font-semibold text-ym-text hover:border-ym-blue ${focus}`;
+const btn = `inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 px-3 text-sm font-semibold text-ym-text hover:border-ym-blue ${focus}`;
 
 export default function ShareRole({ title }: { title: string }) {
   const [done, setDone] = useState(false);

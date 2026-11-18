@@ -92,6 +92,17 @@ const BRAND_COPY: Record<Brand, BrandCopy> = {
   },
 };
 
+/** Share-card key: a per-page card when one exists in app/og/[image], else the brand card. */
+const PAGE_CARDS = new Set([
+  "/about", "/work", "/divisions", "/contact", "/careers",
+  "/robocoders/about", "/robocoders/programs", "/robocoders/products", "/robocoders/community",
+  "/robocoders/for-schools", "/robocoders/for-parents", "/robocoders/online-classes", "/robocoders/contact",
+]);
+function ogKey(brand: Brand, path: string): string {
+  if (!PAGE_CARDS.has(path)) return brand;
+  return path.startsWith("/robocoders/") ? `robocoders-${path.slice(12)}` : `yugminds-${path.slice(1)}`;
+}
+
 export async function buildBrandMetadata(
   brand: Brand,
   internalPath: string,
@@ -126,7 +137,7 @@ export async function buildBrandMetadata(
       : { index: true, follow: true };
 
   const shareImage = {
-    url: `/og/${brand}.png`,
+    url: `/og/${ogKey(brand, internalPath)}.png`,
     width: 1200,
     height: 630,
     alt: copy.title,

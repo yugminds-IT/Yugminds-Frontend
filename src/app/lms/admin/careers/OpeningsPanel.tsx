@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Link2, MapPin, Pencil, Plus, Trash2, Users, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
+import RowMenu from "@/components/portal/RowMenu";
+import "./careers.css";
+import { Check, ExternalLink, Link2, MapPin, Pencil, Plus, Search, Star, Trash2, Users, Wallet } from "lucide-react";
 import Modal from "@/components/portal/Modal";
 import { adminApi } from "@/lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
@@ -24,6 +26,9 @@ export type Opening = {
   withdrawCooldownDays: number;
   applications: number;
   hired: number;
+  newCount: number;
+  stages?: Record<string, number>;
+  createdAt: string;
 };
 
 const EMPTY = {
@@ -33,13 +38,17 @@ const EMPTY = {
 };
 type Form = typeof EMPTY;
 const STATUS_LABEL = { draft: "Draft", open: "Open", paused: "Paused", closed: "Closed" } as const;
-const STATUS_CLS = { draft: "bg-amber-100 text-amber-800", open: "bg-emerald-100 text-emerald-800", paused: "bg-sky-100 text-sky-800", closed: "bg-slate-200 text-slate-700" } as const;
 const STEPS = ["Role", "Pay", "Details", "Review"] as const;
 const JOB_TYPES = ["Full-time, Permanent", "Part-time", "Contract", "Internship"];
 const field = "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal";
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 const payText = (min: number | null, max: number | null) =>
   min && max ? `${inr(min)} – ${inr(max)} a month` : max ? `Up to ${inr(max)} a month` : min ? `From ${inr(min)} a month` : "Pay not shown";
+const ago = (iso: string) => {
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 864e5);
+  return d < 1 ? "Today" : d < 31 ? `${d} ${d === 1 ? "day" : "days"} ago` : d < 365 ? `${Math.floor(d / 30)} months ago` : `${Math.floor(d / 365)} ${d < 730 ? "year" : "years"} ago`;
+};
+const FUNNEL = ["new", "screening", "interview", "demo_class", "offer", "hired"];
 const lines = (t: string) => t.split("\n").map((x) => x.trim()).filter(Boolean);
 
 /** Returns the first problem on a step, or "" when it is fine to continue. */
@@ -81,8 +90,14 @@ function Preview({ f }: { f: Form }) {
 }
 
 export default function OpeningsPanel({
-  openings, loading, failed, onChanged,
-}: { openings: Opening[]; loading: boolean; failed: boolean; onChanged: () => void }) {
+  openings, loading, failed, onChanged, onViewApplicants,
+}: { openings: Opening[]; loading: boolean; failed: boolean; onChanged: () => void; onViewApplicants: (id: string, stage: string) => void }) {
+  const [statusF, setStatusF] = useState("active");
+  const [q, setQ] = useState("");
+  const [locF, setLocF] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [starred, setStarred] = useState<string[]>([]);
+  useEffect(() => { try { setStarred(JSON.parse(localStorage.getItem("careers-starred") || "[]")); } catch { /* none saved */ } }, []);
   const [form, setForm] = useState<Form | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
@@ -156,69 +171,125 @@ export default function OpeningsPanel({
     }
   }
 
-  const live = openings.filter((o) => o.status === "open" || o.status === "paused");
-  const other = openings.filter((o) => o.status !== "open" && o.status !== "paused");
-  const Card = ({ o }: { o: Opening }) => (
-    <li className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="flex items-start justify-between gap-3">
-        <h4 className="text-lg font-bold">{o.title}</h4>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_CLS[o.status]}`}>{STATUS_LABEL[o.status]}</span>
-      </div>
-      <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-        <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" aria-hidden="true" />{o.team}</span>
-        <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />{o.location}</span>
-      </p>
-      <p className="mt-1 text-sm font-semibold">{payText(o.payMin, o.payMax)} <span className="font-normal text-slate-500">· {o.jobType}</span></p>
-      <p className="mt-3 line-clamp-2 text-sm text-slate-600">{o.description}</p>
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-        <span className="mr-auto text-sm text-slate-600">
-          <b>{o.positions}</b> {o.positions === 1 ? "position" : "positions"} · <b>{o.applications}</b> {o.applications === 1 ? "applicant" : "applicants"} · hired <b>{o.hired}</b> of {o.positions}
-          {o.hired >= o.positions && o.status !== "closed" && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800">All filled. Consider closing.</span>}
-        </span>
-        {o.status === "open" && <button onClick={() => void setStatus(o, "paused")} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold">Pause</button>}
-        {o.status === "paused" && <button onClick={() => void setStatus(o, "open")} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold">Resume</button>}
-        {(o.status === "open" || o.status === "paused") ? (
-          <button onClick={() => void close(o)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold">Close</button>
-        ) : (
-          <button onClick={() => void setStatus(o, "open")} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold">{o.status === "draft" ? "Publish" : "Reopen"}</button>
-        )}
-        <button disabled={o.status === "draft"} onClick={() => void copyLink(o)} title={o.status === "draft" ? "Publish to share" : "Copy shareable link"} className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold disabled:opacity-40"><Link2 className="h-4 w-4" aria-hidden="true" />Copy link</button>
-        <button onClick={() => start(o)} aria-label={`Edit ${o.title}`} className="rounded-md border border-slate-300 p-2"><Pencil className="h-4 w-4" aria-hidden="true" /></button>
-        <button onClick={() => void remove(o)} aria-label={`Delete ${o.title}`} className="rounded-md border border-slate-300 p-2"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
-      </div>
-    </li>
-  );
+  const rows = openings.filter((o) =>
+    (statusF === "all" ? true : statusF === "active" ? o.status === "open" || o.status === "paused" : o.status === statusF) &&
+    (!q || o.title.toLowerCase().includes(q.toLowerCase())) && (!locF || o.location === locF));
+  const locations = [...new Set(openings.map((o) => o.location))];
+  const allSel = rows.length > 0 && rows.every((o) => sel.has(o.id));
+  const toggle = (id: string) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const star = (id: string) => setStarred((p) => {
+    const n = p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
+    try { localStorage.setItem("careers-starred", JSON.stringify(n)); } catch { /* private mode */ }
+    return n;
+  });
+  async function bulk(status: "paused" | "closed") {
+    const ids = [...sel];
+    if (status === "closed" && !window.confirm(`Close ${ids.length} opening(s)? They disappear from the site. Applications are kept.`)) return;
+    try {
+      await Promise.all(ids.map((id) => adminApi.careers.openings.update(id, { status })));
+      toast.success(status === "paused" ? "Applications paused" : "Openings closed");
+    } catch { toast.error("Some openings could not be changed."); }
+    setSel(new Set()); onChanged();
+  }
+  const sorted = [...rows].sort((a, b) => Number(starred.includes(b.id)) - Number(starred.includes(a.id)));
+  const filtered = statusF !== "active" || q !== "" || locF !== "";
 
   return (
-    <div className="mt-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm opacity-70">Only Open roles show on yugminds.org and accept applications.</p>
-        <button onClick={() => start()} className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">
-          <Plus className="h-4 w-4" aria-hidden="true" /> New opening
-        </button>
+    <div className="cr">
+      <div className="cr-filters">
+        <select aria-label="Status" value={statusF} onChange={(e) => setStatusF(e.target.value)} className="sd-field">
+          <option value="active">Open and paused</option>
+          <option value="all">All statuses</option>
+          {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v} only</option>)}
+        </select>
+        <label className="cr-search">
+          <Search aria-hidden="true" />
+          <input aria-label="Search by title" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title" className="sd-field" />
+        </label>
+        {locations.length > 1 && (
+          <select aria-label="Location" value={locF} onChange={(e) => setLocF(e.target.value)} className="sd-field">
+            <option value="">All locations</option>
+            {locations.map((l) => <option key={l}>{l}</option>)}
+          </select>
+        )}
+        {filtered && <button className="cr-link" onClick={() => { setStatusF("active"); setQ(""); setLocF(""); }}>Clear filters</button>}
+        <span className="cr-count" aria-live="polite">{rows.length} {rows.length === 1 ? "opening" : "openings"}</span>
+        <button onClick={() => start()} className="sd-btn sd-btn--ink"><Plus aria-hidden="true" />New opening</button>
       </div>
 
       {failed ? (
-        <p role="alert" className="mt-6">Could not load openings. <button className="underline" onClick={onChanged}>Try again</button></p>
+        <div className="cr-empty" role="alert"><b>Could not load openings</b><p>Check your connection and try again.</p><button className="sd-btn sd-btn--ink" onClick={onChanged}>Try again</button></div>
       ) : loading && openings.length === 0 ? (
-        <div className="mt-6 h-40 animate-pulse rounded-xl bg-slate-200/60" aria-hidden="true" />
+        <div className="cr-list" aria-hidden="true"><div className="cr-skel" /><div className="cr-skel" /><div className="cr-skel" /></div>
       ) : openings.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-10 text-center">
-          <p className="text-lg font-bold">No openings yet</p>
-          <p className="mt-1 text-slate-600">Create your first role. It goes live on yugminds.org when you publish it.</p>
-          <button onClick={() => start()} className="mt-4 rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">Create opening</button>
+        <div className="cr-empty">
+          <b>No openings yet</b>
+          <p>Create your first role. It goes live on yugminds.org when you publish it, and applications land here.</p>
+          <button onClick={() => start()} className="sd-btn sd-btn--amber"><Plus aria-hidden="true" />Create opening</button>
         </div>
+      ) : sorted.length === 0 ? (
+        <div className="cr-empty"><b>No openings match</b><p>Try a different status, title or location.</p></div>
       ) : (
-        <>
-          <h3 className="mt-6 text-sm font-semibold text-slate-600">Live now ({live.length})</h3>
-          {live.length ? <ul className="mt-2 grid gap-4 lg:grid-cols-2">{live.map((o) => <Card key={o.id} o={o} />)}</ul> : <p className="mt-2 text-sm text-slate-500">Nothing is live. Publish a draft or create a new role.</p>}
-          {other.length > 0 && (
-            <>
-              <h3 className="mt-8 text-sm font-semibold text-slate-600">Drafts and closed ({other.length})</h3>
-              <ul className="mt-2 grid gap-4 lg:grid-cols-2">{other.map((o) => <Card key={o.id} o={o} />)}</ul>
-            </>
-          )}
-        </>
+        <div className="cr-list">
+          <div className="cr-head cr-op-head">
+            <input type="checkbox" className="cr-check" aria-label="Select all openings" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(rows.map((o) => o.id)))} />
+            <span>Job title</span><span>Candidates by stage</span><span>Posted</span><span>Status</span><span />
+          </div>
+          {sorted.map((o) => {
+            const filled = o.hired >= o.positions && o.status !== "closed";
+            const banner = o.status === "draft" ? ["Draft. It is not on yugminds.org until you publish it.", "Publish", () => void setStatus(o, "open")] as const
+              : filled ? ["All positions are filled. Close the role to stop new applications.", "Close role", () => void close(o)] as const : null;
+            return (
+              <div key={o.id} className="cr-row cr-op" data-selected={sel.has(o.id)} data-hot={o.newCount > 0}>
+                <input type="checkbox" className="cr-check" aria-label={`Select ${o.title}`} checked={sel.has(o.id)} onChange={() => toggle(o.id)} />
+                <div className="cr-title">
+                  <button className="cr-star" onClick={() => star(o.id)} aria-label={starred.includes(o.id) ? `Unstar ${o.title}` : `Star ${o.title}`} aria-pressed={starred.includes(o.id)}><Star aria-hidden="true" /></button>
+                  <div className="cr-name">
+                    <button onClick={() => start(o)}>{o.title}</button>
+                    <small>{o.location} · {o.team}</small>
+                    <small>{payText(o.payMin, o.payMax)}</small>
+                  </div>
+                </div>
+                <button className="cr-funnel" onClick={() => onViewApplicants(o.id, "all")} aria-label={`View ${o.applications} candidates for ${o.title}`}>
+                  <span className="cr-bar" aria-hidden="true">
+                    {FUNNEL.filter((st) => (o.stages?.[st] ?? 0) > 0).map((st) => <i key={st} style={{ flexGrow: o.stages![st], ["--seg" as string]: `var(--cr-${st})` }} />)}
+                  </span>
+                  <span className="cr-funnel-txt">
+                    <span><b>{o.applications}</b> {o.applications === 1 ? "candidate" : "candidates"}</span>
+                    {o.newCount > 0 && <span className="cr-new">{o.newCount} new</span>}
+                    <span>{o.hired} of {o.positions} hired</span>
+                  </span>
+                </button>
+                <p className="cr-muted cr-posted">{ago(o.createdAt)}<br />{new Date(o.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+                <div className="cr-statuscell">
+                  <select aria-label={`Status of ${o.title}`} data-s={o.status} value={o.status} className="sd-field cr-select"
+                    onChange={(e) => e.target.value === "closed" ? void close(o) : void setStatus(o, e.target.value)}>
+                    {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <RowMenu label={`Actions for ${o.title}`} items={[
+                  { label: "Edit", icon: Pencil, onClick: () => start(o) },
+                  { label: "View candidates", icon: Users, onClick: () => onViewApplicants(o.id, "all") },
+                  ...(o.status === "draft" ? [] : [{ label: "Copy link", icon: Link2, onClick: () => void copyLink(o) }]),
+                  ...(o.status === "open" ? [{ label: "View on site", icon: ExternalLink, onClick: () => { window.open(`${BRAND_ORIGINS.yugminds}/careers/${o.slug}`, "_blank", "noopener"); } }] : []),
+                  { label: "Delete", icon: Trash2, onClick: () => void remove(o), danger: true, separatorBefore: true },
+                ]} />
+                {banner && (
+                  <div className="cr-banner"><span>{banner[0]}</span><button onClick={banner[2]} className="sd-btn sd-btn--ink">{banner[1]}</button></div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {sel.size > 0 && (
+        <div role="region" aria-label="Bulk actions" className="cr-bulk">
+          <b>{sel.size} selected</b>
+          <button onClick={() => void bulk("paused")} className="sd-btn sd-btn--line">Pause</button>
+          <button onClick={() => void bulk("closed")} className="sd-btn sd-btn--line">Close</button>
+          <button onClick={() => setSel(new Set())} className="cr-link" style={{ color: "inherit" }}>Clear</button>
+        </div>
       )}
 
       <Modal

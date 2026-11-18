@@ -21,8 +21,8 @@ export default async function Image({ params }: { params: Promise<{ slug: string
   const root = process.cwd();
   const [logo, regular, bold] = await Promise.all([
     readFile(path.join(root, "public", "Yugminds_Official_Logo-preview.png")),
-    readFile(path.join(root, "src/assets/fonts/LiberationSans-Regular.ttf")),
-    readFile(path.join(root, "src/assets/fonts/LiberationSans-Bold.ttf")),
+    readFile(path.join(root, "src/assets/fonts/ChakraPetch-Medium.ttf")),
+    readFile(path.join(root, "src/assets/fonts/ChakraPetch-Bold.ttf")),
   ]);
   const logoSrc = `data:image/png;base64,${logo.toString("base64")}`;
   const title = o?.title ?? "Careers at YugMinds";
@@ -32,7 +32,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
 
   return new ImageResponse(
     (
-      <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: "linear-gradient(135deg, #ffffff 0%, #eff6ff 55%, #dbeafe 100%)", fontFamily: "Liberation Sans" }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: "#ffffff", fontFamily: "Chakra Petch" }}>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 14, background: "#2563eb" }} />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "64px 40px 56px 80px", width: 780 }}>
           <div style={{ display: "flex", flexDirection: "column" }}>
@@ -43,19 +43,19 @@ export default async function Image({ params }: { params: Promise<{ slug: string
           <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
               {facts.map((f) => (
-                <div key={f} style={{ padding: "9px 18px", borderRadius: 9999, background: "#2563eb", color: "#fff", fontSize: 22, fontWeight: 700 }}>{f}</div>
+                <div key={f} style={{ padding: "9px 18px", borderRadius: 0, background: "#eff6ff", border: "3px solid #2563eb", color: "#0a1f4d", fontSize: 22, fontWeight: 700 }}>{f}</div>
               ))}
             </div>
             <div style={{ fontSize: 26, fontWeight: 700, color: "#1e3a8a" }}>{`Apply at yugminds.org/careers/${slug}`}</div>
           </div>
         </div>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", paddingRight: 48 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 300, height: 300, borderRadius: 40, background: "#fff", boxShadow: "0 30px 60px -20px rgba(30,58,138,0.35)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 300, height: 300, borderRadius: 0, background: "#fff", border: "4px solid #2563eb" }}>
             <img src={logoSrc} width={250} height={250} alt="" />
           </div>
         </div>
       </div>
     ),
-    { ...size, fonts: [{ name: "Liberation Sans", data: regular, weight: 400, style: "normal" }, { name: "Liberation Sans", data: bold, weight: 700, style: "normal" }] },
+    { ...size, fonts: [{ name: "Chakra Petch", data: regular, weight: 500, style: "normal" }, { name: "Chakra Petch", data: bold, weight: 700, style: "normal" }] },
   );
 }
