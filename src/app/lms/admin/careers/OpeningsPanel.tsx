@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Check, MapPin, Pencil, Plus, Trash2, Users, Wallet } from "lucide-react";
+import { Check, Link2, MapPin, Pencil, Plus, Trash2, Users, Wallet } from "lucide-react";
 import Modal from "@/components/portal/Modal";
 import { adminApi } from "@/lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
+import { BRAND_ORIGINS } from "@/lib/brand-host";
 
 export type Opening = {
   id: string;
@@ -118,7 +119,7 @@ export default function OpeningsPanel({
       setForm(null);
       onChanged();
     } catch (e) {
-      setErr((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "That did not save. Try again.");
+      setErr((e as Error).message || "That did not save. Try again.");
     } finally { setSaving(false); }
   }
 
@@ -135,6 +136,15 @@ export default function OpeningsPanel({
     await setStatus(o, "closed");
   }
 
+  async function copyLink(o: Opening) {
+    try {
+      await navigator.clipboard.writeText(`${BRAND_ORIGINS.yugminds}/careers/${o.slug}`);
+      toast.success("Link copied");
+    } catch {
+      toast.error("Could not copy. Select the link from the Open page button.");
+    }
+  }
+
   async function remove(o: Opening) {
     if (!window.confirm(`Delete "${o.title}"? This cannot be undone.`)) return;
     try {
@@ -142,7 +152,7 @@ export default function OpeningsPanel({
       toast.success("Opening deleted");
       onChanged();
     } catch (e) {
-      toast.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Could not delete.");
+      toast.error((e as Error).message || "Could not delete.");
     }
   }
 
@@ -172,6 +182,7 @@ export default function OpeningsPanel({
         ) : (
           <button onClick={() => void setStatus(o, "open")} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold">{o.status === "draft" ? "Publish" : "Reopen"}</button>
         )}
+        <button disabled={o.status === "draft"} onClick={() => void copyLink(o)} title={o.status === "draft" ? "Publish to share" : "Copy shareable link"} className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold disabled:opacity-40"><Link2 className="h-4 w-4" aria-hidden="true" />Copy link</button>
         <button onClick={() => start(o)} aria-label={`Edit ${o.title}`} className="rounded-md border border-slate-300 p-2"><Pencil className="h-4 w-4" aria-hidden="true" /></button>
         <button onClick={() => void remove(o)} aria-label={`Delete ${o.title}`} className="rounded-md border border-slate-300 p-2"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
       </div>

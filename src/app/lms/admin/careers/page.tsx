@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, Eye, Mail, MapPin, Phone, RefreshCw, Search, Star, Video } from "lucide-react";
+import { Check, Download, Eye, Mail, MapPin, Phone, RefreshCw, Search, Star, Trash2, Video } from "lucide-react";
 import Modal from "@/components/portal/Modal";
 import ConfirmModal from "@/components/portal/ConfirmModal";
 import { ChipGroup, Pager } from "@/components/portal/notifications";
@@ -56,6 +56,7 @@ export default function CareersAdminPage() {
   const [notify, setNotify] = useState(true);
   const [message, setMessage] = useState("");
   const [del, setDel] = useState(false);
+  const [rowDel, setRowDel] = useState<Row | null>(null);
   const [view, setView] = useState<{ url: string; pdf: boolean } | null>(null);
   const [ptab, setPtab] = useState<"overview" | "answers" | "notes">("overview");
 
@@ -117,12 +118,14 @@ export default function CareersAdminPage() {
   }
 
   async function purge() {
-    if (!open) return;
+    const t = rowDel ?? open;
+    if (!t) return;
     setSaving(true);
     try {
-      await adminApi.careers.purge(open.id);
+      await adminApi.careers.purge(t.id);
       toast.success("Application deleted.");
       setDel(false);
+      setRowDel(null);
       setOpen(null);
       await load();
     } catch {
@@ -219,8 +222,8 @@ export default function CareersAdminPage() {
       ) : (
         <ul className="mt-5 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
           {rows.map((r) => (
-            <li key={r.id}>
-              <button onClick={() => void show(r.id)} className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left hover:bg-slate-50">
+            <li key={r.id} className="flex items-center hover:bg-slate-50">
+              <button onClick={() => void show(r.id)} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left">
                 <span className="min-w-40 font-semibold">{r.full_name}</span>
                 {openings.length > 1 && r.role && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{r.role}</span>}
                 <span className="text-sm opacity-70">{r.city} · {r.experience_years} yr · {r.qualification}</span>
@@ -229,6 +232,9 @@ export default function CareersAdminPage() {
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold">{LABEL[r.stage] ?? r.stage}</span>
                   <span className="opacity-60">{day(r.created_at)}</span>
                 </span>
+              </button>
+              <button onClick={() => setRowDel(r)} aria-label={`Delete ${r.full_name}'s application`} title="Delete" className="mr-3 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-700">
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
               </button>
             </li>
           ))}
@@ -443,9 +449,9 @@ export default function CareersAdminPage() {
       </Modal>
 
       <ConfirmModal
-        open={!!open && del}
-        onClose={() => setDel(false)}
-        title={open ? `Delete ${open.full_name.split(" ")[0]}'s application?` : ""}
+        open={del || !!rowDel}
+        onClose={() => { setDel(false); setRowDel(null); }}
+        title={(rowDel ?? open) ? `Delete ${(rowDel ?? open)!.full_name.split(" ")[0]}'s application?` : ""}
         subtitle="Use this for a data deletion request."
         confirmLabel="Delete for good"
         onConfirm={() => void purge()}

@@ -168,12 +168,14 @@ export default function CareersApply({ slug }: { slug: string }) {
         <p className="mt-4 text-slate-700">
           We have filled this role or taken it down. See what else is open.
         </p>
-        <Link href="/#careers" className="mt-8 inline-block font-semibold text-ym-blue underline">Back to careers</Link>
+        <Link href={`/careers/${slug}`} className="mt-8 inline-block font-semibold text-ym-blue underline">View this role</Link>
+        <Link href="/#careers" className="mt-8 ml-6 inline-block font-semibold text-ym-blue underline">All open roles</Link>
       </section>
     );
 
   return (
     <section className="mx-auto max-w-2xl px-5 pb-20 pt-28 md:pt-32">
+      <Link href={`/careers/${slug}`} className="mb-4 inline-block text-sm font-semibold text-ym-blue underline">← Back to role details</Link>
       <h1 ref={top} tabIndex={-1} className="font-acdisplay text-3xl font-bold text-ym-text outline-none md:text-4xl">
         Apply: {roleName}
       </h1>

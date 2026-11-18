@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { PAGES_UPDATED } from "../lib/page-seo";
 import { headers } from "next/headers";
+import { getBaseURL } from "../lib/api/axios";
 import {
   BRAND_ORIGINS,
   brandFromHostname,
@@ -76,5 +77,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (brand === "robocoders") return mapRoutes(origin, ROBOCODERS_ROUTES);
   if (brand === "lms") return mapRoutes(origin, LMS_ROUTES);
   if (brand === "academy") return mapRoutes(origin, ACADEMY_ROUTES);
-  return mapRoutes(origin, YUGMINDS_ROUTES);
+  let jobs: Route[] = [];
+  try {
+    const r = await fetch(`${getBaseURL()}/careers/openings`, { next: { revalidate: 300 } });
+    const list: { slug: string }[] = r.ok ? ((await r.json()).openings ?? []) : [];
+    jobs = list.map((o) => ({ path: `/careers/${o.slug}`, changeFrequency: "weekly", priority: 0.7 }));
+  } catch {} // sitemap still serves without jobs if the API is down
+  return mapRoutes(origin, [...YUGMINDS_ROUTES, ...jobs]);
 }

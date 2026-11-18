@@ -1,13 +1,7 @@
 import { redirect } from "next/navigation";
-import { YugmindsShell } from "@/components/yugminds/YugmindsSite";
-import CareersApply from "@/components/yugminds/CareersApply";
 
+// Old links: /careers/apply?role=<slug>
 export default async function Page({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
   const { role } = await searchParams;
-  if (typeof role !== "string" || !role) redirect("/#careers");
-  return (
-    <YugmindsShell>
-      <CareersApply slug={role} />
-    </YugmindsShell>
-  );
+  redirect(typeof role === "string" && role ? `/careers/${encodeURIComponent(role)}/apply` : "/#careers");
 }
