@@ -3,27 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { commonApi } from "@/lib/api/common.api";
+import { checkStep, consentText, coreField, CORE_DEFAULT, CORE_KEYS, initial, type Answers, type FormConfig, type Value } from "@/lib/careers-form";
+import QuestionField from "@/components/careers/QuestionField";
 
 
 const DRAFT = "ym-careers-draft";
-const SKILLS = ["Scratch", "Python", "Arduino", "Robotics kits", "AI / ML basics", "Web / HTML"];
-const BANDS = ["Grades 1-5", "Grades 6-8", "Grades 9-12"];
-const STEPS = ["About you", "Background", "Skills", "Questions", "Resume"];
 
-type Form = {
-  fullName: string; email: string; phone: string; city: string; willTravel: boolean;
-  qualification: string; college: string; gradYear: string; experienceYears: string; currentStatus: string;
-  skills: string[]; gradeBands: string[]; englishLevel: number; hasTwoWheeler: boolean;
-  why: string; explain: string; expectedSalary: string; joinDate: string; heardFrom: string; videoUrl: string;
-  consent: boolean;
-};
-const EMPTY: Form = {
-  fullName: "", email: "", phone: "", city: "", willTravel: true,
-  qualification: "", college: "", gradYear: "", experienceYears: "0", currentStatus: "fresher",
-  skills: [], gradeBands: [], englishLevel: 3, hasTwoWheeler: false,
-  why: "", explain: "", expectedSalary: "", joinDate: "", heardFrom: "", videoUrl: "",
-  consent: false,
-};
+type Core = { fullName: string; email: string; phone: string; city: string; consent: boolean };
+const EMPTY: Core = { fullName: "", email: "", phone: "", city: "", consent: false };
 
 const input =
   "mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base text-ym-text outline-none focus-visible:border-ym-blue focus-visible:ring-2 focus-visible:ring-ym-blue/30";
@@ -38,95 +25,92 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function toggle(list: string[], v: string) {
-  return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
-}
-
-/** Returns an error message for the step, or "" when it can continue. */
-function check(step: number, f: Form, file: File | null): string {
-  if (step === 0) {
-    if (!f.fullName.trim()) return "Enter your full name.";
+/** Returns an error message for the fixed steps (About you, Resume), or "" when it can continue. */
+function checkCore(step: "about" | "resume", f: Core, file: File | null, form: FormConfig): string {
+  if (step === "about") {
+    if (!f.fullName.trim()) return `Enter your ${coreField(form, "fullName").label.toLowerCase()}.`;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return "Enter a valid email.";
-    if (!/^(\+?91)?[6-9]\d{9}$/.test(f.phone.replace(/[\s()-]/g, ""))) return "Enter a 10-digit mobile number.";
-    if (!f.city.trim()) return "Enter your city or area.";
+    const p = coreField(form, "phone"), c = coreField(form, "city");
+    if (p.mode === "required" || (p.mode === "optional" && f.phone.trim()))
+      if (!/^(\+?91)?[6-9]\d{9}$/.test(f.phone.replace(/[\s()-]/g, ""))) return "Enter a 10-digit mobile number.";
+    if (c.mode === "required" && !f.city.trim()) return `Enter your ${c.label.toLowerCase()}.`;
+    return "";
   }
-  if (step === 1 && !f.qualification.trim()) return "Enter your highest qualification.";
-  if (step === 3) {
-    if (!f.why.trim()) return "Tell us why you want to be a trainer.";
-    if (!f.explain.trim()) return "Answer the explain-it question.";
-    if (f.videoUrl.trim() && !/^https?:\/\//i.test(f.videoUrl.trim())) return "The video link must start with https://";
-  }
-  if (step === 4) {
-    if (!file) return "Attach your resume.";
+  if (form.resume === "required" && !file) return "Attach your resume.";
+  if (file) {
     if (file.size > 5 * 1024 * 1024) return "Resume must be 5 MB or smaller.";
     if (!/\.(pdf|doc|docx)$/i.test(file.name)) return "Resume must be a PDF or Word file.";
-    if (!f.consent) return "Please accept the consent to apply.";
   }
+  if (!f.consent) return "Please accept the consent to apply.";
   return "";
 }
 
 export default function CareersApply({ slug }: { slug: string }) {
-  const [roleState, setRoleState] = useState<"loading" | "open" | "gone">("loading");
+  const [roleState, setRoleState] = useState<"loading" | "open" | "gone" | "error">("loading");
   const [roleName, setRoleName] = useState(slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
-  useEffect(() => {
-    commonApi.careers.openings()
-      .then((r: { data?: { openings?: { slug: string; title: string }[] } }) => {
-        const list = r.data?.openings;
-        if (!Array.isArray(list)) return setRoleState("open");
-        const o = list.find((x) => x.slug === slug);
-        if (o) setRoleName(o.title);
-        setRoleState(o ? "open" : "gone");
-      })
-      .catch(() => setRoleState("open")); // server still enforces; do not block the form on a failed lookup
-  }, [slug]);
+  const [form, setForm] = useState<FormConfig | null>(null);
   const [step, setStep] = useState(0);
-  const [f, setF] = useState<Form>(EMPTY);
+  const [f, setF] = useState<Core>(EMPTY);
+  const [answers, setAnswers] = useState<Answers>({});
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState("");
   const [sending, setSending] = useState(false);
   const [ref, setRef] = useState("");
   const top = useRef<HTMLHeadingElement>(null);
+  const key = `${DRAFT}-${slug}`;
 
-  // Restore a saved draft (never the file, never consent).
+  useEffect(() => {
+    commonApi.careers.opening(slug)
+      .then((r: { data?: { title: string; status: string; form: FormConfig } }) => {
+        const o = r.data;
+        if (!o || o.status !== "open") return setRoleState("gone");
+        setRoleName(o.title);
+        const start: Answers = {};
+        for (const st of o.form.steps) for (const q of st.questions) start[q.id] = initial(q);
+        // Restore a saved draft (never the file, never consent).
+        try {
+          const d = JSON.parse(localStorage.getItem(key) ?? "null");
+          if (d) {
+            setF({ ...EMPTY, ...d.f, consent: false });
+            for (const id of Object.keys(start)) if (d.answers?.[id] !== undefined) start[id] = d.answers[id];
+          }
+        } catch {}
+        setAnswers(start);
+        setForm(o.form);
+        setRoleState("open");
+      })
+      .catch((x: { response?: { status?: number } }) => setRoleState(x.response?.status === 404 ? "gone" : "error"));
+  }, [slug, key]);
   useEffect(() => {
     try {
-      const d = localStorage.getItem(DRAFT);
-      if (d) setF({ ...EMPTY, ...JSON.parse(d), consent: false });
+      if (form && !ref) localStorage.setItem(key, JSON.stringify({ f: { ...f, consent: false }, answers }));
     } catch {}
-  }, []);
-  useEffect(() => {
-    try {
-      if (!ref) localStorage.setItem(DRAFT, JSON.stringify({ ...f, consent: false }));
-    } catch {}
-  }, [f, ref]);
+  }, [f, answers, ref, form, key]);
 
-  const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }));
+  const names = form ? ["About you", ...form.steps.map((s) => s.title), form.resume === "off" ? "Consent" : "Resume"] : [];
+  const last = names.length - 1;
+  const set = <K extends keyof Core>(k: K, v: Core[K]) => setF((p) => ({ ...p, [k]: v }));
   const go = (n: number) => {
     setStep(n);
     setErr("");
     top.current?.focus();
   };
+  const check = (n: number) =>
+    !form ? "" : n === 0 ? checkCore("about", f, null, form) : n === last ? checkCore("resume", f, file, form) : checkStep(form.steps[n - 1].questions, answers);
 
   async function submit() {
-    const e = check(4, f, file);
+    if (!form) return;
+    const e = check(last);
     if (e) return setErr(e);
     setSending(true);
     setErr("");
     const fd = new FormData();
-    fd.append("resume", file as File);
-    fd.append(
-      "data",
-      JSON.stringify({
-        ...f,
-        fullName: f.fullName.trim(), email: f.email.trim(), city: f.city.trim(),
-        gradYear: f.gradYear || null, experienceYears: f.experienceYears || 0,
-        expectedSalary: f.expectedSalary || null,
-      }),
-    );
+    if (file && form.resume !== "off") fd.append("resume", file);
+    fd.append("data", JSON.stringify({ ...f, fullName: f.fullName.trim(), email: f.email.trim(), city: f.city.trim(), answers }));
     try {
       const res = await commonApi.careers.apply(slug, fd);
       setRef(res.data?.ref ?? "");
-      try { localStorage.removeItem(DRAFT); } catch {}
+      try { localStorage.removeItem(key); } catch {}
       window.scrollTo({ top: 0 });
     } catch (x) {
       const r = (x as { response?: { status?: number; data?: { message?: string | string[] } } }).response;
@@ -159,19 +143,22 @@ export default function CareersApply({ slug }: { slug: string }) {
       </section>
     );
 
-  if (roleState === "gone")
+  if (roleState === "gone" || roleState === "error")
     return (
       <section className="mx-auto max-w-2xl px-5 pb-20 pt-28 md:pt-32">
         <h1 className="font-acdisplay text-3xl font-bold text-ym-text md:text-4xl">
-          This role is no longer open
+          {roleState === "gone" ? "This role is no longer open" : "We could not load this form"}
         </h1>
         <p className="mt-4 text-slate-700">
-          We have filled this role or taken it down. See what else is open.
+          {roleState === "gone" ? "We have filled this role or taken it down. See what else is open." : "Check your connection and reload the page."}
         </p>
         <Link href={`/careers/${slug}`} className="mt-8 inline-block font-semibold text-ym-blue underline">View this role</Link>
         <Link href="/#careers" className="mt-8 ml-6 inline-block font-semibold text-ym-blue underline">All open roles</Link>
       </section>
     );
+
+  if (!form)
+    return <section className="mx-auto max-w-2xl px-5 pb-20 pt-32 text-slate-600">Loading…</section>;
 
   return (
     <section className="mx-auto max-w-2xl px-5 pb-20 pt-28 md:pt-32">
@@ -179,9 +166,9 @@ export default function CareersApply({ slug }: { slug: string }) {
       <h1 ref={top} tabIndex={-1} className="font-acdisplay text-3xl font-bold text-ym-text outline-none md:text-4xl">
         Apply: {roleName}
       </h1>
-      <p className="mt-2 text-sm text-slate-600">Step {step + 1} of {STEPS.length}: {STEPS[step]}</p>
-      <div className="mt-3 h-1.5 rounded bg-slate-200" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
-        <div className="h-full rounded bg-ym-blue transition-[width]" style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />
+      <p className="mt-2 text-sm text-slate-600">Step {step + 1} of {names.length}: {names[step]}</p>
+      <div className="mt-3 h-1.5 rounded bg-slate-200" role="progressbar" aria-valuemin={1} aria-valuemax={names.length} aria-valuenow={step + 1}>
+        <div className="h-full rounded bg-ym-blue transition-[width]" style={{ width: `${((step + 1) / names.length) * 100}%` }} />
       </div>
 
       <form
@@ -189,81 +176,48 @@ export default function CareersApply({ slug }: { slug: string }) {
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (step === STEPS.length - 1) return void submit();
-          const m = check(step, f, file);
+          if (step === last) return void submit();
+          const m = check(step);
           if (m) setErr(m);
           else go(step + 1);
         }}
       >
         {step === 0 && (
           <>
-            <Field label="Full name"><input className={input} autoComplete="name" maxLength={80} value={f.fullName} onChange={(e) => set("fullName", e.target.value)} /></Field>
-            <Field label="Email"><input className={input} type="email" autoComplete="email" maxLength={200} value={f.email} onChange={(e) => set("email", e.target.value)} /></Field>
-            <Field label="Mobile number" hint="10 digits. We will call this number."><input className={input} type="tel" inputMode="tel" autoComplete="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} /></Field>
-            <Field label="City / area"><input className={input} autoComplete="address-level2" maxLength={80} value={f.city} onChange={(e) => set("city", e.target.value)} /></Field>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.willTravel} onChange={(e) => set("willTravel", e.target.checked)} /> I can travel to schools across Hyderabad</label>
+            {CORE_KEYS.map((k) => {
+              const { label, mode } = coreField(form, k);
+              if (mode === "off") return null;
+              const p = { className: input, value: f[k], onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value) };
+              return (
+                <Field key={k} label={`${label}${mode === "optional" ? " (optional)" : ""}`} hint={k === "phone" ? CORE_DEFAULT.phone.hint : undefined}>
+                  {k === "fullName" ? <input {...p} autoComplete="name" maxLength={80} />
+                    : k === "email" ? <input {...p} type="email" autoComplete="email" maxLength={200} />
+                    : k === "phone" ? <input {...p} type="tel" inputMode="tel" autoComplete="tel" />
+                    : <input {...p} autoComplete="address-level2" maxLength={80} />}
+                </Field>
+              );
+            })}
           </>
         )}
-        {step === 1 && (
+        {step > 0 && step < last &&
+          form.steps[step - 1].questions.map((q) => (
+            <QuestionField key={q.id} q={q} value={answers[q.id] ?? initial(q)} onChange={(v: Value) => setAnswers((p) => ({ ...p, [q.id]: v }))} />
+          ))}
+        {step === last && (
           <>
-            <Field label="Highest qualification" hint="For example B.Tech, Diploma, B.Sc, 12th"><input className={input} maxLength={120} value={f.qualification} onChange={(e) => set("qualification", e.target.value)} /></Field>
-            <Field label="College / institute (optional)"><input className={input} maxLength={160} value={f.college} onChange={(e) => set("college", e.target.value)} /></Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Graduation year"><input className={input} inputMode="numeric" maxLength={4} value={f.gradYear} onChange={(e) => set("gradYear", e.target.value.replace(/\D/g, ""))} /></Field>
-              <Field label="Years of experience"><input className={input} inputMode="numeric" maxLength={2} value={f.experienceYears} onChange={(e) => set("experienceYears", e.target.value.replace(/\D/g, ""))} /></Field>
-            </div>
-            <Field label="Right now I am">
-              <select className={input} value={f.currentStatus} onChange={(e) => set("currentStatus", e.target.value)}>
-                <option value="fresher">A fresher</option><option value="student">A student</option><option value="working">Working</option>
-              </select>
-            </Field>
-          </>
-        )}
-        {step === 2 && (
-          <>
-            <fieldset><legend className="text-sm font-semibold text-ym-text">What do you know? (any)</legend>
-              <div className="mt-2 flex flex-wrap gap-2">{SKILLS.map((s) => (
-                <label key={s} className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm ${f.skills.includes(s) ? "border-ym-blue bg-ym-blue text-white" : "border-slate-300"}`}>
-                  <input type="checkbox" className="sr-only" checked={f.skills.includes(s)} onChange={() => set("skills", toggle(f.skills, s))} />{s}
-                </label>))}</div></fieldset>
-            <fieldset><legend className="text-sm font-semibold text-ym-text">Which grades can you teach?</legend>
-              <div className="mt-2 flex flex-wrap gap-2">{BANDS.map((s) => (
-                <label key={s} className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm ${f.gradeBands.includes(s) ? "border-ym-blue bg-ym-blue text-white" : "border-slate-300"}`}>
-                  <input type="checkbox" className="sr-only" checked={f.gradeBands.includes(s)} onChange={() => set("gradeBands", toggle(f.gradeBands, s))} />{s}
-                </label>))}</div></fieldset>
-            <Field label="Spoken English (1 = basic, 5 = fluent)">
-              <select className={input} value={f.englishLevel} onChange={(e) => set("englishLevel", Number(e.target.value))}>
-                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </Field>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.hasTwoWheeler} onChange={(e) => set("hasTwoWheeler", e.target.checked)} /> I have a two-wheeler</label>
-          </>
-        )}
-        {step === 3 && (
-          <>
-            <Field label="Why do you want to be a trainer?"><textarea className={input} rows={4} maxLength={1000} value={f.why} onChange={(e) => set("why", e.target.value)} /></Field>
-            <Field label="Explain a sensor (or how a robot knows where it is) to a 10-year-old" hint="A few sentences is enough."><textarea className={input} rows={4} maxLength={1000} value={f.explain} onChange={(e) => set("explain", e.target.value)} /></Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Expected salary (₹ / month)"><input className={input} inputMode="numeric" maxLength={7} value={f.expectedSalary} onChange={(e) => set("expectedSalary", e.target.value.replace(/\D/g, ""))} /></Field>
-              <Field label="Earliest joining date"><input className={input} type="date" value={f.joinDate} onChange={(e) => set("joinDate", e.target.value)} /></Field>
-            </div>
-            <Field label="How did you hear about us? (optional)"><input className={input} maxLength={80} value={f.heardFrom} onChange={(e) => set("heardFrom", e.target.value)} /></Field>
-            <Field label="Intro video link (optional)" hint="A one-minute video of you explaining something. YouTube or Drive link."><input className={input} type="url" maxLength={300} value={f.videoUrl} onChange={(e) => set("videoUrl", e.target.value)} /></Field>
-          </>
-        )}
-        {step === 4 && (
-          <>
-            <Field label="Resume (PDF or Word, up to 5 MB)">
-              <input className={input} type="file" accept=".pdf,.doc,.docx,application/pdf" onChange={(e) => {
-                const picked = e.target.files?.[0] ?? null;
-                const bad = picked ? check(4, { ...f, consent: true }, picked) : "";
-                if (bad) { e.target.value = ""; setFile(null); setErr(bad); } else { setFile(picked); setErr(""); }
-              }} />
-              {file && <p className="mt-1 text-xs text-slate-600">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB</p>}
-            </Field>
+            {form.resume !== "off" && (
+              <Field label={`Resume (PDF or Word, up to 5 MB)${form.resume === "optional" ? " (optional)" : ""}`}>
+                <input className={input} type="file" accept=".pdf,.doc,.docx,application/pdf" onChange={(e) => {
+                  const picked = e.target.files?.[0] ?? null;
+                  const bad = picked ? checkCore("resume", { ...f, consent: true }, picked, { ...form, resume: "optional" }) : "";
+                  if (bad) { e.target.value = ""; setFile(null); setErr(bad); } else { setFile(picked); setErr(""); }
+                }} />
+                {file && <p className="mt-1 text-xs text-slate-600">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB</p>}
+              </Field>
+            )}
             <label className="flex items-start gap-2 text-sm text-slate-700">
               <input type="checkbox" className="mt-1" checked={f.consent} onChange={(e) => set("consent", e.target.checked)} />
-              <span>I agree that YugMinds may store my details and resume to review my application and contact me about this and future roles. I can ask for them to be deleted by emailing info@yugminds.org.</span>
+              <span>{consentText(form)}</span>
             </label>
           </>
         )}
@@ -273,7 +227,7 @@ export default function CareersApply({ slug }: { slug: string }) {
         <div className="flex items-center justify-between pt-2">
           {step > 0 ? <button type="button" onClick={() => go(step - 1)} className="min-h-11 rounded-md px-4 font-semibold text-slate-700 hover:bg-slate-100">Back</button> : <span />}
           <button type="submit" disabled={sending} className="min-h-11 rounded-md bg-ym-blue px-6 font-semibold text-white hover:bg-ym-blue-lit disabled:opacity-60">
-            {step === STEPS.length - 1 ? (sending ? "Sending…" : "Submit application") : "Next"}
+            {step === last ? (sending ? "Sending…" : "Submit application") : "Next"}
           </button>
         </div>
       </form>

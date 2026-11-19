@@ -54,6 +54,7 @@ export const commonApi = {
   /** Careers: apply for a role (multipart: `data` JSON + `resume` file) */
   careers: {
     openings: () => apiClient.get('/careers/openings'),
+    opening: (slug: string) => apiClient.get(`/careers/openings/${slug}`),
     status: (ref: string, email: string) => apiClient.post('/careers/status', { ref, email }),
     withdraw: (ref: string, email: string) => apiClient.post('/careers/withdraw', { ref, email }),
     apply: (slug: string, form: FormData) =>

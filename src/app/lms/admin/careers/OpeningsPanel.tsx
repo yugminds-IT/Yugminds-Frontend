@@ -8,6 +8,8 @@ import Modal from "@/components/portal/Modal";
 import { adminApi } from "@/lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
 import { BRAND_ORIGINS } from "@/lib/brand-host";
+import FormBuilder, { checkForm, countQuestions } from "./FormBuilder";
+import type { FormConfig } from "@/lib/careers-form";
 
 export type Opening = {
   id: string;
@@ -20,6 +22,7 @@ export type Opening = {
   payMax: number | null;
   description: string;
   details?: { teach?: string[]; seeking?: string[] } | null;
+  formConfig?: FormConfig | null;
   status: "draft" | "open" | "paused" | "closed";
   positions: number;
   rejectCooldownDays: number;
@@ -38,7 +41,7 @@ const EMPTY = {
 };
 type Form = typeof EMPTY;
 const STATUS_LABEL = { draft: "Draft", open: "Open", paused: "Paused", closed: "Closed" } as const;
-const STEPS = ["Role", "Pay", "Details", "Review"] as const;
+const STEPS = ["Role", "Pay", "Details", "Application form", "Review"] as const;
 const JOB_TYPES = ["Full-time, Permanent", "Part-time", "Contract", "Internship"];
 const field = "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal";
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
@@ -99,6 +102,7 @@ export default function OpeningsPanel({
   const [starred, setStarred] = useState<string[]>([]);
   useEffect(() => { try { setStarred(JSON.parse(localStorage.getItem("careers-starred") || "[]")); } catch { /* none saved */ } }, []);
   const [form, setForm] = useState<Form | null>(null);
+  const [fc, setFc] = useState<FormConfig | null>(null); // null = Teaching form
   const [editId, setEditId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -108,6 +112,7 @@ export default function OpeningsPanel({
   function start(o?: Opening) {
     setErr(""); setStep(0);
     setEditId(o?.id ?? null);
+    setFc(o?.formConfig ?? null);
     setForm(o ? {
       title: o.title, team: o.team, positions: String(o.positions ?? 1), location: o.location, jobType: o.jobType,
       payMin: o.payMin?.toString() ?? "", payMax: o.payMax?.toString() ?? "", description: o.description,
@@ -118,16 +123,18 @@ export default function OpeningsPanel({
 
   function next() {
     if (!form) return;
-    const p = check(step, form);
+    const p = step === 3 && fc ? checkForm(fc) : check(step, form);
     if (p) setErr(p); else { setErr(""); setStep((s) => s + 1); }
   }
 
   async function save(status: string) {
     if (!form) return;
     for (let i = 0; i < 3; i++) { const p = check(i, form); if (p) { setStep(i); setErr(p); return; } }
+    const fp = fc ? checkForm(fc) : "";
+    if (fp) { setStep(3); setErr(fp); return; }
     setSaving(true); setErr("");
     try {
-      const data = { ...form, status };
+      const data = { ...form, status, formConfig: fc };
       if (editId) await adminApi.careers.openings.update(editId, data);
       else await adminApi.careers.openings.create(data);
       toast.success(status === "open" ? "Opening is live on the site" : "Opening saved");
@@ -398,9 +405,12 @@ export default function OpeningsPanel({
               </div>
             )}
 
-            {step === 3 && (
+            {step === 3 && <FormBuilder value={fc} onChange={(v) => { setErr(""); setFc(v); }} title={form.title} slug={editId ? (openings.find((o) => o.id === editId)?.slug ?? "") : ""} />}
+
+            {step === 4 && (
               <>
                 <Preview f={form} />
+                <p className="mt-3 text-sm text-slate-600">Application form: {fc ? `${fc.steps.length} ${fc.steps.length === 1 ? "step" : "steps"}, ${countQuestions(fc)} questions` : "Teaching form (standard)"}.</p>
                 <p className="mt-3 text-sm text-slate-600">
                   {editId ? "Saving updates the live page straight away if this role is Open." : "Publish now to show it on yugminds.org, or save it as a draft and publish later."}
                 </p>

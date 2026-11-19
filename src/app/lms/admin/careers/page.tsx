@@ -1,42 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Check, Download, Eye, HelpCircle, Mail, MapPin, Phone, RefreshCw, Search, Star, Trash2, Video, X } from "lucide-react";
+import { ArrowLeft, Check, Eye, HelpCircle, RefreshCw, Search, Star, Trash2, X } from "lucide-react";
 import Modal from "@/components/portal/Modal";
 import ConfirmModal from "@/components/portal/ConfirmModal";
 import { ChipGroup, Pager } from "@/components/portal/notifications";
 import RowMenu from "@/components/portal/RowMenu";
 import "./careers.css";
 import OpeningsPanel, { type Opening } from "./OpeningsPanel";
+import CandidateView, { STAGES, LABEL, PIPE, day, type Row, type Detail } from "./CandidateView";
 import { adminApi } from "@/lib/api/admin.api";
 import { toast } from "@/components/ui/toast";
 import "@/components/school-admin/overview.css"; // hero meta
 import "@/components/school-admin/students.css"; // sm- chips and forms
 
 const LIMIT = 20;
-const STAGES = ["new", "screening", "interview", "demo_class", "offer", "hired", "rejected", "on_hold", "withdrawn"] as const;
-const LABEL: Record<string, string> = {
-  all: "All", new: "New", screening: "Screening", interview: "Interview", demo_class: "Demo class",
-  offer: "Offer", hired: "Hired", rejected: "Rejected", on_hold: "On hold", withdrawn: "Withdrawn",
-};
-
-type Row = {
-  id: string; ref: string; role: string | null; full_name: string; email: string; phone: string; city: string;
-  stage: string; rating: number | null; experience_years: number; qualification: string; created_at: string; updated_at?: string;
-  english_level: number; has_two_wheeler: boolean; will_travel: boolean; skills: string[];
-};
-type Event = { id: string; type: string; from_stage: string | null; to_stage: string | null; body: string | null; created_at: string };
-type Detail = Row & {
-  will_travel: boolean; college: string | null; grad_year: number | null; current_status: string; skills: string[];
-  grade_bands: string[]; english_level: number; has_two_wheeler: boolean; answers: { why?: string; explain?: string };
-  expected_salary: number | null; join_date: string | null; heard_from: string | null; video_url: string | null;
-  has_resume: boolean; resume_name: string | null; events: Event[];
-};
-
 const STAGE_COLOR: Record<string, string> = { new: "var(--sd-amber-deep)", screening: "#93b4f5", interview: "var(--sd-blue)", demo_class: "var(--sd-blue-deep)", offer: "var(--sd-navy)", hired: "#1f8a4c", rejected: "var(--sd-late)", on_hold: "#b88a1b", withdrawn: "var(--sd-ink-soft)" };
-const PIPE = ["new", "screening", "interview", "demo_class", "offer", "hired"] as const;
 const MAILED = ["screening", "interview", "demo_class", "offer", "hired", "on_hold", "rejected"];
-const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 export default function CareersAdminPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -57,15 +37,13 @@ export default function CareersAdminPage() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState<Detail | null>(null);
-  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [notify, setNotify] = useState(true);
   const [message, setMessage] = useState("");
   const [del, setDel] = useState(false);
   const [rowDel, setRowDel] = useState<Row | null>(null);
-  const [view, setView] = useState<{ url: string; pdf: boolean } | null>(null);
-  const [ptab, setPtab] = useState<"overview" | "answers" | "notes">("overview");
+  const [rowReject, setRowReject] = useState<Row | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 300);
@@ -99,8 +77,6 @@ export default function CareersAdminPage() {
     try {
       const { data } = await adminApi.careers.get(id);
       setOpen(data);
-      setPtab("overview");
-      setNote("");
       setPending(null);
     } catch {
       toast.error("Could not open this application.");
@@ -115,7 +91,6 @@ export default function CareersAdminPage() {
       toast.success(data.notify && res.data?.emailed ? `${done}. Email sent.` : data.notify ? `${done}. Email not sent (mail is not set up).` : done);
       const [fresh] = await Promise.all([adminApi.careers.get(open.id), load()]);
       setOpen(fresh.data);
-      setNote("");
       setPending(null);
       setMessage("");
     } catch {
@@ -126,7 +101,6 @@ export default function CareersAdminPage() {
   }
 
   async function quick(r: Row, to: string) {
-    if (to === "rejected" && !window.confirm(`Reject ${r.full_name}? They are not emailed from here. Open the application to send a message.`)) return;
     try {
       await adminApi.careers.update(r.id, { stage: to, notify: false });
       toast.success(`${r.full_name} moved to ${LABEL[to]}`);
@@ -152,34 +126,6 @@ export default function CareersAdminPage() {
     }
   }
 
-  function closeView() { if (view) URL.revokeObjectURL(view.url); setView(null); }
-
-  async function preview() {
-    if (!open) return;
-    try {
-      const res = await adminApi.careers.resume(open.id);
-      const pdf = /\.pdf$/i.test(open.resume_name ?? "");
-      setView({ pdf, url: URL.createObjectURL(pdf ? new Blob([res.data], { type: "application/pdf" }) : res.data) });
-    } catch {
-      toast.error("Could not open the resume.");
-    }
-  }
-
-  async function resume() {
-    if (!open) return;
-    try {
-      const res = await adminApi.careers.resume(open.id);
-      const url = URL.createObjectURL(res.data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${open.ref}-${open.resume_name ?? "resume.pdf"}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Could not download the resume.");
-    }
-  }
-
   const total_all = Object.values(counts).reduce((a, b) => a + b, 0);
   const role = openings.find((o) => o.id === roleId);
   const reset = () => { setRoleId(""); setStage("all"); setCity(""); setSort("newest"); setSearchInput(""); setPage(1); };
@@ -188,6 +134,7 @@ export default function CareersAdminPage() {
 
   return (
     <div className="sd-page">
+      {!open && (<>
       <section className="sd-hero mc-band" aria-labelledby="cr-title">
         <div className="sd-hero-copy">
           <h1 id="cr-title" className="mc-hero-title">Careers</h1>
@@ -271,7 +218,7 @@ export default function CareersAdminPage() {
           {rows.map((r) => {
             const nxt = nextStage(r.stage);
             const tags = [
-              r.english_level >= 3 && `English ${r.english_level} of 5`,
+              r.english_level != null && r.english_level >= 3 && `English ${r.english_level} of 5`,
               r.has_two_wheeler && "Two-wheeler",
               r.will_travel && "Can travel",
               ...(r.skills ?? []).slice(0, 2),
@@ -298,7 +245,7 @@ export default function CareersAdminPage() {
                   <div className="cr-judge" role="group" aria-label={`Decide on ${r.full_name}`}>
                     <button data-t="yes" disabled={!nxt} onClick={() => nxt && void quick(r, nxt)} aria-label={nxt ? `Move ${r.full_name} to ${LABEL[nxt]}` : "Already at the last step"} title={nxt ? `Move to ${LABEL[nxt]}` : ""}><Check aria-hidden="true" /></button>
                     <button data-t="hold" disabled={r.stage === "on_hold"} onClick={() => void quick(r, "on_hold")} aria-label={`Put ${r.full_name} on hold`} title="Put on hold"><HelpCircle aria-hidden="true" /></button>
-                    <button data-t="no" disabled={r.stage === "rejected"} onClick={() => void quick(r, "rejected")} aria-label={`Reject ${r.full_name}`} title="Reject"><X aria-hidden="true" /></button>
+                    <button data-t="no" disabled={r.stage === "rejected"} onClick={() => setRowReject(r)} aria-label={`Reject ${r.full_name}`} title="Reject"><X aria-hidden="true" /></button>
                   </div>
                   <RowMenu label={`Actions for ${r.full_name}`} items={[
                     { label: "View application", icon: Eye, onClick: () => void show(r.id) },
@@ -323,155 +270,20 @@ export default function CareersAdminPage() {
         noun="applications"
       />
       </>)}
-
-      <Modal
-        open={!!open}
-        onClose={() => { if (!saving && !pending && !view && !del) setOpen(null); }}
-        title={open?.full_name ?? ""}
-        subtitle={open ? `${open.role ?? "Application"} · ${open.ref} · applied ${day(open.created_at)}` : undefined}
-        wide
-        footer={open && ptab === "notes" && (
-          <div className="flex w-full items-end gap-2">
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} aria-label="Add a note"
-              placeholder="Add a private note. Only admins see it." className="flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <button disabled={saving || !note.trim()} onClick={() => void act({ note }, "Note added")}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Add note</button>
-          </div>
-        )}
-      >
-        {open && (() => {
-          const cur = PIPE.indexOf(open.stage as (typeof PIPE)[number]);
-          const first = open.full_name.split(" ")[0];
-          const notes = open.events.filter((e) => e.type === "note").length;
-          const fact = (k: string, v: string) => (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <dt className="text-xs text-slate-500">{k}</dt><dd className="mt-0.5 font-semibold">{v}</dd>
-            </div>
-          );
-          const chips = (items: string[], empty: string) => items.length
-            ? items.map((s) => <span key={s} className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-ym-blue">{s}</span>)
-            : <span className="text-slate-500">{empty}</span>;
-          const tabs = [["overview", "Overview"], ["answers", "Answers"], ["notes", `Notes and history${notes ? ` (${notes})` : ""}`]] as const;
-          const go = (s: string) => { setPending(s === pending ? null : s); setNotify(true); setMessage(""); };
-          return (
-          <div className="space-y-5 text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <a className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 hover:bg-slate-50" href={`mailto:${open.email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" />{open.email}</a>
-              <a className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 hover:bg-slate-50" href={`tel:${open.phone}`}><Phone className="h-3.5 w-3.5" aria-hidden="true" />{open.phone}</a>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />{open.city}{open.will_travel ? "" : " · cannot travel"}</span>
-              {open.has_resume && (
-                <>
-                  <button onClick={() => void preview()} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 font-semibold hover:bg-slate-50">
-                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />View resume
-                  </button>
-                  <button onClick={() => void resume()} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 font-semibold hover:bg-slate-50">
-                    <Download className="h-3.5 w-3.5" aria-hidden="true" />Download
-                  </button>
-                </>
-              )}
-              {open.video_url && (
-                <a href={open.video_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 font-semibold hover:bg-slate-50">
-                  <Video className="h-3.5 w-3.5" aria-hidden="true" />Intro video
-                </a>
-              )}
-            </div>
-
-            <section aria-label="Hiring stage" className="rounded-xl border border-slate-200 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-semibold">
-                  Hiring stage
-                  {!PIPE.includes(open.stage as (typeof PIPE)[number]) && <span className="ml-2 rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-semibold text-white">{LABEL[open.stage]}</span>}
-                </h3>
-                <div className="flex gap-2">
-                  {(["on_hold", "rejected"] as const).map((s) => (
-                    <button key={s} disabled={saving || s === open.stage} onClick={() => go(s)}
-                      className={`rounded-md border px-3 py-1 text-xs font-semibold disabled:opacity-40 ${s === "rejected" ? "border-red-200 text-red-700 hover:bg-red-50" : "border-slate-300 hover:bg-slate-100"}`}>
-                      {s === "rejected" ? "Reject" : "Put on hold"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <ol className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-                {PIPE.map((s, i) => {
-                  const done = cur > i, now = cur === i;
-                  return (
-                    <li key={s}>
-                      <button disabled={saving || now} aria-current={now ? "step" : undefined} onClick={() => go(s)}
-                        className={`flex w-full flex-col items-center gap-1.5 rounded-lg border px-1 py-2.5 text-xs font-semibold transition-colors ${now ? "border-slate-900 bg-slate-900 text-white" : done ? "border-blue-200 bg-blue-50 text-ym-blue hover:border-ym-blue" : "border-slate-200 text-slate-600 hover:border-slate-400"}`}>
-                        <span className={`grid h-5 w-5 place-items-center rounded-full text-[11px] ${now ? "bg-white text-slate-900" : done ? "bg-ym-blue text-white" : "bg-slate-100"}`}>
-                          {done ? <Check className="h-3 w-3" aria-hidden="true" /> : i + 1}
-                        </span>
-                        {LABEL[s]}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
-
-            <div role="tablist" aria-label="Application sections" className="flex gap-1 border-b border-slate-200">
-              {tabs.map(([k, l]) => (
-                <button key={k} role="tab" id={`cr-tab-${k}`} aria-selected={ptab === k} aria-controls="cr-panel" onClick={() => setPtab(k)}
-                  className={`-mb-px border-b-2 px-3 py-2 font-semibold ${ptab === k ? "border-ym-blue text-ym-blue" : "border-transparent text-slate-500 hover:text-slate-900"}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
-
-            <div role="tabpanel" id="cr-panel" aria-labelledby={`cr-tab-${ptab}`} className="space-y-3">
-              {ptab === "overview" && (<>
-                <div className="flex items-center justify-between">
-                  <p className="text-slate-600">{open.qualification}{open.college ? `, ${open.college}` : ""}{open.grad_year ? ` (${open.grad_year})` : ""}</p>
-                  <div className="flex items-center gap-1" role="group" aria-label="Your rating">
-                    <span className="mr-1 text-xs text-slate-500">{open.rating ? `You rated ${open.rating}/5` : "Rate this applicant"}</span>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button key={n} disabled={saving} aria-label={`${n} star${n > 1 ? "s" : ""}`} aria-pressed={open.rating === n}
-                        onClick={() => void act({ rating: open.rating === n ? null : n }, "Rating saved")}>
-                        <Star className={`h-5 w-5 ${open.rating && n <= open.rating ? "fill-amber-400 text-amber-400" : "text-slate-300 hover:text-amber-300"}`} aria-hidden="true" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {fact("Experience", `${open.experience_years} yr · ${open.current_status}`)}
-                  {fact("English", `${open.english_level}/5`)}
-                  {fact("Expects", open.expected_salary ? `₹${open.expected_salary.toLocaleString("en-IN")}` : "Not said")}
-                  {fact("Can join", open.join_date ?? "Not said")}
-                </dl>
-                <p className="text-slate-600">{open.has_two_wheeler ? "Has a two-wheeler" : "No two-wheeler"}{open.heard_from ? ` · Heard from ${open.heard_from}` : ""}</p>
-                <div className="flex flex-wrap items-center gap-1.5"><span className="mr-1 text-slate-500">Skills</span>{chips(open.skills, "None listed")}</div>
-                <div className="flex flex-wrap items-center gap-1.5"><span className="mr-1 text-slate-500">Can teach</span>{chips(open.grade_bands, "Not said")}</div>
-                <div className="border-t border-slate-200 pt-3">
-                  <button onClick={() => setDel(true)} className="text-xs font-semibold text-red-700 hover:underline">Delete this application</button>
-                </div>
-              </>)}
-
-              {ptab === "answers" && ([["Why do they want to be a trainer?", open.answers.why], ["How would they explain a sensor to a 10-year-old?", open.answers.explain]] as const).map(([q, a]) => (
-                <figure key={q} className="rounded-lg border-l-4 border-ym-blue bg-slate-50 px-4 py-3">
-                  <figcaption className="text-xs font-semibold text-slate-500">{q}</figcaption>
-                  <p className="mt-1 whitespace-pre-wrap">{a || "No answer"}</p>
-                </figure>
-              ))}
-
-              {ptab === "notes" && (
-                <ul className="space-y-3 border-l border-slate-200 pl-4">
-                  {[...open.events].reverse().map((e) => (
-                    <li key={e.id} className="relative">
-                      <span className={`absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full ${e.type === "note" ? "bg-amber-400" : "bg-ym-blue"}`} aria-hidden="true" />
-                      <p className="text-xs text-slate-500">{day(e.created_at)}</p>
-                      {e.type === "note"
-                        ? <p className="mt-1 whitespace-pre-wrap rounded-md bg-amber-50 px-3 py-2">{e.body}</p>
-                        : <p>{e.type === "stage_change" ? `Moved from ${LABEL[e.from_stage ?? ""] ?? e.from_stage} to ${LABEL[e.to_stage ?? ""] ?? e.to_stage}`
-                          : e.type === "submitted" ? (e.body || "Application submitted") : e.type === "email" ? `Emailed ${first}: ${LABEL[e.to_stage ?? ""] ?? e.to_stage}` : e.body}</p>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-          );
-        })()}
-      </Modal>
+      </>)}
+      {open && (
+        <CandidateView
+          key={open.id}
+          open={open}
+          rows={rows}
+          saving={saving}
+          onBack={() => { if (!saving) setOpen(null); }}
+          onShow={(id) => void show(id)}
+          onGo={(s) => { setPending(s); setNotify(true); setMessage(""); }}
+          onAct={(d, done) => act(d, done)}
+          onDelete={() => setDel(true)}
+        />
+      )}
 
       <Modal
         open={!!open && !!pending}
@@ -504,20 +316,18 @@ export default function CareersAdminPage() {
         )}
       </Modal>
 
-      <Modal
-        open={!!open && !!view}
-        onClose={closeView}
-        title={open ? `${open.full_name}'s resume` : ""}
-        subtitle={open?.resume_name ?? undefined}
-        wide
-        footer={<button onClick={() => void resume()} className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-100"><Download className="h-4 w-4" aria-hidden="true" />Download</button>}
+
+      <ConfirmModal
+        open={!!rowReject}
+        onClose={() => setRowReject(null)}
+        title={rowReject ? `Reject ${rowReject.full_name.split(" ")[0]}?` : ""}
+        subtitle="They are not emailed from here."
+        confirmLabel="Reject"
+        onConfirm={() => { const r = rowReject; setRowReject(null); if (r) void quick(r, "rejected"); }}
+        danger
       >
-        {view?.pdf ? (
-          <iframe src={view.url} title="Resume preview" className="h-[70vh] w-full rounded-md border border-slate-200" />
-        ) : (
-          <p className="py-10 text-center text-sm text-slate-600">Word files can&apos;t be previewed in the browser. Download it to read it.</p>
-        )}
-      </Modal>
+        <p className="text-sm">You can move them back to any stage later. To email them a message, open their application and reject from there.</p>
+      </ConfirmModal>
 
       <ConfirmModal
         open={del || !!rowDel}

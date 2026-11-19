@@ -469,6 +469,7 @@ export const adminApi = {
     purge: (id: string) => apiClient.delete(`${ADMIN}/careers/${id}/purge`),
     openings: {
       list: () => apiClient.get(`${ADMIN}/job-openings`),
+      formMeta: () => apiClient.get(`${ADMIN}/job-openings/form-meta`),
       create: (data: Record<string, unknown>) => apiClient.post(`${ADMIN}/job-openings`, data),
       update: (id: string, data: Record<string, unknown>) => apiClient.patch(`${ADMIN}/job-openings/${id}`, data),
       delete: (id: string) => apiClient.delete(`${ADMIN}/job-openings/${id}`),
