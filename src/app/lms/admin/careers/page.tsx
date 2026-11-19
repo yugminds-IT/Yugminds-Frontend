@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Check, Eye, HelpCircle, RefreshCw, Search, Star, Trash2, X } from "lucide-react";
-import Modal from "@/components/portal/Modal";
 import ConfirmModal from "@/components/portal/ConfirmModal";
+import StageDialog, { STAGE_COLOR, MAILED } from "./StageDialog";
 import { ChipGroup, Pager } from "@/components/portal/notifications";
 import RowMenu from "@/components/portal/RowMenu";
 import "./careers.css";
@@ -15,8 +15,6 @@ import "@/components/school-admin/overview.css"; // hero meta
 import "@/components/school-admin/students.css"; // sm- chips and forms
 
 const LIMIT = 20;
-const STAGE_COLOR: Record<string, string> = { new: "var(--sd-amber-deep)", screening: "#93b4f5", interview: "var(--sd-blue)", demo_class: "var(--sd-blue-deep)", offer: "var(--sd-navy)", hired: "#1f8a4c", rejected: "var(--sd-late)", on_hold: "#b88a1b", withdrawn: "var(--sd-ink-soft)" };
-const MAILED = ["screening", "interview", "demo_class", "offer", "hired", "on_hold", "rejected"];
 
 export default function CareersAdminPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -41,9 +39,10 @@ export default function CareersAdminPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [notify, setNotify] = useState(true);
   const [message, setMessage] = useState("");
+  const [resend, setResend] = useState(false);
   const [del, setDel] = useState(false);
   const [rowDel, setRowDel] = useState<Row | null>(null);
-  const [rowReject, setRowReject] = useState<Row | null>(null);
+  const [fromRow, setFromRow] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 300);
@@ -77,35 +76,46 @@ export default function CareersAdminPage() {
     try {
       const { data } = await adminApi.careers.get(id);
       setOpen(data);
+      setFromRow(false);
       setPending(null);
     } catch {
       toast.error("Could not open this application.");
     }
   }
 
+  function closeModal() {
+    if (fromRow) { setOpen(null); setFromRow(false); }
+    setPending(null); setMessage(""); setResend(false);
+  }
+
   async function act(data: { stage?: string; rating?: number | null; note?: string; notify?: boolean; message?: string }, done: string) {
     if (!open) return;
     setSaving(true);
     try {
-      const res = await adminApi.careers.update(open.id, data);
-      toast.success(data.notify && res.data?.emailed ? `${done}. Email sent.` : data.notify ? `${done}. Email not sent (mail is not set up).` : done);
+      const res = resend ? await adminApi.careers.resendEmail(open.id, { message: data.message }) : await adminApi.careers.update(open.id, data);
+      if (!data.notify) toast.success(done);
+      else if (res.data?.emailed) toast.success(resend ? "Email sent." : `${done}. Email sent.`);
+      else if (res.data?.reason === "not_configured") toast.error(`${done}, but mail is not set up on the server.`);
+      else toast.error(`${done}, but the email failed. Use Resend in Notes and history.`);
       const [fresh] = await Promise.all([adminApi.careers.get(open.id), load()]);
-      setOpen(fresh.data);
-      setPending(null);
-      setMessage("");
-    } catch {
-      toast.error("That did not save. Try again.");
+      if (fromRow) { setOpen(null); setFromRow(false); } else setOpen(fresh.data);
+      closeModal();
+    } catch (e) {
+      toast.error((e as { response?: { data?: { message?: string } } })?.response?.data?.message || "That did not save. Try again.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function quick(r: Row, to: string) {
+  /** Row buttons use the same dialog as the application page: email choice, preview, required interview details. */
+  async function decide(r: Row, to: string) {
     try {
-      await adminApi.careers.update(r.id, { stage: to, notify: false });
-      toast.success(`${r.full_name} moved to ${LABEL[to]}`);
-      await load();
-    } catch { toast.error("That did not save. Try again."); }
+      const { data } = await adminApi.careers.get(r.id);
+      setOpen(data);
+      setFromRow(true);
+      setNotify(true); setMessage(""); setResend(false);
+      setPending(to);
+    } catch { toast.error("Could not open this application."); }
   }
 
   async function purge() {
@@ -134,7 +144,7 @@ export default function CareersAdminPage() {
 
   return (
     <div className="sd-page">
-      {!open && (<>
+      {(!open || fromRow) && (<>
       <section className="sd-hero mc-band" aria-labelledby="cr-title">
         <div className="sd-hero-copy">
           <h1 id="cr-title" className="mc-hero-title">Careers</h1>
@@ -243,9 +253,9 @@ export default function CareersAdminPage() {
                 </div>
                 <div className="cr-act">
                   <div className="cr-judge" role="group" aria-label={`Decide on ${r.full_name}`}>
-                    <button data-t="yes" disabled={!nxt} onClick={() => nxt && void quick(r, nxt)} aria-label={nxt ? `Move ${r.full_name} to ${LABEL[nxt]}` : "Already at the last step"} title={nxt ? `Move to ${LABEL[nxt]}` : ""}><Check aria-hidden="true" /></button>
-                    <button data-t="hold" disabled={r.stage === "on_hold"} onClick={() => void quick(r, "on_hold")} aria-label={`Put ${r.full_name} on hold`} title="Put on hold"><HelpCircle aria-hidden="true" /></button>
-                    <button data-t="no" disabled={r.stage === "rejected"} onClick={() => setRowReject(r)} aria-label={`Reject ${r.full_name}`} title="Reject"><X aria-hidden="true" /></button>
+                    <button data-t="yes" disabled={!nxt} onClick={() => nxt && void decide(r, nxt)} aria-label={nxt ? `Move ${r.full_name} to ${LABEL[nxt]}` : "Already at the last step"} title={nxt ? `Move to ${LABEL[nxt]}` : ""}><Check aria-hidden="true" /></button>
+                    <button data-t="hold" disabled={r.stage === "on_hold"} onClick={() => void decide(r, "on_hold")} aria-label={`Put ${r.full_name} on hold`} title="Put on hold"><HelpCircle aria-hidden="true" /></button>
+                    <button data-t="no" disabled={r.stage === "rejected"} onClick={() => void decide(r, "rejected")} aria-label={`Reject ${r.full_name}`} title="Reject"><X aria-hidden="true" /></button>
                   </div>
                   <RowMenu label={`Actions for ${r.full_name}`} items={[
                     { label: "View application", icon: Eye, onClick: () => void show(r.id) },
@@ -271,7 +281,7 @@ export default function CareersAdminPage() {
       />
       </>)}
       </>)}
-      {open && (
+      {open && !fromRow && (
         <CandidateView
           key={open.id}
           open={open}
@@ -279,55 +289,26 @@ export default function CareersAdminPage() {
           saving={saving}
           onBack={() => { if (!saving) setOpen(null); }}
           onShow={(id) => void show(id)}
-          onGo={(s) => { setPending(s); setNotify(true); setMessage(""); }}
+          onGo={(s) => { setPending(s); setNotify(true); setMessage(""); setResend(false); }}
+          onResend={() => { setPending(open.stage); setNotify(true); setMessage(""); setResend(true); }}
           onAct={(d, done) => act(d, done)}
           onDelete={() => setDel(true)}
         />
       )}
 
-      <Modal
-        open={!!open && !!pending}
-        onClose={() => { if (!saving) { setPending(null); setMessage(""); } }}
-        title={open && pending ? `${pending === "rejected" ? "Reject" : "Move"} ${open.full_name.split(" ")[0]}${pending === "rejected" ? "?" : ` to ${LABEL[pending]}?`}` : ""}
-        subtitle={open && pending ? `Currently ${LABEL[open.stage]}. You can move them again later.` : undefined}
-        footer={open && pending && (<>
-          <button disabled={saving} onClick={() => { setPending(null); setMessage(""); }} className="rounded-md px-4 py-2 text-sm font-semibold hover:bg-slate-100">Cancel</button>
-          <button disabled={saving} onClick={() => void act({ stage: pending, notify: MAILED.includes(pending) && notify, message: message.trim() || undefined }, `Moved to ${LABEL[pending]}`)}
-            className={`rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${pending === "rejected" ? "bg-red-600" : "bg-ym-blue"}`}>
-            {saving ? "Saving…" : pending === "rejected" ? (notify ? "Reject and email" : "Reject") : MAILED.includes(pending) && notify ? "Move and email" : "Move"}
-          </button>
-        </>)}
-      >
-        {open && pending && (
-          <div className="space-y-3 text-sm">
-            {MAILED.includes(pending) ? (<>
-              <label className="flex items-center gap-2 font-semibold">
-                <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
-                Email {open.full_name.split(" ")[0]} about this
-              </label>
-              {notify && (
-                <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} maxLength={600}
-                  aria-label="Message to include"
-                  placeholder={pending === "interview" ? "Add the date, time and place" : pending === "rejected" ? "Optional personal note" : "Optional note, shown in the email"}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2" />
-              )}
-            </>) : <p>No email is sent for this stage.</p>}
-          </div>
-        )}
-      </Modal>
+      <StageDialog
+        open={open}
+        pending={pending}
+        resend={resend}
+        notify={notify}
+        message={message}
+        saving={saving}
+        onNotify={setNotify}
+        onMessage={setMessage}
+        onClose={closeModal}
+        onConfirm={() => pending && void act({ stage: pending, notify: MAILED.includes(pending) && (resend || notify), message: message.trim() || undefined }, `Moved to ${LABEL[pending]}`)}
+      />
 
-
-      <ConfirmModal
-        open={!!rowReject}
-        onClose={() => setRowReject(null)}
-        title={rowReject ? `Reject ${rowReject.full_name.split(" ")[0]}?` : ""}
-        subtitle="They are not emailed from here."
-        confirmLabel="Reject"
-        onConfirm={() => { const r = rowReject; setRowReject(null); if (r) void quick(r, "rejected"); }}
-        danger
-      >
-        <p className="text-sm">You can move them back to any stage later. To email them a message, open their application and reject from there.</p>
-      </ConfirmModal>
 
       <ConfirmModal
         open={del || !!rowDel}

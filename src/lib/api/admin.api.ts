@@ -464,6 +464,9 @@ export const adminApi = {
     get: (id: string) => apiClient.get(`${ADMIN}/careers/${id}`),
     update: (id: string, data: { stage?: string; rating?: number | null; note?: string; notify?: boolean; message?: string }) =>
       apiClient.patch(`${ADMIN}/careers/${id}`, data),
+    previewEmail: (id: string, data: { stage: string; message?: string }) =>
+      apiClient.post<{ subject: string; html: string; to: string }>(`${ADMIN}/careers/${id}/preview-email`, data),
+    resendEmail: (id: string, data: { message?: string }) => apiClient.post(`${ADMIN}/careers/${id}/resend-email`, data),
     resume: (id: string) => apiClient.get(`${ADMIN}/careers/${id}/resume`, { responseType: "blob" }),
     delete: (id: string) => apiClient.delete(`${ADMIN}/careers/${id}`),
     purge: (id: string) => apiClient.delete(`${ADMIN}/careers/${id}/purge`),

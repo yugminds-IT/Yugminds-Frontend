@@ -34,16 +34,17 @@ type Props = {
   onBack: () => void;
   onShow: (id: string) => void;
   onGo: (stage: string) => void;
+  onResend: () => void;
   onAct: (data: { rating?: number | null; note?: string }, done: string) => Promise<void>;
   onDelete: () => void;
 };
 
 // Applicants often type in ALL CAPS; show those in normal case.
-const nice = (v?: string | null) => (v && v === v.toUpperCase() && /[A-Z]/.test(v) ? v.toLowerCase().replace(/(^|[\s.-])([a-z])/g, (_, p, c) => p + c.toUpperCase()) : v ?? "");
+export const nice = (v?: string | null) => (v && v === v.toUpperCase() && /[A-Z]/.test(v) ? v.toLowerCase().replace(/(^|[\s.-])([a-z])/g, (_, p, c) => p + c.toUpperCase()) : v ?? "");
 const DOT: Record<string, string> = { new: "var(--sd-amber-deep)", screening: "#93b4f5", interview: "var(--sd-blue)", demo_class: "var(--sd-blue-deep)", offer: "var(--sd-navy)", hired: "#1f8a4c", rejected: "var(--sd-late)", on_hold: "#b88a1b", withdrawn: "var(--sd-ink-soft)" };
 const initials = (n: string) => n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
-export default function CandidateView({ open, rows, saving, onBack, onShow, onGo, onAct, onDelete }: Props) {
+export default function CandidateView({ open, rows, saving, onBack, onShow, onGo, onResend, onAct, onDelete }: Props) {
   const [tab, setTab] = useState<"profile" | "resume" | "notes">("profile");
   const [note, setNote] = useState("");
   const [resume, setResume] = useState<{ url: string; pdf: boolean } | null>(null);
@@ -86,6 +87,7 @@ export default function CandidateView({ open, rows, saving, onBack, onShow, onGo
   const first = name.split(" ")[0];
   const back = [...open.events].reverse().find((e) => e.type === "stage_change" && e.to_stage === open.stage)?.from_stage;
   const backTo = back && PIPE.includes(back as (typeof PIPE)[number]) ? back : null;
+  const lastMail = [...open.events].reverse().find((e) => e.type === "email" || e.type === "email_failed");
   const notes = open.events.filter((e) => e.type === "note").length;
   const tabs = [["profile", "Profile"], ["resume", "Resume"], ["notes", `Notes and history${notes ? ` (${notes})` : ""}`]] as const;
 
@@ -226,7 +228,10 @@ export default function CandidateView({ open, rows, saving, onBack, onShow, onGo
                     <small>{day(e.created_at)}</small>
                     {e.type === "note" ? <p className="cv-note-body">{e.body}</p>
                       : <p>{e.type === "stage_change" ? `Moved from ${LABEL[e.from_stage ?? ""] ?? e.from_stage} to ${LABEL[e.to_stage ?? ""] ?? e.to_stage}`
-                        : e.type === "submitted" ? (e.body || "Application submitted") : e.type === "email" ? `Emailed ${first}: ${LABEL[e.to_stage ?? ""] ?? e.to_stage}` : e.body}</p>}
+                        : e.type === "submitted" ? (e.body || "Application submitted") : e.type === "email" ? `Emailed ${first}: ${LABEL[e.to_stage ?? ""] ?? e.to_stage}` : e.type === "email_failed" ? `Email to ${first} failed: ${LABEL[e.to_stage ?? ""] ?? e.to_stage}` : e.body}</p>}
+                    {e.type === "email_failed" && e.to_stage === open.stage && e.id === lastMail?.id && (
+                      <button className="sd-btn" disabled={saving} onClick={onResend}>Resend email</button>
+                    )}
                   </li>
                 ))}
               </ul>
